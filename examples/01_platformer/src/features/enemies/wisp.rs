@@ -7,11 +7,11 @@
 
 use glam::Vec2;
 use tungsten::core::{Entity, Position, World};
-use tungsten::kit::{HealRequest, Health, StateMachine, Tags, TopDownMover};
+use tungsten::kit::{HealRequest, Health, StateMachine, Tags};
 
+use super::centre;
 use super::components::{Enemy, EnemyKind, EnemyState};
-use super::systems::{elapsed, face, go, player, rest, sees};
-use super::{ARRIVED, centre};
+use super::systems::{elapsed, fly, go, player, sees};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::BURNING;
 use crate::features::elements::components::Flame;
@@ -30,29 +30,6 @@ pub const HEAL_MOST: f32 = 12.0;
 /// Its health, its prefab's `max_health` stat and maximum: restated so a
 /// save can move an older wisp's to it.
 pub const MAX_HEALTH: f32 = 30.0;
-
-/// Sets `wisp`'s flight toward `point` at `pace` of its speed, easing in
-/// over its last 20 px; at rest with no point. Whether it is there.
-fn fly(world: &mut World, wisp: Entity, point: Option<Vec2>, pace: f32) -> bool {
-    let (Some(at), Some(point)) = (centre(world, wisp), point) else {
-        rest(world, wisp);
-        return true;
-    };
-    let delta = point - at;
-    let distance = delta.length();
-    let direction = if distance > 1.0 {
-        delta / distance * pace * (distance / 20.0).min(1.0)
-    } else {
-        Vec2::ZERO
-    };
-    if let Some(mover) = world.get_mut::<TopDownMover>(wisp) {
-        mover.set_direction(direction);
-    }
-    if direction.x.abs() > 0.05 {
-        face(world, wisp, point.x);
-    }
-    distance <= ARRIVED
-}
 
 /// The nearest burning ball within [`FIRE_REACH`] of `at`.
 fn nearest_fire(world: &World, at: Vec2) -> Option<Vec2> {

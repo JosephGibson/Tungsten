@@ -129,7 +129,7 @@ pub struct OpeningOf(pub Entity);
 /// which `toys_release` gives back once the movers have moved. One step's,
 /// never saved.
 #[derive(Debug, Default)]
-pub struct HoleHold(pub Vec<(Entity, Vec2)>);
+pub struct HoleHold(pub Vec<(Entity, Vec2, bool)>);
 
 /// A light left where a missile ended, fading out over `secs`: a blast's
 /// flares and fades more slowly.

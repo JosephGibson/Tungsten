@@ -38,6 +38,7 @@ pub mod troll;
 pub mod wisp;
 
 use glam::Vec2;
+use serde::Deserialize;
 use tungsten::core::save::{SaveOptions, Value};
 use tungsten::core::{
     AnimationRegistry, AssetRegistry, Entity, EventCursor, Position, PrefabRegistry, Schedule,
@@ -45,8 +46,8 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, FOLLOW, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line,
-    Modifier, PLATFORMER_CONTROLLER, Phase, Stats, TOP_DOWN_MOVER, TagFilter, WorldSource,
-    WorldSources, ensure_phases,
+    Modifier, PLATFORMER_CONTROLLER, Phase, Stats, Steering, TOP_DOWN_MOVER, TagFilter,
+    WorldSource, WorldSources, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -440,6 +441,27 @@ pub fn restored(world: &mut World, enemy: Entity) {
     fit(world, enemy);
     world.insert(enemy, Shown::default());
     disarm_as_prefab(world, enemy);
+    steering_as_prefab(world, enemy);
+}
+
+/// An older save's flyer record, which held no steering, takes its
+/// prefab's, read from the prefab's data; its next intent step switches it
+/// on or off.
+fn steering_as_prefab(world: &mut World, enemy: Entity) {
+    let Some(mine) = world.get::<Enemy>(enemy).copied() else {
+        return;
+    };
+    if !mine.kind.info().flyer || world.has::<Steering>(enemy) {
+        return;
+    }
+    let steering = world
+        .get_resource::<PrefabRegistry>()
+        .and_then(|prefabs| prefabs.get(prefab(mine.kind, mine.variant)))
+        .and_then(|data| data.components.get("steering"))
+        .and_then(|steering| Steering::deserialize(steering.clone()).ok());
+    if let Some(steering) = steering {
+        world.insert(enemy, steering);
+    }
 }
 
 /// An older save's enemy record, whose health lacks its prefab's death

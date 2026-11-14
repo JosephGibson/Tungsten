@@ -9,11 +9,13 @@
 
 use glam::Vec2;
 use tungsten::core::{DataRef, Entity, World};
-use tungsten::kit::{Health, PlatformerController, TopDownMover, end_effect, use_ability};
+use tungsten::kit::{
+    Health, PlatformerController, Steering, TopDownMover, end_effect, use_ability,
+};
 use tungsten::physics::{SpatialFilter, cast_ray};
 
 use super::components::{Enemy, EnemyKind, EnemyState};
-use super::systems::{armed, elapsed, face, go, player, rest, sees};
+use super::systems::{armed, elapsed, face, fly, go, player, rest, sees};
 use super::{ARRIVED, WALL_LAYERS, centre};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{Hit, Kind};
@@ -49,29 +51,6 @@ pub fn roost(world: &World, at: Vec2) -> Vec2 {
         .map(|hit| hit.distance)
         .min_by(f32::total_cmp)
         .map_or(at, |distance| at - Vec2::new(0.0, distance - grip))
-}
-
-/// Sets `bat`'s flight toward `point` at `pace` of its speed, easing in
-/// over its last 20 px; at rest with no point. Whether it is there.
-fn fly(world: &mut World, bat: Entity, point: Option<Vec2>, pace: f32) -> bool {
-    let (Some(at), Some(point)) = (centre(world, bat), point) else {
-        rest(world, bat);
-        return true;
-    };
-    let delta = point - at;
-    let distance = delta.length();
-    let direction = if distance > 1.0 {
-        delta / distance * pace * (distance / 20.0).min(1.0)
-    } else {
-        Vec2::ZERO
-    };
-    if let Some(mover) = world.get_mut::<TopDownMover>(bat) {
-        mover.set_direction(direction);
-    }
-    if direction.x.abs() > 0.05 {
-        face(world, bat, point.x);
-    }
-    distance <= ARRIVED
 }
 
 /// Whether `bat` hangs at its roost.
@@ -139,6 +118,10 @@ pub fn enter_attack(world: &mut World, bat: Entity) {
         go(world, bat, EnemyState::Recover);
         return;
     };
+    // Its line, set once: no steering flies the dive.
+    if let Some(steering) = world.get_mut::<Steering>(bat) {
+        steering.set_on(false);
+    }
     if let Some(mover) = world.get_mut::<TopDownMover>(bat) {
         mover.set_direction((target - at).normalize_or(Vec2::Y));
     }

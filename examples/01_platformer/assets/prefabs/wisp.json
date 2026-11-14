@@ -32,6 +32,18 @@
     "top_down_mover": {
       "speed": 140
     },
+    "steering": {
+      "target": {
+        "point": [
+          0,
+          0
+        ]
+      },
+      "mode": "arrive",
+      "max_speed": 140,
+      "radius": 20,
+      "on": false
+    },
     "health": {
       "max": 30,
       "invulnerability": 0,

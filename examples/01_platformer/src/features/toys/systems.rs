@@ -11,8 +11,8 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     Blast, Children, EffectInstance, Effects, Health, LinearMotion, Modifier, PlatformerController,
-    Projectile, ProjectileExpired, Stats, Tags, TopDownMover, blast, carrier_of, knock_back,
-    stimulate,
+    Projectile, ProjectileExpired, Stats, Steering, Tags, TopDownMover, blast, carrier_of,
+    knock_back, steered_direction, stimulate,
 };
 use tungsten::physics::wake;
 
@@ -370,14 +370,18 @@ pub fn pull(world: &mut World) {
 /// easing within [`HOLD_EASE`] of the ring and circling there at
 /// [`HOLD_SWIRL`] of its speed. That is blended with its own direction by
 /// the pull over its speed, so near the core the hole holds it and at its
-/// edge its own steering wins. Its own direction is kept for
-/// `toys_release`, so the hole's correction never stays.
+/// edge its own steering wins. Its own direction is the one its kit
+/// steering would give its mover this step (`steered_direction`), whose
+/// steering it switches off for the step, else its mover's, a bat's dive
+/// or a rest; it is kept for `toys_release`, so the hole's correction never
+/// stays.
 pub fn hold(world: &mut World) {
     let holes = holes(world);
     if holes.is_empty() {
         return;
     }
-    let held: Vec<(Entity, Vec2, Vec2)> = world
+    let dt = world.resource::<Time>().delta();
+    let held: Vec<(Entity, Vec2, bool, Vec2)> = world
         .query::<(Entity, &Enemy, &Position, &Health, &TopDownMover)>()
         .filter(|(.., health, _)| !health.is_dead())
         .filter_map(|(entity, enemy, at, _, mover)| {
@@ -402,15 +406,24 @@ pub fn hold(world: &mut World) {
             let near = 1.0 - (off / (2.0 * HOLD_EASE)).clamp(0.0, 1.0);
             let wanted = to_core / distance * inward + tangent * HOLD_SWIRL * speed * near;
             let hold = (pull / speed).min(1.0);
-            let own = mover.direction();
-            Some((entity, own, own * (1.0 - hold) + wanted / speed * hold))
+            let steered = steered_direction(world, entity, dt);
+            let own = steered.unwrap_or_else(|| mover.direction());
+            Some((
+                entity,
+                own,
+                steered.is_some(),
+                own * (1.0 - hold) + wanted / speed * hold,
+            ))
         })
         .collect();
     let mut kept = Vec::with_capacity(held.len());
-    for (flyer, own, steered) in held {
+    for (flyer, own, steered, blend) in held {
+        if steered && let Some(steering) = world.get_mut::<Steering>(flyer) {
+            steering.set_on(false);
+        }
         if let Some(mover) = world.get_mut::<TopDownMover>(flyer) {
-            mover.set_direction(steered);
-            kept.push((flyer, own));
+            mover.set_direction(blend);
+            kept.push((flyer, own, steered));
         }
     }
     world.resource_mut::<HoleHold>().0 = kept;
@@ -419,12 +432,16 @@ pub fn hold(world: &mut World) {
 /// `toys_release`, in the move phase after the top-down mover: each flyer
 /// `toys_hold` steered takes its own direction back once its mover has
 /// moved, so a direction its state set once, a bat's dive, is whole again
-/// when the hole closes or it leaves the reach.
+/// when the hole closes or it leaves the reach, and a flyer its kit
+/// steering flew has that steering on again.
 pub fn release(world: &mut World) {
     let kept = std::mem::take(&mut world.resource_mut::<HoleHold>().0);
-    for (flyer, own) in kept {
+    for (flyer, own, steered) in kept {
         if let Some(mover) = world.get_mut::<TopDownMover>(flyer) {
             mover.set_direction(own);
+        }
+        if steered && let Some(steering) = world.get_mut::<Steering>(flyer) {
+            steering.set_on(true);
         }
     }
 }

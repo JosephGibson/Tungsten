@@ -9,7 +9,8 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     ContactDamage, Cooldown, Damaged, EffectRequest, Health, Hitbox, PathFollower,
-    PlatformerController, StateMachine, StateMachinePlugin, Tags, TopDownMover, end_effect,
+    PlatformerController, StateMachine, StateMachinePlugin, Steering, Tags, Target, TopDownMover,
+    end_effect, steered_direction,
 };
 use tungsten::physics::{SpatialFilter, cast_ray};
 
@@ -17,8 +18,8 @@ use super::components::{
     Brain, Displaced, Enemy, EnemyKind, EnemyState, Shown, Sight, Spotted, Strike,
 };
 use super::{
-    ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP, WALL_LAYERS, bat,
-    beetle, centre, crawler, goblin, heading_of, troll, turn, wisp,
+    ALERT_REACH, ARRIVED, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP,
+    WALL_LAYERS, bat, beetle, centre, crawler, goblin, heading_of, troll, turn, wisp,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
@@ -104,7 +105,8 @@ pub fn face(world: &mut World, enemy: Entity, x: f32) {
 }
 
 /// Stops `enemy`'s mover: a walker's run at rest, a flyer's direction at
-/// rest.
+/// rest and its steering off, so a held flyer, frozen on a borrowed
+/// controller too, is steered by none.
 pub fn rest(world: &mut World, enemy: Entity) {
     if let Some(controller) = world.get_mut::<PlatformerController>(enemy) {
         controller.set_run(0.0);
@@ -112,6 +114,38 @@ pub fn rest(world: &mut World, enemy: Entity) {
     if let Some(mover) = world.get_mut::<TopDownMover>(enemy) {
         mover.set_direction(Vec2::ZERO);
     }
+    if let Some(steering) = world.get_mut::<Steering>(enemy) {
+        steering.set_on(false);
+    }
+}
+
+/// Flies `flyer` toward `point` at `pace` of its speed on the kit's
+/// steering, its prefab's arrive easing in over its last 20 px: the
+/// steering's target the point less the body's centre, so its centre
+/// arrives there, at `pace`, switched on; it faces the point while the
+/// direction its mover takes from it points across. At rest with no point
+/// ([`rest`]). Whether its centre is within [`ARRIVED`] of the point.
+pub fn fly(world: &mut World, flyer: Entity, point: Option<Vec2>, pace: f32) -> bool {
+    let (Some(at), Some(point), Some(from)) = (
+        centre(world, flyer),
+        point,
+        world.get::<Position>(flyer).map(|position| position.0),
+    ) else {
+        rest(world, flyer);
+        return true;
+    };
+    let Some(steering) = world.get_mut::<Steering>(flyer) else {
+        rest(world, flyer);
+        return true;
+    };
+    steering.set_target(Target::point(point - (at - from)));
+    steering.set_pace(pace);
+    steering.set_on(true);
+    let dt = world.resource::<Time>().delta();
+    if steered_direction(world, flyer, dt).is_some_and(|direction| direction.x.abs() > 0.05) {
+        face(world, flyer, point.x);
+    }
+    at.distance(point) <= ARRIVED
 }
 
 /// The most dynamic bodies [`solid`]'s ray looks past.

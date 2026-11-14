@@ -989,6 +989,63 @@ fn strip_key(value: &mut serde_json::Value, key: &str) -> usize {
 }
 
 #[test]
+fn an_older_saves_flyers_take_their_steering() {
+    use tungsten::kit::Steering;
+    let (mut harness, _) = grounded();
+    let kinds = [EnemyKind::Bat, EnemyKind::Wisp];
+    // Out of the wizard's sight, short of where a foe stops thinking.
+    let [bat, wisp] = [Vec2::new(1300.0, 600.0), Vec2::new(1700.0, 600.0)]
+        .into_iter()
+        .zip(kinds)
+        .map(|(at, kind)| enemies::summon(harness.world_mut(), kind, at).expect("summoned"))
+        .collect::<Vec<_>>()[..]
+    else {
+        unreachable!()
+    };
+    harness.step(2);
+    let roost = harness.world().get::<Enemy>(bat).unwrap().home();
+    // Knocked 120 px below its roost, it climbs back.
+    let world = harness.world_mut();
+    let low = world.get::<Position>(bat).unwrap().0 + Vec2::new(0.0, 120.0);
+    world.get_mut::<Position>(bat).unwrap().0 = low;
+    world.get_mut::<PrevPosition>(bat).unwrap().0 = low;
+    harness.step(1);
+    let ids = [id_of(&harness, bat), id_of(&harness, wisp)];
+    let saved = capture(&harness);
+    // Schema 32's shape: no flyer saved a steering, the map's among them.
+    let mut older = json(&saved);
+    assert!(
+        strip_key(&mut older["world"], "steering") >= 2,
+        "the bat's and the wisp's at least"
+    );
+    let older: SaveGame = serde_json::from_value(older).expect("the save reads");
+    for (save, stripped) in [(saved, false), (older, true)] {
+        let mut loaded = reloaded(save, false);
+        let flyers = ids.map(|id| by_id(&loaded, id));
+        for (flyer, kind) in flyers.into_iter().zip(kinds) {
+            let restored = loaded.world().get::<Steering>(flyer).cloned();
+            let restored = restored.expect("a steering");
+            if stripped {
+                // Its prefab's, as a fresh spawn holds it.
+                let world = loaded.world_mut();
+                let fresh = enemies::spawn(world, kind, Vec2::new(6000.0, 0.0)).unwrap();
+                let prefab = world.get::<Steering>(fresh).cloned();
+                world.despawn(fresh);
+                assert_eq!(Some(restored), prefab, "{kind:?}: its prefab's steering");
+            }
+        }
+        let back = until(&mut loaded, 300, |h| {
+            centre(h, flyers[0]).distance(roost) <= 10.0
+        });
+        assert!(
+            back,
+            "stripped {stripped}: the bat back within 10 px of its roost, at {}",
+            centre(&loaded, flyers[0])
+        );
+    }
+}
+
+#[test]
 fn an_older_saves_hold_loads_held() {
     let (mut harness, _) = grounded();
     let kind = EnemyKind::Troll;
