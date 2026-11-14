@@ -3859,7 +3859,11 @@ pub struct tungsten_kit::prelude::Steering
 impl tungsten_kit::Steering
 pub fn tungsten_kit::Steering::arrive(tungsten_kit::Target, f32) -> Self
 pub fn tungsten_kit::Steering::flee(tungsten_kit::Target, f32) -> Self
+pub fn tungsten_kit::Steering::is_on(&self) -> bool
+pub fn tungsten_kit::Steering::pace(&self) -> f32
 pub fn tungsten_kit::Steering::seek(tungsten_kit::Target, f32) -> Self
+pub fn tungsten_kit::Steering::set_on(&mut self, bool)
+pub fn tungsten_kit::Steering::set_pace(&mut self, f32)
 pub fn tungsten_kit::Steering::set_target(&mut self, tungsten_kit::Target)
 pub fn tungsten_kit::Steering::target_entity(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::Steering::velocity(&self) -> glam::f32::vec2::Vec2
@@ -4373,6 +4377,7 @@ pub fn tungsten_kit::prelude::kill(&mut tungsten_core::ecs::world::World, tungst
 pub fn tungsten_kit::prelude::knock_back(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_kit::prelude::release(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::prelude::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::prelude::steered_direction(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::prelude::stimulate(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str, f32, core::option::Option<tungsten_core::ecs::entity::Entity>) -> bool
 pub fn tungsten_kit::prelude::use_ability(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str) -> tungsten_kit::Used
 #[non_exhaustive] pub enum tungsten_kit::AbilityTarget
@@ -9078,7 +9083,11 @@ pub struct tungsten_kit::Steering
 impl tungsten_kit::Steering
 pub fn tungsten_kit::Steering::arrive(tungsten_kit::Target, f32) -> Self
 pub fn tungsten_kit::Steering::flee(tungsten_kit::Target, f32) -> Self
+pub fn tungsten_kit::Steering::is_on(&self) -> bool
+pub fn tungsten_kit::Steering::pace(&self) -> f32
 pub fn tungsten_kit::Steering::seek(tungsten_kit::Target, f32) -> Self
+pub fn tungsten_kit::Steering::set_on(&mut self, bool)
+pub fn tungsten_kit::Steering::set_pace(&mut self, f32)
 pub fn tungsten_kit::Steering::set_target(&mut self, tungsten_kit::Target)
 pub fn tungsten_kit::Steering::target_entity(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::Steering::velocity(&self) -> glam::f32::vec2::Vec2
@@ -9767,6 +9776,7 @@ pub fn tungsten_kit::lob_velocity(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, 
 pub fn tungsten_kit::release(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::route_findings(&tungsten_core::ecs::world::World, &str) -> alloc::vec::Vec<tungsten_core::assets::room::rules::RoomFinding>
 pub fn tungsten_kit::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::steered_direction(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::step_velocity(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::stimulate(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str, f32, core::option::Option<tungsten_core::ecs::entity::Entity>) -> bool
 pub fn tungsten_kit::use_ability(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str) -> tungsten_kit::Used

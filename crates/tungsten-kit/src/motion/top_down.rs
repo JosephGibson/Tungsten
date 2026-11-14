@@ -70,7 +70,10 @@ const TOP_DOWN_MOVER_COMPONENT: &str = "top_down_mover";
 /// the steering's velocity as its direction over its speed, held to length
 /// 1, and moves by it at once, its own rates and an [`Intent`] set aside,
 /// so its casts stop a steered entity at walls. The two systems need no
-/// order: steering's own system leaves a mover's entity to the mover.
+/// order: steering's own system leaves a mover's entity to the mover. A
+/// steering switched off leaves the mover to its own direction or intent;
+/// [`steered_direction`] reads the direction the mover would take from its
+/// steering at a step, so a game can blend it with another pull.
 ///
 /// Scene name `top_down_mover`: `{ "speed": 240 }`, with optional
 /// `"acceleration"` and `"deceleration"` in px/s², each above 0, which
@@ -505,11 +508,7 @@ impl Runner {
             // input's direction moves by the rates.
             let steered = steer(world, entity, mover.3, dt, resolver);
             let (direction, wanted) = if let Some(velocity) = steered {
-                let direction = if mover.0 > 0.0 {
-                    held(velocity / mover.0)
-                } else {
-                    Vec2::ZERO
-                };
+                let direction = direction_from(velocity, mover.0);
                 (direction, direction * mover.0)
             } else {
                 let direction = world
@@ -571,6 +570,54 @@ impl Runner {
     }
 }
 
+/// The direction `entity`'s [`TopDownMover`] would take from its
+/// [`Steering`] at a step of `dt` from where it stands, as the mover's step
+/// computes it, recording nothing: the steering's velocity from the mover's
+/// last one over the mover's speed, held to length 1. `None` without a
+/// mover, a steering that is on or a `Position`.
+///
+/// # Examples
+///
+/// ```
+/// use glam::Vec2;
+/// use tungsten_core::World;
+/// use tungsten_core::physics::{Position, PrevPosition};
+/// use tungsten_kit::{Steering, Target, TopDownMover, steered_direction};
+///
+/// let mut world = World::new();
+/// let bat = world.spawn_with((
+///     TopDownMover::new(120.0),
+///     Steering::seek(Target::point(Vec2::new(300.0, 0.0)), 120.0),
+///     Position::new(0.0, 0.0),
+///     PrevPosition(Vec2::ZERO),
+/// ));
+/// assert_eq!(steered_direction(&world, bat, 1.0 / 60.0), Some(Vec2::X));
+/// world.get_mut::<Steering>(bat).unwrap().set_on(false);
+/// assert_eq!(steered_direction(&world, bat, 1.0 / 60.0), None);
+/// ```
+#[must_use]
+pub fn steered_direction(world: &World, entity: Entity, dt: f32) -> Option<Vec2> {
+    let mover = world.get::<TopDownMover>(entity)?;
+    let steering = world
+        .get::<Steering>(entity)
+        .filter(|steering| steering.is_on())?;
+    let from = world.get::<Position>(entity)?.0;
+    let mut resolver = Resolver::default();
+    resolver.begin();
+    let resolved = resolver.resolve(world, steering.target(), entity, from, Measure::Now);
+    let velocity = steering.steer(mover.velocity, resolved.map(|(_, at)| at - from), dt);
+    Some(direction_from(velocity, mover.speed))
+}
+
+/// The direction a mover of `speed` takes from a steering's `velocity`.
+fn direction_from(velocity: Vec2, speed: f32) -> Vec2 {
+    if speed > 0.0 {
+        held(velocity / speed)
+    } else {
+        Vec2::ZERO
+    }
+}
+
 /// A direction as a mover holds it: longer than 1 normalized, not finite
 /// stopped.
 fn held(direction: Vec2) -> Vec2 {
@@ -584,8 +631,8 @@ fn held(direction: Vec2) -> Vec2 {
 }
 
 /// The velocity a [`Steering`] on `entity` wants at this step, from the
-/// mover's last velocity `current`, when it has one; the steering keeps it
-/// as its own, with the entity it steered at.
+/// mover's last velocity `current`, when it has one that is on; the
+/// steering keeps it as its own, with the entity it steered at.
 fn steer(
     world: &mut World,
     entity: Entity,
@@ -593,7 +640,9 @@ fn steer(
     dt: f32,
     resolver: &mut Resolver,
 ) -> Option<Vec2> {
-    let steering = world.get::<Steering>(entity)?;
+    let steering = world
+        .get::<Steering>(entity)
+        .filter(|steering| steering.is_on())?;
     let from = world.get::<Position>(entity)?.0;
     let resolved = resolver.resolve(world, steering.target(), entity, from, Measure::Now);
     let velocity = steering.steer(current, resolved.map(|(_, at)| at - from), dt);

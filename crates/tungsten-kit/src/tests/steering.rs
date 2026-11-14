@@ -1,5 +1,5 @@
 use super::*;
-use serde_json::json;
+use serde_json::{Value, json};
 use tungsten_core::physics::{Collider, PhysicsPlugin, RigidBodyBundle};
 use tungsten_core::{Bundle, ComponentRegistry, Stage, Time, Transform};
 
@@ -397,4 +397,265 @@ fn steering_runs_before_the_mover_either_way_round() {
         "{:?}",
         first.last()
     );
+}
+
+/// A world with the physics and the top-down mover's, steering's, the
+/// oscillator's and the knockback's plugins.
+fn drivers_rig() -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    crate::TopDownMoverPlugin.build(&mut schedule, &mut world);
+    SteeringPlugin.build(&mut schedule, &mut world);
+    crate::OscillatorPlugin.build(&mut schedule, &mut world);
+    crate::KnockbackPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+/// `steering`, switched off.
+fn off(mut steering: Steering) -> Steering {
+    steering.set_on(false);
+    steering
+}
+
+fn velocity(world: &World, entity: Entity) -> Vec2 {
+    world.get::<Velocity>(entity).unwrap().0
+}
+
+/// A bodiless mover of speed 120 at the origin with `steering`.
+fn bodiless_mover(world: &mut World, mover: crate::TopDownMover, steering: Steering) -> Entity {
+    world.spawn_with((
+        mover,
+        steering,
+        Position(Vec2::ZERO),
+        PrevPosition(Vec2::ZERO),
+        Velocity(Vec2::ZERO),
+    ))
+}
+
+#[test]
+fn a_steerings_pace_scales_its_arrive() {
+    let point = Vec2::new(300.0, 0.0);
+    let run = |pace: f32| {
+        let (mut world, mut schedule) = mover_rig(true);
+        let mut steering = Steering::arrive(Target::point(point), 120.0).with_radius(32.0);
+        steering.set_pace(pace);
+        assert_eq!(steering.pace(), pace);
+        let entity = bodiless_mover(&mut world, crate::TopDownMover::new(120.0), steering);
+        steps(&mut world, &mut schedule, 1, DT);
+        let first = position(&world, entity);
+        let direction = world
+            .get::<crate::TopDownMover>(entity)
+            .unwrap()
+            .direction();
+        steps(&mut world, &mut schedule, 1200, DT);
+        (first, direction, position(&world, entity))
+    };
+    let (full, full_direction, full_end) = run(1.0);
+    let (half, half_direction, half_end) = run(0.5);
+    assert!((full.x - 2.0).abs() < 1e-4, "120 px/s for a step: {full}");
+    assert!(
+        (half.x - full.x / 2.0).abs() < 1e-4 && half.y == 0.0,
+        "half as far a step: {half} against {full}"
+    );
+    assert!((full_direction.length() - 1.0).abs() < 1e-6);
+    assert!(
+        (half_direction.length() - 0.5).abs() < 1e-6,
+        "half as long: {half_direction}"
+    );
+    assert!(full_end.distance(point) < 1e-3, "{full_end}");
+    assert!(
+        half_end.distance(point) < 1e-3,
+        "lands all the same: {half_end}"
+    );
+}
+
+#[test]
+fn a_steering_switched_off_leaves_its_mover_and_its_body_alone() {
+    let (mut world, mut schedule) = drivers_rig();
+    let point = Vec2::new(300.0, 0.0);
+    let arrive = || Steering::arrive(Target::point(point), 120.0).with_radius(32.0);
+    // A mover whose steering is off moves by the direction the game set.
+    let mut mover = crate::TopDownMover::new(120.0);
+    mover.set_direction(Vec2::new(0.0, 0.5));
+    let flyer = bodiless_mover(&mut world, mover, off(arrive()));
+    // A body without a mover keeps the velocity another system wrote.
+    let raft = world.spawn_with(
+        RigidBodyBundle::kinematic(Position::new(0.0, 100.0), Collider::aabb(Vec2::splat(8.0)))
+            .with((off(arrive()),)),
+    );
+    world.get_mut::<Velocity>(raft).unwrap().0 = Vec2::new(0.0, 30.0);
+    steps(&mut world, &mut schedule, 10, DT);
+    assert!(
+        position(&world, flyer).distance(Vec2::new(0.0, 10.0)) < 1e-3,
+        "by its own direction: {}",
+        position(&world, flyer)
+    );
+    assert_eq!(velocity(&world, raft), Vec2::new(0.0, 30.0));
+    assert!(position(&world, raft).distance(Vec2::new(0.0, 105.0)) < 1e-3);
+    for entity in [flyer, raft] {
+        let steering = world.get::<Steering>(entity).unwrap();
+        assert!(!steering.is_on());
+        assert_eq!(steering.velocity(), Vec2::ZERO, "it wrote nothing");
+    }
+    // On again, it steers both at the point.
+    for entity in [flyer, raft] {
+        world.get_mut::<Steering>(entity).unwrap().set_on(true);
+    }
+    let towards = |world: &World, entity: Entity| (point - position(world, entity)).normalize();
+    let (flyer_way, raft_way) = (towards(&world, flyer), towards(&world, raft));
+    steps(&mut world, &mut schedule, 1, DT);
+    let direction = world.get::<crate::TopDownMover>(flyer).unwrap().direction();
+    assert!(direction.distance(flyer_way) < 1e-5, "{direction}");
+    assert!(
+        (velocity(&world, raft) - raft_way * 120.0).length() < 1e-3,
+        "{}",
+        velocity(&world, raft)
+    );
+}
+
+#[test]
+fn steered_direction_is_the_movers_next_direction() {
+    let (mut world, mut schedule) = mover_rig(true);
+    world.spawn_with(RigidBodyBundle::r#static(
+        Position::new(110.0, 0.0),
+        Collider::aabb(Vec2::new(10.0, 40.0)),
+    ));
+    let entity = steered_mover(
+        &mut world,
+        Vec2::ZERO,
+        Vec2::new(200.0, 80.0),
+        true,
+        crate::TopDownMover::new(120.0).with_acceleration(300.0),
+    );
+    for step in 0..240 {
+        let next = crate::steered_direction(&world, entity, DT).expect("steered");
+        let velocity = world.get::<Steering>(entity).unwrap().velocity();
+        assert_eq!(
+            crate::steered_direction(&world, entity, DT),
+            Some(next),
+            "step {step}: reading it records nothing"
+        );
+        assert_eq!(world.get::<Steering>(entity).unwrap().velocity(), velocity);
+        steps(&mut world, &mut schedule, 1, DT);
+        let held = world
+            .get::<crate::TopDownMover>(entity)
+            .unwrap()
+            .direction();
+        assert_eq!(held, next, "step {step}");
+    }
+    // Off, without a steering, or a steering without a mover: none.
+    world.get_mut::<Steering>(entity).unwrap().set_on(false);
+    assert_eq!(crate::steered_direction(&world, entity, DT), None);
+    world.remove_component::<Steering>(entity);
+    assert_eq!(crate::steered_direction(&world, entity, DT), None);
+    let seeker = seeker(
+        &mut world,
+        Steering::seek(Target::point(Vec2::X), 90.0),
+        Vec2::ZERO,
+    );
+    assert_eq!(crate::steered_direction(&world, seeker, DT), None);
+}
+
+#[test]
+fn an_off_steering_is_no_driver() {
+    let (mut world, mut schedule) = drivers_rig();
+    let to = Vec2::new(500.0, 0.0);
+    let seek = || Steering::seek(Target::point(to), 90.0);
+    // A lift whose oscillator drives its velocity beside an off steering.
+    let lift = world.spawn_with(
+        RigidBodyBundle::kinematic(
+            Position::new(0.0, 200.0),
+            Collider::aabb(Vec2::new(40.0, 8.0)),
+        )
+        .with((
+            crate::Oscillator::position(Vec2::new(0.0, 24.0), 2.0),
+            off(seek()),
+        )),
+    );
+    // A crate pushed back beside an off steering: it slides, then its
+    // knockback's settling step writes zero.
+    let crate_ = world.spawn_with(
+        RigidBodyBundle::kinematic(Position(Vec2::ZERO), Collider::aabb(Vec2::splat(8.0)))
+            .with((crate::Knockback::new(0.2), off(seek()))),
+    );
+    assert!(crate::knock_back(
+        &mut world,
+        crate_,
+        Vec2::new(0.0, -300.0)
+    ));
+    steps(&mut world, &mut schedule, 1, DT);
+    let lifted = velocity(&world, lift);
+    assert!(
+        lifted.x == 0.0 && lifted.y.abs() > 1.0,
+        "the oscillator drives it: {lifted}"
+    );
+    assert!(velocity(&world, crate_).y < 0.0, "pushed");
+    steps(&mut world, &mut schedule, 12, DT);
+    assert!(
+        (position(&world, crate_).y + 30.0).abs() < 1e-2,
+        "{}",
+        position(&world, crate_)
+    );
+    assert_eq!(velocity(&world, crate_), Vec2::ZERO, "settled to zero");
+    // Switched on, the steering drives each again, the oscillator aside.
+    for entity in [lift, crate_] {
+        world.get_mut::<Steering>(entity).unwrap().set_on(true);
+    }
+    let ways = [lift, crate_].map(|entity| (to - position(&world, entity)).normalize() * 90.0);
+    steps(&mut world, &mut schedule, 1, DT);
+    for (entity, way) in [lift, crate_].into_iter().zip(ways) {
+        let moving = velocity(&world, entity);
+        assert!((moving - way).length() < 1e-3, "{moving} against {way}");
+    }
+}
+
+#[test]
+fn pace_and_on_save_and_load() {
+    let mut steering = Steering::arrive(Target::point(Vec2::new(5.0, 6.0)), 90.0);
+    let plain = serde_json::to_value(&steering).unwrap();
+    assert!(
+        plain.get("pace").is_none() && plain.get("on").is_none(),
+        "left out at their defaults: {plain}"
+    );
+    let older: Steering = serde_json::from_value(plain).unwrap();
+    assert_eq!(older, steering, "a save without them loads as before");
+    assert_eq!((older.pace(), older.is_on()), (1.0, true));
+    steering.set_pace(0.4);
+    steering.set_on(false);
+    let saved = serde_json::to_value(&steering).unwrap();
+    assert_eq!(saved.get("on"), Some(&json!(false)));
+    let back: Steering = serde_json::from_value(saved.clone()).unwrap();
+    assert_eq!(back, steering);
+    assert_eq!((back.pace(), back.is_on()), (0.4, false));
+    for pace in [json!(0.0), json!(1.5), json!(-0.5)] {
+        let mut refused = saved.clone();
+        refused["pace"] = pace;
+        assert!(
+            serde_json::from_value::<Steering>(refused.clone()).is_err(),
+            "{refused}"
+        );
+    }
+    // The scene takes both, its pace in (0, 1].
+    let (world, _) = rig();
+    let components = world.resource::<ComponentRegistry>();
+    let target = json!({ "point": [0, 0] });
+    let scene = |extra: Value| {
+        let mut def = json!({ "target": target, "max_speed": 90, "mode": "arrive" });
+        def.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        components.check_in("steering", &def, &world)
+    };
+    assert!(scene(json!({ "pace": 0.5, "on": false })).is_ok());
+    assert!(scene(json!({ "pace": 1 })).is_ok());
+    for refused in [
+        json!({ "pace": 0 }),
+        json!({ "pace": 1.01 }),
+        json!({ "on": 1 }),
+    ] {
+        assert!(scene(refused.clone()).is_err(), "{refused}");
+    }
 }

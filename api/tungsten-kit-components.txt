@@ -354,6 +354,8 @@ component steering: Seeks, flees or arrives at a target, its velocity turned tow
   field max_speed: f32 (> 0) — world pixels per second at most; a `move_speed` stat sets it
   field acceleration: f32 (> 0) = null — world pixels per second squared it turns by; at once when left out
   field radius: f32 (> 0) = 64.0 — world pixels: `arrive` slows inside it, `flee` flees inside it
+  field pace: f32 (> 0, <= 1) = 1.0 — the share of its top speed it wants and is capped at
+  field on: bool = true — whether it steers; off, it moves and writes nothing and drives no body
   genres: platformer, top_down, shooter
   sample: { "target": { "nearest": { "all": ["team.player"] } }, "max_speed": 90 }
 component tags: The entity's tags: dotted names the items filter on.

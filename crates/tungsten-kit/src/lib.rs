@@ -105,7 +105,9 @@
 //!   body held at a carrier's point plus an offset, or centre over centre, a
 //!   sensor until it is let go.
 //!   [`Orbit`] and [`OrbitPlugin`]: a circle about a centre. [`Steering`]
-//!   and [`SteeringPlugin`]: seek, flee or arrive. [`Target`]: what those
+//!   and [`SteeringPlugin`]: seek, flee or arrive, at a pace and switched
+//!   on or off; [`steered_direction`] reads a steered mover's next
+//!   direction. [`Target`]: what those
 //!   items aim at. [`Knockback`], [`knock_back`] and [`KnockbackPlugin`]: a
 //!   push back from a hit. [`SpeedLimit`] and [`SpeedLimitPlugin`]: a cap on
 //!   the speed. [`Wrap`] and [`WrapPlugin`]: back in from the far side of an
@@ -317,7 +319,7 @@ pub use motion::speed_limit::{SPEED_LIMIT, SPEED_LIMIT_SETTLE, SpeedLimit, Speed
 pub use motion::stay_in_view::{STAY_IN_VIEW, StayInView, StayInViewPlugin};
 pub use motion::steering::{STEERING, Steering, SteeringPlugin};
 pub use motion::target::Target;
-pub use motion::top_down::{TOP_DOWN_MOVER, TopDownMover, TopDownMoverPlugin};
+pub use motion::top_down::{TOP_DOWN_MOVER, TopDownMover, TopDownMoverPlugin, steered_direction};
 pub use motion::wrap::{WRAP, Wrap, WrapPlugin};
 pub use overlap::cone::Cone;
 pub use overlap::contact::{CONTACT_DAMAGE, ContactDamage, ContactDamagePlugin, ContactTouch};
@@ -392,8 +394,8 @@ pub mod prelude {
         TraceKind, Trigger, TriggerEntered, TriggerZone, Used, WallContact, WeightedTable,
         WorldBounds, WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin, burst, carried_by,
         carrier_of, carry, cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases,
-        face_toward, float_label, heal, kill, knock_back, release, spawn_child, stimulate,
-        use_ability,
+        face_toward, float_label, heal, kill, knock_back, release, spawn_child, steered_direction,
+        stimulate, use_ability,
     };
 }
 

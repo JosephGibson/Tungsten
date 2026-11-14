@@ -74,19 +74,20 @@ pub(crate) enum Driver {
     /// A follower or an orbit, which run after the oscillator and set a
     /// goal with its offset folded in.
     Placer,
-    /// A controller, a top-down mover or a steering, which run after the
-    /// oscillator and set the velocity outright.
+    /// A controller, a top-down mover or a steering that is on, which run
+    /// after the oscillator and set the velocity outright.
     Late,
 }
 
 /// The kit mover that drives `entity`: a placer first, since it runs last
-/// of the drivers and sets the point outright.
+/// of the drivers and sets the point outright. A steering switched off
+/// drives nothing.
 pub(crate) fn driver_of(world: &World, entity: Entity) -> Driver {
     if world.has::<Follow>(entity) || world.has::<Orbit>(entity) {
         Driver::Placer
     } else if world.has::<PlatformerController>(entity)
         || world.has::<TopDownMover>(entity)
-        || world.has::<Steering>(entity)
+        || world.get::<Steering>(entity).is_some_and(Steering::is_on)
     {
         Driver::Late
     } else if world.has::<PathFollower>(entity) || world.has::<LinearMotion>(entity) {
