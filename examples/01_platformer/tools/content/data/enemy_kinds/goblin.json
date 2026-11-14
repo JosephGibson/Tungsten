@@ -1,0 +1,11 @@
+{
+  "strike": 22,
+  "mass": 50,
+  "sight": 520,
+  "alert": 0.4,
+  "pull": 0.12,
+  "wave": 0.86,
+  "ice": "ex10_status_ice_goblin",
+  "flyer": false,
+  "recover": 0.9
+}

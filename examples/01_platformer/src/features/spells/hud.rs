@@ -269,6 +269,7 @@ const TAKE_PROMPT: &str = "{action:interact} Take";
 /// Builds the HUD for the run gameplay starts: its roots owned by gameplay,
 /// shown and frozen under a pause.
 pub fn start(world: &mut World) {
+    let tomes = TomeKind::ALL.map(|kind| crate::features::tomes::data(world, kind).icon.clone());
     let assets = world.resource_mut::<AssetRegistry>();
     let icons = SLOTS.map(|slot| slot.map(|spell| (spell, assets.intern_sprite(spell.icon()))));
     let art = Art {
@@ -278,7 +279,7 @@ pub fn start(world: &mut World) {
         shield: assets.intern_sprite(SHIELD_LIQUID),
         live: assets.intern_sprite(LIVE_ROUND),
         spent: assets.intern_sprite(SPENT_ROUND),
-        tomes: TomeKind::ALL.map(|kind| assets.intern_sprite(kind.icon())),
+        tomes: tomes.map(|icon| assets.intern_sprite(&icon)),
     };
     let scale = ui_scale(world);
     let tree = world.resource_mut::<UiTree>();
@@ -613,15 +614,23 @@ pub fn panel(world: &mut World, book: Option<(TomeKind, Vec2)>) {
     let scale = ui_scale(world);
     let top = centre - Vec2::new(0.0, BOOK_CENTRE.y);
     let at = world.resource::<CameraState>().world_to_screen(top) / scale;
+    // Only a text the panel does not show yet is copied out of the data.
+    let changed: Vec<(WidgetId, String)> = {
+        let tome = crate::features::tomes::data(world, kind);
+        let tree = world.resource::<UiTree>();
+        [
+            (panel.name, &tome.name),
+            (panel.gives, &tome.gives),
+            (panel.costs, &tome.costs),
+        ]
+        .into_iter()
+        .filter(|&(id, text)| text_of(tree, id) != *text)
+        .map(|(id, text)| (id, text.clone()))
+        .collect()
+    };
     let tree = world.resource_mut::<UiTree>();
-    for (id, text) in [
-        (panel.name, kind.name()),
-        (panel.gives, kind.gives()),
-        (panel.costs, kind.costs()),
-    ] {
-        if text_of(tree, id) != text {
-            tree.set_plain_text(id, text);
-        }
+    for (id, text) in changed {
+        tree.set_plain_text(id, &text);
     }
     // The last layout's size, over the book's top and inside the view.
     let size = tree

@@ -330,7 +330,8 @@ pub fn pull(world: &mut World) {
         .filter(|(.., health)| !health.is_dead())
         .filter_map(|(entity, enemy, at, _)| {
             let centre = at.0 + enemies::body(world, enemy.kind).centre;
-            let pull = hole_pull(&holes, centre) * enemy.kind.info().pull * ENEMY_PULL_SECS;
+            let pull =
+                hole_pull(&holes, centre) * enemies::info(world, enemy.kind).pull * ENEMY_PULL_SECS;
             (pull != Vec2::ZERO).then_some((entity, pull))
         })
         .collect();
@@ -365,7 +366,7 @@ pub fn hold(world: &mut World) {
         .query::<(Entity, &Enemy, &Position, &Health, &TopDownMover)>()
         .filter(|(.., health, _)| !health.is_dead())
         .filter_map(|(entity, enemy, at, _, mover)| {
-            let info = enemy.kind.info();
+            let info = enemies::info(world, enemy.kind);
             let centre = at.0 + enemies::body(world, enemy.kind).centre;
             let core = holes
                 .iter()
@@ -754,7 +755,7 @@ pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
         .query::<(Entity, &Enemy, &Health)>()
         .filter(|(_, _, health)| !health.is_dead())
         .filter_map(|(entity, enemy, _)| {
-            let push = away(body_centre(world, entity)?)? * enemy.kind.info().pull;
+            let push = away(body_centre(world, entity)?)? * enemies::info(world, enemy.kind).pull;
             Some((crate::shared::save_id(world, entity), entity, push))
         })
         .collect();

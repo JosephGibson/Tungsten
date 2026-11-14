@@ -394,7 +394,7 @@ fn line_of_sight_is_blocked_by_a_wall() {
         let eye = enemies::systems::eye(harness.world(), wisp).unwrap();
         let target = super::centre(&harness, player);
         assert!(
-            eye.distance(target) < EnemyKind::Wisp.info().sight,
+            eye.distance(target) < super::kind_info(EnemyKind::Wisp).sight,
             "in reach"
         );
     }
@@ -2525,7 +2525,7 @@ fn a_thrown_frozen_enemy_flies_the_throws_arc_and_hurts_at_its_kinds_mass() {
             "step {steps}: {at} off the arc {arc}"
         );
     }
-    let mass = EnemyKind::Crawler.info().mass;
+    let mass = super::kind_info(EnemyKind::Crawler).mass;
     let ((amount, source), rule) =
         first_impact(&mut harness, crawler, player, mass, 150).expect("it hits the player");
     assert_eq!(source, Some(troll));
@@ -3512,7 +3512,7 @@ fn the_wave_throws_each_kind_along_the_aim_the_troll_a_little() {
         harness.harness_mut().set_dt(1.0 / 60.0);
         let caster = Vec2::new(1000.0, TOP - 30.0);
         let x = caster.x + 1.5 * TILE;
-        let enemy = if kind.info().flyer {
+        let enemy = if super::kind_info(kind).flyer {
             enemy(&mut harness, kind, Vec2::new(x, caster.y))
         } else {
             walker(&mut harness, kind, x, TOP)

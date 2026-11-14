@@ -17,11 +17,11 @@ pub mod systems;
 
 use glam::Vec2;
 use tungsten::Plugin;
-use tungsten::core::{Entity, Position, Schedule, Stage, Transform, World, system};
+use tungsten::core::{DataRegistry, Entity, Position, Schedule, Stage, Transform, World, system};
 use tungsten::kit::{Phase, STATS_APPLY, ensure_phases};
 use tungsten::plugins::CAMERA_UPDATE;
 
-pub use components::{Tome, TomeKind, Tomes};
+pub use components::{Tome, TomeData, TomeKind, Tomes};
 
 use crate::shared::body_centre;
 
@@ -37,6 +37,22 @@ pub const TAKE_SECS: f32 = 0.48;
 pub const TAKE_Z: i32 = 13;
 /// The action that takes a book.
 pub const INTERACT: &str = "interact";
+/// The data kind of the tomes' texts and art ([`TomeData`]), each by its
+/// kind's ID (`data/tomes/<id>.json`).
+pub const TOMES: &str = "tomes";
+
+/// `kind`'s entry in the [`TOMES`] data, as it is now.
+///
+/// # Panics
+///
+/// When the data has no entry for it: all three load with the manifest.
+#[must_use]
+pub fn data(world: &World, kind: TomeKind) -> &TomeData {
+    world
+        .get_resource::<DataRegistry>()
+        .and_then(|data| data.get::<TomeData>(kind.id()))
+        .unwrap_or_else(|| panic!("no {TOMES} entry {}", kind.id()))
+}
 /// The pact's modifier source on the player's stats, and its shield: its
 /// size, what it recharges a second and the game seconds after a hit it
 /// waits first (Q37).
@@ -75,6 +91,7 @@ impl Plugin for TomesPlugin {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<Tome>("tome");
         world.register_saved::<Tomes>("tomes");
+        world.register_data_kind::<TomeData>(TOMES);
         ensure_phases(schedule);
         let mut taken = None;
         let take = system("tomes_take", move |world: &mut World| {

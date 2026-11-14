@@ -38,7 +38,7 @@ use super::combat::{TOP, dummy_at, health};
 use super::{
     aim_at, ball, body, bursts, centre, choose, floor, ground, mana, mock_sprite, pin_camera, run,
 };
-use super::{kind_body, player_half};
+use super::{kind_body, kind_info, player_half};
 use super::{stand, steps_this_frame};
 
 /// An iron block's centre on the sky's ground.
@@ -595,7 +595,7 @@ fn a_bolt_through_an_enemy_s_art_meets_it() {
     // over it, which the bolt passed for the ground before.
     let mut missed = Vec::new();
     for kind in EnemyKind::ALL {
-        let (info, half) = (kind.info(), kind_body(kind).half);
+        let (info, half) = (kind_info(kind), kind_body(kind).half);
         assert!(info.strike > half.x, "{kind:?}'s art is wider");
         for side in [-1.0, 1.0] {
             let (mut harness, player) = sky();

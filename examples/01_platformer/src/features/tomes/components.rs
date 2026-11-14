@@ -41,62 +41,13 @@ impl TomeKind {
         }
     }
 
-    /// Its name on the panel.
+    /// Its entry's ID in the `tomes` data.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn id(self) -> &'static str {
         match self {
-            TomeKind::Pact => "The Demonic Pact",
-            TomeKind::Bounding => "The Tome of Bounding",
-            TomeKind::Arcane => "The Tome of Arcane Power",
-        }
-    }
-
-    /// What it gives, on the panel.
-    #[must_use]
-    pub const fn gives(self) -> &'static str {
-        match self {
-            TomeKind::Pact => "A shield of 50 over your health, back 3 s after a hit",
-            TomeKind::Bounding => "Jump again and again in the air",
-            TomeKind::Arcane => "Spells deal twice the damage and build twice the ailments",
-        }
-    }
-
-    /// What it costs, on the panel.
-    #[must_use]
-    pub const fn costs(self) -> &'static str {
-        match self {
-            TomeKind::Pact => "Half your maximum health, for good",
-            TomeKind::Bounding => "25 mana for each jump past the second",
-            TomeKind::Arcane => "Spells cost twice the mana",
-        }
-    }
-
-    /// Its HUD tile.
-    #[must_use]
-    pub const fn icon(self) -> &'static str {
-        match self {
-            TomeKind::Pact => "ex10_icon_tome_pact",
-            TomeKind::Bounding => "ex10_icon_tome_bounding",
-            TomeKind::Arcane => "ex10_icon_tome_arcane",
-        }
-    }
-
-    /// The clip its book comes apart in, and the sparks that follow it.
-    #[must_use]
-    pub const fn take_clip(self) -> &'static str {
-        match self {
-            TomeKind::Pact => "ex10_tome_pact_take",
-            TomeKind::Bounding => "ex10_tome_bounding_take",
-            TomeKind::Arcane => "ex10_tome_arcane_take",
-        }
-    }
-
-    #[must_use]
-    pub const fn take_sparks(self) -> &'static str {
-        match self {
-            TomeKind::Pact => "ex10_tome_pact_take_sparks",
-            TomeKind::Bounding => "ex10_tome_bounding_take_sparks",
-            TomeKind::Arcane => "ex10_tome_arcane_take_sparks",
+            TomeKind::Pact => "pact",
+            TomeKind::Bounding => "bounding",
+            TomeKind::Arcane => "arcane",
         }
     }
 
@@ -109,6 +60,21 @@ impl TomeKind {
             TomeKind::Arcane => Sound::TomeArcaneTaken,
         }
     }
+}
+
+/// A tome's texts and art, its entry in the `tomes` data
+/// (`data/tomes/<id>.json`): its name, what it gives and what it costs on
+/// the panel, its HUD tile, and the clip its book comes apart in and the
+/// sparks that follow it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TomeData {
+    pub name: String,
+    pub gives: String,
+    pub costs: String,
+    pub icon: String,
+    pub take_clip: String,
+    pub take_sparks: String,
 }
 
 /// A book on the map, its prefab's `tome`: `{ "kind": "pact" }`.

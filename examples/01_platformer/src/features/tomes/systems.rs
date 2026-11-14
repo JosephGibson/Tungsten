@@ -62,8 +62,12 @@ pub fn take(world: &mut World, taken: &mut Option<u64>) {
     }
     apply(world, player, kind);
     despawn_tree(world, book);
-    one_shot(world, kind.take_clip(), at - TAKE_CENTRE, TAKE_SECS, TAKE_Z);
-    spawn_key_burst(world, kind.take_sparks(), at);
+    let (clip, sparks) = {
+        let tome = super::data(world, kind);
+        (tome.take_clip.clone(), tome.take_sparks.clone())
+    };
+    one_shot(world, &clip, at - TAKE_CENTRE, TAKE_SECS, TAKE_Z);
+    spawn_key_burst(world, &sparks, at);
     audio::play(world, kind.sound(), at);
 }
 

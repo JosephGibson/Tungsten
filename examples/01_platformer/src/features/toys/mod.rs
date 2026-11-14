@@ -171,6 +171,7 @@ impl Plugin for ToysPlugin {
         world.register_component::<FireMissile>("fire_missile");
         world.register_component::<components::ToxicFlask>("toxic_flask");
         world.register_component::<components::Pull>("pull");
+        world.register_data_kind::<spray_look::SprayStyle>(spray_look::SPRAY_LOOKS);
         world.register_component::<components::PreviousVelocity>("previous_velocity");
         // A scrap's variant and a hole's time left: what a record of one
         // holds past its prefab.

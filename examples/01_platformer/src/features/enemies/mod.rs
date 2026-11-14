@@ -41,8 +41,8 @@ use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::save::{SaveOptions, Value};
 use tungsten::core::{
-    AnimationRegistry, AssetRegistry, Entity, EventCursor, Position, PrefabRegistry, Schedule,
-    Shape, Stage, World, system,
+    AnimationRegistry, AssetRegistry, DataRegistry, Entity, EventCursor, Position, PrefabRegistry,
+    Schedule, Shape, Stage, World, system,
 };
 use tungsten::kit::{
     CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, FOLLOW, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line,
@@ -71,9 +71,6 @@ pub const ALERT_REACH: f32 = 320.0;
 pub const DORMANT_PAST: f32 = 1200.0;
 /// The seconds an enemy searches where it last saw the player.
 pub const SEARCH_SECS: f32 = 3.0;
-/// The seconds an attack's recovery takes, but the troll's and the
-/// goblin's own ([`KindInfo::recover`]).
-pub const RECOVER_SECS: f32 = 0.5;
 /// How long a search lasts before its "?" shows; a fresh alert's "!" is
 /// its `alert_mark` effect's seconds.
 pub const SEARCH_MARK_AFTER: f32 = 0.4;
@@ -112,114 +109,95 @@ pub fn walk_filter() -> SpatialFilter {
     SpatialFilter::new().with_mask(!LAVA_LAYER)
 }
 
-/// A kind's table entry: its prefab, whose name its body's data takes
-/// ([`body`]), how far either side of its body's centre a lightning bolt
-/// meets it (the opaque columns of its walk's or its flight's frames,
-/// mirrored as it faces; Q49), its mass for impacts and the walkers'
-/// shove, its sight's reach, its alert's seconds, the black hole's hold on
-/// it, which a blast's push takes too, the force push's wave's weight on
-/// it (`toys::wave`), its art, and its recovery's seconds after an attack;
-/// its knockback's resist is its prefab's alone (`Knockback::resist`).
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// The data kind of the foes' kinds ([`KindInfo`]), each by its kind's
+/// name (`data/enemy_kinds/<kind>.json`).
+pub const ENEMY_KINDS: &str = "enemy_kinds";
+
+/// A kind's entry in the [`ENEMY_KINDS`] data: how far either side of its
+/// body's centre a lightning bolt meets it (the opaque columns of its
+/// walk's or its flight's frames, mirrored as it faces; Q49), its mass for
+/// impacts and the walkers' shove, its sight's reach, its alert's seconds,
+/// the black hole's hold on it, which a blast's push takes too, the force
+/// push's wave's weight on it (`toys::wave`), its ice cube's art, whether
+/// it flies, and its recovery's seconds after an attack; its knockback's
+/// resist is its prefab's alone (`Knockback::resist`), and its prefab and
+/// summon icon are its name's ([`prefab`], [`icon`]). Checked as it loads:
+/// every number finite, its mass above 0 and the rest at least 0, a refused
+/// entry failing the load at its field.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(try_from = "KindForm")]
 pub struct KindInfo {
-    pub prefab: &'static str,
     pub strike: f32,
     pub mass: f32,
     pub sight: f32,
     pub alert: f32,
     pub pull: f32,
     pub wave: f32,
-    pub icon: &'static str,
-    pub ice: &'static str,
+    pub ice: String,
     pub flyer: bool,
     pub recover: f32,
 }
 
-impl EnemyKind {
-    /// Its table entry.
-    #[must_use]
-    pub const fn info(self) -> KindInfo {
-        match self {
-            EnemyKind::Wisp => KindInfo {
-                prefab: "wisp",
-                strike: 17.0,
-                mass: 3.0,
-                sight: 480.0,
-                alert: 0.5,
-                pull: 0.6,
-                wave: 3.5,
-                icon: "ex10_icon_wisp",
-                ice: "ex10_status_ice_wisp",
-                recover: RECOVER_SECS,
-                flyer: true,
-            },
-            EnemyKind::Crawler => KindInfo {
-                prefab: "crawler",
-                strike: 32.0,
-                mass: 40.0,
-                sight: 400.0,
-                alert: 0.4,
-                pull: 0.15,
-                wave: 1.0,
-                icon: "ex10_icon_crawler",
-                ice: "ex10_status_ice_crawler",
-                recover: RECOVER_SECS,
-                flyer: false,
-            },
-            EnemyKind::Beetle => KindInfo {
-                prefab: "beetle",
-                strike: 32.0,
-                mass: 120.0,
-                sight: 520.0,
-                alert: 0.5,
-                pull: 0.05,
-                wave: 0.53,
-                icon: "ex10_icon_beetle",
-                ice: "ex10_status_ice_beetle",
-                recover: RECOVER_SECS,
-                flyer: false,
-            },
-            EnemyKind::Bat => KindInfo {
-                prefab: "bat",
-                strike: 31.0,
-                mass: 2.0,
-                sight: 440.0,
-                alert: 0.4,
-                pull: 0.7,
-                wave: 4.0,
-                icon: "ex10_icon_bat",
-                ice: "ex10_status_ice_bat",
-                recover: RECOVER_SECS,
-                flyer: true,
-            },
-            EnemyKind::Troll => KindInfo {
-                prefab: "troll",
-                strike: 41.0,
-                mass: 600.0,
-                sight: 640.0,
-                alert: 0.8,
-                pull: 0.01,
-                wave: 0.14,
-                icon: "ex10_icon_troll",
-                ice: "ex10_status_ice_troll",
-                recover: troll::RECOVER,
-                flyer: false,
-            },
-            EnemyKind::Goblin => KindInfo {
-                prefab: "goblin",
-                strike: 22.0,
-                mass: 50.0,
-                sight: 520.0,
-                alert: 0.4,
-                pull: 0.12,
-                wave: 0.86,
-                icon: "ex10_icon_goblin",
-                ice: "ex10_status_ice_goblin",
-                recover: goblin::RECOVER,
-                flyer: false,
-            },
+/// [`KindInfo`] as its file writes it, before its numbers are checked.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KindForm {
+    strike: f32,
+    mass: f32,
+    sight: f32,
+    alert: f32,
+    pull: f32,
+    wave: f32,
+    ice: String,
+    flyer: bool,
+    recover: f32,
+}
+
+impl TryFrom<KindForm> for KindInfo {
+    type Error = String;
+
+    fn try_from(form: KindForm) -> Result<Self, Self::Error> {
+        if !(form.mass.is_finite() && form.mass > 0.0) {
+            return Err(format!("mass: must be finite and > 0 (got {})", form.mass));
         }
+        for (field, value) in [
+            ("strike", form.strike),
+            ("sight", form.sight),
+            ("alert", form.alert),
+            ("pull", form.pull),
+            ("wave", form.wave),
+            ("recover", form.recover),
+        ] {
+            if !(value.is_finite() && value >= 0.0) {
+                return Err(format!("{field}: must be finite and >= 0 (got {value})"));
+            }
+        }
+        Ok(Self {
+            strike: form.strike,
+            mass: form.mass,
+            sight: form.sight,
+            alert: form.alert,
+            pull: form.pull,
+            wave: form.wave,
+            ice: form.ice,
+            flyer: form.flyer,
+            recover: form.recover,
+        })
     }
+}
+
+/// `kind`'s entry in the [`ENEMY_KINDS`] data, as it is now.
+///
+/// # Panics
+///
+/// When the data has no entry of that kind: every kind's loads with the
+/// manifest.
+#[must_use]
+pub fn info(world: &World, kind: EnemyKind) -> &KindInfo {
+    world
+        .get_resource::<DataRegistry>()
+        .and_then(|data| data.get::<KindInfo>(kind.name()))
+        .unwrap_or_else(|| panic!("no {ENEMY_KINDS} entry for {}", kind.name()))
 }
 
 /// The enemies as a plugin: the `enemy` and `orb` components their prefabs
@@ -268,6 +246,7 @@ impl Plugin for EnemiesPlugin {
             SaveOptions::<Throws>::form::<components::ThrowsForm>().refs(components::throws_refs()),
         );
         world.register_data_kind::<Body>(BODIES);
+        world.register_data_kind::<KindInfo>(ENEMY_KINDS);
         // The marks' plain sprites, which the foes' looks name: interned
         // before the manifest loads and checks each look's sprite. A load
         // interns the manifest's every sprite first; the headless harness
@@ -379,7 +358,7 @@ pub fn scale(world: &mut World, enemy: Entity, difficulty: Difficulty) {
 pub const fn prefab(kind: EnemyKind, variant: Variant) -> &'static str {
     match (kind, variant) {
         (EnemyKind::Troll, Variant::Armoured) => "troll_armoured",
-        _ => kind.info().prefab,
+        _ => kind.name(),
     }
 }
 
@@ -389,7 +368,12 @@ pub const fn prefab(kind: EnemyKind, variant: Variant) -> &'static str {
 pub const fn icon(kind: EnemyKind, variant: Variant) -> &'static str {
     match (kind, variant) {
         (EnemyKind::Troll, Variant::Armoured) => "ex10_icon_troll_armoured",
-        _ => kind.info().icon,
+        (EnemyKind::Wisp, _) => "ex10_icon_wisp",
+        (EnemyKind::Crawler, _) => "ex10_icon_crawler",
+        (EnemyKind::Beetle, _) => "ex10_icon_beetle",
+        (EnemyKind::Bat, _) => "ex10_icon_bat",
+        (EnemyKind::Troll, _) => "ex10_icon_troll",
+        (EnemyKind::Goblin, _) => "ex10_icon_goblin",
     }
 }
 
@@ -451,7 +435,7 @@ fn steering_as_prefab(world: &mut World, enemy: Entity) {
     let Some(mine) = world.get::<Enemy>(enemy).copied() else {
         return;
     };
-    if !mine.kind.info().flyer || world.has::<Steering>(enemy) {
+    if !info(world, mine.kind).flyer || world.has::<Steering>(enemy) {
         return;
     }
     let steering = world
@@ -493,7 +477,7 @@ fn fit(world: &mut World, enemy: Entity) {
     let Some(kind) = world.get::<Enemy>(enemy).map(|enemy| enemy.kind) else {
         return;
     };
-    shared::fit_body(world, enemy, kind.info().prefab);
+    shared::fit_body(world, enemy, kind.name());
 }
 
 /// The home of an enemy of `kind` placed with its body's centre at `at`:
@@ -567,7 +551,7 @@ pub fn start(world: &mut World, difficulty: Difficulty) {
         .map(|(entity, enemy, id)| (entity, id.id().0, enemy.kind))
         .collect();
     for &(entity, _, kind) in &placed {
-        shared::fit_body(world, entity, kind.info().prefab);
+        shared::fit_body(world, entity, kind.name());
         let at = centre(world, entity).unwrap_or_default();
         let home = world
             .get::<Enemy>(entity)
@@ -667,5 +651,5 @@ pub fn centre(world: &World, enemy: Entity) -> Option<Vec2> {
 /// armoured troll's the troll's.
 #[must_use]
 pub fn body(world: &World, kind: EnemyKind) -> &Body {
-    shared::body(world, kind.info().prefab)
+    shared::body(world, kind.name())
 }

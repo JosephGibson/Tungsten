@@ -1,0 +1,8 @@
+{
+  "name": "The Tome of Bounding",
+  "gives": "Jump again and again in the air",
+  "costs": "25 mana for each jump past the second",
+  "icon": "ex10_icon_tome_bounding",
+  "take_clip": "ex10_tome_bounding_take",
+  "take_sparks": "ex10_tome_bounding_take_sparks"
+}

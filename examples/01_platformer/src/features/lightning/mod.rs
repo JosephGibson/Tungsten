@@ -245,9 +245,9 @@ pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Landing {
         let Some(centre) = body_centre(world, entity) else {
             continue;
         };
-        let info = enemy.kind.info();
+        let strike = enemies::info(world, enemy.kind).strike;
         let face = centre.y - enemies::body(world, enemy.kind).half.y - top.y;
-        if (point.x - centre.x).abs() <= info.strike && (0.0..stop).contains(&face) {
+        if (point.x - centre.x).abs() <= strike && (0.0..stop).contains(&face) {
             stop = face;
             what = Met::Body(entity);
         }

@@ -1,0 +1,8 @@
+{
+  "name": "The Demonic Pact",
+  "gives": "A shield of 50 over your health, back 3 s after a hit",
+  "costs": "Half your maximum health, for good",
+  "icon": "ex10_icon_tome_pact",
+  "take_clip": "ex10_tome_pact_take",
+  "take_sparks": "ex10_tome_pact_take_sparks"
+}

@@ -108,11 +108,10 @@ pub struct SummonType {
 
 /// An enemy's summon type.
 const fn enemy(kind: EnemyKind) -> SummonType {
-    let info = kind.info();
     SummonType {
         name: kind.name(),
-        prefab: info.prefab,
-        icon: info.icon,
+        prefab: crate::features::enemies::prefab(kind, Variant::Plain),
+        icon: crate::features::enemies::icon(kind, Variant::Plain),
         summoned: Summoned::Enemy(kind),
     }
 }

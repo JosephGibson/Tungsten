@@ -288,7 +288,7 @@ fn alert(world: &mut World, enemy: Entity) {
         return;
     };
     rest(world, enemy);
-    if elapsed(world, enemy) >= kind.info().alert {
+    if elapsed(world, enemy) >= super::info(world, kind).alert {
         if let Some(brain) = world.get_mut::<Brain>(enemy) {
             // A neighbour's alert gives it the point to chase toward.
             if brain.last_seen.is_none() {
@@ -369,7 +369,7 @@ fn recover(world: &mut World, enemy: Entity) {
         return;
     }
     rest(world, enemy);
-    if elapsed(world, enemy) >= kind.info().recover - 1e-4 {
+    if elapsed(world, enemy) >= super::info(world, kind).recover - 1e-4 {
         let next = if sees(world, enemy) {
             EnemyState::Chase
         } else {
@@ -572,7 +572,8 @@ pub fn sight(world: &mut World) {
             }
             continue;
         }
-        let sees = eye.distance(target) <= kind.info().sight && clear(world, enemy, eye, target);
+        let sees = eye.distance(target) <= super::info(world, kind).sight
+            && clear(world, enemy, eye, target);
         let was = world.get::<Sight>(enemy).is_some_and(|sight| sight.sees);
         if let Some(sight) = world.get_mut::<Sight>(enemy) {
             sight.next = SIGHT_EVERY;
@@ -739,7 +740,7 @@ pub fn hold(world: &mut World) {
 /// input, so it falls, its own mover set aside; thawed, its own mover back
 /// where it is.
 fn swap_driver(world: &mut World, enemy: Entity, frozen: bool) {
-    let flyer = kind(world, enemy).is_some_and(|kind| kind.info().flyer);
+    let flyer = kind(world, enemy).is_some_and(|kind| super::info(world, kind).flyer);
     if !flyer {
         return;
     }

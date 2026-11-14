@@ -239,7 +239,15 @@ pub fn actor_body(actor: &str) -> Body {
 
 /// `kind`'s body ([`actor_body`]).
 pub fn kind_body(kind: EnemyKind) -> Body {
-    actor_body(kind.info().prefab)
+    actor_body(kind.name())
+}
+
+/// `kind`'s entry in the foes' kinds as its data file holds it, which the
+/// game loads ([`KindInfo`](example_01_platformer::features::enemies::KindInfo)).
+pub fn kind_info(kind: EnemyKind) -> example_01_platformer::features::enemies::KindInfo {
+    let path = format!("assets/data/enemy_kinds/{}.json", kind.name());
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
+    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{path}: {error}"))
 }
 
 /// The player's body's half size, and its centre from its sprite's corner.

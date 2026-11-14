@@ -83,8 +83,6 @@ pub const SWIPE_PUSH: Vec2 = Vec2::new(560.0, -200.0);
 pub const KICK: f32 = 2400.0;
 pub const KICK_MOST: f32 = 650.0;
 pub const KICK_RISE: f32 = 0.6;
-/// Its recovery after an attack, its own.
-pub const RECOVER: f32 = 0.35;
 /// Its walk, its prefab's `move_speed` stat and run speed: restated so a
 /// save can move an older troll's base to it.
 pub const MOVE_SPEED: f32 = 91.0;

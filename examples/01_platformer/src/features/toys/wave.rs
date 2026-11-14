@@ -185,7 +185,7 @@ pub fn waves(world: &mut World) {
             .query::<(Entity, &Enemy, &Health)>()
             .filter(|(entity, _, health)| !health.is_dead() && !wave.crossed.contains(entity))
             .filter_map(|(entity, enemy, _)| {
-                let info = enemy.kind.info();
+                let info = enemies::info(world, enemy.kind);
                 let velocity = world.get::<Velocity>(entity).map_or(Vec2::ZERO, |v| v.0);
                 let centre = body_centre(world, entity)?;
                 let half = enemies::body(world, enemy.kind).half;

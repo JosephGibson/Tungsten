@@ -1026,6 +1026,26 @@
         "path": "data/effects/troll_stun_build.json"
       }
     },
+    "enemy_kinds": {
+      "bat": {
+        "path": "data/enemy_kinds/bat.json"
+      },
+      "beetle": {
+        "path": "data/enemy_kinds/beetle.json"
+      },
+      "crawler": {
+        "path": "data/enemy_kinds/crawler.json"
+      },
+      "goblin": {
+        "path": "data/enemy_kinds/goblin.json"
+      },
+      "troll": {
+        "path": "data/enemy_kinds/troll.json"
+      },
+      "wisp": {
+        "path": "data/enemy_kinds/wisp.json"
+      }
+    },
     "interactions": {
       "bleed": {
         "path": "data/interactions/bleed.json"
@@ -1109,6 +1129,14 @@
         "path": "data/opaque_tiles/level.json"
       }
     },
+    "spray_looks": {
+      "flame": {
+        "path": "data/spray_looks/flame.json"
+      },
+      "frost": {
+        "path": "data/spray_looks/frost.json"
+      }
+    },
     "stats": {
       "game": {
         "path": "data/stats/game.json"
@@ -1117,6 +1145,17 @@
     "tags": {
       "game": {
         "path": "data/tags/game.json"
+      }
+    },
+    "tomes": {
+      "arcane": {
+        "path": "data/tomes/arcane.json"
+      },
+      "bounding": {
+        "path": "data/tomes/bounding.json"
+      },
+      "pact": {
+        "path": "data/tomes/pact.json"
       }
     }
   },

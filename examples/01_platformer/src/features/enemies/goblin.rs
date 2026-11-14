@@ -14,7 +14,7 @@
 //! within the stab's reach. Else it winds up a throw for its clip ([`TELL_CLIP`]): the
 //! tell's draw picks a bomb under [`BOMB_CHANCE`], else a rock, which its
 //! brain keeps as its strike; its attack throws that from its hand at the
-//! courier's centre on a ballistic arc, then it recovers for [`RECOVER`].
+//! courier's centre on a ballistic arc, then it recovers for its kind's `recover` (`data/enemy_kinds/goblin.json`).
 //! A courier within [`STAB_REACH`] across and [`STAB_RISE`] up or down
 //! gets its knife at once: a tell for its clip ([`STAB_TELL_CLIP`]), a stab of [`STAB_DAMAGE`]
 //! in a box ahead of it, and a leap back. Below [`FLEE_SHARE`] of its
@@ -55,11 +55,10 @@ pub const KEEP_OFF: f32 = 140.0;
 pub const CLOSE_IN: f32 = 420.0;
 pub const THROW_RISE: f32 = 200.0;
 /// Its throw's tell and the throw's clips, which their states run (S-170),
-/// a bomb's tell its own; and its recovery, seconds.
+/// a bomb's tell its own.
 pub const TELL_CLIP: &str = "ex10_goblin_windup";
 pub const BOMB_TELL_CLIP: &str = "ex10_goblin_windup_bomb";
 pub const THROW_CLIP: &str = "ex10_goblin_throw";
-pub const RECOVER: f32 = 0.9;
 /// The share of its throws that are bombs: one draw at each tell.
 pub const BOMB_CHANCE: f32 = 0.2;
 /// A rock's flight's seconds a pixel to the player, at least and at most,

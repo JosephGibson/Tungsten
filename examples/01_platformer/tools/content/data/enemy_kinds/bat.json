@@ -1,0 +1,11 @@
+{
+  "strike": 31,
+  "mass": 2,
+  "sight": 440,
+  "alert": 0.4,
+  "pull": 0.7,
+  "wave": 4,
+  "ice": "ex10_status_ice_bat",
+  "flyer": true,
+  "recover": 0.5
+}

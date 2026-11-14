@@ -74,7 +74,7 @@ fn every_restated_constant_matches_its_data() {
     // file's, which a spawn takes over them (`shared::fit_body`); the
     // armoured troll's (e01flask) are the troll's.
     let armoured = enemies::prefab(EnemyKind::Troll, Variant::Armoured);
-    let actors = EnemyKind::ALL.map(|kind| (kind.info().prefab, kind.info().prefab));
+    let actors = EnemyKind::ALL.map(|kind| (kind.name(), kind.name()));
     for (prefab, actor) in [
         ("player", "player"),
         ("dummy", "dummy"),
@@ -93,8 +93,11 @@ fn every_restated_constant_matches_its_data() {
     // The walkers' controllers: their step, which the ledge check reads, and
     // their shove by their kind's mass up to the heaviest a walker moves,
     // which the troll's kick reads; lava's layer left out (S-99).
-    for kind in EnemyKind::ALL.into_iter().filter(|kind| !kind.info().flyer) {
-        let info = kind.info();
+    for kind in EnemyKind::ALL
+        .into_iter()
+        .filter(|&kind| !super::kind_info(kind).flyer)
+    {
+        let info = super::kind_info(kind);
         for variant in [Variant::Plain, Variant::Armoured] {
             let prefab = enemies::prefab(kind, variant);
             let value = json(&format!("prefabs/{prefab}.json"));
@@ -233,7 +236,7 @@ fn every_restated_constant_matches_its_data() {
     // Each enemy's impact rule, inert until a troll throws it, at its
     // kind's mass, half of it under the light mass, as a body's hit counts.
     for kind in EnemyKind::ALL {
-        let info = kind.info();
+        let info = super::kind_info(kind);
         let mass = if info.mass < elements::LIGHT_MASS {
             info.mass * 0.5
         } else {
@@ -263,6 +266,105 @@ fn every_restated_constant_matches_its_data() {
         ),
         (snowball::SNOWBALL_RADIUS, snowball::SNOWBALL_CENTRE)
     );
+}
+
+#[test]
+fn each_enemy_kind_has_its_data() {
+    use example_01_platformer::features::enemies::KindInfo;
+    // The table the code held before the kinds were data (7.13c).
+    let table = [
+        (
+            EnemyKind::Wisp,
+            [17.0, 3.0, 480.0, 0.5, 0.6, 3.5, 0.5],
+            true,
+        ),
+        (
+            EnemyKind::Crawler,
+            [32.0, 40.0, 400.0, 0.4, 0.15, 1.0, 0.5],
+            false,
+        ),
+        (
+            EnemyKind::Beetle,
+            [32.0, 120.0, 520.0, 0.5, 0.05, 0.53, 0.5],
+            false,
+        ),
+        (EnemyKind::Bat, [31.0, 2.0, 440.0, 0.4, 0.7, 4.0, 0.5], true),
+        (
+            EnemyKind::Troll,
+            [41.0, 600.0, 640.0, 0.8, 0.01, 0.14, 0.35],
+            false,
+        ),
+        (
+            EnemyKind::Goblin,
+            [22.0, 50.0, 520.0, 0.4, 0.12, 0.86, 0.9],
+            false,
+        ),
+    ];
+    let manifest = json("manifest.json");
+    let listed: Vec<&str> = manifest["data"][enemies::ENEMY_KINDS]
+        .as_object()
+        .expect("the kinds in the manifest")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let mut kinds: Vec<&str> = EnemyKind::ALL.iter().map(|kind| kind.name()).collect();
+    kinds.sort_unstable();
+    assert_eq!(listed, kinds, "six entries, one a kind");
+    for (kind, [strike, mass, sight, alert, pull, wave, recover], flyer) in table {
+        let ice = format!("ex10_status_ice_{}", kind.name());
+        let want = KindInfo {
+            strike,
+            mass,
+            sight,
+            alert,
+            pull,
+            wave,
+            ice,
+            flyer,
+            recover,
+        };
+        assert_eq!(super::kind_info(kind), want, "{kind:?}");
+    }
+}
+
+#[test]
+fn a_spray_look_or_a_kind_out_of_range_is_refused() {
+    use example_01_platformer::features::enemies::KindInfo;
+    use example_01_platformer::features::toys::spray_look::SprayStyle;
+    use serde_json::json;
+    let refused = |error: Result<(), serde_json::Error>, field: &str| {
+        let error = error.expect_err(field).to_string();
+        assert!(error.contains(field), "{field}: {error}");
+    };
+    let look = |value: Value| serde_json::from_value::<SprayStyle>(value).map(|_| ());
+    let kind = |value: Value| serde_json::from_value::<KindInfo>(value).map(|_| ());
+    let frost = json("data/spray_looks/frost.json");
+    // A puff interval of 0 or below, or so small that `due - every` rounds
+    // back to `due`, would never end its loop.
+    for every in [json!(0), json!(-0.01), json!(1e-12)] {
+        let mut value = frost.clone();
+        value["every"] = every;
+        refused(look(value), "every");
+    }
+    let mut value = frost.clone();
+    value["core"]["frame_ms"] = json!(0);
+    refused(look(value), "core.frame_ms");
+    let crawler = json("data/enemy_kinds/crawler.json");
+    let mut value = crawler.clone();
+    value["mass"] = json!(0);
+    refused(kind(value), "mass");
+    // 1e39 is past f32's range: an infinite sight.
+    let mut value = crawler.clone();
+    value["sight"] = json!(1e39);
+    refused(kind(value), "sight");
+    // Today's entries are taken.
+    for name in ["flame", "frost"] {
+        look(json(&format!("data/spray_looks/{name}.json"))).expect(name);
+    }
+    for each in EnemyKind::ALL {
+        let name = each.name();
+        kind(json(&format!("data/enemy_kinds/{name}.json"))).expect(name);
+    }
 }
 
 #[test]

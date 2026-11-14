@@ -168,7 +168,7 @@ fn plough(world: &mut World, beetle: Entity, heading: f32) {
     let filter = SpatialFilter::new().with_tiles(false).excluding(beetle);
     let mut met = Vec::new();
     overlap(world, shape, box_at, &filter, &mut met);
-    let heaviest = EnemyKind::Beetle.info().mass;
+    let heaviest = super::info(world, EnemyKind::Beetle).mass;
     let mut bodies: Vec<(u64, Entity, f32)> = met
         .into_iter()
         .flatten()

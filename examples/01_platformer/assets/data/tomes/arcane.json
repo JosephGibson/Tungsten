@@ -1,0 +1,8 @@
+{
+  "name": "The Tome of Arcane Power",
+  "gives": "Spells deal twice the damage and build twice the ailments",
+  "costs": "Spells cost twice the mana",
+  "icon": "ex10_icon_tome_arcane",
+  "take_clip": "ex10_tome_arcane_take",
+  "take_sparks": "ex10_tome_arcane_take_sparks"
+}
