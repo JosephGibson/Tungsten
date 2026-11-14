@@ -101,8 +101,9 @@
 //!   acceleration changes. [`Oscillator`] and [`OscillatorPlugin`]: a sine
 //!   wave on the position, rotation or scale. [`Follow`] and
 //!   [`FollowPlugin`]: a target's point plus an offset, with a lag.
-//!   [`carry`], [`Hold`], [`carried_by`] and [`release`]: a body held at a
-//!   carrier's point plus an offset, a sensor until it is let go.
+//!   [`carry`], [`Hold`], [`carried_by`], [`carrier_of`] and [`release`]: a
+//!   body held at a carrier's point plus an offset, or centre over centre, a
+//!   sensor until it is let go.
 //!   [`Orbit`] and [`OrbitPlugin`]: a circle about a centre. [`Steering`]
 //!   and [`SteeringPlugin`]: seek, flee or arrive. [`Target`]: what those
 //!   items aim at. [`Knockback`], [`knock_back`] and [`KnockbackPlugin`]: a
@@ -300,7 +301,7 @@ pub use lifecycle::despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlug
 pub use lifecycle::ended::KIT_DESPAWN;
 pub use lifecycle::lifetime::{LIFETIME_TICK, Lifetime, LifetimePlugin};
 pub use lifecycle::spawner::{SPAWNER_TICK, Spawner, SpawnerPlugin};
-pub use motion::carry::{Hold, carried_by, carry, release};
+pub use motion::carry::{Hold, carried_by, carrier_of, carry, release};
 pub use motion::drive::centre_of;
 pub use motion::follow::{FOLLOW, Follow, FollowPlugin};
 pub use motion::knockback::{KNOCKBACK, Knockback, KnockbackPlugin, knock_back};
@@ -390,8 +391,9 @@ pub mod prelude {
         TagFilter, TagLook, Tags, TagsPlugin, Target, TopDownMover, TopDownMoverPlugin, TraceEntry,
         TraceKind, Trigger, TriggerEntered, TriggerZone, Used, WallContact, WeightedTable,
         WorldBounds, WorldCue, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin, burst, carried_by,
-        carry, cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, face_toward,
-        float_label, heal, kill, knock_back, release, spawn_child, stimulate, use_ability,
+        carrier_of, carry, cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases,
+        face_toward, float_label, heal, kill, knock_back, release, spawn_child, stimulate,
+        use_ability,
     };
 }
 

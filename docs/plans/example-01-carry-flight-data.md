@@ -1,6 +1,6 @@
-# 01's carry, flight, snowball and per-kind data on the kit (example-01-carry-flight-data) — draft
+# 01's carry, flight, snowball and per-kind data on the kit (example-01-carry-flight-data) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13c's carry, flight and data (§2.1). In the kit: a hold placed centre to centre, a drop filter on the held body and `carrier_of`; steering's `pace`, its `on` switch and the direction a steered mover would take; a projectile's `seconds`, its own `shape` for walls beside a hitbox, and a hitbox's `live` credit. Then example 01 on them: the troll's carry (S-37), the flyers' flight (S-92), the crawler's snowball as a kit projectile (S-21, schema 33), the foes' brain, sight, machine, shown clip and previous velocity and the bodies' pull shares in their prefabs (S-30), and the foes' kinds, the sprays' looks and the tomes' texts and art as data kinds (S-34, S-30's tomes); its tests unchanged (§2.2) and its older saves loading (§2.11).
 - **non-goals:**
   - S-36's throw window: no kit item holds a throw's credit, factor and window across held foes, kept balls and stripped saves, and `Throws` serves 01's own rules (A7); it stays 01's, a Later line (Q2).
@@ -285,6 +285,7 @@ Round 2: the same reviewer at xhigh, 2026-11-13, `--repo` on the plan without th
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-14 | landed | `motion::carry::` 8 passed, the four new among them (`a_centred_hold_sets_centre_over_centre_facing_either_way`, `a_held_drop_lets_go_by_the_held_bodys_tags`, `carrier_of_reads_a_held_bodys_carrier`, `a_centred_held_drop_hold_saves_and_loads`); the kit's suite 1,029 passed and 156 doctests; `cargo fmt --all -- --check`, `just lint`, `just repo-check`, `just ctx`, `just docs-ratchet` → 0; `kit_tests:: kit_recipes::` 280 passed, the determinism pin unchanged; the template 184 passed; 02's `guards_` 16 passed, no pin rewritten; 01's `--test game` 446 passed, 1 ignored, its pit pin unchanged; `just api` then `git diff --stat api/` → `api/tungsten-kit.txt` alone (+8) | kit `motion/carry.rs`, `tests/carry.rs`, `lib.rs`; `api/tungsten-kit.txt`; `DESIGN.md`'s carry sentence |
 
 ## Follow-ups
 

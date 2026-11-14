@@ -276,3 +276,264 @@ fn a_carry_refuses_itself_a_second_a_chain_and_a_cycle() {
     assert_eq!(kind(&world, c), BodyKind::Dynamic);
     assert_eq!(kind(&world, b), BodyKind::Sensor);
 }
+
+/// A kinematic troll at `at` moving at `velocity`, facing right, whose
+/// body's centre sits 40 px right of and 40 px below its point.
+fn troll(world: &mut World, at: Vec2, velocity: Vec2) -> Entity {
+    let body = Collider::aabb(Vec2::new(20.0, 40.0)).with_offset(Vec2::new(40.0, 40.0));
+    world.spawn_with(RigidBodyBundle::kinematic(Position(at), body).with((
+        LinearMotion::new(velocity),
+        Facing::new(),
+        Tags::new(Vec::<String>::new()),
+        Health::new(5.0),
+    )))
+}
+
+/// A dynamic block at `at` whose centre sits (8, 8) from its point, as a
+/// frame-cornered sprite's box does.
+fn block(world: &mut World, at: Vec2) -> Entity {
+    world.spawn_with(RigidBodyBundle::dynamic(
+        Position(at),
+        Collider::aabb(Vec2::splat(8.0)).with_offset(Vec2::splat(8.0)),
+    ))
+}
+
+fn centre(world: &World, entity: Entity) -> Vec2 {
+    crate::centre_of(world, entity).unwrap()
+}
+
+#[test]
+fn a_centred_hold_sets_centre_over_centre_facing_either_way() {
+    let (mut world, mut schedule) = rig(0.0);
+    let offset = Vec2::new(6.0, -60.0);
+    let carrier = troll(&mut world, Vec2::new(100.0, 100.0), Vec2::new(60.0, 0.0));
+    let load = block(&mut world, Vec2::ZERO);
+    assert!(carry(
+        &mut world,
+        carrier,
+        load,
+        Hold::new(offset).centred()
+    ));
+    // Placed at once: its centre over the carrier's, not its point over the
+    // carrier's point.
+    assert!(close(centre(&world, load), Vec2::new(146.0, 80.0)));
+    assert_eq!(
+        world.get::<PrevPosition>(load).unwrap().0,
+        position(&world, load)
+    );
+    for step in 0..10 {
+        steps(&mut world, &mut schedule, 1);
+        assert!(
+            close(centre(&world, load), centre(&world, carrier) + offset),
+            "step {step}: centre over centre"
+        );
+        assert_eq!(velocity(&world, load), Vec2::new(60.0, 0.0), "step {step}");
+    }
+    // Facing left, the x mirrors about the carrier's centre, not its corner.
+    world.get_mut::<Facing>(carrier).unwrap().face(Vec2::NEG_X);
+    steps(&mut world, &mut schedule, 1);
+    assert!(close(
+        centre(&world, load),
+        centre(&world, carrier) + Vec2::new(-6.0, -60.0)
+    ));
+
+    // A zero x holds the same either way, where an uncentred hold of the
+    // corner's offset to that point sits 80 px off facing left.
+    let upright = Vec2::new(0.0, -60.0);
+    let porter = troll(&mut world, Vec2::new(400.0, 100.0), Vec2::ZERO);
+    let other = troll(&mut world, Vec2::new(700.0, 100.0), Vec2::ZERO);
+    let over = block(&mut world, Vec2::ZERO);
+    let cornered = block(&mut world, Vec2::ZERO);
+    assert!(carry(
+        &mut world,
+        porter,
+        over,
+        Hold::new(upright).centred()
+    ));
+    let corner = Hold::new(Vec2::new(40.0, 40.0) + upright - Vec2::splat(8.0));
+    assert!(carry(&mut world, other, cornered, corner));
+    steps(&mut world, &mut schedule, 1);
+    assert!(close(
+        centre(&world, over),
+        centre(&world, porter) + upright
+    ));
+    assert!(close(
+        centre(&world, cornered),
+        centre(&world, other) + upright
+    ));
+    for carrier in [porter, other] {
+        world.get_mut::<Facing>(carrier).unwrap().face(Vec2::NEG_X);
+    }
+    steps(&mut world, &mut schedule, 1);
+    assert!(close(
+        centre(&world, over),
+        centre(&world, porter) + upright
+    ));
+    assert!(close(
+        centre(&world, cornered),
+        centre(&world, other) + upright - Vec2::new(64.0, 0.0)
+    ));
+}
+
+#[test]
+fn a_held_drop_lets_go_by_the_held_bodys_tags() {
+    let (mut world, mut schedule) = rig(0.0);
+    let frozen = || TagFilter::new().any(["status.frozen"]);
+    let thawed = TagFilter::new().none(["status.frozen"]);
+    let porters: Vec<Entity> = (0..2)
+        .map(|n| {
+            let at = Vec2::new(100.0 + 100.0 * n as f32, 100.0);
+            porter(&mut world, at, Vec2::new(60.0, 0.0))
+        })
+        .collect();
+    let loads: Vec<Entity> = (0..2)
+        .map(|n| {
+            let load = crate_at(&mut world, Vec2::new(100.0 * n as f32, 0.0));
+            world.insert(load, Tags::new(["status.frozen"]));
+            load
+        })
+        .collect();
+    for (&porter, &load) in porters.iter().zip(&loads) {
+        let hold = Hold::new(OFFSET)
+            .with_drop(frozen())
+            .with_held_drop(thawed.clone());
+        assert!(carry(&mut world, porter, load, hold));
+    }
+    steps(&mut world, &mut schedule, 5);
+    assert_eq!(carried_by(&world, porters[0]), Some(loads[0]));
+    assert_eq!(carried_by(&world, porters[1]), Some(loads[1]));
+
+    // The first load thaws: let go at rest at the next step, where it was
+    // held, its own body back; the second stays held.
+    world
+        .get_mut::<Tags>(loads[0])
+        .unwrap()
+        .remove("status.frozen");
+    let held = position(&world, loads[0]);
+    steps(&mut world, &mut schedule, 1);
+    assert!(!world.has::<Carried>(loads[0]), "the thawed load let go");
+    assert_eq!(kind(&world, loads[0]), BodyKind::Dynamic);
+    assert_eq!(velocity(&world, loads[0]), Vec2::ZERO, "at rest");
+    assert_eq!(position(&world, loads[0]), held, "where it was held");
+    assert_eq!(carried_by(&world, porters[0]), None);
+    assert_eq!(carried_by(&world, porters[1]), Some(loads[1]));
+
+    // The carrier's drop beside it: the second porter freezes and lets go.
+    world
+        .get_mut::<Tags>(porters[1])
+        .unwrap()
+        .insert("status.frozen");
+    steps(&mut world, &mut schedule, 1);
+    assert_eq!(carried_by(&world, porters[1]), None);
+    assert_eq!(kind(&world, loads[1]), BodyKind::Dynamic);
+}
+
+#[test]
+fn carrier_of_reads_a_held_bodys_carrier() {
+    let (mut world, mut schedule) = rig(0.0);
+    let carrier = porter(&mut world, Vec2::new(100.0, 100.0), Vec2::new(60.0, 0.0));
+    let load = crate_at(&mut world, Vec2::ZERO);
+    assert_eq!(carrier_of(&world, load), None, "before the carry");
+    assert!(carry(&mut world, carrier, load, Hold::new(OFFSET)));
+    assert_eq!(carrier_of(&world, load), Some(carrier));
+    assert_eq!(
+        carrier_of(&world, carrier),
+        None,
+        "a carrier is held by none"
+    );
+    steps(&mut world, &mut schedule, 5);
+    assert_eq!(carrier_of(&world, load), Some(carrier), "while held");
+    assert_eq!(release(&mut world, carrier, Vec2::ZERO), Some(load));
+    assert_eq!(carrier_of(&world, load), None, "after the release");
+}
+
+#[test]
+fn a_centred_held_drop_hold_saves_and_loads() {
+    use tungsten_core::save::{self, capture_world, restore_world};
+
+    let thawed = TagFilter::new().none(["status.frozen"]);
+    let level = |world: &mut World| -> [Entity; 4] {
+        let named = |world: &mut World, entity: Entity, name: &str| {
+            save::name(world, entity, None, name).unwrap();
+            entity
+        };
+        let a = troll(world, Vec2::new(100.0, 100.0), Vec2::new(60.0, 0.0));
+        let b = porter(world, Vec2::new(400.0, 100.0), Vec2::ZERO);
+        let over = block(world, Vec2::ZERO);
+        world.insert(over, Tags::new(["status.frozen"]));
+        let plain = crate_at(world, Vec2::new(400.0, 0.0));
+        [
+            named(world, a, "troll"),
+            named(world, b, "porter"),
+            named(world, over, "over"),
+            named(world, plain, "plain"),
+        ]
+    };
+    let (mut a, mut schedule_a) = rig(0.0);
+    let [troll_a, porter_a, over_a, plain_a] = level(&mut a);
+    let hold = Hold::new(Vec2::new(0.0, -60.0))
+        .centred()
+        .with_held_drop(thawed.clone());
+    assert!(carry(&mut a, troll_a, over_a, hold.clone()));
+    assert!(carry(&mut a, porter_a, plain_a, Hold::new(OFFSET)));
+    steps(&mut a, &mut schedule_a, 3);
+    let saved = capture_world(&a).unwrap();
+    let text = serde_json::to_string(&saved).unwrap();
+    assert!(text.contains("\"centred\":true"), "{text}");
+    assert!(text.contains("held_drop"), "{text}");
+    // A hold without them saves as before: its offset alone.
+    fn carried(value: &serde_json::Value, out: &mut Vec<serde_json::Value>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, item) in map {
+                    // The form, not the reference map the same name keys.
+                    if key == "carried" && item.get("offset").is_some() {
+                        out.push(item.clone());
+                    }
+                    carried(item, out);
+                }
+            }
+            serde_json::Value::Array(items) => items.iter().for_each(|item| carried(item, out)),
+            _ => {}
+        }
+    }
+    let mut forms = Vec::new();
+    carried(&serde_json::to_value(&saved).unwrap(), &mut forms);
+    assert_eq!(forms.len(), 2, "{forms:?}");
+    assert!(
+        forms.contains(&serde_json::json!({ "offset": [8.0, -30.0] })),
+        "{forms:?}"
+    );
+
+    let (mut b, mut schedule_b) = rig(0.0);
+    let [troll_b, porter_b, over_b, plain_b] = level(&mut b);
+    /// What a restored spawn takes; this level restores none.
+    #[derive(Clone, Copy)]
+    struct Restored;
+    let report = restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(b.get::<Carried>(over_b).unwrap().hold, hold, "both back");
+    assert_eq!(
+        b.get::<Carried>(plain_b).unwrap().hold,
+        Hold::new(OFFSET),
+        "the plain hold back as it was"
+    );
+    for frame in 0..5 {
+        steps(&mut a, &mut schedule_a, 1);
+        steps(&mut b, &mut schedule_b, 1);
+        assert_eq!(position(&b, over_b), position(&a, over_a), "frame {frame}");
+        assert!(close(
+            centre(&b, over_b),
+            centre(&b, troll_b) + Vec2::new(0.0, -60.0)
+        ));
+    }
+    assert_eq!(carrier_of(&b, plain_b), Some(porter_b));
+    // The held drop came back: the thawed load lets go in both runs.
+    for (world, body) in [(&mut a, over_a), (&mut b, over_b)] {
+        world.get_mut::<Tags>(body).unwrap().remove("status.frozen");
+    }
+    steps(&mut a, &mut schedule_a, 1);
+    steps(&mut b, &mut schedule_b, 1);
+    assert_eq!(carrier_of(&a, over_a), None);
+    assert_eq!(carrier_of(&b, over_b), None);
+}

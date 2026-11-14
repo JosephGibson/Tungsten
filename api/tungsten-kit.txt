@@ -2235,9 +2235,12 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Hitbox
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Hitbox
 pub struct tungsten_kit::prelude::Hold
 impl tungsten_kit::Hold
+pub fn tungsten_kit::Hold::centred(self) -> Self
+pub fn tungsten_kit::Hold::is_centred(&self) -> bool
 pub fn tungsten_kit::Hold::new(glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::Hold::offset(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Hold::with_drop(self, tungsten_kit::TagFilter) -> Self
+pub fn tungsten_kit::Hold::with_held_drop(self, tungsten_kit::TagFilter) -> Self
 impl core::clone::Clone for tungsten_kit::Hold
 pub fn tungsten_kit::Hold::clone(&self) -> tungsten_kit::Hold
 impl core::cmp::PartialEq for tungsten_kit::Hold
@@ -4356,6 +4359,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ZonePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ZonePlugin
 pub fn tungsten_kit::prelude::burst(&mut tungsten_core::ecs::world::World, &str, glam::f32::vec2::Vec2, bool) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::prelude::carried_by(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::prelude::carrier_of(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::prelude::carry(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, tungsten_kit::Hold) -> bool
 pub fn tungsten_kit::prelude::cursor_to_world(&tungsten_core::ecs::world::World) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::prelude::damage(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> tungsten_kit::Hit
@@ -6993,9 +6997,12 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Hitbox
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Hitbox
 pub struct tungsten_kit::Hold
 impl tungsten_kit::Hold
+pub fn tungsten_kit::Hold::centred(self) -> Self
+pub fn tungsten_kit::Hold::is_centred(&self) -> bool
 pub fn tungsten_kit::Hold::new(glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::Hold::offset(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Hold::with_drop(self, tungsten_kit::TagFilter) -> Self
+pub fn tungsten_kit::Hold::with_held_drop(self, tungsten_kit::TagFilter) -> Self
 impl core::clone::Clone for tungsten_kit::Hold
 pub fn tungsten_kit::Hold::clone(&self) -> tungsten_kit::Hold
 impl core::cmp::PartialEq for tungsten_kit::Hold
@@ -9743,6 +9750,7 @@ pub fn tungsten_kit::blast(&mut tungsten_core::ecs::world::World, glam::f32::vec
 pub fn tungsten_kit::burst(&mut tungsten_core::ecs::world::World, &str, glam::f32::vec2::Vec2, bool) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::burst_with<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, &str, glam::f32::vec2::Vec2, bool, B) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::carried_by(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::carrier_of(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::carry(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, tungsten_kit::Hold) -> bool
 pub fn tungsten_kit::centre_of(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::cursor_to_world(&tungsten_core::ecs::world::World) -> core::option::Option<glam::f32::vec2::Vec2>
