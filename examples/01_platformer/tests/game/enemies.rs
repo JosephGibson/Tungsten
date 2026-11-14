@@ -1426,7 +1426,11 @@ fn a_dark_crawler_snowballs_the_player_on_its_arc_then_cools_four_seconds() {
                 what: "a snowball",
                 entity: ball,
                 from: body(&harness, ball),
-                launch: speed(&harness, ball),
+                launch: harness
+                    .world()
+                    .get::<tungsten::kit::LinearMotion>(ball)
+                    .expect("its motion")
+                    .velocity(),
                 gravity,
                 steps: 0,
             });
@@ -1546,7 +1550,7 @@ fn burst_of(harness: &mut UiHarness, from: Vec2, velocity: Vec2) -> (Option<Vec2
 fn a_snowball_bursts_at_its_first_touch_of_the_ground_a_wall_and_a_crate_hurting_nothing() {
     let (mut harness, _) = arena();
     harness.harness_mut().set_dt(1.0 / 60.0);
-    let reach = snowball::SNOWBALL_RADIUS + snowball::SNOWBALL_MARGIN;
+    let reach = snowball::SNOWBALL_RADIUS;
     // Straight down onto the ground.
     let (burst, hits) = burst_of(&mut harness, Vec2::new(1200.0, TOP - 200.0), Vec2::ZERO);
     let at = burst.expect("it bursts on the ground");
@@ -1608,6 +1612,49 @@ fn a_snowball_on_a_dummy_chilled_near_its_freeze_rung_freezes_it() {
     snowball::throw(harness.world_mut(), from, velocity, None, 1.0);
     let frozen = until(&mut harness, 60, |h| tagged(h, dummy, "status.frozen"));
     assert!(frozen, "its 12 cold freezes it");
+}
+
+#[test]
+fn a_dead_crawlers_snowball_credits_nobody() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
+    let x = 1540.0;
+    stand(&mut harness, player, x, TOP);
+    let crawler = walker(&mut harness, EnemyKind::Crawler, x + 260.0, TOP);
+    enemies::turn(harness.world_mut(), crawler, -1.0);
+    let thrown = until(&mut harness, 600, |h| !snowballs(h).is_empty());
+    assert!(thrown, "its snowball flies");
+    // Killed in its ball's flight.
+    land(&mut harness, crawler, Kind::Physical, 10_000.0);
+    let mut hits: Vec<(f32, Option<Entity>)> = Vec::new();
+    for _ in 0..120 {
+        stand(&mut harness, player, x, TOP);
+        harness.step(1);
+        hits.extend(
+            harness
+                .harness()
+                .events::<Damaged>()
+                .filter(|hit| hit.entity == player)
+                .map(|hit| (hit.amount, hit.source)),
+        );
+        if !hits.is_empty() {
+            break;
+        }
+    }
+    assert!(
+        harness
+            .world()
+            .get::<Health>(crawler)
+            .is_none_or(Health::is_dead),
+        "the crawler dead"
+    );
+    assert_eq!(hits.len(), 1, "the ball lands: {hits:?}");
+    assert!(
+        (hits[0].0 - SNOWBALL_COLD).abs() < 1e-3,
+        "its cold: {hits:?}"
+    );
+    assert_eq!(hits[0].1, None, "from no source");
 }
 
 #[test]

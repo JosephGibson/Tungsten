@@ -350,9 +350,8 @@ fn flick(world: &mut World, crawler: Entity) {
         .map_or(Vec2::ZERO, |config| config.gravity);
     let time = (from.distance(target) * SNOWBALL_PACE).clamp(SNOWBALL_LEAST, SNOWBALL_MOST);
     let velocity = lob_velocity(from, target, time, gravity);
-    let thrower = crate::shared::save_id(world, crawler).map(|id| id.0);
     let factor = troll::factor(world, crawler);
-    snowball::throw(world, from, velocity, thrower, factor);
+    snowball::throw(world, from, velocity, Some(crawler), factor);
     start_rest(world, crawler);
     audio::play(world, Sound::SnowballThrown, from);
 }

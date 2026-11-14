@@ -238,7 +238,7 @@ fn busy(harness: &mut UiHarness) {
         world,
         Vec2::new(2350.0, 400.0),
         Vec2::new(-100.0, -200.0),
-        Some(0),
+        None,
         1.0,
     );
     // A crate broken into its planks (e01sfx).
@@ -390,7 +390,7 @@ macro_rules! registered {
 /// types no game can name.
 fn registered(world: &World) -> BTreeSet<&'static str> {
     use example_01_platformer::features::enemies::components::{
-        Brain, Displaced, EnemyState, Holding, Sight, Snowball,
+        Brain, Displaced, EnemyState, Holding, Sight,
     };
     use example_01_platformer::features::player::components::Lantern;
     use example_01_platformer::features::props::components::{MapProp, Plank};
@@ -409,7 +409,7 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
         Oscillator, PathFollower, Pickup, PlatformerController, Projectile, Resist, Shield,
         Source, Spawner, Stats, Steering, Tags, TopDownMover, Tomes, Elevator, Geyser, Lava,
         Spellbook, Lantern, Bullet, Reload, Enemy, Brain, Sight, StateMachine<EnemyState>,
-        Displaced, Orb, Holding, BlackHole, IronScrap, MapProp, Plank, Snowball,
+        Displaced, Orb, Holding, BlackHole, IronScrap, MapProp, Plank,
     );
     if registry.component_names().any(|saved| saved == "carried") {
         types.insert(CARRIED);
@@ -670,12 +670,17 @@ fn lists(kind: &str) -> Lists {
             presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
         },
         "snowball" => {
+            use example_01_platformer::features::enemies::components::Snowball;
             use tungsten::core::AnimationState;
             Lists {
                 recorded: Vec::new(),
                 rebuilt: [
                     &body[..],
-                    &[name::<SceneEntity>(), name::<PreviousVelocity>()],
+                    &[
+                        name::<SceneEntity>(),
+                        name::<PreviousVelocity>(),
+                        name::<Snowball>(),
+                    ],
                 ]
                 .concat(),
                 presentation: [&drawn[..], &[name::<AnimationState>()]].concat(),
@@ -1715,19 +1720,28 @@ fn snowball_landing(harness: &mut UiHarness) -> Option<(u32, Vec2)> {
 type Flight = (u64, [f32; 2], [f32; 2], Option<u64>, f32, f32);
 
 fn snowballs(harness: &UiHarness) -> Vec<Flight> {
-    use example_01_platformer::features::enemies::components::Snowball;
+    use tungsten::kit::{LinearMotion, Source};
     let world = harness.world();
     snowball::flying(world)
         .into_iter()
         .map(|(id, ball)| {
-            let flying = world.get::<Snowball>(ball).unwrap();
+            let thrower = world
+                .get::<Source>(ball)
+                .and_then(|source| example_01_platformer::shared::save_id(world, source.entity()))
+                .map(|id| id.0);
+            let cold = world.get::<Hitbox>(ball).unwrap().parts()[0].amount();
+            let left = world.get::<Projectile>(ball).unwrap().seconds_left();
             (
                 id,
                 world.get::<Position>(ball).unwrap().0.to_array(),
-                world.get::<Velocity>(ball).unwrap().0.to_array(),
-                flying.thrower,
-                flying.factor,
-                flying.left,
+                world
+                    .get::<LinearMotion>(ball)
+                    .unwrap()
+                    .velocity()
+                    .to_array(),
+                thrower,
+                cold / snowball::SNOWBALL_COLD,
+                left.expect("its seconds left"),
             )
         })
         .collect()
@@ -1784,6 +1798,95 @@ fn a_snowball_in_flight_and_a_cooling_crawler_save_and_load_and_it_lands_as_it_w
     let (loaded_steps, loaded_at) = after.expect("it lands after the load");
     assert_eq!(loaded_steps, steps, "as soon");
     assert!(at.distance(loaded_at) < 0.5, "{at} and {loaded_at}");
+}
+
+#[test]
+fn an_older_saves_snowballs_in_flight_are_dropped() {
+    let dir = user_folder("snowball-32");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let player = player_entity(&harness);
+    scaffold(&mut harness);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.step(1);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness
+        .world_mut()
+        .get_mut::<example_01_platformer::features::player::components::Lantern>(player)
+        .unwrap()
+        .on = false;
+    let crawler = enemy(
+        &mut harness,
+        EnemyKind::Crawler,
+        Vec2::new(600.0 + 260.0, TOP - 10.5),
+    );
+    enemies::turn(harness.world_mut(), crawler, -1.0);
+    let crawler_id = id_of(&harness, crawler);
+    let thrown = until(&mut harness, 240, |h| {
+        !snowball::flying(h.world()).is_empty()
+    });
+    assert!(thrown, "its snowball flies");
+    harness.step(3);
+    let cooling = harness
+        .world()
+        .get::<tungsten::kit::Cooldown>(crawler)
+        .unwrap()
+        .left();
+    // Schema 32's shape: the ball a dynamic body whose `snowball` held its
+    // flight, no kit projectile, hitbox or motion on it.
+    let mut older = json(&capture(&harness));
+    let mut balls = 0;
+    let mut stack = vec![&mut older["world"]];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                let ball = object.get("prefab").and_then(serde_json::Value::as_str)
+                    == Some(snowball::SNOWBALL_PREFAB);
+                if ball
+                    && let Some(serde_json::Value::Object(components)) =
+                        object.get_mut("components")
+                {
+                    for kit in ["projectile", "hitbox", "linear_motion"] {
+                        components.remove(kit);
+                    }
+                    components.insert(
+                        "snowball".to_owned(),
+                        serde_json::json!({ "thrower": crawler_id, "factor": 1.0, "left": 2.9 }),
+                    );
+                    components.insert("velocity".to_owned(), serde_json::json!([-300.0, -400.0]));
+                    balls += 1;
+                }
+                if ball {
+                    // Its thrower was a save ID in its flight, no reference.
+                    object.remove("refs");
+                }
+                stack.extend(object.values_mut());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter_mut()),
+            _ => {}
+        }
+    }
+    assert_eq!(balls, 1, "the ball's record");
+    let stamp = tungsten::core::SaveStamp::new(32, "0.117.0", 1_760_400_000_000);
+    let slots = harness_slots(&harness);
+    slots
+        .save_stamped("slot_1", &older, &stamp)
+        .expect("a schema 32 save is written");
+    let save = slots
+        .load::<SaveGame>("slot_1")
+        .expect("a schema 32 save migrates");
+    load(&mut harness, save);
+    assert!(
+        snowball::flying(harness.world()).is_empty(),
+        "no snowball after the load"
+    );
+    let back = harness
+        .world()
+        .get::<tungsten::kit::Cooldown>(by_id(&harness, crawler_id))
+        .unwrap()
+        .left();
+    assert_eq!(back, cooling, "the crawler's rest kept");
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]

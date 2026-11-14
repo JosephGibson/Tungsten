@@ -46,8 +46,8 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, FOLLOW, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line,
-    Modifier, PLATFORMER_CONTROLLER, Phase, Stats, Steering, TOP_DOWN_MOVER, TagFilter,
-    WorldSource, WorldSources, ensure_phases,
+    Modifier, PLATFORMER_CONTROLLER, PROJECTILE_TICK, Phase, Stats, Steering, TOP_DOWN_MOVER,
+    TagFilter, WorldSource, WorldSources, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -230,7 +230,8 @@ impl EnemyKind {
 /// effects and cooldowns; in the move phase the
 /// trolls' holds after the movers and the dropped orbs' fall after the
 /// kit's magnet; in the overlap phase the orbs collected and the
-/// crawlers' snowballs ([`snowball::snowballs`]); in the react
+/// crawlers' snowballs' bursts after the kit's projectile step
+/// ([`snowball::ends`]); in the react
 /// phase the deaths, the tags the foes' clip rules read
 /// ([`systems::foe_tags`]) and where the dead fell; in `PreUpdate` the
 /// orbs' adoption; in the present phase the trolls' steps and shifted
@@ -257,7 +258,7 @@ impl Plugin for EnemiesPlugin {
             SaveOptions::<components::Holding>::form::<components::HoldingForm>()
                 .refs(components::holding_refs()),
         );
-        world.register_saved_with("snowball", SaveOptions::<components::Snowball>::new());
+        world.register_component::<components::Snowball>("snowball");
         world.register_saved_resource_with(
             "throws",
             SaveOptions::<Throws>::form::<components::ThrowsForm>().refs(components::throws_refs()),
@@ -297,8 +298,12 @@ impl Plugin for EnemiesPlugin {
             .after(KNOCKBACK)
             .after(FOLLOW);
         schedule.add(Stage::FixedUpdate, Phase::Move.join(holds));
-        let snowballs = system("snowballs", snowball::snowballs);
-        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(snowballs));
+        let snowball_ends = system("snowball_ends", {
+            let mut cursor = EventCursor::new();
+            move |world: &mut World| snowball::ends(world, &mut cursor)
+        })
+        .after(PROJECTILE_TICK);
+        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(snowball_ends));
         // Before the shell's save captures them, so a save holds them whole.
         let adopt = system("orb_adopt", drops::adopt).before("shell_save");
         schedule.add(Stage::PreUpdate, adopt);

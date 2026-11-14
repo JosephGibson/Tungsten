@@ -86,9 +86,10 @@ impl SaveData for SaveGame {
     /// every older schema, whose slot reads as an older version's
     /// (`D-204`). Schema 30 moved arcane power's `spell_power` onto a
     /// `damage_dealt` line ([`to_30`]), 31 an enemy's `heading` onto the
-    /// kit's `facing` ([`to_31`]), and 32 a foe's rests and "!" onto the
-    /// kit's cooldowns and effects ([`to_32`]).
-    const SCHEMA: u32 = 32;
+    /// kit's `facing` ([`to_31`]), 32 a foe's rests and "!" onto the
+    /// kit's cooldowns and effects ([`to_32`]), and 33 the crawler's
+    /// snowball onto the kit's projectile ([`to_33`]).
+    const SCHEMA: u32 = 33;
 
     fn migrate_step(
         from: u32,
@@ -114,6 +115,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 31: the save has no world")?;
                 to_32(world);
+                Ok(data)
+            }
+            32 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 32: the save has no world")?;
+                to_33(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -278,6 +286,35 @@ fn to_32(value: &mut Value) {
         _ => {}
     }
 }
+
+/// Schema 32 to 33 over a save's `world`: each saved snowball, a dynamic
+/// body's record whose `snowball` held its thrower, factor and seconds,
+/// goes, a body a load could not fly on the kit's projectile; at most
+/// eight were in flight, for at most 3 s.
+fn to_33(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            for inner in object.values_mut() {
+                to_33(inner);
+            }
+        }
+        Value::Array(items) => {
+            items.retain(|item| {
+                item.get("components")
+                    .and_then(|components| components.get(S32_SNOWBALL))
+                    .is_none()
+            });
+            for item in items {
+                to_33(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The name schema 32 saved a snowball's flight under, frozen for the
+/// migration.
+const S32_SNOWBALL: &str = "snowball";
 
 /// A foe's rest left at schema 31 as the kit's `cooldown` of its own
 /// seconds, one elapse to go: frozen for the migration.

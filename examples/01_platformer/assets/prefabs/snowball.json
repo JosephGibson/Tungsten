@@ -4,21 +4,54 @@
     "z_order": 14
   },
   "components": {
-    "rigid_body": {
-      "kind": "dynamic",
+    "animation": {
+      "id": "ex10_snowball"
+    },
+    "linear_motion": {
+      "velocity": [
+        0,
+        0
+      ],
+      "acceleration": [
+        0,
+        3600
+      ]
+    },
+    "projectile": {
+      "seconds": 3,
       "shape": {
-        "kind": "circle",
-        "radius": 5
+        "circle": 7
       },
       "offset": [
         8,
         8
       ],
-      "mass": 1,
-      "restitution": 0
+      "body_walls": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
     },
-    "animation": {
-      "id": "ex10_snowball"
-    }
+    "hitbox": {
+      "shape": {
+        "circle": 8
+      },
+      "offset": [
+        8,
+        8
+      ],
+      "damage": {
+        "damage.cold": 12
+      },
+      "filter": {
+        "none": [
+          "team.enemy"
+        ]
+      },
+      "credit": "live"
+    },
+    "snowball": {}
   }
 }

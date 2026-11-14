@@ -350,17 +350,13 @@ pub fn throws_refs() -> RefCodec<Throws> {
     }
 }
 
-/// A crawler's snowball in flight (e01foes): its thrower's save ID, the
-/// thrower's damage factor at the throw, and the seconds before it bursts
-/// in the air. Inserted at the throw, so its prefab names no 01 component.
-/// Saved, its thrower by save ID.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// A crawler's snowball in flight (e01foes), a marker its prefab names
+/// (`snowball: {}`): its thrower is its kit `Source`, the thrower's damage
+/// factor at the throw its hitbox's cold, and its seconds left its kit
+/// projectile's. Rebuilt by its prefab, so a save holds the kit's forms.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Snowball {
-    pub thrower: Option<u64>,
-    pub factor: f32,
-    pub left: f32,
-}
+pub struct Snowball {}
 
 impl Throws {
     /// `body`'s throw, while it flies.

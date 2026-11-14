@@ -254,13 +254,14 @@ fn every_restated_constant_matches_its_data() {
             );
         }
     }
-    // A crawler's snowball's.
+    // A crawler's snowball's own shape, which meets its walls.
+    let ball = json(&format!("prefabs/{}.json", snowball::SNOWBALL_PREFAB));
     assert_eq!(
-        body(snowball::SNOWBALL_PREFAB),
         (
-            Vec2::splat(snowball::SNOWBALL_RADIUS),
-            snowball::SNOWBALL_CENTRE
-        )
+            number(&ball, "/components/projectile/shape/circle"),
+            pair(&ball, "/components/projectile/offset")
+        ),
+        (snowball::SNOWBALL_RADIUS, snowball::SNOWBALL_CENTRE)
     );
 }
 
