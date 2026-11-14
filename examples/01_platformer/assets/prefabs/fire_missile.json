@@ -54,6 +54,10 @@
           8
         ]
       }
-    ]
+    ],
+    "facing": {
+      "turn": true,
+      "mirror": true
+    }
   }
 }

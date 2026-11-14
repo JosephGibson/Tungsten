@@ -519,3 +519,47 @@ fn r_tops_up_a_part_empty_magazine_and_an_empty_trigger_clicks() {
     }
     assert_eq!(rounds(&harness).0, 0);
 }
+
+#[test]
+fn a_tracer_turns_with_its_shot() {
+    use tungsten::core::Transform;
+    // Each frame while `id` flies, its tracer lies along its flight, the
+    // frame of a turn included: how many times it turned back.
+    let follow = |harness: &mut UiHarness, id: SaveId| -> u32 {
+        let (mut turns, mut last) = (0, None::<Vec2>);
+        for _ in 0..60 {
+            harness.step(1);
+            let Some(entity) = bullet(harness, id) else {
+                break;
+            };
+            let world = harness.world();
+            let flight = world
+                .get::<LinearMotion>(entity)
+                .unwrap()
+                .velocity()
+                .normalize();
+            let lies = Vec2::from_angle(world.get::<Transform>(entity).unwrap().rotation);
+            assert!((lies - flight).length() < 1e-5, "{lies} along {flight}");
+            if last.is_some_and(|before| before.dot(flight) < 0.0) {
+                turns += 1;
+            }
+            last = Some(flight);
+        }
+        turns
+    };
+    // Off an iron block, 01's own turn.
+    let (mut harness, _) = sky();
+    toys::place_iron(harness.world_mut(), Vec2::new(1000.0, IRON_Y));
+    harness.step(10);
+    let id = shot(&mut harness, Vec2::new(700.0, IRON_Y), Vec2::X * SPEED);
+    assert!(follow(&mut harness, id) >= 1, "it turned off the block");
+    // Off the mine's iron riser, the kit's.
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    let face = Vec2::new(306.0 * TILE, 54.5 * TILE);
+    let id = shot(&mut harness, face - Vec2::new(300.0, 0.0), Vec2::X * SPEED);
+    assert!(
+        follow(&mut harness, id) >= 1,
+        "it turned off the mine's iron"
+    );
+}

@@ -4,10 +4,10 @@ use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
 use tungsten::core::assets::LayerKind;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, BodyKind, Collider, Entity,
-    EventCursor, EventQueue, Light, LightKind, Particle, ParticleConfigRegistry, ParticleEmitter,
-    ParticleEmitterState, Position, PrevPosition, RigidBody, Shape, SoundRegistry, Sprite,
-    TilemapInstance, TilemapRegistry, Time, Transform, Velocity, Visibility, With, World,
+    AssetRegistry, AudioCommands, BodyKind, Collider, Entity, EventCursor, EventQueue, Light,
+    LightKind, Particle, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
+    PrevPosition, RigidBody, Shape, SoundRegistry, Sprite, TilemapInstance, TilemapRegistry, Time,
+    Transform, Velocity, Visibility, With, World,
 };
 use tungsten::kit::{
     Blast, Children, EffectInstance, Effects, Health, LinearMotion, Modifier, PlatformerController,
@@ -1689,46 +1689,6 @@ fn tint(world: &mut World, piece: Entity, amount: f32, frost: bool) {
     if frost && let Some(visibility) = world.get_mut::<Visibility>(piece) {
         visibility.visible = amount > 0.0;
     }
-}
-
-/// `missile_look`, in the present phase: a missile's rocket faces along its
-/// flight, mirrored when it flies left so its lit side stays up.
-pub fn missile_look(world: &mut World) {
-    let Some(registry) = world.remove_resource::<AnimationRegistry>() else {
-        return;
-    };
-    let missiles: Vec<(Entity, Vec2, String)> = world
-        .query::<(Entity, &FireMissile, &LinearMotion, &AnimationState)>()
-        .map(|(entity, _, motion, state)| (entity, motion.velocity(), state.animation_id.clone()))
-        .collect();
-    for (missile, v, clip) in missiles {
-        let left = v.x < 0.0;
-        let wanted = if left {
-            "ex10_fire_missile_left"
-        } else {
-            "ex10_fire_missile"
-        };
-        if clip != wanted {
-            let mut state = AnimationState::new(wanted);
-            if let Some(old) = world.get::<AnimationState>(missile) {
-                state.frame_index = old.frame_index;
-                state.accumulated_ms = old.accumulated_ms;
-            }
-            let frame = state.current_sprite(&registry);
-            world.insert(missile, state);
-            if let (Some(frame), Some(sprite)) = (frame, world.get_mut::<Sprite>(missile)) {
-                sprite.asset_id = frame;
-            }
-        }
-        if let Some(transform) = world.get_mut::<Transform>(missile) {
-            transform.rotation = if left {
-                (-v.y).atan2(-v.x)
-            } else {
-                v.y.atan2(v.x)
-            };
-        }
-    }
-    world.insert_resource(registry);
 }
 
 /// `hole_particles`, in the present phase: a hole's newborn particles are

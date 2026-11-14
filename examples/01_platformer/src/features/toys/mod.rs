@@ -218,7 +218,6 @@ impl Plugin for ToysPlugin {
         let present = [
             system("ball_look", systems::ball_look),
             system("iron_look", systems::iron_look),
-            system("missile_look", systems::missile_look),
             system("toys_flares", systems::flares),
             system("wave_look", wave::looks),
         ];

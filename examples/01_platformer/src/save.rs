@@ -88,9 +88,10 @@ impl SaveData for SaveGame {
     /// `damage_dealt` line ([`to_30`]), 31 an enemy's `heading` onto the
     /// kit's `facing` ([`to_31`]), 32 a foe's rests and "!" onto the
     /// kit's cooldowns and effects ([`to_32`]), 33 the crawler's
-    /// snowball onto the kit's projectile ([`to_33`]), and 34 the
-    /// lightning's chain onto the kit's conduction ([`to_34`]).
-    const SCHEMA: u32 = 34;
+    /// snowball onto the kit's projectile ([`to_33`]), 34 the lightning's
+    /// chain onto the kit's conduction ([`to_34`]), and 35 the missile's
+    /// and the tracers' turns onto the kit's facing ([`to_35`]).
+    const SCHEMA: u32 = 35;
 
     fn migrate_step(
         from: u32,
@@ -130,6 +131,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 33: the save has no world")?;
                 to_34(world);
+                Ok(data)
+            }
+            34 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 34: the save has no world")?;
+                to_35(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -388,6 +396,60 @@ fn metal_conducts(value: &mut Value) {
 const S33_CASCADES: &str = "cascades";
 const S33_METAL: [&str; 3] = ["iron_block", "iron_scrap", "keg"];
 const S33_CONDUCTIVE: &str = "conductive";
+
+/// Schema 34 to 35 over a save's `world`: each record of a fire missile or
+/// a bullet in flight without a `facing` takes its prefab's, as schema 35
+/// saves it, so the kit turns its rocket or its tracer along its flight.
+fn to_35(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let facing = match object.get("prefab").and_then(Value::as_str) {
+                Some(S34_MISSILE) => Some(s34_facing(true)),
+                Some(S34_BULLET) => Some(s34_facing(false)),
+                _ => None,
+            };
+            if let (Some(facing), Some(Value::Object(components))) =
+                (facing, object.get_mut("components"))
+            {
+                components.entry("facing").or_insert(facing);
+            }
+            for inner in object.values_mut() {
+                to_35(inner);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                to_35(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The prefabs of schema 34's shots, frozen for the migration.
+const S34_MISSILE: &str = "fire_missile";
+const S34_BULLET: &str = "bullet";
+
+/// A shot's `facing` as schema 35 saves it: from its motion, turning, the
+/// missile's mirrored past the vertical; facing right until its first
+/// frame turns it. Frozen for the migration.
+fn s34_facing(mirror: bool) -> Value {
+    let mut facing = Value::from_iter([
+        ("from".to_owned(), Value::from("motion")),
+        ("snap".to_owned(), Value::from("free")),
+        ("turn".to_owned(), Value::from(true)),
+        ("offset".to_owned(), Value::from(0.0)),
+        ("min_speed".to_owned(), Value::from(1.0)),
+        (
+            "direction".to_owned(),
+            Value::from(vec![Value::from(1.0), Value::from(0.0)]),
+        ),
+    ]);
+    if mirror && let Value::Object(fields) = &mut facing {
+        fields.insert("mirror".to_owned(), Value::from(true));
+    }
+    facing
+}
 
 /// A foe's rest left at schema 31 as the kit's `cooldown` of its own
 /// seconds, one elapse to go: frozen for the migration.

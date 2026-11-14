@@ -1256,3 +1256,49 @@ fn a_fourth_flask_with_three_in_flight_is_refused_and_spends_nothing() {
     assert_eq!(after.1, before.1, "no cooldown");
     assert!(flask::count(harness.world()) <= flask::FLASK_CAP);
 }
+
+#[test]
+fn a_missile_flying_left_is_mirrored_along_its_flight() {
+    use tungsten::core::components::SpriteFlip;
+    use tungsten::core::{AnimationState, Transform};
+    // Cast down and to the left, then to the right: the rocket's one clip,
+    // flipped and turned along its flight reversed when it flies left, as
+    // `missile_look` turned its left twin, else along its flight.
+    for (aim, left) in [
+        (Vec2::new(-400.0, 100.0), true),
+        (Vec2::new(400.0, 0.0), false),
+    ] {
+        let (mut harness, player) = run();
+        ground(&mut harness, 600.0);
+        stand(&mut harness, player, 700.0, 600.0);
+        harness.step(1);
+        pin_camera(&mut harness, Vec2::new(200.0, 200.0));
+        let from = centre(&harness, player);
+        aim_at(&mut harness, from + aim);
+        choose(&mut harness, Spell::FireMissile);
+        harness.harness_mut().press_action("cast");
+        harness.step(1);
+        harness.harness_mut().release_action("cast");
+        harness.step(1);
+        let world = harness.world();
+        let (missile, velocity) = world
+            .query::<(Entity, &FireMissile, &LinearMotion)>()
+            .map(|(entity, _, motion)| (entity, motion.velocity()))
+            .next()
+            .expect("a missile");
+        assert_eq!(
+            world.get::<AnimationState>(missile).unwrap().animation_id,
+            "ex10_fire_missile",
+            "left {left}"
+        );
+        let flipped = world.get::<SpriteFlip>(missile).is_some_and(|flip| flip.0);
+        assert_eq!(flipped, left, "flipped flying left alone");
+        let lies = Vec2::from_angle(world.get::<Transform>(missile).unwrap().rotation);
+        let unit = velocity.normalize();
+        let along = if left { -unit } else { unit };
+        assert!(
+            (lies - along).length() < 1e-5,
+            "left {left}: {lies} for {unit}"
+        );
+    }
+}

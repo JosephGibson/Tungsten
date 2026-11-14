@@ -609,7 +609,17 @@ fn lists(kind: &str) -> Lists {
                 name::<Glow>(),
                 name::<Children>(),
             ]),
-            presentation: [&drawn[..], &[name::<AnimationState>(), name::<GlowParts>()]].concat(),
+            // Its facing's flip, which a mirror inserts the first time it
+            // flies left.
+            presentation: [
+                &drawn[..],
+                &[
+                    name::<AnimationState>(),
+                    name::<GlowParts>(),
+                    name::<tungsten::core::components::SpriteFlip>(),
+                ],
+            ]
+            .concat(),
         },
         "flask" => Lists {
             recorded: Vec::new(),
@@ -2284,6 +2294,95 @@ fn an_older_saves_jumps_are_dropped_and_its_metal_conducts() {
         );
     }
     assert_eq!(struck, line[1..], "down the line");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn an_older_saves_shots_take_their_facing() {
+    use tungsten::core::components::SpriteFlip;
+    use tungsten::kit::Facing;
+    let dir = user_folder("shots-34");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let player = player_entity(&harness);
+    scaffold(&mut harness);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.step(1);
+    // A missile flying up and to the left, a bullet up and to the right.
+    let missile = toys::fire_missile(
+        harness.world_mut(),
+        Vec2::new(900.0, 600.0),
+        Vec2::new(-300.0, -400.0),
+    )
+    .expect("a missile");
+    let bullet = gun::fire(
+        harness.world_mut(),
+        Vec2::new(1000.0, 600.0),
+        Vec2::new(600.0, -800.0),
+        Some(player),
+    )
+    .expect("a bullet")
+    .0;
+    harness.step(1);
+    let missile = id_of(&harness, missile);
+    // Schema 34's shape: the shots' records without a facing.
+    let mut older = json(&capture(&harness));
+    let mut stripped = 0;
+    let mut stack = vec![&mut older["world"]];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                let shot = object
+                    .get("prefab")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|prefab| ["fire_missile", "bullet"].contains(&prefab));
+                if shot
+                    && let Some(serde_json::Value::Object(components)) =
+                        object.get_mut("components")
+                {
+                    assert!(components.remove("facing").is_some());
+                    stripped += 1;
+                }
+                stack.extend(object.values_mut());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter_mut()),
+            _ => {}
+        }
+    }
+    assert_eq!(stripped, 2, "the missile's and the bullet's records");
+    let stamp = tungsten::core::SaveStamp::new(34, "0.117.0", 1_760_400_000_000);
+    let slots = harness_slots(&harness);
+    slots
+        .save_stamped("slot_1", &older, &stamp)
+        .expect("a schema 34 save is written");
+    let save = slots
+        .load::<SaveGame>("slot_1")
+        .expect("a schema 34 save migrates");
+    load(&mut harness, save);
+    scaffold(&mut harness);
+    pin_camera(&mut harness, CORNER);
+    harness.world_mut().resource_mut::<Time>().resume();
+    harness.step(1);
+    let world = harness.world();
+    for (id, mirror) in [(missile, true), (bullet, false)] {
+        let shot = by_id(&harness, id);
+        let facing = serde_json::to_value(world.get::<Facing>(shot).expect("its facing")).unwrap();
+        assert_eq!(facing["turn"], serde_json::json!(true), "{id}");
+        assert_eq!(facing.get("mirror").is_some(), mirror, "{id}: {facing}");
+        let flight = world
+            .get::<tungsten::kit::LinearMotion>(shot)
+            .unwrap()
+            .velocity()
+            .normalize();
+        let lies = Vec2::from_angle(world.get::<Transform>(shot).unwrap().rotation);
+        let left = world.get::<SpriteFlip>(shot).is_some_and(|flip| flip.0);
+        assert_eq!(left, mirror, "{id}: the missile flies left, mirrored");
+        let along = if left { -flight } else { flight };
+        assert!(
+            (lies - along).length() < 1e-5,
+            "{id}: {lies} along {flight}"
+        );
+    }
     let _ = std::fs::remove_dir_all(dir);
 }
 

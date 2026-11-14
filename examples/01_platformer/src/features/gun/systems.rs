@@ -148,20 +148,14 @@ pub fn muzzles(world: &mut World) {
 
 /// `bullet_adopt`, in `PreUpdate` before the shell's save: each bullet the
 /// gun's centred spawn payload landed at the last flush, its centre off
-/// the courier's, joins the run ([`Joined`]), its save ID the flush's, its
-/// tracer turned along its flight and shown.
+/// the courier's, joins the run ([`Joined`]), its save ID the flush's, and
+/// is shown, its tracer turned along its flight by its prefab's facing.
 pub fn adopt(world: &mut World) {
     let fresh: Vec<Entity> = world
         .query_filtered::<Entity, (With<Bullet>, Without<Joined>)>()
         .collect();
     for bullet in fresh {
         world.insert(bullet, Joined);
-        let velocity = world
-            .get::<LinearMotion>(bullet)
-            .map_or(Vec2::X, LinearMotion::velocity);
-        if let Some(transform) = world.get_mut::<Transform>(bullet) {
-            transform.rotation = heading(velocity);
-        }
         if let Some(visibility) = world.get_mut::<Visibility>(bullet) {
             visibility.visible = true;
         }
@@ -568,7 +562,7 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
                 } else if let Some((t, at, _)) = turn
                     && end.is_none_or(|(end, ..)| t <= end)
                 {
-                    sparks(world, bullet, at);
+                    sparks(world, at);
                 } else if let Some((_, at, normal)) =
                     end.filter(|&(.., normal)| normal != Vec2::ZERO)
                 {
@@ -581,15 +575,9 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
     }
 }
 
-/// The kit's turn of `bullet` off an iron wall at `at`: its tracer turned
-/// along its new flight, sparks and the ricochet's sound.
-fn sparks(world: &mut World, bullet: Entity, at: Vec2) {
-    let velocity = world
-        .get::<LinearMotion>(bullet)
-        .map_or(Vec2::X, LinearMotion::velocity);
-    if let Some(transform) = world.get_mut::<Transform>(bullet) {
-        transform.rotation = heading(velocity);
-    }
+/// The kit's turn of a bullet off an iron wall at `at`, its tracer turned
+/// along its new flight by its facing: sparks and the ricochet's sound.
+fn sparks(world: &mut World, at: Vec2) {
     spawn_burst(world, "ex10_ricochet", at);
     audio::play(world, Sound::Ricocheted, at);
 }
@@ -717,9 +705,6 @@ fn ricochet(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, sp
     place(world, bullet, contact.point + contact.normal * 0.5);
     if let Some(motion) = world.get_mut::<LinearMotion>(bullet) {
         motion.set_velocity(turned);
-    }
-    if let Some(transform) = world.get_mut::<Transform>(bullet) {
-        transform.rotation = heading(turned);
     }
     if let Some(state) = world.get_mut::<Bullet>(bullet) {
         state.ricochets += 1;
