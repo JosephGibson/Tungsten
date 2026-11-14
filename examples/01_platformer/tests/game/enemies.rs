@@ -2635,6 +2635,45 @@ fn a_save_while_the_troll_holds_iron_loads_with_the_hold() {
     );
 }
 
+/// Whether `foe` holds a fresh mind: its brain, its sight and its machine
+/// as their defaults and a patrol's start.
+fn fresh_mind(harness: &UiHarness, foe: Entity) -> bool {
+    let world = harness.world();
+    world.get::<Brain>(foe) == Some(&Brain::default())
+        && world.get::<Sight>(foe) == Some(&Sight::default())
+        && world.get::<StateMachine<EnemyState>>(foe)
+            == Some(&StateMachine::new(EnemyState::Patrol))
+}
+
+#[test]
+fn a_foes_brain_sight_and_machine_come_from_its_prefab() {
+    let (mut harness, _) = arena();
+    // A summoned foe, at its spawn.
+    let summoned = enemies::summon(
+        harness.world_mut(),
+        EnemyKind::Crawler,
+        Vec2::new(1300.0, TOP - 40.0),
+    )
+    .expect("summoned");
+    assert!(fresh_mind(&harness, summoned), "a summoned foe's");
+    // A foe spawned from its prefab as the map spawns one.
+    let world = harness.world_mut();
+    let placed = world
+        .prepare_prefab("wisp", [1500.0, 600.0])
+        .expect("its prefab")
+        .spawn(world);
+    assert!(fresh_mind(&harness, placed), "a map foe's");
+    // The run's start inserts none.
+    let world = harness.world_mut();
+    let moves = world.counters().archetype_moves;
+    enemies::start(world, Difficulty::Normal);
+    assert_eq!(
+        world.counters().archetype_moves,
+        moves,
+        "the run's start moves no foe"
+    );
+}
+
 #[test]
 fn the_trolls_load_rides_over_its_centre_facing_either_way() {
     let (mut harness, _) = arena();

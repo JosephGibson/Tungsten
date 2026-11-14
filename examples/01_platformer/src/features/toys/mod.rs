@@ -85,9 +85,6 @@ pub const SCRAP_SCALE: f32 = 0.5;
 /// scrap's is a sixteenth.
 pub const IRON_FRICTION: f32 = 1500.0;
 pub const FROZEN_FRICTION: f32 = 120.0;
-/// How much of a hole's pull iron takes, and a scrap.
-pub const IRON_PULL: f32 = 0.2;
-pub const SCRAP_PULL: f32 = 1.0;
 /// A black hole's reach, pull and life, which its prefab's `left` restates;
 /// at most [`HOLE_CAP`] are open, a further one closing the oldest.
 pub const HOLE_RADIUS: f32 = 6.0 * TILE;
@@ -106,9 +103,6 @@ pub const HOLE_OPEN_SECS: f32 = 0.3;
 pub const OPEN_RING: f32 = 2.4 * HOLE_DIAMETER;
 pub const OPEN_REACH: f32 = 230.0;
 pub const OPEN_INWARD: f32 = 700.0;
-/// How much of a hole's pull a bowling ball takes: enough to lift it within
-/// about 200 px of the core, where iron stays down.
-pub const BOWLING_PULL: f32 = 0.625;
 /// The flyers' hold: a ring this far about the core, the pull easing within
 /// this of it, and its circling there as a share of the flyer's speed.
 pub const HOLD_RING: f32 = 40.0;
@@ -176,6 +170,8 @@ impl Plugin for ToysPlugin {
         world.register_component::<BlackHole>("black_hole");
         world.register_component::<FireMissile>("fire_missile");
         world.register_component::<components::ToxicFlask>("toxic_flask");
+        world.register_component::<components::Pull>("pull");
+        world.register_component::<components::PreviousVelocity>("previous_velocity");
         // A scrap's variant and a hole's time left: what a record of one
         // holds past its prefab.
         world.register_saved::<IronScrap>("iron_scrap");

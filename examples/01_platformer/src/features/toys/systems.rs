@@ -17,16 +17,15 @@ use tungsten::kit::{
 use tungsten::physics::wake;
 
 use super::components::{
-    Ball, BallHue, BlackHole, BowlingBall, Element, FireMissile, Flare, HoleHold, IronBlock,
-    IronScrap, OpeningOf, Oriented, PreviousVelocity, Ring, ScrapTumble, ShockRing, SmallBall,
-    Spray, SprayEmitter,
+    Ball, BallHue, BlackHole, Element, FireMissile, Flare, HoleHold, IronBlock, IronScrap,
+    OpeningOf, Oriented, PreviousVelocity, Pull, Ring, ScrapTumble, ShockRing, SmallBall, Spray,
+    SprayEmitter,
 };
 use super::{
-    BLAST_RADIUS, BOWLING_PULL, BROOM_MOST, BROOM_REACH, COLLAPSE_RING, FIRE_SPRAY_RANGE,
-    FROZEN_FRICTION, HOLD_EASE, HOLD_RING, HOLD_SWIRL, HOLE_FORCE, HOLE_RADIUS, IRON_FALL_FROM,
-    IRON_FRICTION, IRON_PULL, IRON_WEIGHT, LOOP_FADE, MISSILE_RADIUS, MISSILE_SIZE, OPEN_INWARD,
-    OPEN_REACH, PUSH_RADIUS, PUSH_SPEED, RING_SECS, SCRAP_PULL, SCRAP_SCALE, SPRAY_HALF_ANGLE,
-    SPRAY_RANGE, rings_full,
+    BLAST_RADIUS, BROOM_MOST, BROOM_REACH, COLLAPSE_RING, FIRE_SPRAY_RANGE, FROZEN_FRICTION,
+    HOLD_EASE, HOLD_RING, HOLD_SWIRL, HOLE_FORCE, HOLE_RADIUS, IRON_FALL_FROM, IRON_FRICTION,
+    IRON_WEIGHT, LOOP_FADE, MISSILE_RADIUS, MISSILE_SIZE, OPEN_INWARD, OPEN_REACH, PUSH_RADIUS,
+    PUSH_SPEED, RING_SECS, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{
@@ -45,10 +44,7 @@ use crate::features::level::geyser::{self, Geyser};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::player::systems::escaped;
-use crate::features::props::{
-    self,
-    components::{Crate, Keg},
-};
+use crate::features::props::{self, components::Crate};
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, Saved, body_centre, despawn_tree, spawn_burst, surface_distance};
@@ -252,30 +248,14 @@ pub fn hole_pull(holes: &[Vec2], at: Vec2) -> Vec2 {
     pull
 }
 
-/// How much of a hole's pull `entity` takes: iron a fifth of a ball's, a
-/// bowling ball [`BOWLING_PULL`], which lifts it near the core, scraps as
-/// balls, a crate a half and a keg two fifths, a frozen dummy as iron and a
-/// thawed one none, the rest by their mass.
+/// How much of a hole's pull `entity` takes: its prefab's [`Pull`] (iron a
+/// fifth of a ball's, a bowling ball enough to lift it near the core,
+/// scraps as balls, a crate a half and a keg two fifths, a frozen dummy as
+/// iron and a thawed one none), the rest by their mass.
 fn pull_response(world: &World, entity: Entity, inv_mass: f32) -> f32 {
-    if world.has::<IronBlock>(entity) {
-        IRON_PULL
-    } else if world.has::<BowlingBall>(entity) {
-        BOWLING_PULL
-    } else if world.has::<IronScrap>(entity) {
-        SCRAP_PULL
-    } else if world.has::<Crate>(entity) {
-        props::CRATE_PULL
-    } else if world.has::<Keg>(entity) {
-        props::KEG_PULL
-    } else if world.has::<Dummy>(entity) {
-        if has_status(world, entity, FROZEN) {
-            IRON_PULL
-        } else {
-            0.0
-        }
-    } else {
-        inv_mass
-    }
+    world.get::<Pull>(entity).map_or(inv_mass, |pull| {
+        pull.taken(has_status(world, entity, FROZEN))
+    })
 }
 
 /// The seconds of a hole's pull an enemy's mover takes each step.

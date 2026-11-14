@@ -157,9 +157,73 @@ pub struct Wave {
 }
 
 /// A body's velocity before this step's physics, which impacts read: by
-/// then the solver has stopped it on what it met.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+/// then the solver has stopped it on what it met. A foe's prefab names it
+/// (`previous_velocity: {}`, a fresh one).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
+#[serde(from = "Fresh")]
 pub struct PreviousVelocity(pub Vec2);
+
+/// A rebuilt component's prefab form, `{}`: a fresh one, its state the
+/// game's to write.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fresh {}
+
+impl From<Fresh> for PreviousVelocity {
+    fn from(_: Fresh) -> Self {
+        Self::default()
+    }
+}
+
+/// How much of a black hole's pull a body takes, its prefab's `pull`
+/// (`{ "share": 0.2 }`): a share of a ball's, and, when it differs, a frozen
+/// one's (`frozen`), so a dummy is pulled only while frozen; a body without
+/// one takes its inverse mass. Rebuilt by its prefab.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(try_from = "PullForm")]
+pub struct Pull {
+    pub share: f32,
+    pub frozen: Option<f32>,
+}
+
+impl Pull {
+    /// The share it takes, `frozen` or not.
+    #[must_use]
+    pub fn taken(&self, frozen: bool) -> f32 {
+        if frozen {
+            self.frozen.unwrap_or(self.share)
+        } else {
+            self.share
+        }
+    }
+}
+
+/// [`Pull`] as a prefab writes it, before its shares are checked.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PullForm {
+    share: f32,
+    #[serde(default)]
+    frozen: Option<f32>,
+}
+
+impl TryFrom<PullForm> for Pull {
+    type Error = String;
+
+    fn try_from(form: PullForm) -> Result<Self, Self::Error> {
+        for (field, share) in [("share", Some(form.share)), ("frozen", form.frozen)] {
+            if let Some(share) = share
+                && !(share.is_finite() && share >= 0.0)
+            {
+                return Err(format!("{field}: must be finite and >= 0 (got {share})"));
+            }
+        }
+        Ok(Self {
+            share: form.share,
+            frozen: form.frozen,
+        })
+    }
+}
 
 /// The small balls' placement: the part of a ball the last steps owed, the
 /// next ball's place on the golden-angle ring, the balls queued this frame,

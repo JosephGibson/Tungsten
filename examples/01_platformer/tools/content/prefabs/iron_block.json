@@ -1,6 +1,9 @@
 {
   "components": {
     "iron_block": null,
+    "pull": {
+      "share": 0.2
+    },
     "rigid_body": {
       "kind": "dynamic",
       "shape": {

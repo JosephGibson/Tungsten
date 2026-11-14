@@ -8,6 +8,16 @@
       "kind": "troll",
       "variant": "armoured"
     },
+    "brain": {},
+    "sight": {},
+    "enemy_state": {
+      "state": "patrol",
+      "elapsed": 0,
+      "entered": false,
+      "held": false
+    },
+    "shown": {},
+    "previous_velocity": {},
     "facing": {
       "from": "intent",
       "snap": "horizontal"

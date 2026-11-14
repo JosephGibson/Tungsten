@@ -5,6 +5,9 @@
   },
   "components": {
     "ball": null,
+    "pull": {
+      "share": 0.625
+    },
     "bowling_ball": null,
     "animation": {
       "id": "ex10_bowling_roll"

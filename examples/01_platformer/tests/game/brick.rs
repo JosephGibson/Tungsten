@@ -21,8 +21,7 @@ use example_01_platformer::features::toys::components::{
 };
 use example_01_platformer::features::toys::systems::pull;
 use example_01_platformer::features::toys::{
-    self, BALL_RADIUS, IRON_HALF, IRON_MASS, IRON_PULL, SCRAP_HALF, SCRAP_MASS, SCRAP_PULL,
-    SMALL_BALL_RADIUS,
+    self, BALL_RADIUS, IRON_HALF, IRON_MASS, SCRAP_HALF, SCRAP_MASS, SMALL_BALL_RADIUS,
 };
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
@@ -286,6 +285,14 @@ fn mass(harness: &mut UiHarness, at: Vec2, mass: f32) -> Entity {
     )
 }
 
+/// The share of a hole's pull `body`'s prefab gives it, warm.
+fn pull_share(world: &tungsten::core::World, body: Entity) -> f32 {
+    world
+        .get::<example_01_platformer::features::toys::components::Pull>(body)
+        .expect("its pull")
+        .taken(false)
+}
+
 #[test]
 fn black_holes_move_iron_more_slowly_than_balls_and_skip_static_bodies() {
     let (mut harness, _) = run();
@@ -302,7 +309,7 @@ fn black_holes_move_iron_more_slowly_than_balls_and_skip_static_bodies() {
     // Both centres sit at the same point: the same pull, scaled.
     let iron_pull = world.get::<Velocity>(iron).unwrap().0;
     assert!(
-        (iron_pull - ball_pull * IRON_PULL).length() < 0.5,
+        (iron_pull - ball_pull * pull_share(world, iron)).length() < 0.5,
         "{iron_pull} vs {ball_pull}"
     );
     assert_eq!(
@@ -344,7 +351,7 @@ fn black_holes_gather_warm_and_frozen_scraps_as_readily_as_balls() {
     for scrap in pieces {
         let v = world.get::<Velocity>(scrap).unwrap().0;
         assert!(
-            (v - ball_pull * SCRAP_PULL).length() < 0.5,
+            (v - ball_pull * pull_share(world, scrap)).length() < 0.5,
             "{v} vs {ball_pull}"
         );
         assert!(v.length() > iron_pull.length() * 4.9);

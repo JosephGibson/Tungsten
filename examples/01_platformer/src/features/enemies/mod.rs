@@ -54,7 +54,6 @@ use tungsten::{Extracts, Plugin, SceneEntity};
 
 use crate::features::combat;
 use crate::features::level::{self, LAVA_LAYER};
-use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
 use crate::shared::{self, BODIES, Body, Saved, despawn_tree, spawn_key_burst};
 use crate::shell::Difficulty;
@@ -246,6 +245,11 @@ impl Plugin for EnemiesPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<Enemy>("enemy");
+        // A foe's mind and its looks' bookkeeping, fresh in its prefab.
+        world.register_component::<Brain>("brain");
+        world.register_component::<Sight>("sight");
+        world.register_component::<tungsten::kit::StateMachine<EnemyState>>("enemy_state");
+        world.register_component::<Shown>("shown");
         world.register_component::<drops::Orb>("orb");
         world.register_saved::<Enemy>("enemy");
         world.register_saved::<Brain>("brain");
@@ -421,14 +425,7 @@ pub fn spawn_record(
     let enemy = world
         .prepare_prefab(prefab(kind, variant), corner.to_array())
         .ok()?
-        .with((
-            Brain::default(),
-            Sight::default(),
-            tungsten::kit::StateMachine::new(EnemyState::Patrol),
-            Shown::default(),
-            PreviousVelocity::default(),
-            SceneEntity { state_id: GAMEPLAY },
-        ))
+        .with((SceneEntity { state_id: GAMEPLAY },))
         .saved(world, Some(level::MAP))
         .spawn(world);
     fit(world, enemy);
@@ -440,11 +437,9 @@ pub fn spawn_record(
 }
 
 /// What a restored enemy's spawn gave it beyond its prefab and its saved
-/// state: its kind's body and its hold on rock ([`fit`]), and its shown
-/// state.
+/// state: its kind's body and its hold on rock ([`fit`]).
 pub fn restored(world: &mut World, enemy: Entity) {
     fit(world, enemy);
-    world.insert(enemy, Shown::default());
     disarm_as_prefab(world, enemy);
     steering_as_prefab(world, enemy);
 }
@@ -564,7 +559,8 @@ pub fn summon_as(world: &mut World, kind: EnemyKind, variant: Variant, at: Vec2)
 
 /// For a run the map has just placed: keeps the save IDs of its enemies,
 /// gives each its kind's body ([`shared::fit_body`]), sets its home
-/// ([`home`]) and its state machine, and gives it the difficulty's factor.
+/// ([`home`]) and gives it the difficulty's factor; its mind and its state
+/// machine are its prefab's.
 pub fn start(world: &mut World, difficulty: Difficulty) {
     let placed: Vec<(Entity, u64, EnemyKind)> = world
         .query::<(Entity, &Enemy, &Saved)>()
@@ -579,16 +575,6 @@ pub fn start(world: &mut World, difficulty: Difficulty) {
         if let Some(enemy) = world.get_mut::<Enemy>(entity) {
             enemy.home = home.to_array();
         }
-        world.insert_bundle(
-            entity,
-            (
-                Brain::default(),
-                Sight::default(),
-                tungsten::kit::StateMachine::new(EnemyState::Patrol),
-                Shown::default(),
-                PreviousVelocity::default(),
-            ),
-        );
         scale(world, entity, difficulty);
     }
     let mut placed: Vec<u64> = placed.into_iter().map(|(_, id, _)| id).collect();

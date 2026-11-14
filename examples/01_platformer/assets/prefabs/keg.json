@@ -5,6 +5,9 @@
   },
   "components": {
     "keg": null,
+    "pull": {
+      "share": 0.4
+    },
     "looks": [
       {
         "when": {

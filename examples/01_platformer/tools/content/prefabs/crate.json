@@ -5,6 +5,9 @@
   },
   "components": {
     "crate": {},
+    "pull": {
+      "share": 0.5
+    },
     "stats": {
       "fuel": 8
     },

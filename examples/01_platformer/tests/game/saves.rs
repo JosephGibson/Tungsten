@@ -433,7 +433,7 @@ fn lists(kind: &str) -> Lists {
     use example_01_platformer::features::level::lava::CrustLook;
     use example_01_platformer::features::player::components::Moves;
     use example_01_platformer::features::toys::components::{
-        BallHue, BowlingBall, PreviousVelocity, ScrapTumble, SmallBall,
+        BallHue, BowlingBall, PreviousVelocity, Pull, ScrapTumble, SmallBall,
     };
     use tungsten::SceneEntity;
     use tungsten::core::{
@@ -532,6 +532,7 @@ fn lists(kind: &str) -> Lists {
                     name::<PreviousVelocity>(),
                     name::<tungsten::kit::ImpactDamage>(),
                     CARRIED,
+                    name::<Pull>(),
                 ],
             ]
             .concat(),
@@ -546,6 +547,7 @@ fn lists(kind: &str) -> Lists {
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
                     name::<Children>(),
+                    name::<Pull>(),
                 ],
             ]
             .concat(),
@@ -563,6 +565,7 @@ fn lists(kind: &str) -> Lists {
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
                     name::<Children>(),
+                    name::<Pull>(),
                 ],
             ]
             .concat(),
@@ -586,6 +589,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Dummy>(),
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
+                    name::<Pull>(),
                     name::<Hurtbox>(),
                     name::<Knockback>(),
                     name::<Stats>(),
@@ -638,6 +642,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Keg>(),
                     name::<Bomb>(),
                     name::<Rock>(),
+                    name::<Pull>(),
                 ],
             ]
             .concat(),

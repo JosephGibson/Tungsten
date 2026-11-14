@@ -130,13 +130,10 @@ pub const KEG_BLAST: f32 = 192.0;
 pub const BOMB_BLAST: f32 = 128.0;
 /// A frozen crate's or keg's thermal shock reach.
 pub const PROP_BLAST: f32 = 96.0;
-/// Wood's sliding friction while it rests on something, px/s², and the
-/// share of a hole's pull a crate and a keg take.
+/// Wood's sliding friction while it rests on something, px/s².
 pub const WOOD_FRICTION: f32 = 900.0;
 /// A rolling bomb's or rock's slowing while it rests on something, px/s².
 pub const ROLL_FRICTION: f32 = 300.0;
-pub const CRATE_PULL: f32 = 0.5;
-pub const KEG_PULL: f32 = 0.4;
 
 /// The props as a plugin: the `crate`, `keg`, `goblin_bomb` and `rock`
 /// components their prefabs name; in the fixed step, the round props' roll

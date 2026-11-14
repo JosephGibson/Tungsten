@@ -5,6 +5,10 @@
   },
   "components": {
     "dummy": null,
+    "pull": {
+      "share": 0,
+      "frozen": 0.2
+    },
     "tags": [
       "flesh",
       "freezable",

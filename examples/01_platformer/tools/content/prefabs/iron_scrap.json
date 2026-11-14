@@ -7,6 +7,9 @@
     "iron_scrap": {
       "variant": 0
     },
+    "pull": {
+      "share": 1
+    },
     "rigid_body": {
       "kind": "dynamic",
       "shape": {

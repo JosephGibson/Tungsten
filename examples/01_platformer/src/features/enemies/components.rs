@@ -152,7 +152,7 @@ impl Strike {
 /// An enemy's sight: the seconds to its next check and whether its last
 /// check saw the player. Saved, so a load checks when the run would have.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct Sight {
     pub next: f32,
     pub sees: bool,
@@ -382,9 +382,17 @@ pub struct Spotted {
 }
 
 /// The clip the kit's animator showed an enemy and its frame at the last
-/// look, which a troll's steps sound by. Presentation, never saved.
-#[derive(Debug, Clone, Default, PartialEq)]
+/// look, which a troll's steps sound by. Presentation, never saved; its
+/// prefab names it (`shown: {}`, a fresh one).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(from = "crate::features::toys::components::Fresh")]
 pub struct Shown {
     pub clip: String,
     pub frame: usize,
+}
+
+impl From<crate::features::toys::components::Fresh> for Shown {
+    fn from(_: crate::features::toys::components::Fresh) -> Self {
+        Self::default()
+    }
 }
