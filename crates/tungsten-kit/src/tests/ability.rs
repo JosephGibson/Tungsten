@@ -2579,6 +2579,204 @@ fn a_chain_past_gone_jumps_on_from_its_last_point() {
     }
 }
 
+// example-01-spells-toys-gun, Step 2: the chains saved by save ID.
+
+/// The line's names: a caster and five conductors.
+const LINE: [&str; 6] = ["caster", "c0", "c1", "c2", "c3", "c4"];
+
+/// A World whose caster, named `caster`, conducts `conduct` from the
+/// nearest conductor on its `zap`, and five conductors named `c0` to `c4`,
+/// 100 px apart from x 100, each within a jump of the next and out of one
+/// from the one after: `others` entities spawned and despawned first, so
+/// its entities take other indices, the conductors spawned from the far
+/// end when `reversed`, and the names in `skip` left out.
+fn line_rig(
+    conduct: &Conduct,
+    others: usize,
+    reversed: bool,
+    skip: &[&str],
+) -> (World, Schedule, Vec<(&'static str, Entity)>) {
+    use tungsten_core::save::name;
+    let (mut world, schedule) = rig();
+    for _ in 0..others {
+        let other = world.spawn();
+        world.despawn(other);
+    }
+    let mut order: Vec<usize> = (0..5).collect();
+    if reversed {
+        order.reverse();
+    }
+    let mut named = Vec::new();
+    if !skip.contains(&"caster") {
+        let caster = zapper(&mut world, conduct.clone());
+        name(&mut world, caster, None, "caster").unwrap();
+        named.push(("caster", caster));
+    }
+    for i in order {
+        let label = LINE[i + 1];
+        if skip.contains(&label) {
+            continue;
+        }
+        let entity = conductor(&mut world, 100.0 + 100.0 * i as f32, 0.0, &[]);
+        name(&mut world, entity, None, label).unwrap();
+        named.push((label, entity));
+    }
+    (world, schedule, named)
+}
+
+/// The entity named `label` in `named`.
+fn named(named: &[(&'static str, Entity)], label: &str) -> Entity {
+    named
+        .iter()
+        .find(|(name, _)| *name == label)
+        .map_or_else(|| panic!("no {label}"), |&(_, entity)| entity)
+}
+
+/// A step's jumps and hits by save ID: each jump's receiver, number,
+/// damage, from and to, and each hit's target and amount.
+type ById = (
+    Vec<(Option<u64>, u32, f32, Vec2, Vec2)>,
+    Vec<(Option<u64>, f32)>,
+);
+
+/// `run`'s steps by save ID.
+fn by_id(world: &World, run: &[Zapped]) -> Vec<ById> {
+    use tungsten_core::save::Saved;
+    let id = |entity: Entity| world.get::<Saved>(entity).map(|saved| saved.id().0);
+    run.iter()
+        .map(|(hits, jumps)| {
+            (
+                jumps
+                    .iter()
+                    .map(|jump| {
+                        (
+                            id(jump.receiver),
+                            jump.jump,
+                            jump.damage,
+                            jump.from,
+                            jump.to,
+                        )
+                    })
+                    .collect(),
+                hits.iter()
+                    .map(|&(target, amount)| (id(target), amount))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+/// The capture of `world`, as JSON.
+fn captured(world: &World) -> serde_json::Value {
+    serde_json::to_value(tungsten_core::save::capture_world(world).unwrap()).unwrap()
+}
+
+/// The line's World, zapped and stepped past its chain's second jump, and
+/// its capture then.
+fn mid_chain(conduct: &Conduct) -> (World, Schedule, Entity, tungsten_core::save::WorldSave) {
+    let (mut world, mut schedule, line) = line_rig(conduct, 0, false, &[]);
+    let caster = named(&line, "caster");
+    let run = zap_jumps(&mut world, &mut schedule, caster, 3, true);
+    assert_eq!(
+        run.iter().map(|(_, jumps)| jumps.len()).collect::<Vec<_>>(),
+        [0, 1, 1],
+        "the strike, then two jumps"
+    );
+    let saved = tungsten_core::save::capture_world(&world).unwrap();
+    (world, schedule, caster, saved)
+}
+
+#[test]
+fn a_conduction_saves_and_loads_mid_chain() {
+    use tungsten_core::save::restore_world;
+    let bolt = Conduct::new(40.0, 120.0, conductive()).with_keep(0.5);
+    let (mut a, mut schedule_a, caster_a, saved) = mid_chain(&bolt);
+    let text = serde_json::to_value(&saved).unwrap();
+    assert_eq!(
+        text["resources"]["conductions"]["chains"][0]["jumps"],
+        json!(4),
+        "{text}"
+    );
+    let (mut b, mut schedule_b, line) = line_rig(&bolt, 5, true, &[]);
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert_eq!(
+        captured(&b),
+        text,
+        "the capture after the load the one before it"
+    );
+    let chain = &conductions(&b)[0];
+    assert_eq!(chain.user, named(&line, "caster"));
+    assert_eq!(chain.last, named(&line, "c2"));
+    assert_eq!(
+        chain.chained,
+        ["c0", "c1", "c2"].map(|label| named(&line, label))
+    );
+    let unsaved = zap_jumps(&mut a, &mut schedule_a, caster_a, 4, false);
+    let loaded = zap_jumps(&mut b, &mut schedule_b, named(&line, "caster"), 4, false);
+    let unsaved = by_id(&a, &unsaved);
+    assert_eq!(
+        unsaved
+            .iter()
+            .map(|(jumps, _)| jumps.len())
+            .collect::<Vec<_>>(),
+        [1, 1, 0, 0],
+        "on to c3 and c4, then none in reach"
+    );
+    assert_eq!(
+        by_id(&b, &loaded),
+        unsaved,
+        "the same jumps by save ID, at the same steps"
+    );
+    assert!(conductions(&b).is_empty() && conductions(&a).is_empty());
+}
+
+#[test]
+fn a_loaded_chain_drops_what_did_not_load() {
+    use tungsten_core::save::restore_world;
+    let bolt = Conduct::new(40.0, 120.0, conductive()).with_keep(0.5);
+    let (_, _, _, saved) = mid_chain(&bolt);
+    // Its user did not load: dropped.
+    let (mut b, mut schedule_b, line) = line_rig(&bolt, 2, false, &["caster"]);
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert!(conductions(&b).is_empty(), "no user, no chain");
+    let caster = named(&line, "c0");
+    assert!(
+        zap_jumps(&mut b, &mut schedule_b, caster, 3, false)
+            .iter()
+            .all(|(hits, jumps)| hits.is_empty() && jumps.is_empty())
+    );
+    // A chained receiver did not load: gone from the list, the chain on.
+    let (mut b, mut schedule_b, line) = line_rig(&bolt, 2, false, &["c0"]);
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert_eq!(
+        conductions(&b)[0].chained,
+        ["c1", "c2"].map(|label| named(&line, label))
+    );
+    let run = zap_jumps(&mut b, &mut schedule_b, named(&line, "caster"), 2, false);
+    assert_eq!(run[0].0, [(named(&line, "c3"), 5.0)]);
+    assert_eq!(run[1].0, [(named(&line, "c4"), 2.5)]);
+    // Its last receiver did not load: ended, or with `past_gone` jumping on
+    // from the point it was struck at.
+    for past in [false, true] {
+        let bolt = bolt.clone().with_past_gone(past);
+        let (_, _, _, saved) = mid_chain(&bolt);
+        let (mut b, mut schedule_b, line) = line_rig(&bolt, 2, false, &["c2"]);
+        restore_world(&mut b, &saved, &(Restored,)).unwrap();
+        let run = zap_jumps(&mut b, &mut schedule_b, named(&line, "caster"), 2, false);
+        if past {
+            assert_eq!(conductions(&b).len(), 1, "kept, until it jumps on");
+            assert_eq!(run[0].0, [(named(&line, "c3"), 5.0)]);
+            assert_eq!(run[0].1[0].from, Vec2::new(300.0, 0.0), "from c2's point");
+        } else {
+            assert!(
+                run.iter()
+                    .all(|(hits, jumps)| hits.is_empty() && jumps.is_empty()),
+                "no last receiver, no chain"
+            );
+        }
+    }
+}
+
 // place-and-caps, Step 2: the place payload (S-17).
 
 /// A World with a clock at the fixed step, a command buffer, a trace,

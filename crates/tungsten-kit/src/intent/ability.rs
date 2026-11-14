@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::physics::{
     BodyKind, Collider, PhysicsConfig, Position, RigidBody, Shape, SpatialFilter, Velocity, overlap,
 };
+use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{
     AssetRegistry, CommandBuffer, DataRef, DataRegistry, Entity, EventQueue, Inspectable,
     MissingAsset, Plugin, PrefabRegistry, Schedule, SpawnContext, Time, Transform, World, system,
@@ -75,6 +76,8 @@ const PLACE_PAYLOAD: &str = "place_payload";
 const CONDUCT_PAYLOAD: &str = "conduct_payload";
 /// The most chains a World runs at once.
 const MAX_CHAINS: usize = 64;
+/// The name a save holds the chains in flight under.
+const CONDUCTIONS: &str = "conductions";
 const SKILL: &str = "skill";
 const SKILL_BASES: &str = "skill_bases";
 const SKILL_LINE: &str = "skill_line";
@@ -2336,9 +2339,10 @@ impl AbilityUsed {
 /// preparation run on it (`prepare`), then its crit rolled from the user's
 /// stats; a conduction whose preparation no game registered is refused,
 /// with one warning. A World runs at most 64 chains, a use past them
-/// striking its target alone, traced; chains are not saved, and one ends as
-/// soon as its user is gone or despawning, or its last receiver is, unless
-/// with `past_gone` it jumps on from that receiver's centre at its strike.
+/// striking its target alone, traced; the chains save by save ID
+/// (`conductions`), and one ends as soon as its user is gone or
+/// despawning, or its last receiver is, unless with `past_gone` it jumps on
+/// from that receiver's centre at its strike.
 /// It is a [`Payload::Conduct`], for a `nearest` or `random` target, which
 /// the load checks, and a game's code starts one at a receiver with
 /// [`conduct_from`].
@@ -2706,7 +2710,9 @@ pub struct Conducted {
 pub struct Conduction {
     /// The conduction's user.
     pub user: Entity,
-    /// Its last receiver, which its next jump leaves.
+    /// Its last receiver, which its next jump leaves;
+    /// [`Entity::PLACEHOLDER`] once a load found it gone, which a chain
+    /// past a gone receiver jumps on from its kept point.
     pub last: Entity,
     /// The receivers it struck or was started past, in order.
     pub chained: Vec<Entity>,
@@ -2732,9 +2738,130 @@ struct Chain {
 }
 
 /// The chains in flight, a World resource the first conduction inserts,
-/// which [`ABILITY_TICK`] jumps once each step; not saved.
+/// which [`ABILITY_TICK`] jumps once each step, saved as `conductions`
+/// ([`chains_saved`]).
 #[derive(Debug, Default)]
 struct Chains(Vec<Chain>);
+
+/// A chain in a save: its last receiver's centre at its strike, its
+/// damage, its jumps left and its conduction's data form; its user, last
+/// receiver and chained receivers by reference.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChainSave {
+    from: [f32; 2],
+    damage: f32,
+    jumps: u32,
+    conduct: ConductDef,
+}
+
+/// The chains in a save, in their order.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChainsSave {
+    chains: Vec<ChainSave>,
+}
+
+impl From<&Chains> for ChainsSave {
+    fn from(chains: &Chains) -> Self {
+        Self {
+            chains: chains
+                .0
+                .iter()
+                .map(|chain| ChainSave {
+                    from: chain.from.to_array(),
+                    damage: chain.damage,
+                    jumps: chain.jumps,
+                    conduct: ConductDef::from(chain.conduct.clone()),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<ChainsSave> for Chains {
+    /// Each chain's references the placeholder until the load's reference
+    /// pass sets them; a damage that is not finite and at least 0 reads as
+    /// 0, a point that is not finite as the origin.
+    fn from(saved: ChainsSave) -> Self {
+        Self(
+            saved
+                .chains
+                .into_iter()
+                .map(|chain| Chain {
+                    user: Entity::PLACEHOLDER,
+                    last: Entity::PLACEHOLDER,
+                    chained: Vec::new(),
+                    from: Some(Vec2::from_array(chain.from))
+                        .filter(|from| from.is_finite())
+                        .unwrap_or_default(),
+                    damage: if chain.damage.is_finite() {
+                        chain.damage.max(0.0)
+                    } else {
+                        0.0
+                    },
+                    jumps: chain.jumps,
+                    conduct: Conduct::from(chain.conduct),
+                })
+                .collect(),
+        )
+    }
+}
+
+/// Each chain's user, last receiver and chained receivers, by key, in
+/// order.
+fn chain_refs(chains: &Chains) -> impl Iterator<Item = (String, Entity)> + '_ {
+    chains.0.iter().enumerate().flat_map(|(index, chain)| {
+        [
+            (format!("chains.{index}.user"), chain.user),
+            (format!("chains.{index}.last"), chain.last),
+        ]
+        .into_iter()
+        .chain(
+            chain
+                .chained
+                .iter()
+                .map(move |&receiver| (format!("chains.{index}.chained"), receiver)),
+        )
+    })
+}
+
+/// The chains, saved so a conduction in flight jumps on after a load: each
+/// one's user, last receiver and chained receivers by save ID, its kept
+/// point, its damage, its jumps left and its conduction, in their order.
+/// The load drops a chain whose user did not load, a chained receiver that
+/// did not load from its chain's list, and a chain whose last receiver did
+/// not load unless it jumps past a gone one (`past_gone`), from its kept
+/// point; at most [`MAX_CHAINS`] load. A World that never conducted saves
+/// none.
+fn chains_saved() -> SaveOptions<Chains> {
+    SaveOptions::<Chains>::form::<ChainsSave>().refs(RefCodec {
+        save: |chains, out: &mut RefWriter<'_>| {
+            for (key, entity) in chain_refs(chains) {
+                out.put(&key, entity);
+            }
+        },
+        load: |chains, refs: &RefReader<'_>| {
+            let saved = std::mem::take(&mut chains.0);
+            for (index, mut chain) in saved.into_iter().enumerate() {
+                let Some(user) = refs.first(&format!("chains.{index}.user")) else {
+                    continue;
+                };
+                chain.user = user;
+                chain.chained = refs.get(&format!("chains.{index}.chained")).to_vec();
+                match refs.first(&format!("chains.{index}.last")) {
+                    Some(last) => chain.last = last,
+                    None if chain.conduct.past_gone => {}
+                    None => continue,
+                }
+                if chain.jumps > 0 && chains.0.len() < MAX_CHAINS {
+                    chains.0.push(chain);
+                }
+            }
+        },
+        keys: |chains| chain_refs(chains).map(|(key, _)| key).collect(),
+    })
+}
 
 /// Whether a strike reaches `receiver` with a request: it holds
 /// [`Health`], alive, and is not being despawned.
@@ -3725,8 +3852,8 @@ impl Ticker {
 }
 
 /// Registers the `abilities` data kind and scene component,
-/// `EventQueue<AbilityUsed>`, `EventQueue<Conducted>` and [`ABILITY_TICK`]
-/// in the intent phase after
+/// `EventQueue<AbilityUsed>`, `EventQueue<Conducted>`, the saved chains
+/// (`conductions`) and [`ABILITY_TICK`] in the intent phase after
 /// [`ACTION_INPUT`](crate::ACTION_INPUT) and [`AIM`](crate::AIM) when they
 /// are registered, so a trigger reads the step's intent and aim.
 ///
@@ -3757,6 +3884,7 @@ impl Plugin for AbilitiesPlugin {
         describe_skills(world, SKILL, SKILL_BASES, SKILL_LINE);
         world.register_event::<AbilityUsed>();
         world.register_event::<Conducted>();
+        world.register_saved_resource_with(CONDUCTIONS, chains_saved());
         world.register_data_kind_with_assets(ABILITIES, |ability: &Ability, world: &World| {
             ability.check(world)
         });
