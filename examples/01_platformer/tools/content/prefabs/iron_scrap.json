@@ -7,6 +7,9 @@
     "iron_scrap": {
       "variant": 0
     },
+    "tags": [
+      "conductive"
+    ],
     "pull": {
       "share": 1
     },

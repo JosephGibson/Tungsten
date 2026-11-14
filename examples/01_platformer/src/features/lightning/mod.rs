@@ -2,12 +2,15 @@
 //! nearest conductive thing within reach of it, the rod; it stops at the
 //! first solid on its way down, so under a ceiling it strikes the ceiling.
 //! Its shock hurts the targets where it lands, the caster spared, and it
-//! lights nothing. Then conduction, one chain a strike, decided a jump at a
-//! time through the saved cascade queue: from the rod, or from the struck
-//! conductive thing nearest the strike, to the nearest conductive thing not
-//! yet in the chain, each jump weaker, at most six, and none past a frozen
-//! receiver or one that takes no shock. Conductive things are iron, its
-//! scraps, a keg's hoops, every live enemy and the targets tagged
+//! lights nothing. Then conduction, one chain a strike, on the kit's
+//! conduction (`kit::conduct_from`, its chains saved by the kit): from the
+//! rod, or from the struck conductive thing nearest the strike, one jump a
+//! step to the nearest conductive thing not yet in the chain, each jump
+//! weaker, at most six, and none past a frozen receiver or one that takes
+//! no shock, which take their jump; past a receiver gone after its strike,
+//! a keg set off, it jumps on from where that receiver was. Conductive
+//! things are iron, its scraps and a keg's hoops, tagged `conductive` by
+//! their prefabs, every live enemy and the live targets tagged
 //! `conductive`; a strike or a jump that reaches a keg sets it off. A
 //! strike says what it met: a body snaps, while the ground and a deck
 //! spark and crackle low, and the ground keeps a scorch that fades.
@@ -18,24 +21,25 @@ pub mod systems;
 
 use glam::{Vec2, Vec3};
 use tungsten::core::{
-    AssetRegistry, BodyKind, Collider, Entity, Light, Position, RigidBody, Schedule, Shape, Sprite,
-    Stage, Transform, Visibility, World, system,
+    AssetRegistry, BodyKind, Collider, Entity, EventCursor, Light, Position, RigidBody, Schedule,
+    Shape, Sprite, Stage, Transform, Visibility, World, system,
 };
-use tungsten::kit::{Blast, Health, Phase, Resist, Tags, blast, ensure_phases};
+use tungsten::kit::{
+    ABILITY_TICK, Blast, Conduct, Health, Phase, Resist, TagFilter, Tags, blast, conduct_from,
+    ensure_phases,
+};
 use tungsten::physics::{SpatialFilter, cast_ray};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{FROZEN, Hit, Kind, SPELL, has_status};
-use crate::features::elements::cascade::{self, Cascades, Entry, Jump};
+use crate::features::combat::{FROZEN, Kind, SPELL};
+use crate::features::elements::cascade::Cascades;
 use crate::features::enemies::{self, armour, components::Enemy};
 use crate::features::level::{WORLD_MAX, WORLD_MIN};
 use crate::features::props::{self, components::Keg};
-use crate::features::run::Run;
-use crate::features::toys::components::{IronBlock, IronScrap};
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, Saved, body_centre, spawn_burst, surface_distance};
-use components::{Arc, Bolt, Scorch, StrikeLight};
+use crate::shared::{SaveId, body_centre, spawn_burst, surface_distance};
+use components::{Bolt, Scorch, StrikeLight};
 
 /// A strike's shock and its reach from where it lands.
 pub const STRIKE_SHOCK: f32 = 40.0;
@@ -45,6 +49,9 @@ pub const STRIKE_REACH: f32 = 40.0;
 pub const JUMP_REACH: f32 = 256.0;
 pub const JUMP_KEEP: f32 = 0.7;
 pub const MAX_JUMPS: u32 = 6;
+/// The tags a conductive thing carries, any one of them: metal's and the
+/// conducting targets' `conductive`, and every enemy's team.
+pub const RECEIVERS: [&str; 2] = ["conductive", "team.enemy"];
 /// A bolt segment's size, and the sideways step each leaves at its
 /// bottom, as the art draws them.
 pub const SEGMENT: Vec2 = Vec2::new(24.0, 64.0);
@@ -69,14 +76,27 @@ pub const SCORCH_Z: i32 = 1;
 pub const SCORCH_SECS: f32 = 5.0;
 pub const SCORCH_CAP: usize = 6;
 
-/// Lightning as a plugin: the presentation's ages in the present phase
+/// Lightning as a plugin: its conduction, built once; each jump's arc,
+/// crackle and keg in the intent phase after the kit's ability tick,
+/// which jumps the chains; the presentation's ages in the present phase
 /// and the bolts, arcs and veil drawn after the sprites.
 pub struct LightningPlugin;
 
 impl Plugin for LightningPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.resource_mut::<Extracts>().add_sprites(draw::bolts);
+        world.insert_resource(Rule(conduction()));
         ensure_phases(schedule);
+        let mut cursor = EventCursor::new();
+        schedule.add(
+            Stage::FixedUpdate,
+            Phase::Intent.join(
+                system("lightning_jumps", move |world: &mut World| {
+                    systems::jumps(world, &mut cursor);
+                })
+                .after(ABILITY_TICK),
+            ),
+        );
         schedule.add(
             Stage::PostUpdate,
             Phase::Present.join(system("lightning_age", systems::age)),
@@ -90,35 +110,22 @@ fn gap(world: &World, at: Vec2, entity: Entity) -> Option<f32> {
     Some(surface_distance(at, body_centre(world, entity)?, shape))
 }
 
-/// Whether `entity` conducts: iron, its scraps, a keg's hoops, a live
-/// enemy, or a live target tagged `conductive` (Q48).
+/// Whether `entity` conducts: its tags pass the conduction's receivers,
+/// any of [`RECEIVERS`], iron, its scraps and a keg's hoops by their
+/// prefabs' `conductive`, every enemy by its team, the dummy and the
+/// beetle by theirs, and its health, if it has any, alive (Q48).
 #[must_use]
 pub fn conductive(world: &World, entity: Entity) -> bool {
-    conducts(
-        world.has::<IronBlock>(entity)
-            || world.has::<IronScrap>(entity)
-            || world.has::<Keg>(entity),
-        world.has::<Enemy>(entity),
-        world.get::<Health>(entity),
-        world.get::<Tags>(entity),
-    )
+    world
+        .get::<Tags>(entity)
+        .is_some_and(|tags| RECEIVERS.iter().any(|tag| tags.has(tag)))
+        && world
+            .get::<Health>(entity)
+            .is_none_or(|health| !health.is_dead())
 }
 
-/// Whether a thing conducts: metal, or a live enemy or thing tagged
-/// `conductive`.
-fn conducts(iron: bool, enemy: bool, health: Option<&Health>, tags: Option<&Tags>) -> bool {
-    iron || (health.is_some_and(|health| !health.is_dead())
-        && (enemy || tags.is_some_and(|tags| tags.has("conductive"))))
-}
-
-/// Whether `entity` is frozen: a frozen body, or a target carrying frozen.
-#[must_use]
-pub fn frozen(world: &World, entity: Entity) -> bool {
-    has_status(world, entity, FROZEN)
-}
-
-/// Whether `entity` takes no shock: its resistance to it 0, which stops a
-/// chain where it reaches it (Q48).
+/// Whether `entity` takes no shock: its resistance to it 0, which ends a
+/// chain where it reaches it, after its jump (Q48).
 #[must_use]
 pub fn shock_proof(world: &World, entity: Entity) -> bool {
     world
@@ -126,48 +133,29 @@ pub fn shock_proof(world: &World, entity: Entity) -> bool {
         .is_some_and(|resist| resist.factor(&Tags::new([Kind::Shock.tag()])) == 0.0)
 }
 
-/// The conductive things with save IDs, their centres, but `spared`.
-fn conductors(world: &World, spared: Option<Entity>) -> Vec<(Entity, Vec2, u64)> {
-    // From the query's columns, not a lookup each (P6).
-    world
-        .query::<(
-            Entity,
-            &Saved,
-            Option<&IronBlock>,
-            Option<&IronScrap>,
-            Option<&Keg>,
-            Option<&Enemy>,
-            Option<&Health>,
-            Option<&Tags>,
-        )>()
-        .filter(|&(entity, _, iron, scrap, keg, enemy, health, tags)| {
-            let metal = iron.is_some() || scrap.is_some() || keg.is_some();
-            Some(entity) != spared && conducts(metal, enemy.is_some(), health, tags)
-        })
-        .filter_map(|(entity, id, ..)| Some((entity, body_centre(world, entity)?, id.id().0)))
-        .collect()
+/// The lightning's conduction on the kit: [`STRIKE_SHOCK`] of shock, its
+/// jumps [`JUMP_REACH`] centre to centre, each keeping [`JUMP_KEEP`], at
+/// most [`MAX_JUMPS`], to the things any of [`RECEIVERS`] tags; a frozen
+/// receiver or one that takes no shock takes its jump and ends the chain;
+/// each jump a spell's hit through the `armour` preparation, its crit the
+/// caster's; and past a receiver gone after its strike it jumps on from
+/// where that receiver was.
+#[must_use]
+pub fn conduction() -> Conduct {
+    Conduct::new(STRIKE_SHOCK, JUMP_REACH, TagFilter::new().any(RECEIVERS))
+        .with_tags([Kind::Shock.tag()])
+        .with_keep(JUMP_KEEP)
+        .with_jumps(MAX_JUMPS)
+        .with_stop(TagFilter::new().any([FROZEN]))
+        .with_context([SPELL])
+        .with_prepare(armour::PREPARE)
+        .with_stop_struck(true)
+        .with_past_gone(true)
 }
 
-/// The conductive thing nearest `at` within `reach`, centre to centre, not
-/// one of `members` by save ID nor `spared`; ties to the lower save ID.
-#[must_use]
-pub fn nearest_conductor(
-    world: &World,
-    at: Vec2,
-    reach: f32,
-    members: &[u64],
-    spared: Option<Entity>,
-) -> Option<(Entity, Vec2)> {
-    conductors(world, spared)
-        .into_iter()
-        .filter(|(_, centre, id)| centre.distance(at) <= reach && !members.contains(id))
-        .min_by(|a, b| {
-            a.1.distance(at)
-                .total_cmp(&b.1.distance(at))
-                .then(a.2.cmp(&b.2))
-        })
-        .map(|(entity, centre, _)| (entity, centre))
-}
+/// The lightning's [`conduction`], built once: a World resource the plugin
+/// inserts, never saved.
+struct Rule(Conduct);
 
 /// What a bolt met where it landed (Q7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -263,8 +251,10 @@ pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Landing {
 /// kit's blast of [`STRIKE_SHOCK`] flat within [`STRIKE_REACH`] of where it
 /// lands, a spell's hit queued for the step's resolve, hurts the targets
 /// there, `caster` spared, and it sets off the kegs there, credited to
-/// `caster`; and one chain of conduction starts, its first jump due the
-/// step after. Where it landed.
+/// `caster`; and one chain of the kit's conduction starts at the struck
+/// conductive thing nearest where it landed (ties to the lower save ID),
+/// past every struck one, unless that one is frozen or takes no shock, its
+/// first jump at the next step's ability tick. Where it landed.
 pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
     let Landing { at: landing, met } = bolt_end(world, aim, Some(caster));
     let mut struck: Vec<(Option<SaveId>, Entity)> = world
@@ -302,7 +292,7 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
         .filter_map(|&(id, entity)| Some((entity, id?.0)))
         .collect();
     // The chain starts at the struck conductor nearest where the bolt
-    // landed.
+    // landed, which the kit refuses when it is frozen or takes no shock.
     let start = conductors
         .iter()
         .filter_map(|&(entity, id)| Some((entity, body_centre(world, entity)?, id)))
@@ -312,25 +302,13 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
                 .then(a.2.cmp(&b.2))
         })
         .map(|(entity, ..)| entity);
-    if let Some(start) = start.filter(|&start| !frozen(world, start) && !shock_proof(world, start))
-    {
-        let members: Vec<u64> = conductors.iter().map(|&(_, id)| id).collect();
-        let from = body_centre(world, start).unwrap_or(landing);
-        if let Some((next, _)) = nearest_conductor(world, from, JUMP_REACH, &members, Some(caster))
-        {
-            cascade::queue_jump(
-                world,
-                Jump {
-                    receiver: next,
-                    from,
-                    strength: STRIKE_SHOCK * JUMP_KEEP,
-                    strike: number,
-                    jumps: 1,
-                    chain: members,
-                },
-                2,
-            );
-        }
+    if let Some(start) = start {
+        let chained: Vec<Entity> = conductors.iter().map(|&(entity, _)| entity).collect();
+        let rule = world
+            .remove_resource::<Rule>()
+            .unwrap_or_else(|| Rule(conduction()));
+        conduct_from(world, caster, start, &rule.0, &chained);
+        world.insert_resource(rule);
     }
     show(world, landing, met, number);
     landing
@@ -401,73 +379,4 @@ fn scorch(world: &mut World, landing: Vec2) {
         Scorch { age: 0.0 },
         SceneEntity { state_id: GAMEPLAY },
     ));
-}
-
-/// A jump's run, from its cascade entry: its arc from `from` to `at` and a
-/// crackle; its strength in shock to its receiver when it lives, and a keg
-/// set off, credited as the entry is; then, unless the receiver is frozen
-/// on arrival, takes no shock ([`shock_proof`]), conducts no more or the
-/// chain has made [`MAX_JUMPS`], the next jump queued from it, due the next
-/// step.
-pub fn conduct(
-    world: &mut World,
-    receiver: Option<Entity>,
-    at: Vec2,
-    from: Vec2,
-    source: Option<Entity>,
-    entry: &Entry,
-) {
-    let strike = entry.strike.unwrap_or(0);
-    world.spawn_with((
-        Arc {
-            from,
-            to: at,
-            seed: strike * 8 + u64::from(entry.jumps),
-            age: 0.0,
-            frames: 0,
-        },
-        SceneEntity { state_id: GAMEPLAY },
-    ));
-    audio::play(world, Sound::Crackled, at);
-    let Some(receiver) = receiver else {
-        return;
-    };
-    if world.get::<Health>(receiver).is_some_and(|h| !h.is_dead()) {
-        let mut hit = Hit::new(receiver, [(Kind::Shock, entry.strength)])
-            .at(at)
-            .spell();
-        if let Some(source) = source {
-            hit = hit.from(source);
-        }
-        hit.queue(world);
-    }
-    if world.has::<Keg>(receiver) {
-        props::set_off(world, receiver, entry.source);
-    }
-    if frozen(world, receiver)
-        || shock_proof(world, receiver)
-        || !conductive(world, receiver)
-        || entry.jumps >= MAX_JUMPS
-    {
-        return;
-    }
-    let mut chain = entry.chain.clone();
-    if let Some(id) = crate::shared::save_id(world, receiver) {
-        chain.push(id.0);
-    }
-    let player = world.get_resource::<Run>().map(|run| run.player);
-    if let Some((next, _)) = nearest_conductor(world, at, JUMP_REACH, &chain, player) {
-        cascade::queue_jump(
-            world,
-            Jump {
-                receiver: next,
-                from: at,
-                strength: entry.strength * JUMP_KEEP,
-                strike,
-                jumps: entry.jumps + 1,
-                chain,
-            },
-            1,
-        );
-    }
 }

@@ -5,6 +5,9 @@
   },
   "components": {
     "keg": null,
+    "tags": [
+      "conductive"
+    ],
     "pull": {
       "share": 0.4
     },

@@ -1,10 +1,8 @@
-//! The cascades: a saved queue of the lightning's conduction, which
-//! `cascade_run` works through in the overlap phase, after 01's contact
-//! systems and before the kit's resolve, so every hit an entry deals takes
-//! the step's resolve. A jump is a strike's conduction from one conductive
-//! thing to the next. Each waits for its run: one queued while a run
-//! executes is due on the next, so a chain rolls one ring a step whatever
-//! the frame rate.
+//! The cascades: a saved resource of the run counter, the lightning
+//! strikes' counter and the heated bodies' points, which `cascade_run`
+//! counts and clears in the overlap phase, after 01's contact systems and
+//! before the kit's resolve. The lightning's conduction is the kit's
+//! (`kit::conduct_from`, 7.13d), its chains saved by the kit.
 //!
 //! The element endings and the kegs are chemistry's (7.13a): thermal shock
 //! (`heat` on a frozen body, `damage.fire` on a frozen target), shatter
@@ -14,17 +12,13 @@
 //! frozen, and `kindle`, run `light`; a keg's or a bomb's fuse running out
 //! (its `lit` status's end) and a `jolt` run `detonate`. A
 //! handler's stimuli go to chemistry's next run, so a chain still rolls a
-//! ring a step, through the kit's queue, its cap 01's [`CASCADE_CAP`].
+//! ring a step, through the kit's queue, its cap 01's
+//! [`CASCADE_CAP`](super::CASCADE_CAP) and its bound
+//! [`CASCADE_BOUND`](super::CASCADE_BOUND).
 //!
-//! A run takes at most [`CASCADE_CAP`] due jumps, by their due run, then
-//! their distance from their chain's origin, then their target's save ID.
-//! A jump waits once a strike's target, so the queue holds at most six
-//! jumps a strike; past [`CASCADE_BOUND`] an add is dropped and counted.
-//!
-//! Each jump credits a save ID, the run's player's, which a run resolves
-//! to the player. A handler credits its stimulus's live credit: the
-//! player, or a live target, so a goblin's bomb that shocks a frozen body
-//! still credits the goblin; a gone lighter credits none.
+//! A handler credits its stimulus's live credit: the player, or a live
+//! target, so a goblin's bomb that shocks a frozen body still credits the
+//! goblin; a gone lighter credits none.
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry as Slot;
@@ -40,8 +34,8 @@ use tungsten::physics::wake;
 
 use super::systems::{ice_pulse, ignite, shatter_iron};
 use super::{
-    BALL_BLAST, BLAST_PUSH, CASCADE_BOUND, CASCADE_CAP, COLD, CRACK, HEAT, IRON_BLAST, SCRAP_BLAST,
-    SMALL_STEAM_REACH, STEAM_PART, STEAM_PUSH, STEAM_REACH, TARGET_BLAST,
+    BALL_BLAST, BLAST_PUSH, COLD, CRACK, HEAT, IRON_BLAST, SCRAP_BLAST, SMALL_STEAM_REACH,
+    STEAM_PART, STEAM_PUSH, STEAM_REACH, TARGET_BLAST,
 };
 use super::{is_burning, is_frozen};
 use crate::features::audio::{self, components::Sound};
@@ -61,55 +55,14 @@ const CELL: f32 = 64.0;
 /// The largest body's half side, an iron block's, which a bin query adds.
 const LARGEST_HALF: f32 = 60.0;
 
-/// What a cascade does when it runs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CascadeKind {
-    /// A strike's conduction: its strength in shock to its receiver, then,
-    /// unless the receiver is frozen or the chain has made its last jump,
-    /// the next jump queued to the nearest conductive thing not yet in the
-    /// chain.
-    Jump,
-}
-
-/// One waiting cascade: its kind, the thing it happens to by save ID (a
-/// gone one's burst still runs at its point), where it was queued, where
-/// its chain began, the save ID it credits, its reach (a jump's shock) and
-/// the run from which it may run; a jump's also its strike's number, the
-/// jumps its chain has made and the chain's members by save ID.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Entry {
-    pub kind: CascadeKind,
-    pub target: Option<u64>,
-    pub at: [f32; 2],
-    pub origin: [f32; 2],
-    pub source: Option<u64>,
-    pub strength: f32,
-    pub due: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub strike: Option<u64>,
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub jumps: u32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub chain: Vec<u64>,
-}
-
-fn is_zero(jumps: &u32) -> bool {
-    *jumps == 0
-}
-
-/// The queue, a World resource a run's start inserts and a save holds
-/// whole: the run counter, the lightning strikes' counter and the entries.
+/// The cascades, a World resource a run's start inserts and a save holds:
+/// the run counter and the lightning strikes' counter, which picks a
+/// bolt's pieces.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cascades {
     pub step: u64,
     pub strike: u64,
-    pub entries: Vec<Entry>,
-    /// Adds dropped past the bound: diagnostics, never saved.
-    #[serde(skip)]
-    pub dropped: u64,
     /// The targets this step's steam bursts hit, which a dummy's end reads:
     /// the step's, never saved.
     #[serde(skip)]
@@ -136,14 +89,13 @@ pub struct Cascades {
     pub heat_loaded: Vec<Vec2>,
 }
 
-/// [`Cascades`]' saved form: its counters, its entries and each heated
-/// body's point, in the order its heat came.
+/// [`Cascades`]' saved form: its counters and each heated body's point, in
+/// the order its heat came.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CascadesForm {
     pub step: u64,
     pub strike: u64,
-    pub entries: Vec<Entry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub heat: Vec<[f32; 2]>,
 }
@@ -166,7 +118,6 @@ impl From<&Cascades> for CascadesForm {
         Self {
             step: cascades.step,
             strike: cascades.strike,
-            entries: cascades.entries.clone(),
             heat: heat_order(cascades)
                 .into_iter()
                 .map(|(_, from)| from.to_array())
@@ -180,7 +131,6 @@ impl From<CascadesForm> for Cascades {
         Self {
             step: form.step,
             strike: form.strike,
-            entries: form.entries,
             heat_loaded: form.heat.into_iter().map(Vec2::from).collect(),
             ..Self::default()
         }
@@ -201,7 +151,6 @@ pub fn cascades_saved(world: &World, _: Option<Entity>, cascades: &Cascades) -> 
     Some(Cascades {
         step: cascades.step,
         strike: cascades.strike,
-        entries: cascades.entries.clone(),
         heat_from: cascades
             .heat_from
             .iter()
@@ -261,60 +210,6 @@ pub fn player_credit(world: &World) -> Option<u64> {
         .map(|id| id.0)
 }
 
-/// One jump of a strike's conduction to queue: its receiver, where it
-/// leaves from, its shock, the strike's number, the jumps made with it and
-/// the chain's members by save ID.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Jump {
-    pub receiver: Entity,
-    pub from: Vec2,
-    pub strength: f32,
-    pub strike: u64,
-    pub jumps: u32,
-    pub chain: Vec<u64>,
-}
-
-/// Queues `jump`, due `runs` runs after the last counted, crediting the run's
-/// player: 1 from a run or after it, the next step's; 2 from before the
-/// step's run, so a strike's first jump waits for the next step. False when
-/// its strike's jump to the receiver waits already, or past the bound.
-pub fn queue_jump(world: &mut World, jump: Jump, runs: u64) -> bool {
-    let Some(target) = crate::shared::save_id(world, jump.receiver).map(|id| id.0) else {
-        return false;
-    };
-    let at = body_centre(world, jump.receiver).unwrap_or(jump.from);
-    let source = player_credit(world);
-    let Some(cascades) = world.get_resource_mut::<Cascades>() else {
-        return false;
-    };
-    let waiting = cascades.entries.iter().any(|entry| {
-        entry.kind == CascadeKind::Jump
-            && entry.strike == Some(jump.strike)
-            && entry.target == Some(target)
-    });
-    if waiting {
-        return false;
-    }
-    if cascades.entries.len() >= CASCADE_BOUND {
-        cascades.dropped += 1;
-        return false;
-    }
-    let due = cascades.step + runs.max(1);
-    cascades.entries.push(Entry {
-        kind: CascadeKind::Jump,
-        target: Some(target),
-        at: at.to_array(),
-        origin: jump.from.to_array(),
-        source,
-        strength: jump.strength,
-        due,
-        strike: Some(jump.strike),
-        jumps: jump.jumps,
-        chain: jump.chain,
-    });
-    true
-}
-
 /// Sends `heat` to `body` from `from`, credited to `credit`: thermal shock
 /// on a frozen body, a light on the rest ([`light_handler`]), at chemistry's
 /// next run; `from` is kept for a frozen iron's scraps.
@@ -360,7 +255,7 @@ fn with_bin(world: &mut World, then: impl FnOnce(&mut World, &Bin)) {
         .0
         .take()
         .filter(|(built, _)| *built == step);
-    let bin = cached.map_or_else(|| Bin::build(world, &[]), |(_, bin)| bin);
+    let bin = cached.map_or_else(|| Bin::build(world), |(_, bin)| bin);
     then(world, &bin);
     world.resource_mut::<HandlerBin>().0 = Some((step, bin));
 }
@@ -516,23 +411,8 @@ pub fn thermal_shock(world: &mut World, thing: Entity, from: Vec2) {
     heat(world, thing, from, credit);
 }
 
-/// The order entries run in: their due run, their distance from their
-/// chain's origin, their target's save ID.
-fn order(a: &Entry, b: &Entry) -> std::cmp::Ordering {
-    let distance = |entry: &Entry| Vec2::from(entry.at).distance(Vec2::from(entry.origin));
-    a.due
-        .cmp(&b.due)
-        .then(distance(a).total_cmp(&distance(b)))
-        .then(
-            a.target
-                .unwrap_or(u64::MAX)
-                .cmp(&b.target.unwrap_or(u64::MAX)),
-        )
-}
-
-/// `cascade_run`: counts the run, then runs at most [`CASCADE_CAP`] of the
-/// due jumps in order, its bin holding their targets and the targets they
-/// credit; with none due it returns after the count.
+/// `cascade_run`: counts the run and clears the step's lists; with
+/// chemistry's queue empty, the heated bodies' points go.
 pub fn run(world: &mut World) {
     let Some(cascades) = world.get_resource_mut::<Cascades>() else {
         return;
@@ -541,7 +421,6 @@ pub fn run(world: &mut World) {
     cascades.steamed.clear();
     cascades.detonated.clear();
     cascades.reacted.clear();
-    let step = cascades.step;
     let idle = world
         .get_resource::<Chemistry>()
         .is_none_or(|chemistry| chemistry.pending() == 0);
@@ -551,27 +430,6 @@ pub fn run(world: &mut World) {
     if idle && !cascades.heat_from.is_empty() {
         cascades.heat_from.clear();
         cascades.heat_next = 0;
-    }
-    if !cascades.entries.iter().any(|entry| entry.due <= step) {
-        return;
-    }
-    let (mut due, waiting): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut cascades.entries)
-        .into_iter()
-        .partition(|entry| entry.due <= step);
-    due.sort_by(order);
-    let later = due.split_off(CASCADE_CAP.min(due.len()));
-    cascades.entries = waiting;
-    cascades.entries.extend(later);
-    let mut wanted: Vec<u64> = due
-        .iter()
-        .flat_map(|entry| [entry.target, entry.source])
-        .flatten()
-        .collect();
-    wanted.sort_unstable();
-    wanted.dedup();
-    let bin = Bin::build(world, &wanted);
-    for entry in &due {
-        execute(world, &bin, entry);
     }
 }
 
@@ -601,12 +459,10 @@ struct Item {
     what: What,
 }
 
-/// A run's bodies and targets, binned once by their centres' cells, and
-/// the due entries' targets by save ID.
+/// A step's bodies and targets, binned once by their centres' cells.
 struct Bin {
     items: Vec<Item>,
     cells: HashMap<(i32, i32), Vec<usize>>,
-    ids: HashMap<u64, Entity>,
 }
 
 fn cell_of(at: Vec2) -> (i32, i32) {
@@ -614,11 +470,10 @@ fn cell_of(at: Vec2) -> (i32, i32) {
 }
 
 impl Bin {
-    /// The step's balls, iron, scraps, crates, kegs and live targets, and
-    /// the entities of the save IDs `wanted` (sorted), the due entries'
-    /// targets and sources (P6). The balls and iron come from the query's
-    /// columns; the few other rows are looked up.
-    fn build(world: &World, wanted: &[u64]) -> Self {
+    /// The step's balls, iron, scraps, crates, kegs and live targets (P6).
+    /// The balls and iron come from the query's columns; the few other rows
+    /// are looked up.
+    fn build(world: &World) -> Self {
         let mut items = Vec::new();
         for (entity, at, collider, id, small, ball, iron, scrap) in world.query::<(
             Entity,
@@ -665,14 +520,10 @@ impl Bin {
             });
         }
         let mut cells: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
-        let mut ids = HashMap::with_capacity(wanted.len());
         for (index, item) in items.iter().enumerate() {
             cells.entry(cell_of(item.centre)).or_default().push(index);
-            if wanted.binary_search(&item.id).is_ok() {
-                ids.insert(item.id, item.entity);
-            }
         }
-        Self { items, cells, ids }
+        Self { items, cells }
     }
 
     /// The live things within `reach` of `at`, by surface distance, in
@@ -697,41 +548,6 @@ impl Bin {
         }
         found.sort_by_key(|(item, _)| item.id);
         found
-    }
-}
-
-/// The entity of the save ID `id` the run credits: the run's player, or a
-/// live target the bin holds.
-fn credited(world: &World, bin: &Bin, id: Option<u64>) -> Option<Entity> {
-    let id = id?;
-    if let Some(player) = world.get_resource::<Run>().map(|run| run.player)
-        && crate::shared::save_id(world, player).map(|own| own.0) == Some(id)
-    {
-        return Some(player);
-    }
-    bin.ids.get(&id).copied().filter(|&entity| {
-        world.is_alive(entity)
-            && world
-                .get::<Health>(entity)
-                .is_some_and(|health| !health.is_dead())
-    })
-}
-
-/// Runs one entry.
-fn execute(world: &mut World, bin: &Bin, entry: &Entry) {
-    let target = entry
-        .target
-        .and_then(|id| bin.ids.get(&id).copied())
-        .filter(|&entity| world.is_alive(entity));
-    let at = target
-        .and_then(|entity| body_centre(world, entity))
-        .unwrap_or_else(|| Vec2::from(entry.at));
-    let origin = Vec2::from(entry.origin);
-    let source = credited(world, bin, entry.source);
-    match entry.kind {
-        CascadeKind::Jump => {
-            crate::features::lightning::conduct(world, target, at, origin, source, entry);
-        }
     }
 }
 

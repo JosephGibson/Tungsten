@@ -7,7 +7,7 @@
 //! relights nothing; and fire and cold in one step leave one state.
 
 use example_01_platformer::features::combat::{Hit, Kind};
-use example_01_platformer::features::elements::cascade::{self, Cascades};
+use example_01_platformer::features::elements::cascade;
 use example_01_platformer::features::elements::{
     self, CASCADE_BOUND, CASCADE_CAP, COLD, FROZEN_SECS, burn_left, is_frozen,
 };
@@ -24,7 +24,8 @@ use tungsten::core::{
     RigidBody, Transform,
 };
 use tungsten::kit::{
-    Chemistry, ContactDamage, DamageRequest, DamagedPart, Effect, KitRng, stimulate,
+    Chemistry, Conduction, ContactDamage, DamageRequest, DamagedPart, Effect, KitRng, conductions,
+    stimulate,
 };
 use tungsten::testing::UiHarness;
 
@@ -67,8 +68,9 @@ fn sky() -> (UiHarness, Entity) {
     (harness, player)
 }
 
-fn entries(harness: &UiHarness) -> Vec<cascade::Entry> {
-    harness.world().resource::<Cascades>().entries.clone()
+/// The kit's chains in flight.
+fn entries(harness: &UiHarness) -> Vec<Conduction> {
+    conductions(harness.world())
 }
 
 /// The entries chemistry's queue holds, the endings among them.

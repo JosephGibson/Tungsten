@@ -28,7 +28,7 @@ use std::time::Instant;
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::dummy::components::Dummy;
 use example_01_platformer::features::elements;
-use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
+use example_01_platformer::features::elements::cascade::{self, Cascades};
 use example_01_platformer::features::elements::components::{ColdFace, Flame};
 use example_01_platformer::features::enemies::components::{
     Enemy, EnemyKind, EnemyState, Holding, Throw, Throws,
@@ -68,7 +68,7 @@ use tungsten::core::{
 use tungsten::kit::{
     Abilities, Chemistry, ContactDamage, ContactTouch, DamageRequest, Damaged, Effects, Health,
     Hitbox, Modifier, Oscillator, PathFollower, Pickup, Projectile, Shield, StateMachine, Stats,
-    Tags, carrier_of,
+    Tags, carrier_of, conductions,
 };
 use tungsten::testing::UiHarness;
 
@@ -1224,32 +1224,23 @@ fn a_save_during_casting_loads_with_the_mana_still_paused() {
 
 /// What two runs are compared by: each saved entity's point by save ID,
 /// what burns and what is frozen, balls and iron alike, each dummy's
-/// statuses, the cascades waiting, and the player's health, mana and
+/// statuses, the chains in flight, and the player's health, mana and
 /// cooldowns.
 struct Outcome {
     points: BTreeMap<u64, (&'static str, Vec2)>,
     burning: BTreeSet<u64>,
     frozen: BTreeSet<u64>,
     statuses: BTreeMap<u64, Vec<String>>,
-    queue: Vec<(CascadeKind, Option<u64>, u64)>,
+    queue: Vec<Waiting>,
     health: f32,
     mana: f32,
     cooldowns: Vec<f32>,
     player: Vec2,
 }
 
-/// The cascades waiting: each one's kind, target and due run, by due run,
-/// then target save ID, as their runs order them past ties in distance.
-fn queue(harness: &UiHarness) -> Vec<(CascadeKind, Option<u64>, u64)> {
-    let mut waiting: Vec<(CascadeKind, Option<u64>, u64)> = harness
-        .world()
-        .resource::<Cascades>()
-        .entries
-        .iter()
-        .map(|entry| (entry.kind, entry.target, entry.due))
-        .collect();
-    waiting.sort_by_key(|&(kind, target, due)| (due, target, kind as u8));
-    waiting
+/// The chains in flight, in their order, by save ID.
+fn queue(harness: &UiHarness) -> Vec<Waiting> {
+    conduction(harness)
 }
 
 /// A frozen pile of `count` small balls on the sky's ground from `x`, 16 px
@@ -2144,27 +2135,24 @@ fn burning_frozen_and_shocked_dummies_load_with_their_sources() {
     assert_eq!(json(&capture(&fresh)), json(&saved));
 }
 
-/// A waiting jump: its receiver, strike, count, chain, due run and
-/// strength.
-type Waiting = (Option<u64>, Option<u64>, u32, Vec<u64>, u64, f32);
+/// A chain in flight: its user, its last receiver and its chained ones by
+/// save ID, its damage and its jumps left.
+type Waiting = (Option<u64>, Option<u64>, Vec<Option<u64>>, f32, u32);
 
-/// The jumps waiting.
+/// The chains in flight.
 fn conduction(harness: &UiHarness) -> Vec<Waiting> {
-    harness
-        .world()
-        .resource::<Cascades>()
-        .entries
-        .iter()
-        .filter(|entry| entry.kind == CascadeKind::Jump)
-        .map(|entry| {
-            let chain = entry.chain.clone();
+    let world = harness.world();
+    let id = |entity| example_01_platformer::shared::save_id(world, entity).map(|id| id.0);
+    conductions(world)
+        .into_iter()
+        .map(|chain| {
+            let chained = chain.chained.iter().map(|&entity| id(entity)).collect();
             (
-                entry.target,
-                entry.strike,
-                entry.jumps,
-                chain,
-                entry.due,
-                entry.strength,
+                id(chain.user),
+                id(chain.last),
+                chained,
+                chain.damage,
+                chain.jumps,
             )
         })
         .collect()
@@ -2182,7 +2170,7 @@ fn a_save_mid_conduction_resumes_the_chain() {
     lightning::strike(harness.world_mut(), player, first);
     harness.step(2);
     let saved = capture(&harness);
-    assert_eq!(conduction(&harness).len(), 1, "a jump waits");
+    assert_eq!(conduction(&harness).len(), 1, "a chain in flight");
     let mut fresh = super::harness();
     load(&mut fresh, saved.clone());
     assert_eq!(json(&capture(&fresh)), json(&saved), "the chain whole");
@@ -2200,6 +2188,103 @@ fn a_save_mid_conduction_resumes_the_chain() {
         );
     }
     assert!(conduction(&fresh).is_empty(), "the line's end");
+}
+
+#[test]
+fn an_older_saves_jumps_are_dropped_and_its_metal_conducts() {
+    let dir = user_folder("conduction-33");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let player = player_entity(&harness);
+    scaffold(&mut harness);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.step(1);
+    let line: Vec<u64> = (0..4)
+        .map(|i| {
+            let at = Vec2::new(800.0 + 200.0 * i as f32, TOP - IRON_HALF.y);
+            let iron = toys::place_iron(harness.world_mut(), at);
+            id_of(&harness, iron)
+        })
+        .collect();
+    harness.step(2);
+    // Schema 33's shape: iron, scraps and kegs without their prefabs'
+    // `conductive`, a jump in the cascades' queue, and no saved chains.
+    let mut older = json(&capture(&harness));
+    let mut stripped = 0;
+    let mut stack = vec![&mut older["world"]];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                let metal = object
+                    .get("prefab")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|prefab| ["iron_block", "iron_scrap", "keg"].contains(&prefab));
+                if metal
+                    && let Some(serde_json::Value::Object(components)) =
+                        object.get_mut("components")
+                {
+                    assert_eq!(
+                        components.remove("tags"),
+                        Some(serde_json::json!(["conductive"]))
+                    );
+                    stripped += 1;
+                }
+                stack.extend(object.values_mut());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter_mut()),
+            _ => {}
+        }
+    }
+    assert!(
+        stripped > line.len(),
+        "the line's records and the map's metal"
+    );
+    let world = older["world"].as_object_mut().unwrap();
+    assert!(world["resources"].get("conductions").is_none(), "no chain");
+    world["versions"]["resources"]
+        .as_object_mut()
+        .unwrap()
+        .remove("conductions");
+    world["resources"]["cascades"]["entries"] = serde_json::json!([{
+        "kind": "jump", "target": line[1], "at": [1000.0, TOP - IRON_HALF.y],
+        "origin": [800.0, TOP - IRON_HALF.y], "source": id_of(&harness, player),
+        "strength": 28.0, "due": 1, "strike": 1, "jumps": 1, "chain": [line[0]]
+    }]);
+    let stamp = tungsten::core::SaveStamp::new(33, "0.117.0", 1_760_400_000_000);
+    let slots = harness_slots(&harness);
+    slots
+        .save_stamped("slot_1", &older, &stamp)
+        .expect("a schema 33 save is written");
+    let save = slots
+        .load::<SaveGame>("slot_1")
+        .expect("a schema 33 save migrates");
+    load(&mut harness, save);
+    assert!(conduction(&harness).is_empty(), "its jump dropped");
+    let irons: Vec<Entity> = line.iter().map(|&id| by_id(&harness, id)).collect();
+    assert!(
+        irons
+            .iter()
+            .all(|&iron| lightning::conductive(harness.world(), iron)),
+        "its iron conducts"
+    );
+    scaffold(&mut harness);
+    pin_camera(&mut harness, CORNER);
+    harness.world_mut().resource_mut::<Time>().resume();
+    let first = super::body(&harness, irons[0]);
+    let player = player_entity(&harness);
+    lightning::strike(harness.world_mut(), player, first);
+    let mut struck = Vec::new();
+    for _ in 0..10 {
+        harness.step(1);
+        struck.extend(
+            harness
+                .harness()
+                .events::<tungsten::kit::Conducted>()
+                .map(|jump| id_of(&harness, jump.receiver)),
+        );
+    }
+    assert_eq!(struck, line[1..], "down the line");
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 /// The toasts on screen.

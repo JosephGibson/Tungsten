@@ -11,7 +11,6 @@ use std::collections::BTreeSet;
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::{BURNING, has_status};
 use example_01_platformer::features::elements;
-use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades, Entry};
 use example_01_platformer::features::elements::{burn_left, is_frozen};
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
@@ -22,6 +21,7 @@ use example_01_platformer::features::lightning::{
     self, ARC_SECS, JUMP_KEEP, MAX_JUMPS, Met, SCORCH_ANCHOR, SCORCH_CAP, STRIKE_LIGHT,
     STRIKE_SHOCK, draw,
 };
+use example_01_platformer::features::props::{self, components::PropKind};
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::{self, IRON_HALF};
 use example_01_platformer::game::GAMEPLAY;
@@ -31,7 +31,7 @@ use tungsten::core::{
     AssetRegistry, Bundle, CameraController, Collider, Entity, Light, Position, RigidBodyBundle,
     Sprite, TextureHandle, Transform,
 };
-use tungsten::kit::{Health, Resist, StateMachine};
+use tungsten::kit::{Conducted, Damaged, Health, Resist, StateMachine, conductions};
 use tungsten::testing::UiHarness;
 
 use super::combat::{TOP, dummy_at, health};
@@ -81,41 +81,50 @@ fn ids(harness: &UiHarness, entities: &[Entity]) -> Vec<Option<u64>> {
         .collect()
 }
 
-/// The jumps waiting now.
-fn jumps(harness: &UiHarness) -> Vec<Entry> {
+/// A jump of the kit's conduction: its receiver's save ID as it jumped,
+/// and its event.
+type Jump = (Option<u64>, Conducted);
+
+/// The jumps the last frame made.
+fn jumped(harness: &UiHarness) -> Vec<Jump> {
+    let world = harness.world();
     harness
-        .world()
-        .resource::<Cascades>()
-        .entries
-        .iter()
-        .filter(|entry| entry.kind == CascadeKind::Jump)
-        .cloned()
+        .harness()
+        .events::<Conducted>()
+        .map(|jump| {
+            let id = example_01_platformer::shared::save_id(world, jump.receiver);
+            (id.map(|id| id.0), *jump)
+        })
         .collect()
 }
 
-/// Every jump waiting now or queued over the next `frames` frames, each
-/// once, in the order they were queued, and the most that waited at once.
-fn conduction(harness: &mut UiHarness, frames: usize) -> (Vec<Entry>, usize) {
-    let mut seen = jumps(harness);
-    let mut most = seen.len();
+/// Every jump the next `frames` frames make, in the order they were made,
+/// and the most one frame made.
+fn conduction(harness: &mut UiHarness, frames: usize) -> (Vec<Jump>, usize) {
+    let mut seen = Vec::new();
+    let mut most = 0;
     for _ in 0..frames {
         harness.step(1);
-        let waiting = jumps(harness);
-        most = most.max(waiting.len());
-        for jump in waiting {
-            if !seen
-                .iter()
-                .any(|known| known.strike == jump.strike && known.target == jump.target)
-            {
-                seen.push(jump);
-            }
-        }
+        let made = jumped(harness);
+        most = most.max(made.len());
+        seen.extend(made);
     }
     (seen, most)
 }
 
-fn receivers(chain: &[Entry]) -> Vec<Option<u64>> {
-    chain.iter().map(|jump| jump.target).collect()
+fn receivers(chain: &[Jump]) -> Vec<Option<u64>> {
+    chain.iter().map(|&(id, _)| id).collect()
+}
+
+/// The receivers of the one chain in flight, by save ID.
+fn chained(harness: &UiHarness) -> Vec<u64> {
+    let chains = conductions(harness.world());
+    assert_eq!(chains.len(), 1, "one chain");
+    chains[0]
+        .chained
+        .iter()
+        .map(|&entity| id(harness, entity))
+        .collect()
 }
 
 /// Strikes from `player` on `target`'s body centre, between two frames.
@@ -159,9 +168,12 @@ fn a_strike_under_a_ceiling_hits_the_ceiling() {
     let aim = body(&harness, dummy);
     let landing = lightning::strike(harness.world_mut(), player, aim);
     assert_eq!(landing, Vec2::new(aim.x, 684.0), "the ceiling's top");
+    assert!(
+        conductions(harness.world()).is_empty(),
+        "no chain from an unstruck rod"
+    );
     harness.step(4);
     assert_eq!(health(&harness, dummy), 400.0, "unhurt under it");
-    assert!(jumps(&harness).is_empty(), "no chain from an unstruck rod");
     // The map's tiles stop it too: aimed under the ground the courier
     // stands on, it lands on that ground's top or above it.
     let (mut harness, player) = run();
@@ -196,11 +208,10 @@ fn a_bolt_falls_to_the_first_body_under_the_cursor() {
         landing.y > aim.y && landing.y < body(&harness, near).y,
         "past the cursor, on the block: {landing}"
     );
-    let waiting = jumps(&harness);
-    assert_eq!(receivers(&waiting), ids(&harness, &[far]));
-    assert_eq!(waiting[0].chain, [id(&harness, near)]);
-    let step = harness.world().resource::<Cascades>().step;
-    assert_eq!(waiting[0].due, step + 1);
+    assert_eq!(chained(&harness), [id(&harness, near)]);
+    // Its first jump comes the next step, to the far block.
+    harness.step(1);
+    assert_eq!(receivers(&jumped(&harness)), ids(&harness, &[far]));
     // Aimed over open ground, it falls to the ground under the cursor.
     let open = Vec2::new(400.0, TOP - 200.0);
     let landed = lightning::strike(harness.world_mut(), player, open);
@@ -221,17 +232,17 @@ fn conduction_loses_strength_each_jump_and_stops_at_six() {
     );
     assert_eq!(chain.len() as u32, MAX_JUMPS);
     assert_eq!(most, 1, "a jump at a time");
-    for (k, jump) in chain.iter().enumerate() {
-        assert_eq!(jump.jumps, k as u32 + 1);
+    for (k, (_, jump)) in chain.iter().enumerate() {
+        assert_eq!(jump.jump, k as u32 + 1);
         let strength = STRIKE_SHOCK * JUMP_KEEP.powi(k as i32 + 1);
         assert!(
-            (jump.strength - strength).abs() < 1e-3,
+            (jump.damage - strength).abs() < 1e-3,
             "jump {}: {} for {strength}",
             k + 1,
-            jump.strength
+            jump.damage
         );
     }
-    assert!(jumps(&harness).is_empty());
+    assert!(conductions(harness.world()).is_empty());
 }
 
 #[test]
@@ -265,8 +276,6 @@ fn a_receiver_frozen_before_its_jump_ends_the_chain() {
     let line = irons(&mut harness, 4);
     harness.step(2);
     strike_on(&mut harness, player, line[0]);
-    // The jump was decided when it was queued, to a receiver not yet ice.
-    assert_eq!(receivers(&jumps(&harness)), ids(&harness, &line[1..2]));
     elements::freeze_iron(harness.world_mut(), line[1]);
     let (chain, _) = conduction(&mut harness, 10);
     assert_eq!(receivers(&chain), ids(&harness, &line[1..2]));
@@ -287,9 +296,7 @@ fn two_struck_conductors_start_one_chain_of_at_most_six_jumps() {
     harness.step(2);
     strike_on(&mut harness, player, first);
     let members = [id(&harness, first), id(&harness, second)];
-    let waiting = jumps(&harness);
-    assert_eq!(waiting.len(), 1, "one chain");
-    assert_eq!(waiting[0].chain, members, "both struck are its members");
+    assert_eq!(chained(&harness), members, "both struck are its members");
     let (chain, most) = conduction(&mut harness, 20);
     assert_eq!(most, 1, "one path");
     assert_eq!(receivers(&chain), ids(&harness, &line[..6]));
@@ -298,7 +305,7 @@ fn two_struck_conductors_start_one_chain_of_at_most_six_jumps() {
     assert!(
         chain
             .iter()
-            .all(|jump| jump.strike == waiting[0].strike && jump.jumps <= MAX_JUMPS)
+            .all(|(_, jump)| jump.user == player && jump.jump <= MAX_JUMPS)
     );
     assert!(health(&harness, first) < 400.0 && health(&harness, second) < 400.0);
 }
@@ -665,5 +672,105 @@ fn every_enemy_conducts_and_one_that_takes_no_shock_ends_the_chain() {
         !ids(&harness, &[past])
             .iter()
             .any(|id| receivers(&chain).contains(id))
+    );
+}
+
+#[test]
+fn a_frozen_enemy_takes_its_jump_and_ends_the_chain() {
+    // Iron, iron, a frozen goblin and iron, each within a jump of the next:
+    // the goblin takes its jump's shock and passes none on.
+    let (mut harness, player) = sky();
+    let line = irons(&mut harness, 2);
+    let half = kind_body(EnemyKind::Goblin).half.y;
+    let goblin = still_enemy(
+        &mut harness,
+        EnemyKind::Goblin,
+        Vec2::new(1000.0, TOP - half - 0.5),
+    );
+    let past = toys::place_iron(harness.world_mut(), Vec2::new(1200.0, IRON_Y));
+    harness.step(2);
+    super::combat::apply(&mut harness, goblin, "frozen", None);
+    let before = health(&harness, goblin);
+    strike_on(&mut harness, player, line[0]);
+    let (mut chain, mut hits) = (Vec::new(), Vec::new());
+    for _ in 0..10 {
+        harness.step(1);
+        chain.extend(jumped(&harness));
+        hits.extend(
+            harness
+                .harness()
+                .events::<Damaged>()
+                .filter(|hit| hit.entity == goblin)
+                .map(|hit| (hit.amount, hit.source)),
+        );
+    }
+    assert_eq!(
+        receivers(&chain),
+        [Some(id(&harness, line[1])), Some(id(&harness, goblin))],
+        "no jump leaves the goblin"
+    );
+    assert!(chain[1].1.struck, "the frozen goblin struck");
+    assert_eq!(hits.len(), 1, "its jump's shock alone: {hits:?}");
+    let (amount, source) = hits[0];
+    assert!(amount > 0.0 && source == Some(player), "{hits:?}");
+    assert!(
+        (before - health(&harness, goblin) - amount).abs() < 1e-3,
+        "its health fell by the jump's shock"
+    );
+    assert!(conductions(harness.world()).is_empty());
+    let _ = past;
+}
+
+#[test]
+fn a_chain_goes_on_past_a_keg_it_set_off() {
+    // Iron, a keg and iron, each within a jump of the next and the far iron
+    // out of the first's reach: the jump that reaches the keg sets it off,
+    // and the chain goes on from where the keg stood.
+    let (mut harness, player) = sky();
+    let near = toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y));
+    let half = props::half(PropKind::Keg);
+    let keg = props::spawn(
+        harness.world_mut(),
+        PropKind::Keg,
+        Vec2::new(1100.0, TOP - half.y),
+    );
+    let far = toys::place_iron(harness.world_mut(), Vec2::new(1300.0, IRON_Y));
+    harness.step(2);
+    strike_on(&mut harness, player, near);
+    let (chain, _) = conduction(&mut harness, 10);
+    assert!(!harness.world().is_alive(keg), "the jump set the keg off");
+    // By entity: the keg's save ID went with it in its jump's step.
+    assert_eq!(
+        chain
+            .iter()
+            .map(|(_, jump)| jump.receiver)
+            .collect::<Vec<_>>(),
+        [keg, far],
+        "on past the keg to the far iron"
+    );
+}
+
+#[test]
+fn a_receiver_dead_before_its_jump_is_passed_over() {
+    // A rod, a still goblin 100 px on and iron 250 px on: the goblin, the
+    // nearer, dies after the strike and before the first jump, which
+    // strikes the iron instead (Q13).
+    let (mut harness, player) = sky();
+    let rod = toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y));
+    let half = kind_body(EnemyKind::Goblin).half.y;
+    let goblin = still_enemy(
+        &mut harness,
+        EnemyKind::Goblin,
+        Vec2::new(1000.0, TOP - half - 0.5),
+    );
+    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1150.0, IRON_Y));
+    harness.step(2);
+    strike_on(&mut harness, player, rod);
+    tungsten::kit::kill(harness.world_mut(), goblin);
+    let (chain, _) = conduction(&mut harness, 5);
+    assert_eq!(
+        receivers(&chain).first(),
+        Some(&Some(id(&harness, iron))),
+        "the dead goblin passed over"
     );
 }

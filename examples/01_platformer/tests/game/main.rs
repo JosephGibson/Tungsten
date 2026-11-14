@@ -287,12 +287,6 @@ pub fn contact(harness: &mut UiHarness, a: Entity, b: Option<Entity>, normal: Ve
     queue.send(CollisionEvent::new(a, b, normal, 0.1));
 }
 
-/// Runs the cascades waiting now, as the next step's overlap phase would:
-/// a test's direct blast or crush ends its frozen things at once.
-pub fn cascades(harness: &mut UiHarness) {
-    example_01_platformer::features::elements::cascade::run(harness.world_mut());
-}
-
 /// The bursts of the particle config `name`.
 pub fn bursts(harness: &UiHarness, name: &str) -> usize {
     let world = harness.world();

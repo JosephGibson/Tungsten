@@ -11,10 +11,10 @@
 //! health takes the kit's damage types, effects and chemistry's builds
 //! instead (`combat`).
 //!
-//! The endings, one rule each for any frozen thing, run through the saved
-//! [`cascade`] queue: fire on a frozen thing explodes it (thermal shock), a
-//! hard impact or a fall shatters it, and cold on a burning thing bursts
-//! into steam, which chains through a burning pile.
+//! The endings, one rule each for any frozen thing, are chemistry's rules,
+//! their handlers in [`cascade`]: fire on a frozen thing explodes it
+//! (thermal shock), a hard impact or a fall shatters it, and cold on a
+//! burning thing bursts into steam, which chains through a burning pile.
 
 pub mod cascade;
 pub mod components;
@@ -84,7 +84,7 @@ pub const STEAM_REACH: f32 = 128.0;
 pub const SMALL_STEAM_REACH: f32 = 96.0;
 pub const STEAM_PART: f32 = 5.0;
 pub const STEAM_PUSH: f32 = 700.0;
-/// The most cascades a run takes, and the most that wait (Q11).
+/// The most entries chemistry's run takes, and the most that wait (Q11).
 pub const CASCADE_CAP: usize = 48;
 pub const CASCADE_BOUND: usize = 16_384;
 /// A frozen target landing at [`SHATTER_SPEED`] or more takes this share of
@@ -190,7 +190,7 @@ fn impact_cue(impact: &Impact) -> Option<CueEvent> {
 /// step (the kit times the burns, the freezes and the douses): the fires
 /// against the balls, the impact bursts, the crushes, the bodies' impacts,
 /// the spread and the burning surface and the black hole's dousing, then
-/// the cascades' run, last of 01's contact systems and before the kit's
+/// the cascades' count, last of 01's contact systems and before the kit's
 /// resolve. Before the frame's particles, the burning surface's emitters
 /// and the impact sparks' colours; in the present phase the cold pulses;
 /// and the flames, pulses and ice shells drawn after the sprites.

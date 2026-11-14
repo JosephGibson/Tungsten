@@ -1,6 +1,9 @@
 {
   "components": {
     "iron_block": null,
+    "tags": [
+      "conductive"
+    ],
     "pull": {
       "share": 0.2
     },

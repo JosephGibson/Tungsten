@@ -87,9 +87,10 @@ impl SaveData for SaveGame {
     /// (`D-204`). Schema 30 moved arcane power's `spell_power` onto a
     /// `damage_dealt` line ([`to_30`]), 31 an enemy's `heading` onto the
     /// kit's `facing` ([`to_31`]), 32 a foe's rests and "!" onto the
-    /// kit's cooldowns and effects ([`to_32`]), and 33 the crawler's
-    /// snowball onto the kit's projectile ([`to_33`]).
-    const SCHEMA: u32 = 33;
+    /// kit's cooldowns and effects ([`to_32`]), 33 the crawler's
+    /// snowball onto the kit's projectile ([`to_33`]), and 34 the
+    /// lightning's chain onto the kit's conduction ([`to_34`]).
+    const SCHEMA: u32 = 34;
 
     fn migrate_step(
         from: u32,
@@ -122,6 +123,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 32: the save has no world")?;
                 to_33(world);
+                Ok(data)
+            }
+            33 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 33: the save has no world")?;
+                to_34(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -315,6 +323,71 @@ fn to_33(value: &mut Value) {
 /// The name schema 32 saved a snowball's flight under, frozen for the
 /// migration.
 const S32_SNOWBALL: &str = "snowball";
+
+/// Schema 33 to 34 over a save's `world`: the saved `cascades` loses its
+/// `entries`, the lightning's jumps in flight, at most six a strike for at
+/// most 0.1 s each, which the kit's conduction cannot take up, as schema 33
+/// dropped the snowballs; and each record of iron, a scrap or a keg takes
+/// `conductive` into its `tags`, as their prefabs give it at schema 34, so
+/// the conduction finds it.
+fn to_34(world: &mut Value) {
+    if let Some(cascades) = world
+        .get_mut("resources")
+        .and_then(|resources| resources.get_mut(S33_CASCADES))
+        .and_then(Value::as_object_mut)
+    {
+        cascades.remove("entries");
+    }
+    metal_conducts(world);
+}
+
+/// Each record of [`S33_METAL`]'s prefabs within `value` takes
+/// [`S33_CONDUCTIVE`] into its `tags`.
+fn metal_conducts(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let metal = object
+                .get("prefab")
+                .and_then(Value::as_str)
+                .is_some_and(|prefab| S33_METAL.contains(&prefab));
+            if metal && let Some(Value::Object(components)) = object.get_mut("components") {
+                let mut tags: Vec<String> = components
+                    .get("tags")
+                    .and_then(Value::as_array)
+                    .map(|tags| {
+                        tags.iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                tags.push(S33_CONDUCTIVE.to_owned());
+                tags.sort();
+                tags.dedup();
+                components.insert(
+                    "tags".to_owned(),
+                    Value::from(tags.into_iter().map(Value::from).collect::<Vec<_>>()),
+                );
+            }
+            for inner in object.values_mut() {
+                metal_conducts(inner);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                metal_conducts(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The name schema 33 saved the cascades under, the prefabs of its metal
+/// and the tag the conduction finds metal by at schema 34, frozen for the
+/// migration.
+const S33_CASCADES: &str = "cascades";
+const S33_METAL: [&str; 3] = ["iron_block", "iron_scrap", "keg"];
+const S33_CONDUCTIVE: &str = "conductive";
 
 /// A foe's rest left at schema 31 as the kit's `cooldown` of its own
 /// seconds, one elapse to go: frozen for the migration.
