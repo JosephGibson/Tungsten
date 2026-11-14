@@ -160,7 +160,7 @@ impl core::marker::UnsafeUnpin for tungsten_kit::Past
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Past
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Past
 #[non_exhaustive] pub enum tungsten_kit::prelude::Payload
-pub tungsten_kit::prelude::Payload::Conduct(alloc::boxed::Box<tungsten_kit::intent::ability::Conduct>)
+pub tungsten_kit::prelude::Payload::Conduct(alloc::boxed::Box<tungsten_kit::Conduct>)
 pub tungsten_kit::prelude::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
 pub tungsten_kit::prelude::Payload::Effect(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>)
 pub tungsten_kit::prelude::Payload::Hitbox(f32)
@@ -909,6 +909,31 @@ impl core::marker::Unpin for tungsten_kit::Clips
 impl core::marker::UnsafeUnpin for tungsten_kit::Clips
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Clips
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Clips
+pub struct tungsten_kit::prelude::Conduct
+impl tungsten_kit::Conduct
+pub fn tungsten_kit::Conduct::new(f32, f32, tungsten_kit::TagFilter) -> Self
+pub fn tungsten_kit::Conduct::with_context(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+pub fn tungsten_kit::Conduct::with_jumps(self, u32) -> Self
+pub fn tungsten_kit::Conduct::with_keep(self, f32) -> Self
+pub fn tungsten_kit::Conduct::with_past_gone(self, bool) -> Self
+pub fn tungsten_kit::Conduct::with_prepare(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Conduct::with_stop(self, tungsten_kit::TagFilter) -> Self
+pub fn tungsten_kit::Conduct::with_stop_struck(self, bool) -> Self
+pub fn tungsten_kit::Conduct::with_tags(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+impl core::clone::Clone for tungsten_kit::Conduct
+pub fn tungsten_kit::Conduct::clone(&self) -> tungsten_kit::Conduct
+impl core::cmp::PartialEq for tungsten_kit::Conduct
+pub fn tungsten_kit::Conduct::eq(&self, &tungsten_kit::Conduct) -> bool
+impl core::fmt::Debug for tungsten_kit::Conduct
+pub fn tungsten_kit::Conduct::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Conduct
+impl core::marker::Freeze for tungsten_kit::Conduct
+impl core::marker::Send for tungsten_kit::Conduct
+impl core::marker::Sync for tungsten_kit::Conduct
+impl core::marker::Unpin for tungsten_kit::Conduct
+impl core::marker::UnsafeUnpin for tungsten_kit::Conduct
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Conduct
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Conduct
 pub struct tungsten_kit::prelude::Cone
 impl tungsten_kit::Cone
 pub fn tungsten_kit::Cone::far(&self) -> f32
@@ -4685,7 +4710,7 @@ impl core::marker::UnsafeUnpin for tungsten_kit::Past
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Past
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Past
 #[non_exhaustive] pub enum tungsten_kit::Payload
-pub tungsten_kit::Payload::Conduct(alloc::boxed::Box<tungsten_kit::intent::ability::Conduct>)
+pub tungsten_kit::Payload::Conduct(alloc::boxed::Box<tungsten_kit::Conduct>)
 pub tungsten_kit::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
 pub tungsten_kit::Payload::Effect(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>)
 pub tungsten_kit::Payload::Hitbox(f32)
@@ -5557,6 +5582,74 @@ impl core::marker::Unpin for tungsten_kit::ComponentDescription
 impl core::marker::UnsafeUnpin for tungsten_kit::ComponentDescription
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ComponentDescription
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ComponentDescription
+pub struct tungsten_kit::Conduct
+impl tungsten_kit::Conduct
+pub fn tungsten_kit::Conduct::new(f32, f32, tungsten_kit::TagFilter) -> Self
+pub fn tungsten_kit::Conduct::with_context(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+pub fn tungsten_kit::Conduct::with_jumps(self, u32) -> Self
+pub fn tungsten_kit::Conduct::with_keep(self, f32) -> Self
+pub fn tungsten_kit::Conduct::with_past_gone(self, bool) -> Self
+pub fn tungsten_kit::Conduct::with_prepare(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Conduct::with_stop(self, tungsten_kit::TagFilter) -> Self
+pub fn tungsten_kit::Conduct::with_stop_struck(self, bool) -> Self
+pub fn tungsten_kit::Conduct::with_tags(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+impl core::clone::Clone for tungsten_kit::Conduct
+pub fn tungsten_kit::Conduct::clone(&self) -> tungsten_kit::Conduct
+impl core::cmp::PartialEq for tungsten_kit::Conduct
+pub fn tungsten_kit::Conduct::eq(&self, &tungsten_kit::Conduct) -> bool
+impl core::fmt::Debug for tungsten_kit::Conduct
+pub fn tungsten_kit::Conduct::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Conduct
+impl core::marker::Freeze for tungsten_kit::Conduct
+impl core::marker::Send for tungsten_kit::Conduct
+impl core::marker::Sync for tungsten_kit::Conduct
+impl core::marker::Unpin for tungsten_kit::Conduct
+impl core::marker::UnsafeUnpin for tungsten_kit::Conduct
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Conduct
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Conduct
+#[non_exhaustive] pub struct tungsten_kit::Conducted
+pub tungsten_kit::Conducted::damage: f32
+pub tungsten_kit::Conducted::from: glam::f32::vec2::Vec2
+pub tungsten_kit::Conducted::jump: u32
+pub tungsten_kit::Conducted::receiver: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::Conducted::struck: bool
+pub tungsten_kit::Conducted::to: glam::f32::vec2::Vec2
+pub tungsten_kit::Conducted::user: tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten_kit::Conducted
+pub fn tungsten_kit::Conducted::clone(&self) -> tungsten_kit::Conducted
+impl core::cmp::PartialEq for tungsten_kit::Conducted
+pub fn tungsten_kit::Conducted::eq(&self, &tungsten_kit::Conducted) -> bool
+impl core::fmt::Debug for tungsten_kit::Conducted
+pub fn tungsten_kit::Conducted::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::Conducted
+impl core::marker::StructuralPartialEq for tungsten_kit::Conducted
+impl core::marker::Freeze for tungsten_kit::Conducted
+impl core::marker::Send for tungsten_kit::Conducted
+impl core::marker::Sync for tungsten_kit::Conducted
+impl core::marker::Unpin for tungsten_kit::Conducted
+impl core::marker::UnsafeUnpin for tungsten_kit::Conducted
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Conducted
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Conducted
+#[non_exhaustive] pub struct tungsten_kit::Conduction
+pub tungsten_kit::Conduction::chained: alloc::vec::Vec<tungsten_core::ecs::entity::Entity>
+pub tungsten_kit::Conduction::damage: f32
+pub tungsten_kit::Conduction::jumps: u32
+pub tungsten_kit::Conduction::last: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::Conduction::user: tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten_kit::Conduction
+pub fn tungsten_kit::Conduction::clone(&self) -> tungsten_kit::Conduction
+impl core::cmp::PartialEq for tungsten_kit::Conduction
+pub fn tungsten_kit::Conduction::eq(&self, &tungsten_kit::Conduction) -> bool
+impl core::fmt::Debug for tungsten_kit::Conduction
+pub fn tungsten_kit::Conduction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Conduction
+impl core::marker::Freeze for tungsten_kit::Conduction
+impl core::marker::Send for tungsten_kit::Conduction
+impl core::marker::Sync for tungsten_kit::Conduction
+impl core::marker::Unpin for tungsten_kit::Conduction
+impl core::marker::UnsafeUnpin for tungsten_kit::Conduction
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Conduction
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Conduction
 pub struct tungsten_kit::Cone
 impl tungsten_kit::Cone
 pub fn tungsten_kit::Cone::far(&self) -> f32
@@ -9772,6 +9865,8 @@ pub fn tungsten_kit::carried_by(&tungsten_core::ecs::world::World, tungsten_core
 pub fn tungsten_kit::carrier_of(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::carry(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, tungsten_kit::Hold) -> bool
 pub fn tungsten_kit::centre_of(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<glam::f32::vec2::Vec2>
+pub fn tungsten_kit::conduct_from(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, &tungsten_kit::Conduct, &[tungsten_core::ecs::entity::Entity]) -> bool
+pub fn tungsten_kit::conductions(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_kit::Conduction>
 pub fn tungsten_kit::cursor_to_world(&tungsten_core::ecs::world::World) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::damage(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> tungsten_kit::Hit
 pub fn tungsten_kit::despawn_recursive(&mut tungsten_core::ecs::command_buffer::CommandBuffer, tungsten_core::ecs::entity::Entity)

@@ -1,6 +1,6 @@
 component abilities: The abilities the entity owns, by name: an entry's ID, or `#<index>` for one written in place.
   field list: list of abilities ID or entry — the value itself: each an `abilities` entry's ID, an ability in place, or `{ id, level }` with its skill's level from 1 to 40; names unique; the load checks each
-  events: AbilityUsed
+  events: AbilityUsed, Conducted
   genres: platformer, top_down, rpg, shooter, arpg
   sample: ["wand"]
 component action_input: The actions that steer the entity, read into its Intent each fixed step.
@@ -514,14 +514,18 @@ shape clip_rule: A clip shown over the motion state's while the entity's tags pa
   field motion: one of idle | move | rise | fall = null — the motion state it needs
   field clip: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up — what it shows; the load checks each ID
   sample: { "motion": "move", "clip": "hero_run" }
-shape conduct_payload: A strike on the use's target that jumps on, one receiver a step, from its last receiver to the nearest live receiver within reach, not yet struck, weaker each jump; an immune or stopping receiver ends it unstruck.
-  field damage: f32 (>= 0) — the first strike's damage, a request from the user at the receiver
+shape conduct_payload: A strike on the use's target that jumps on, one receiver a step, from its last receiver to the nearest live receiver within reach, not yet struck, weaker each jump, each jump sending `Conducted`; an immune or stopping receiver ends it unstruck, or struck with `stop_struck`; each strike a blast's hit, in its context, its preparation run before its crit.
+  field damage: f32 (>= 0) — the first strike's damage, a request from the user at the receiver's centre, on a receiver with live health alone
   field tags: list of tag = [] — the damage's types; a receiver whose `resist` factor for them is 0 ends it; the load checks each
   field reach: f32 (> 0) — world pixels a jump spans, centre to centre
   field keep: f32 (> 0, <= 1) = 0.7 — the share of its damage each jump keeps
   field jumps: u32 = 6 — the most jumps after the first strike
   field receivers: tag filter — what it jumps to, by tags; names an `all` or an `any` tag; the load checks its tags
   field stop: tag filter = {} — a receiver whose tags pass it ends the chain unstruck; none by default
+  field context: list of tag = [] — the strikes' context tags (`hit.spell`), which the receivers' scoped resistances and lines read; the load checks each
+  field prepare: text = null — the game's hit preparation run on each strike before its crit, `[a-z][a-z0-9_]*`; the load checks a preparation holds it; none when left out
+  field stop_struck: bool = false — an immune or stopping receiver takes its strike, then ends the chain
+  field past_gone: bool = false — with its last receiver gone or despawning, the chain jumps on from that receiver's centre at its strike, rather than ending
   sample: { "damage": 30, "reach": 256, "receivers": { "all": ["conductive"] } }
 shape cone_payload: Rays fanned about the use's direction from the user's centre, each to its first wall, a solid tile or a static body: the hurtboxes they meet hit once, the dynamic bodies pushed once, at once or as a widening front.
   field reach: f32 (> 0) — world pixels each ray runs, short of a wall

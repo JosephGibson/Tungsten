@@ -1,6 +1,6 @@
-# 01's lightning, missile, shots and hole on the kit (example-01-spells-toys-gun) — draft
+# 01's lightning, missile, shots and hole on the kit (example-01-spells-toys-gun) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13d (§2.1), its first plan since the split (`74fc8635`). In the kit: conduction started from code at a struck receiver, each jump's strike a blast's hit (on a live receiver, with its context, preparation and crit), a `Conducted` event a jump, a stopping receiver struck and a chain past a gone one as opt-ins, a read of the chains in flight, and the chains saved by save ID; a facing that reads a linear motion's velocity; a cooldown's seconds left set by the game. Then example 01 on them: the lightning's chain on the kit's conduction (S-5, schema 34), the missile and the tracers turned by the kit's facing (S-78, schema 35), the shots' wall answers as named world cues (S-126), the black hole's life a kit cooldown (S-36's last part, schema 36) and the one-shot looks' first frames from their clips (S-181); its tests unchanged (§2.2) and its older saves loading (§2.10).
 - **non-goals:**
   - The other sixteen rows, 7.13d's casts and toys (`74fc8635`): S-7, S-13 (but `HOLE_SECS`, §2.8), S-15, S-17, S-18, S-32, S-66, S-88, S-98, S-105, S-107, S-110, S-130, S-135, S-174 and S-192, each with its gap at `74fc8635` in §2.1 for that plan's audit to start from.
@@ -271,6 +271,7 @@ Round 2: the same reviewer at xhigh, 2026-11-14, `--repo` on the plan without th
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-14 | landed | `intent::ability::` 42 passed, the six new among them (`a_conduction_from_code_jumps_past_its_chained_receivers`, `a_conduction_from_code_refuses_a_spent_or_stopped_start`, `a_conductions_strike_is_a_blasts_hit`, `a_conduction_sends_each_jump`, `a_struck_stop_ends_the_chain_after_its_strike`, `a_chain_past_gone_jumps_on_from_its_last_point`); the kit's suite 1,043 passed and 158 doctests; `cargo fmt --all -- --check`, `just lint` (after two test-code lints fixed: an unused binding, a complex type), `just repo-check`, `just ctx`, `just docs-ratchet` → 0; `kit_tests:: kit_recipes::` 280 passed, the determinism pin unchanged; the template 184 passed; 02's `guards_` 16 passed, no pin rewritten; 01's `--test game` 456 passed, 1 ignored, `guards::the_full_pit_holds_its_counts` ok, its pit pin unchanged; `just api` then `git diff --stat api/` → `api/tungsten-kit-components.txt` (+6 −2: `Conducted` on `abilities`' events, the conduction's four fields) and `api/tungsten-kit.txt` (+98 −1) alone. Departure: `conduct_from`'s 65th chain is traced with its own reason ("64 chains run; this one does not start"), since the payload's says its target is struck | kit `intent/ability.rs`, `tests/ability.rs`, `lib.rs`; `api/tungsten-kit.txt`, `api/tungsten-kit-components.txt`; `DESIGN.md`'s conduction sentence |
 
 ## Follow-ups
 

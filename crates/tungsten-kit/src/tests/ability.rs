@@ -2181,6 +2181,404 @@ fn a_chain_ends_when_its_user_or_last_receiver_goes() {
     let _ = first;
 }
 
+// example-01-spells-toys-gun, Step 1: conduction from code, its strikes as
+// a blast's hits, its jump event and two opt-ins.
+
+/// The damage the last step dealt, by target.
+fn hurt(world: &World) -> Vec<(Entity, f32)> {
+    world
+        .resource::<EventQueue<crate::Damaged>>()
+        .iter()
+        .map(|hit| (hit.entity, hit.amount))
+        .collect()
+}
+
+/// The jumps the last step sent.
+fn jumped(world: &World) -> Vec<Conducted> {
+    world
+        .resource::<EventQueue<Conducted>>()
+        .iter()
+        .copied()
+        .collect()
+}
+
+/// A step's damage by target and its jumps.
+type Zapped = (Vec<(Entity, f32)>, Vec<Conducted>);
+
+/// `count` steps, `zap` pressed on `caster` at the first when `press`
+/// (nothing pressed when `caster` has no intent): each step's damage by
+/// target and its jumps.
+fn zap_jumps(
+    world: &mut World,
+    schedule: &mut Schedule,
+    caster: Entity,
+    count: usize,
+    press: bool,
+) -> Vec<Zapped> {
+    (1..=count)
+        .map(|i| {
+            if let Some(intent) = world.get_mut::<Intent>(caster) {
+                intent.set_slot("zap", press && i == 1, press && i == 1);
+            }
+            steps(world, schedule, 1);
+            (hurt(world), jumped(world))
+        })
+        .collect()
+}
+
+/// The chains in flight: each one's last receiver, its chained receivers,
+/// its damage and its jumps left.
+fn chains(world: &World) -> Vec<(Entity, Vec<Entity>, f32, u32)> {
+    conductions(world)
+        .into_iter()
+        .map(|chain| (chain.last, chain.chained, chain.damage, chain.jumps))
+        .collect()
+}
+
+#[test]
+fn a_conduction_from_code_jumps_past_its_chained_receivers() {
+    use crate::damage::pipeline::Requests;
+    let (mut world, mut schedule) = rig();
+    let user = at(&mut world, 0.0, 0.0, (Intent::default(),));
+    // From the start the chained receiver lies nearest; from the next, the
+    // start and the chained one lie nearer than or as near as the last.
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let chained = conductor(&mut world, 150.0, 0.0, &[]);
+    let next = conductor(&mut world, 210.0, 0.0, &[]);
+    let last = conductor(&mut world, 320.0, 0.0, &[]);
+    let bolt = Conduct::new(20.0, 120.0, conductive())
+        .with_keep(0.5)
+        .with_jumps(2);
+    assert!(conduct_from(&mut world, user, first, &bolt, &[chained]));
+    assert!(
+        world.resource::<Requests>().damage().is_empty(),
+        "no strike at the start"
+    );
+    assert_eq!(conductions(&world)[0].user, user);
+    assert_eq!(chains(&world), [(first, vec![chained, first], 20.0, 2)]);
+    let run = zap_jumps(&mut world, &mut schedule, user, 1, false);
+    assert_eq!(
+        run[0].0,
+        [(next, 10.0)],
+        "its first jump at the next step's tick, past the chained one"
+    );
+    assert_eq!(
+        chains(&world),
+        [(next, vec![chained, first, next], 10.0, 1)]
+    );
+    let run = zap_jumps(&mut world, &mut schedule, user, 1, false);
+    assert_eq!(run[0].0, [(last, 5.0)], "never back, the tie to the last");
+    assert!(conductions(&world).is_empty(), "spent, it reads none");
+    assert!(
+        zap_jumps(&mut world, &mut schedule, user, 2, false)
+            .iter()
+            .all(|(hits, jumps)| hits.is_empty() && jumps.is_empty())
+    );
+    for receiver in [first, chained] {
+        assert_eq!(world.get::<Health>(receiver).unwrap().current(), 100.0);
+    }
+}
+
+#[test]
+fn a_conduction_from_code_refuses_a_spent_or_stopped_start() {
+    use crate::damage::defense::Resist;
+    let (mut world, _) = rig();
+    let user = at(&mut world, 0.0, 0.0, (Intent::default(),));
+    let bolt = Conduct::new(20.0, 120.0, conductive())
+        .with_tags(["damage.lightning"])
+        .with_stop(TagFilter::new().any(["status.frozen"]));
+    let dead = conductor(&mut world, 100.0, 0.0, &[]);
+    crate::kill(&mut world, dead);
+    let immune = conductor(&mut world, 100.0, 0.0, &[]);
+    world.insert(immune, Resist::new().with_factor("damage.lightning", 0.0));
+    let frozen = conductor(&mut world, 100.0, 0.0, &["status.frozen"]);
+    let going = conductor(&mut world, 100.0, 0.0, &[]);
+    world.insert(going, Despawning);
+    let gone = conductor(&mut world, 100.0, 0.0, &[]);
+    world.despawn(gone);
+    let live = conductor(&mut world, 100.0, 0.0, &[]);
+    for (first, conduct, why) in [
+        (dead, bolt.clone(), "dead"),
+        (immune, bolt.clone(), "immune"),
+        (frozen, bolt.clone(), "stopping"),
+        (
+            frozen,
+            bolt.clone().with_stop_struck(true),
+            "stopping, unstruck",
+        ),
+        (going, bolt.clone(), "despawning"),
+        (gone, bolt.clone(), "gone"),
+        (live, bolt.clone().with_jumps(0), "no jumps"),
+    ] {
+        assert!(
+            !conduct_from(&mut world, user, first, &conduct, &[]),
+            "{why}"
+        );
+        assert!(conductions(&world).is_empty(), "{why}: nothing pushed");
+    }
+    assert!(skipped(&world, user).is_empty());
+    for _ in 0..MAX_CHAINS {
+        assert!(conduct_from(&mut world, user, live, &bolt, &[]));
+    }
+    assert!(!conduct_from(&mut world, user, live, &bolt, &[]));
+    assert_eq!(
+        conductions(&world).len(),
+        MAX_CHAINS,
+        "the 65th pushed nothing"
+    );
+    assert_eq!(skipped(&world, user), [("conduct", NO_CHAIN_STARTED)]);
+}
+
+/// A preparation that marks, by a knockback, a strike whose point, source
+/// and `hit.spell` context are set and whose crit is not rolled yet.
+fn grounding(_: &World, hit: &mut DamageRequest) {
+    if hit.position().is_some()
+        && hit.source().is_some()
+        && hit.context().has("hit.spell")
+        && !hit.is_crit()
+    {
+        let taken = std::mem::replace(hit, DamageRequest::new(hit.target(), 0.0));
+        *hit = taken.with_knockback(Vec2::new(0.0, -1.0));
+    }
+}
+
+#[test]
+fn a_conductions_strike_is_a_blasts_hit() {
+    use crate::damage::pipeline::Requests;
+    let bolt = || {
+        Conduct::new(20.0, 120.0, conductive())
+            .with_keep(0.5)
+            .with_tags(["damage.lightning"])
+            .with_context(["hit.spell"])
+            .with_prepare("grounding")
+    };
+    let sure = || {
+        Stats::new()
+            .with(Stats::CRIT_CHANCE, 1.0)
+            .with(Stats::CRIT_MULTIPLIER, 2.0)
+    };
+    // The payload: its target struck, an iron rod without health passed
+    // through, the one past it struck; one crit draw a struck receiver with
+    // health.
+    let (mut world, mut schedule) = rig();
+    crate::add_hit_prep(&mut world, "grounding", grounding);
+    let caster = zapper(&mut world, bolt());
+    world.insert(caster, sure());
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let rod = at(&mut world, 200.0, 0.0, (Tags::new(["conductive"]),));
+    let far = conductor(&mut world, 300.0, 0.0, &[]);
+    world.insert_resource(KitRng::seeded(7));
+    let mut draws = Vec::new();
+    let mut hits = Vec::new();
+    let mut jumps = Vec::new();
+    for i in 1..=4 {
+        world
+            .get_mut::<Intent>(caster)
+            .unwrap()
+            .set_slot("zap", i == 1, i == 1);
+        steps(&mut world, &mut schedule, 1);
+        jumps.push(
+            jumped(&world)
+                .iter()
+                .map(|jump| (jump.receiver, jump.struck))
+                .collect::<Vec<_>>(),
+        );
+        hits.push(
+            world
+                .resource::<EventQueue<crate::Damaged>>()
+                .iter()
+                .map(|hit| (hit.entity, hit.amount, hit.crit, hit.source, hit.position))
+                .collect::<Vec<_>>(),
+        );
+        draws.push(world.resource::<KitRng>().draws());
+    }
+    let at_of = |x: f32| Some(Vec2::new(x, 0.0));
+    assert_eq!(
+        hits,
+        [
+            vec![(first, 40.0, true, Some(caster), at_of(100.0))],
+            vec![],
+            vec![(far, 10.0, true, Some(caster), at_of(300.0))],
+            vec![],
+        ],
+        "a crit's 2 on each struck receiver with health, at its centre, from the user"
+    );
+    assert_eq!(draws, [1, 1, 2, 2], "no request, no draw, on the rod");
+    assert_eq!(
+        jumps,
+        [vec![], vec![(rod, true)], vec![(far, true)], vec![]],
+        "the rod struck all the same"
+    );
+    // A jump's request, read before the resolve: its context, its point and
+    // the preparation run before its crit.
+    let (mut world, _) = rig();
+    crate::add_hit_prep(&mut world, "grounding", grounding);
+    let user = at(&mut world, 0.0, 0.0, (sure(),));
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let next = conductor(&mut world, 200.0, 0.0, &[]);
+    assert!(conduct_from(&mut world, user, first, &bolt(), &[]));
+    jump_chains(&mut world);
+    let requests = world.resource::<Requests>().damage();
+    assert_eq!(requests.len(), 1);
+    let request = &requests[0];
+    assert_eq!(request.target(), next);
+    assert!(request.context().has("hit.spell"));
+    assert_eq!(request.position(), Some(Vec2::new(200.0, 0.0)));
+    assert_eq!(request.source(), Some(user));
+    assert_eq!(
+        request.knockback(),
+        Some(Vec2::new(0.0, -1.0)),
+        "prepared before its crit"
+    );
+    assert!(request.is_crit());
+    assert_eq!(request.amount(), 20.0, "10, a crit's 2");
+    // A conduction naming no registered preparation is refused.
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(&mut world, bolt().with_prepare("missing"));
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    assert!(!conduct_from(&mut world, caster, first, &bolt(), &[]));
+    assert!(
+        zap_steps(&mut world, &mut schedule, caster, 3, true)
+            .iter()
+            .all(Vec::is_empty)
+    );
+    assert!(conductions(&world).is_empty());
+}
+
+#[test]
+fn a_conduction_sends_each_jump() {
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(
+        &mut world,
+        Conduct::new(20.0, 120.0, conductive())
+            .with_keep(0.5)
+            .with_stop(TagFilter::new().any(["status.frozen"])),
+    );
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let second = conductor(&mut world, 200.0, 0.0, &[]);
+    let frozen = conductor(&mut world, 300.0, 0.0, &["status.frozen"]);
+    let jumps: Vec<Vec<Conducted>> = zap_jumps(&mut world, &mut schedule, caster, 5, true)
+        .into_iter()
+        .map(|(_, jumps)| jumps)
+        .collect();
+    let jump = |receiver, from: f32, to: f32, jump, damage, struck| Conducted {
+        user: caster,
+        receiver,
+        from: Vec2::new(from, 0.0),
+        to: Vec2::new(to, 0.0),
+        jump,
+        damage,
+        struck,
+    };
+    assert_eq!(
+        jumps,
+        [
+            vec![],
+            vec![jump(second, 100.0, 200.0, 1, 10.0, true)],
+            vec![jump(frozen, 200.0, 300.0, 2, 5.0, false)],
+            vec![],
+            vec![],
+        ],
+        "the target's strike no jump; the frozen one's jump sent unstruck"
+    );
+    assert_eq!(world.get::<Health>(frozen).unwrap().current(), 100.0);
+    let _ = first;
+}
+
+#[test]
+fn a_struck_stop_ends_the_chain_after_its_strike() {
+    use crate::damage::defense::Resist;
+    let bolt = || {
+        Conduct::new(20.0, 120.0, conductive())
+            .with_keep(0.5)
+            .with_tags(["damage.lightning"])
+            .with_stop(TagFilter::new().any(["status.frozen"]))
+            .with_stop_struck(true)
+    };
+    for case in ["frozen", "immune"] {
+        let (mut world, mut schedule) = rig();
+        let caster = zapper(&mut world, bolt());
+        let first = conductor(&mut world, 100.0, 0.0, &[]);
+        let stop = if case == "frozen" {
+            conductor(&mut world, 200.0, 0.0, &["status.frozen"])
+        } else {
+            let stop = conductor(&mut world, 200.0, 0.0, &[]);
+            world.insert(stop, Resist::new().with_factor("damage.lightning", 0.0));
+            stop
+        };
+        let third = conductor(&mut world, 300.0, 0.0, &[]);
+        let run = zap_jumps(&mut world, &mut schedule, caster, 5, true);
+        assert_eq!(run[1].1.len(), 1, "{case}");
+        assert!(run[1].1[0].struck, "{case}: struck");
+        assert!(
+            run[2..]
+                .iter()
+                .all(|(hits, jumps)| hits.is_empty() && jumps.is_empty()),
+            "{case}: the chain ends there"
+        );
+        assert_eq!(world.get::<Health>(third).unwrap().current(), 100.0);
+        let lost = 100.0 - world.get::<Health>(stop).unwrap().current();
+        assert_eq!(lost, if case == "frozen" { 10.0 } else { 0.0 }, "{case}");
+        assert_eq!(world.get::<Health>(first).unwrap().current(), 80.0);
+    }
+    // A stopping target takes the payload's strike, and nothing jumps on.
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(&mut world, bolt());
+    let frozen = conductor(&mut world, 100.0, 0.0, &["status.frozen"]);
+    let next = conductor(&mut world, 200.0, 0.0, &[]);
+    assert_eq!(
+        zap_steps(&mut world, &mut schedule, caster, 3, true),
+        [vec![(frozen, 20.0)], vec![], vec![]]
+    );
+    assert_eq!(world.get::<Health>(next).unwrap().current(), 100.0);
+}
+
+#[test]
+fn a_chain_past_gone_jumps_on_from_its_last_point() {
+    for (past, despawned) in [(true, true), (true, false), (false, true), (false, false)] {
+        let case = format!("past_gone {past}, despawned {despawned}");
+        let (mut world, mut schedule) = rig();
+        let caster = zapper(
+            &mut world,
+            Conduct::new(20.0, 120.0, conductive())
+                .with_keep(0.5)
+                .with_past_gone(past),
+        );
+        let first = conductor(&mut world, 100.0, 0.0, &[]);
+        let second = conductor(&mut world, 200.0, 0.0, &[]);
+        let third = conductor(&mut world, 300.0, 0.0, &[]);
+        let run = zap_jumps(&mut world, &mut schedule, caster, 1, true);
+        assert_eq!(run[0].0, [(first, 20.0)], "{case}");
+        // The last receiver goes after its strike: despawned, or carried
+        // out of every reach and being despawned.
+        if despawned {
+            world.despawn(first);
+        } else {
+            let away = Vec2::new(900.0, 0.0);
+            world.get_mut::<Position>(first).unwrap().0 = away;
+            *world.get_mut::<Transform>(first).unwrap() = Transform::from_position(away);
+            world.insert(first, Despawning);
+        }
+        let run = zap_jumps(&mut world, &mut schedule, caster, 3, false);
+        if past {
+            assert_eq!(run[0].0, [(second, 10.0)], "{case}");
+            assert_eq!(
+                run[0].1[0].from,
+                Vec2::new(100.0, 0.0),
+                "{case}: from its kept centre"
+            );
+            assert_eq!(run[1].0, [(third, 5.0)], "{case}");
+            assert_eq!(run[1].1[0].from, Vec2::new(200.0, 0.0), "{case}");
+        } else {
+            assert!(
+                run.iter()
+                    .all(|(hits, jumps)| hits.is_empty() && jumps.is_empty()),
+                "{case}: the chain ends"
+            );
+        }
+    }
+}
+
 // place-and-caps, Step 2: the place payload (S-17).
 
 /// A World with a clock at the fixed step, a command buffer, a trace,

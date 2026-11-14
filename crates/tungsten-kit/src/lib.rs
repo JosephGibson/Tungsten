@@ -288,8 +288,9 @@ pub use foundation::tags::{TagFilter, Tags, TagsPlugin};
 pub use foundation::trace::{KIT_TRACE_STEP, KitTrace, TraceEntry, TraceKind};
 pub use foundation::world_sources::{WorldSource, WorldSources};
 pub use intent::ability::{
-    ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, Direction, Lob,
-    Payload, Place, SpawnWith, Trigger, Used, lob_velocity, use_ability,
+    ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, Conduct,
+    Conducted, Conduction, Direction, Lob, Payload, Place, SpawnWith, Trigger, Used, conduct_from,
+    conductions, lob_velocity, use_ability,
 };
 pub use intent::action_input::{ACTION_INPUT, ActionInput, ActionInputPlugin, Intent};
 pub use intent::aim::{AIM, Aim, AimPlugin};
@@ -372,11 +373,11 @@ pub mod prelude {
         ActionInputPlugin, Aim, AimPlugin, AnimationPlugin, Applied, BurstBudget, BurstPlugin,
         CameraRigId, CameraRigPlugin, CameraTarget, CameraTargetPlugin, CameraZone, Cap, CapPlugin,
         CharacterAnimator, CharacterAnimatorPlugin, Chemistry, ChemistryPlugin, Children, ClipRule,
-        Clips, Cone, ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownElapsed,
-        CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent, CueListener, Cues,
-        CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest, Damaged,
-        DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin, Direction,
-        Effect, EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects,
+        Clips, Conduct, Cone, ContactDamage, ContactDamagePlugin, Conversion, Cooldown,
+        CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent,
+        CueListener, Cues, CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest,
+        Damaged, DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin,
+        Direction, Effect, EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects,
         EffectsPlugin, Expire, Facing, FacingPlugin, Flags, Follow, FollowPlugin, HealRequest,
         Healed, Health, HealthBar, HealthBarPlugin, HealthPlugin, HierarchyPlugin, Hit, HitFlash,
         HitPlugin, HitShape, Hitbox, Hold, Hurtbox, ImmunePart, Intent, Interaction, KitDebug,
