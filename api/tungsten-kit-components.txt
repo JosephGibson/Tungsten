@@ -1,6 +1,6 @@
 component abilities: The abilities the entity owns, by name: an entry's ID, or `#<index>` for one written in place.
   field list: list of abilities ID or entry — the value itself: each an `abilities` entry's ID, an ability in place, or `{ id, level }` with its skill's level from 1 to 40; names unique; the load checks each
-  events: AbilityUsed, Conducted
+  events: AbilityUsed, AbilityReady, Conducted
   genres: platformer, top_down, rpg, shooter, arpg
   sample: ["wand"]
 component action_input: The actions that steer the entity, read into its Intent each fixed step.

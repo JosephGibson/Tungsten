@@ -1,6 +1,6 @@
-# 01's casts' looks and HUD on the kit (example-01-casts-toys) — draft
+# 01's casts' looks and HUD on the kit (example-01-casts-toys) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13d's casts and toys (§2.8), its first plan since the split (`34f898b1`, `578a9943`). In the kit: an ability's ready edge as a plain event; a clip set's side by the aim, kept by a one-shot from its first frame; aim poses as the held frames of one strip a side with a drawn left twin; and the headless harness interning the manifest's sprite names. Then example 01 on them: the HUD's ready and refused flashes and the summon's name as UI tracks on the game clock (S-110), its setters unguarded and its pips by the ability's charges (S-98, S-192), the spells' icons and cast gestures from their abilities' data (S-105), and the pour and shot poses from the pose strips by the aim (S-66); its tests' outcomes unchanged (§2.2) and its saves as they are (§2.10).
 - **non-goals:**
   - The other eleven rows: 7.13d's placements and sounds (S-17, S-18, S-130, S-135) and 7.13d's toys and data (S-7, S-13, S-15, S-32, S-88, S-107, S-174), each with its gap at `a00613ad` in §2.1 for those plans' audits.
@@ -247,6 +247,7 @@ Round 2: the same reviewer at xhigh, 2026-11-15, `--repo` on the plan without th
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-15 | landed | `intent::ability::` 45 passed, `an_ability_sends_its_ready_event` among them (the charge back from none at step 2 and the 0.5 s cooldown's end at step 30, each read once through a cursor, `free` sending none, `quiet` with no cue naming `ability_ready`, `named`'s cue counter at 1 beside its event); `cargo clippy -p tungsten-kit --all-targets --locked -- -D warnings` → 0 right after the test; `cargo fmt --all -- --check` → 0 after `cargo fmt` wrapped one new assert; the kit's suite 1,048 passed and 158 doctests; `kit_tests:: kit_recipes::` 280 passed, the determinism pin unchanged; the template 184 passed; 02's `guards_` 16 passed, no pin rewritten; 01's `--test game` 466 passed, 1 ignored, `guards::the_full_pit_holds_its_counts` ok, `tests/game/guards/` untouched; `just lint`, `just repo-check`, `just ctx`, `just docs-ratchet` → 0; `just api` then `git diff --stat api/` → `api/tungsten-kit-components.txt` (+1 −1: `AbilityReady` on `abilities`' events) and `api/tungsten-kit.txt` (+17) alone | kit `intent/ability.rs`, `tests/ability.rs`, `lib.rs`; `api/tungsten-kit.txt`, `api/tungsten-kit-components.txt`; `DESIGN.md`'s ability events sentence |
 
 ## Follow-ups
 

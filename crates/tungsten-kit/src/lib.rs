@@ -288,9 +288,9 @@ pub use foundation::tags::{TagFilter, Tags, TagsPlugin};
 pub use foundation::trace::{KIT_TRACE_STEP, KitTrace, TraceEntry, TraceKind};
 pub use foundation::world_sources::{WorldSource, WorldSources};
 pub use intent::ability::{
-    ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, Conduct,
-    Conducted, Conduction, Direction, Lob, Payload, Place, SpawnWith, Trigger, Used, conduct_from,
-    conductions, lob_velocity, use_ability,
+    ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityReady, AbilityTarget, AbilityUsed,
+    Conduct, Conducted, Conduction, Direction, Lob, Payload, Place, SpawnWith, Trigger, Used,
+    conduct_from, conductions, lob_velocity, use_ability,
 };
 pub use intent::action_input::{ACTION_INPUT, ActionInput, ActionInputPlugin, Intent};
 pub use intent::aim::{AIM, Aim, AimPlugin};

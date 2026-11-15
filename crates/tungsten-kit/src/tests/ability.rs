@@ -1,7 +1,9 @@
 use super::*;
 use serde_json::json;
 use tungsten_core::physics::PrevPosition;
-use tungsten_core::{AssetRegistry, Bundle, ComponentRegistry, PrefabData, Schedule, Stage};
+use tungsten_core::{
+    AssetRegistry, Bundle, ComponentRegistry, EventCursor, PrefabData, Schedule, Stage,
+};
 
 use crate::damage::effects::{Effect, Effects, EffectsPlugin};
 use crate::damage::health::HealthPlugin;
@@ -1547,6 +1549,83 @@ fn an_entry_turns_ready_once_a_cooldown() {
     assert!(world.get_mut::<Abilities>(hero).unwrap().refill("cool"));
     steps(&mut world, &mut schedule, 4);
     assert_eq!(ready(&world), 2);
+}
+
+#[test]
+fn an_ability_sends_its_ready_event() {
+    let (mut world, mut schedule) = rig();
+    let hitbox = || Payload::Hitbox(0.1);
+    let cool = insert(
+        &mut world,
+        "cool",
+        Ability::new().with_cooldown(0.5).with_payload(hitbox()),
+    );
+    let shot = insert(
+        &mut world,
+        "shot",
+        Ability::new()
+            .with_charges(1, 2.0 * STEP, false)
+            .with_payload(hitbox()),
+    );
+    let free = insert(&mut world, "free", Ability::new().with_payload(hitbox()));
+    let quiet = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(cool.clone()).with(shot).with(free),),
+    );
+    let named = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(cool),
+            Cues::new().on(ABILITY_READY, [CueAction::counter_add("ready", 1)]),
+            Counters::new(),
+        ),
+    );
+    let mut cursor = EventCursor::<AbilityReady>::new();
+    let mut read = |world: &World| -> Vec<(Entity, String)> {
+        cursor
+            .read(world.resource::<EventQueue<AbilityReady>>())
+            .map(|ready| (ready.entity, ready.name.clone()))
+            .collect()
+    };
+    steps(&mut world, &mut schedule, 5);
+    assert!(
+        read(&world).is_empty(),
+        "an entry starts ready: a spawn sends none"
+    );
+    for name in ["cool", "shot", "free"] {
+        assert_eq!(use_ability(&mut world, quiet, name), Used::Used);
+    }
+    assert_eq!(use_ability(&mut world, named, "cool"), Used::Used);
+    let mut seen = Vec::new();
+    for step in 1..=32 {
+        steps(&mut world, &mut schedule, 1);
+        seen.extend(
+            read(&world)
+                .into_iter()
+                .map(|(entity, name)| (step, entity, name)),
+        );
+    }
+    assert_eq!(
+        seen,
+        [
+            (2, quiet, "shot".to_string()),
+            (30, quiet, "cool".to_string()),
+            (30, named, "cool".to_string()),
+        ],
+        "the charge back from none at step 2 and the 0.5 s cooldown's end at step 30, \
+         each once, with no cue naming `ability_ready` on `quiet`; `free` never waits"
+    );
+    assert_eq!(
+        world.get::<Counters>(named).unwrap().get("ready"),
+        1,
+        "a named cue still fires beside the event"
+    );
+    steps(&mut world, &mut schedule, 2);
+    assert!(read(&world).is_empty(), "each event read once");
 }
 
 #[test]

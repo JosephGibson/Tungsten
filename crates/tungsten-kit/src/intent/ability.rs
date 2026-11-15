@@ -2327,6 +2327,20 @@ impl AbilityUsed {
     }
 }
 
+/// An entry turned ready, sent once [`AbilitiesPlugin`] has registered its
+/// queue: in the step whose counting makes it ready, its cooldown run out
+/// with a charge left or a charge back from none, before that step's uses,
+/// whether or not a cue names `ability_ready`. An entry ready from its
+/// spawn, or made ready by a refill, sends none.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct AbilityReady {
+    /// The entity that owns it.
+    pub entity: Entity,
+    /// The ability's name in the entity's [`Abilities`].
+    pub name: String,
+}
+
 /// A conduction: a strike of `damage` on the use's target, which jumps on
 /// one receiver a step from its last receiver to the nearest live receiver
 /// within `reach`, centre to centre, not yet in the chain, ties by save
@@ -3154,6 +3168,8 @@ struct Scratch {
     /// The named ability cue events of one entity's tick: each event and
     /// its entry's index.
     cues: Vec<(&'static str, u16)>,
+    /// The entries of one entity's tick that turned ready, by name.
+    ready: Vec<String>,
 }
 
 impl Scratch {
@@ -3787,8 +3803,11 @@ impl Ticker {
                 } else {
                     entry.charges = None;
                 }
-                if !was_ready && ready(entry) && cue_named(world, entity, ABILITY_READY) {
-                    self.scratch.cues.push((ABILITY_READY, index));
+                if !was_ready && ready(entry) {
+                    self.scratch.ready.push(entry.name.clone());
+                    if cue_named(world, entity, ABILITY_READY) {
+                        self.scratch.cues.push((ABILITY_READY, index));
+                    }
                 }
             }
             match &ability.trigger {
@@ -3828,6 +3847,16 @@ impl Ticker {
             }
         }
         *world.get_mut::<Abilities>(entity).unwrap() = abilities;
+        if !self.scratch.ready.is_empty() {
+            match world.get_resource_mut::<EventQueue<AbilityReady>>() {
+                Some(queue) => {
+                    for name in self.scratch.ready.drain(..) {
+                        queue.send(AbilityReady { entity, name });
+                    }
+                }
+                None => self.scratch.ready.clear(),
+            }
+        }
         if !self.scratch.cues.is_empty() {
             let at = point_of(world, entity).unwrap_or(Vec2::ZERO);
             for (event, entry) in self.scratch.cues.drain(..) {
@@ -3852,7 +3881,8 @@ impl Ticker {
 }
 
 /// Registers the `abilities` data kind and scene component,
-/// `EventQueue<AbilityUsed>`, `EventQueue<Conducted>`, the saved chains
+/// `EventQueue<AbilityUsed>`, `EventQueue<AbilityReady>`,
+/// `EventQueue<Conducted>`, the saved chains
 /// (`conductions`) and [`ABILITY_TICK`] in the intent phase after
 /// [`ACTION_INPUT`](crate::ACTION_INPUT) and [`AIM`](crate::AIM) when they
 /// are registered, so a trigger reads the step's intent and aim.
@@ -3883,6 +3913,7 @@ impl Plugin for AbilitiesPlugin {
         describe_abilities(world);
         describe_skills(world, SKILL, SKILL_BASES, SKILL_LINE);
         world.register_event::<AbilityUsed>();
+        world.register_event::<AbilityReady>();
         world.register_event::<Conducted>();
         world.register_saved_resource_with(CONDUCTIONS, chains_saved());
         world.register_data_kind_with_assets(ABILITIES, |ability: &Ability, world: &World| {
@@ -3930,6 +3961,7 @@ fn describe_abilities(world: &mut World) {
             "the value itself: each an `abilities` entry's ID, an ability in place, or `{ id, level }` with its skill's level from 1 to 40; names unique; the load checks each",
         ))
         .event("AbilityUsed")
+        .event("AbilityReady")
         .event("Conducted")
         .genre(PLATFORMER)
         .genre(TOP_DOWN)

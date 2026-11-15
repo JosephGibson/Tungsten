@@ -5044,6 +5044,23 @@ impl core::marker::Unpin for tungsten_kit::Ability
 impl core::marker::UnsafeUnpin for tungsten_kit::Ability
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Ability
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Ability
+#[non_exhaustive] pub struct tungsten_kit::AbilityReady
+pub tungsten_kit::AbilityReady::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::AbilityReady::name: alloc::string::String
+impl core::clone::Clone for tungsten_kit::AbilityReady
+pub fn tungsten_kit::AbilityReady::clone(&self) -> tungsten_kit::AbilityReady
+impl core::cmp::PartialEq for tungsten_kit::AbilityReady
+pub fn tungsten_kit::AbilityReady::eq(&self, &tungsten_kit::AbilityReady) -> bool
+impl core::fmt::Debug for tungsten_kit::AbilityReady
+pub fn tungsten_kit::AbilityReady::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::AbilityReady
+impl core::marker::Freeze for tungsten_kit::AbilityReady
+impl core::marker::Send for tungsten_kit::AbilityReady
+impl core::marker::Sync for tungsten_kit::AbilityReady
+impl core::marker::Unpin for tungsten_kit::AbilityReady
+impl core::marker::UnsafeUnpin for tungsten_kit::AbilityReady
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AbilityReady
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AbilityReady
 #[non_exhaustive] pub struct tungsten_kit::AbilityUsed
 pub tungsten_kit::AbilityUsed::entity: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::AbilityUsed::name: alloc::string::String
