@@ -134,27 +134,13 @@ pub struct Refused {
     pub said: bool,
 }
 
-/// Why a cast was refused, which `spells::systems::refuse_cast` says: too
-/// little mana (`Used::NoCost`), a cooldown or no charge (`Used::NotReady`
-/// or `NoCharge`), or no room for its toy (at its cap, a summon or a block
-/// that does not fit, no cursor).
+/// Why a cast was refused, which `spells::systems::refuse_cast` says, 01's
+/// own and a held spell's: too little mana for a held spell's step
+/// (`Used::NoCost`), or no room for its toy (at its cap, a summon or a
+/// block that does not fit, no cursor). A pressed spell's use refused says
+/// why through its ability's `ability_refused` rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     NoMana,
-    NotReady,
     NoRoom,
-}
-
-impl Refusal {
-    /// The refusal a use's outcome says, none for a use or no ability.
-    #[must_use]
-    pub fn of(used: tungsten::kit::Used) -> Option<Self> {
-        use tungsten::kit::Used;
-        match used {
-            Used::NoCost => Some(Refusal::NoMana),
-            Used::NotReady | Used::NoCharge => Some(Refusal::NotReady),
-            Used::NoTarget => Some(Refusal::NoRoom),
-            _ => None,
-        }
-    }
 }

@@ -134,8 +134,6 @@ pub enum Sound {
     NoMana,
     /// A spell or a summon's type chosen.
     Switched,
-    /// A cast refused while its spell cools or has no charge.
-    NotReady,
     /// An orb dropped by a kill.
     OrbDropped,
     /// A crate catching fire.
@@ -204,7 +202,7 @@ pub enum Sound {
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 79] = [
+    pub const ALL: [Sound; 78] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -249,7 +247,6 @@ impl Sound {
         Sound::AirJumped,
         Sound::NoMana,
         Sound::Switched,
-        Sound::NotReady,
         Sound::OrbDropped,
         Sound::CrateIgnited,
         Sound::CrateCollapsed,
@@ -334,7 +331,6 @@ impl Sound {
             Sound::AirJumped => "double_jumped",
             Sound::NoMana => "no_mana",
             Sound::Switched => "switched",
-            Sound::NotReady => "not_ready",
             Sound::OrbDropped => "orb_dropped",
             Sound::CrateIgnited => "crate_ignited",
             Sound::CrateCollapsed => "crate_collapsed",

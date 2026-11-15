@@ -350,8 +350,9 @@ fn shows(tree: &UiTree, id: WidgetId, text: &str) -> bool {
         })
 }
 
-/// Notes a press of the selected spell refused as not ready: its slot
-/// flashes in the danger colour (`refuse_cast`).
+/// Notes a press of the selected spell refused as not ready or out of
+/// charges: its slot flashes in the danger colour (`press`, on its use's
+/// `Used::NotReady` or `Used::NoCharge`).
 pub fn refused(world: &mut World) {
     let slot = world
         .get_resource::<Run>()

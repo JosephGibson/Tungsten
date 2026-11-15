@@ -644,14 +644,14 @@ fn a_refused_cast_says_why_and_spends_nothing() {
     set_mana(&mut harness, 0.0);
     let before = spent(&harness, Spell::FireMissile);
     let heard = cast_once(&mut harness);
-    assert_eq!(count(&heard, Sound::NoMana), 1, "{heard:?}");
+    assert_eq!(heard.plays(&harness, NO_MANA_SFX).len(), 1, "{heard:?}");
     assert_eq!(spent(&harness, Spell::FireMissile), before, "nothing spent");
     // A cooldown: a second missile at once is not ready, once.
     set_mana(&mut harness, 100.0);
     cast_once(&mut harness);
     let before = spent(&harness, Spell::FireMissile);
     let heard = cast_once(&mut harness);
-    assert_eq!(count(&heard, Sound::NotReady), 1, "{heard:?}");
+    assert_eq!(heard.plays(&harness, NOT_READY_SFX).len(), 1, "{heard:?}");
     assert!(heard.plays(&harness, CAST_SFX).is_empty(), "{heard:?}");
     assert_eq!(spent(&harness, Spell::FireMissile), before, "nothing spent");
     // Iron in a wall fizzles at the cursor, once.
@@ -803,6 +803,10 @@ const PUSH_SFX: &str = "ex10_force_push_sfx";
 const FLASK_SFX: &str = "ex10_flask_throw_sfx";
 const TOSS_SFX: &str = "ex10_toss_sfx";
 const SUMMON_SFX: &str = "ex10_summon_sfx";
+/// A pressed spell's refusals' sounds, its abilities' `ability_refused`
+/// rules'.
+const NO_MANA_SFX: &str = "ex10_no_mana_sfx";
+const NOT_READY_SFX: &str = "ex10_not_ready_sfx";
 const FLAMETHROWER: Spell = Spell::Flamethrower;
 const ICE_SPRAY: Spell = Spell::IceSpray;
 
@@ -1450,7 +1454,7 @@ fn a_seventh_missile_is_refused_before_the_spend() {
     let before = spent(&harness);
     let heard = cast_once(&mut harness);
     assert_eq!(count(&heard, Sound::Fizzled), 1, "{heard:?}");
-    assert_eq!(count(&heard, Sound::NotReady), 0, "{heard:?}");
+    assert!(heard.plays(&harness, NOT_READY_SFX).is_empty(), "{heard:?}");
     let after = spent(&harness);
     assert!(after.0 >= before.0, "no mana spent: {before:?} → {after:?}");
     assert!(after.1 <= before.1, "the cooldown not begun again");
@@ -1514,8 +1518,85 @@ fn each_cast_sounds_from_its_ability() {
                 "{spell:?}: {id}: {heard:?}"
             );
         }
-        assert!(heard.contains(&Sound::NoMana), "{spell:?}: {heard:?}");
+        assert!(
+            !heard.plays(&harness, NO_MANA_SFX).is_empty(),
+            "{spell:?}: {heard:?}"
+        );
     }
+}
+
+#[test]
+fn a_pressed_refusal_sounds_once_from_its_rule() {
+    use example_01_platformer::features::gun;
+    use example_01_platformer::features::spells::hud::Hud;
+    use example_01_platformer::features::spells::slot_of;
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    let set_mana = |h: &mut UiHarness, amount: f32| {
+        let stats = h.world_mut().get_mut::<Stats>(player).unwrap();
+        stats.set_base("max_mana", amount);
+        stats.set_base("mana", amount);
+    };
+    aim_at(&mut harness, me + Vec2::new(300.0, -200.0));
+    choose(&mut harness, Spell::FireMissile);
+    // A missile at no mana: its no-mana sound, once.
+    set_mana(&mut harness, 0.0);
+    let heard = cast_once(&mut harness);
+    assert_eq!(heard.plays(&harness, NO_MANA_SFX).len(), 1, "{heard:?}");
+    assert!(heard.plays(&harness, NOT_READY_SFX).is_empty(), "{heard:?}");
+    // One on its cooldown: not ready, once, its slot flashing red.
+    set_mana(&mut harness, 100.0);
+    cast_once(&mut harness);
+    let heard = cast_once(&mut harness);
+    assert_eq!(heard.plays(&harness, NOT_READY_SFX).len(), 1, "{heard:?}");
+    assert!(heard.plays(&harness, NO_MANA_SFX).is_empty(), "{heard:?}");
+    let hud = *harness.world().resource::<Hud>();
+    let flash = hud.slots[slot_of(Spell::FireMissile).unwrap()]
+        .flash
+        .expect("the missile's flash");
+    let colors = harness.tree().theme().tokens.colors;
+    let red = harness
+        .tree()
+        .overrides(flash)
+        .and_then(|style| style.background)
+        .expect("a red flash");
+    assert_eq!(red[..3], colors.danger[..3]);
+    // The gun held between its shots: no not-ready sound.
+    harness.harness_mut().press_action(gun::SHOOT);
+    let mut not_ready = 0;
+    for _ in 0..60 {
+        harness.step(1);
+        let mut heard = Heard::default();
+        heard.listen(&harness);
+        not_ready += heard.plays(&harness, NOT_READY_SFX).len();
+    }
+    harness.harness_mut().release_action(gun::SHOOT);
+    harness.step(1);
+    assert_eq!(not_ready, 0, "the gun's refusals outside the rules");
+    // The flamethrower pressed at no mana for a frame `Update` sees and let
+    // go on the next, neither stepping: 01's no mana, once, as before.
+    harness.harness_mut().set_dt(1.0 / 240.0);
+    choose(&mut harness, Spell::Flamethrower);
+    set_mana(&mut harness, 0.0);
+    assert!(until(&mut harness, 8, |h| super::steps_this_frame(h) > 0));
+    let mut heard = Heard::default();
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    assert_eq!(
+        super::steps_this_frame(&harness),
+        0,
+        "the press's frame steps none"
+    );
+    heard.listen(&harness);
+    harness.harness_mut().release_action("cast");
+    harness.step(1);
+    assert_eq!(super::steps_this_frame(&harness), 0, "nor the release's");
+    heard.listen(&harness);
+    let no_mana = heard
+        .iter()
+        .filter(|&&sound| sound == Sound::NoMana)
+        .count();
+    assert_eq!(no_mana, 1, "{heard:?}");
 }
 
 #[test]

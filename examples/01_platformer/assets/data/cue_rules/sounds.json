@@ -844,17 +844,98 @@
     ]
   },
   {
-    "on": "not_ready",
+    "on": "ability_refused",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": [
+      "fire_missile",
+      "force_push",
+      "black_hole",
+      "iron_block",
+      "bowling_ball",
+      "lightning",
+      "toxic_flask",
+      "summon"
+    ],
+    "reason": "no_cost",
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_no_mana_sfx",
+          "at": "aim"
+        }
+      }
+    ]
+  },
+  {
+    "on": "ability_refused",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "ability": [
+      "fire_missile",
+      "force_push",
+      "black_hole",
+      "iron_block",
+      "bowling_ball",
+      "lightning",
+      "toxic_flask",
+      "summon"
+    ],
+    "reason": [
+      "not_ready",
+      "no_charge"
+    ],
     "do": [
       {
         "sound": {
           "id": "ex10_not_ready_sfx",
-          "min_interval": 0.15
+          "min_interval": 0.15,
+          "at": "aim"
+        }
+      }
+    ]
+  },
+  {
+    "on": "ability_refused",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "ability": [
+      "fire_missile",
+      "force_push",
+      "black_hole",
+      "iron_block",
+      "bowling_ball",
+      "lightning",
+      "toxic_flask",
+      "summon"
+    ],
+    "reason": [
+      "no_target",
+      "no_room",
+      "capped"
+    ],
+    "do": [
+      {
+        "burst": {
+          "particles": "ex10_fizzle",
+          "key": true,
+          "at": "aim"
+        }
+      },
+      {
+        "sound": {
+          "id": "ex10_fizzle_sfx",
+          "min_interval": 0.1,
+          "at": "aim"
         }
       }
     ]

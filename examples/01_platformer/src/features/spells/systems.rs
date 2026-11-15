@@ -45,7 +45,8 @@ fn aim(world: &World, player: Entity) -> Vec2 {
 /// react phase, and the small balls forget what they owed and stop their
 /// loop, spending nothing at the balls' cap. One refused for mana stays off
 /// until the cast is released (I2). A held spell's refusal is said on the
-/// step it is first refused, once a press ([`refuse_cast`]).
+/// step it is first refused, once a press ([`refuse_cast`]): its no mana,
+/// or the small balls' cap.
 pub fn cast(world: &mut World) {
     let Some(player) = caster(world) else {
         toys::stop_small_balls(world);
@@ -70,7 +71,7 @@ pub fn cast(world: &mut World) {
                         refuse(world);
                     }
                     placing = used == Used::Used && spell == Spell::SmallBalls;
-                    Refusal::of(used)
+                    (used == Used::NoCost).then_some(Refusal::NoMana)
                 };
                 if let Some(refusal) = refusal {
                     say(world, player, refusal);
@@ -86,16 +87,13 @@ pub fn cast(world: &mut World) {
 }
 
 /// Says why a cast was refused at `at`, the cursor's point or else the
-/// wizard's: no mana and not ready each play their sound, not ready
-/// flashing the selected slot red, and no room fizzles there with its own,
-/// a key burst.
+/// wizard's: no mana plays its sound, and no room fizzles there with its
+/// own, a key burst. It says 01's own refusals, before any use, and a held
+/// spell's; a pressed spell's use refused says why through its ability's
+/// `ability_refused` rules, at the aim.
 pub fn refuse_cast(world: &mut World, refusal: Refusal, at: Vec2) {
     match refusal {
         Refusal::NoMana => audio::play(world, Sound::NoMana, at),
-        Refusal::NotReady => {
-            audio::play(world, Sound::NotReady, at);
-            super::hud::refused(world);
-        }
         Refusal::NoRoom => {
             spawn_key_burst(world, "ex10_fizzle", at);
             audio::play(world, Sound::Fizzled, at);
@@ -246,19 +244,16 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         }),
         _ => false,
     };
-    let used = if refused {
-        None
-    } else {
-        Some(use_ability(world, player, spell.ability()))
-    };
-    let refusal = match used {
-        None => Some(Refusal::NoRoom),
-        Some(used) if used != Used::Used => Refusal::of(used),
-        Some(_) => None,
-    };
-    if refused || used != Some(Used::Used) {
-        if let Some(refusal) = refusal {
-            refuse_cast(world, refusal, at.unwrap_or(centre));
+    if refused {
+        refuse_cast(world, Refusal::NoRoom, at.unwrap_or(centre));
+        return;
+    }
+    // A use's refusal sounds from its ability's `ability_refused` rules;
+    // not ready or out of charges, its slot flashes red.
+    let used = use_ability(world, player, spell.ability());
+    if used != Used::Used {
+        if matches!(used, Used::NotReady | Used::NoCharge) {
+            super::hud::refused(world);
         }
         return;
     }
