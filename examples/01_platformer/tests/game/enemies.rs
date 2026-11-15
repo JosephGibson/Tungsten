@@ -4810,9 +4810,14 @@ fn a_hole_holds_a_bat_and_a_wisp_about_its_core() {
         let core = Vec2::new(1300.0, TOP - 300.0);
         let flyer = enemy(&mut harness, kind, core + Vec2::new(250.0, 0.0));
         harness.step(2);
-        toys::place_black_hole(harness.world_mut(), core);
+        let hole = toys::place_black_hole(harness.world_mut(), core);
+        let life = harness
+            .world()
+            .get::<tungsten::kit::Cooldown>(hole)
+            .unwrap()
+            .seconds();
         let (mut caught, mut farthest) = (false, 0.0_f32);
-        for _ in 0..(toys::HOLE_SECS * 60.0) as u32 - 2 {
+        for _ in 0..(life * 60.0) as u32 - 2 {
             harness.step(1);
             let distance = at(&harness, flyer).distance(core);
             if caught {

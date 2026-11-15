@@ -81,13 +81,11 @@ impl ScrapTumble {
 }
 
 /// A black hole: it pulls bodies in reach, bends missiles and puts out
-/// burning balls, for `left` game seconds. Its prefab names it
-/// `black_hole`.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// burning balls until its prefab's kit `cooldown`, its life, elapses. Its
+/// prefab names it `black_hole`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct BlackHole {
-    pub left: f32,
-}
+pub struct BlackHole {}
 
 /// The fire missile, slot 1's spawn: the kit's projectile on its linear
 /// motion, which 01 bends by the black holes and blasts on what it meets.

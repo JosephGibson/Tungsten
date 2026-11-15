@@ -22,8 +22,7 @@ use example_01_platformer::features::props::{
 };
 use example_01_platformer::features::spells::hud::ROUNDS;
 use example_01_platformer::features::toys::{
-    BALL_RADIUS, HOLE_SECS, IRON_HALF, IRON_MASS, MISSILE_SPEED, SCRAP_HALF, SCRAP_MASS,
-    SMALL_BALL_RADIUS,
+    BALL_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, SCRAP_HALF, SCRAP_MASS, SMALL_BALL_RADIUS,
 };
 use example_01_platformer::shared::{Body, body_centre};
 use glam::Vec2;
@@ -204,9 +203,6 @@ fn every_restated_constant_matches_its_data() {
     assert_eq!(number(&gun, "/payload/0/spawn/offset"), MUZZLE_OFFSET);
     // The magazine the HUD shows, the gun's charges.
     assert_eq!(number(&gun, "/charges/max"), ROUNDS as f32);
-    // A black hole's life.
-    let hole = json("prefabs/black_hole.json");
-    assert_eq!(number(&hole, "/components/black_hole/left"), HOLE_SECS);
     // The cold's freeze builds, the freezable's and the troll's, whose band
     // the chill's grade climbs to, each at its intensity's max.
     for id in FREEZE_BUILDS {

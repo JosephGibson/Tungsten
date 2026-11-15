@@ -20,8 +20,8 @@ use tungsten::core::{
     Schedule, Shape, Stage, Time, Transform, Velocity, World, system,
 };
 use tungsten::kit::{
-    ImpactDamage, LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase, TOP_DOWN_MOVER,
-    ensure_phases,
+    COOLDOWN_TICK, ImpactDamage, LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase,
+    TOP_DOWN_MOVER, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
@@ -85,11 +85,10 @@ pub const SCRAP_SCALE: f32 = 0.5;
 /// scrap's is a sixteenth.
 pub const IRON_FRICTION: f32 = 1500.0;
 pub const FROZEN_FRICTION: f32 = 120.0;
-/// A black hole's reach, pull and life, which its prefab's `left` restates;
-/// at most [`HOLE_CAP`] are open, a further one closing the oldest.
+/// A black hole's reach and pull, its life its prefab's `cooldown`; at most
+/// [`HOLE_CAP`] are open, a further one closing the oldest.
 pub const HOLE_RADIUS: f32 = 6.0 * TILE;
 pub const HOLE_FORCE: f32 = 12_000.0;
-pub const HOLE_SECS: f32 = 6.0;
 pub const HOLE_DIAMETER: f32 = 2.8125 * TILE;
 pub const HOLE_CAP: usize = 3;
 /// A hole shrinks to nothing over its last seconds, and its collapse
@@ -181,8 +180,14 @@ impl Plugin for ToysPlugin {
         world.insert_resource(HoleHold::default());
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
         ensure_phases(schedule);
+        let mut elapsed = EventCursor::new();
         let fixed = [
-            Phase::Tick.join(system("toys_tick", systems::tick)),
+            Phase::Tick.join(
+                system("toys_tick", move |world: &mut World| {
+                    systems::tick(world, &mut elapsed);
+                })
+                .after(COOLDOWN_TICK),
+            ),
             Phase::Move.join(system("toys_velocities", systems::remember_velocities)),
             Phase::Move.join(system("iron_weight", systems::weight).after("toys_velocities")),
             Phase::Move.join(system("toys_pull", systems::pull)),
@@ -536,8 +541,8 @@ pub fn rest(world: &mut World, entity: Entity) {
     world.insert(entity, rest);
 }
 
-/// Opens a black hole at `at` for [`HOLE_SECS`], with its opening's ring and
-/// rush of sparks; past [`HOLE_CAP`] the oldest, the lowest save ID,
+/// Opens a black hole at `at` for its prefab's cooldown, with its opening's
+/// ring and rush of sparks; past [`HOLE_CAP`] the oldest, the lowest save ID,
 /// collapses first.
 pub fn place_black_hole(world: &mut World, at: Vec2) -> Entity {
     let mut open: Vec<(SaveId, Entity)> = world

@@ -3331,7 +3331,10 @@ fn three_open_black_holes_load_back_to_themselves() {
     let world = harness.world_mut();
     for (i, x) in [700.0, 1000.0, 1300.0].into_iter().enumerate() {
         let hole = toys::place_black_hole(world, Vec2::new(x, TOP - 300.0));
-        world.get_mut::<BlackHole>(hole).unwrap().left = 2.0 + i as f32;
+        world
+            .get_mut::<tungsten::kit::Cooldown>(hole)
+            .unwrap()
+            .set_left(2.0 + i as f32);
     }
     let open = holes(&harness);
     assert_eq!(open.len(), 3, "every hole open");
@@ -3344,12 +3347,103 @@ fn three_open_black_holes_load_back_to_themselves() {
     assert_eq!(holes(&fresh), open, "each where it was, its time left");
 }
 
+#[test]
+fn an_older_saves_holes_keep_their_seconds_left() {
+    let dir = user_folder("holes-35");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let player = player_entity(&harness);
+    scaffold(&mut harness);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.step(1);
+    let world = harness.world_mut();
+    for (i, x) in [700.0, 1000.0, 1300.0].into_iter().enumerate() {
+        let hole = toys::place_black_hole(world, Vec2::new(x, TOP - 300.0));
+        world
+            .get_mut::<tungsten::kit::Cooldown>(hole)
+            .unwrap()
+            .set_left(2.0 + i as f32);
+    }
+    let saved = capture(&harness);
+    // Schema 35's shape: each hole's life its own `left`, no cooldown.
+    let mut older = json(&saved);
+    let mut rewritten = 0;
+    let mut stack = vec![&mut older["world"]];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                let hole =
+                    object.get("prefab").and_then(serde_json::Value::as_str) == Some("black_hole");
+                if hole
+                    && let Some(serde_json::Value::Object(components)) =
+                        object.get_mut("components")
+                {
+                    let life = components.remove("cooldown").expect("its life");
+                    let left = life["left"].clone();
+                    components.insert("black_hole".to_owned(), serde_json::json!({ "left": left }));
+                    rewritten += 1;
+                }
+                stack.extend(object.values_mut());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter_mut()),
+            _ => {}
+        }
+    }
+    assert_eq!(rewritten, 3, "the three holes' records");
+    let stamp = tungsten::core::SaveStamp::new(35, "0.117.0", 1_760_400_000_000);
+    let slots = harness_slots(&harness);
+    slots
+        .save_stamped("slot_1", &older, &stamp)
+        .expect("a schema 35 save is written");
+    let migrated = slots
+        .load::<SaveGame>("slot_1")
+        .expect("a schema 35 save migrates");
+    // The step each hole collapses at after a load, by save ID.
+    let collapses = |save: SaveGame| -> BTreeMap<u64, u32> {
+        let mut fresh = super::harness();
+        load(&mut fresh, save);
+        fresh.harness_mut().set_dt(1.0 / 60.0);
+        fresh.world_mut().resource_mut::<Time>().resume();
+        let open = |harness: &UiHarness| -> BTreeSet<u64> {
+            harness
+                .world()
+                .query::<(&Saved, &BlackHole)>()
+                .map(|(id, _)| id.id().0)
+                .collect()
+        };
+        let before = open(&fresh);
+        assert_eq!(before.len(), 3, "every hole loaded");
+        let (mut at, mut steps) = (BTreeMap::new(), 0);
+        for _ in 0..300 {
+            fresh.step(1);
+            steps += super::steps_this_frame(&fresh);
+            let now = open(&fresh);
+            for id in before.difference(&now) {
+                at.entry(*id).or_insert(steps);
+            }
+        }
+        at
+    };
+    let after = collapses(serde_json::from_value(json(&saved)).expect("it loads"));
+    assert_eq!(
+        after.values().copied().collect::<Vec<_>>(),
+        [120, 180, 240],
+        "2, 3 and 4 s at 1/60 s"
+    );
+    assert_eq!(
+        collapses(migrated),
+        after,
+        "each at its own left, as the unrewritten load"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// The open black holes: each one's save ID, point and seconds left.
 fn holes(harness: &UiHarness) -> Vec<(u64, [f32; 2], f32)> {
     let mut open: Vec<(u64, [f32; 2], f32)> = harness
         .world()
-        .query::<(&Saved, &Transform, &BlackHole)>()
-        .map(|(id, at, hole)| (id.id().0, at.position.to_array(), hole.left))
+        .query::<(&Saved, &Transform, &BlackHole, &tungsten::kit::Cooldown)>()
+        .map(|(id, at, _, life)| (id.id().0, at.position.to_array(), life.left()))
         .collect();
     open.sort_by_key(|&(id, ..)| id);
     open

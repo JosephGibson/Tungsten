@@ -8,14 +8,14 @@ use example_01_platformer::features::player::systems::escaped;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{BallHue, BlackHole, SmallBall};
 use example_01_platformer::features::toys::systems::{ball_look, bounds, pull, rainbow_rgba, tick};
-use example_01_platformer::features::toys::{self, BALL_RADIUS, HOLE_RADIUS, HOLE_SECS};
+use example_01_platformer::features::toys::{self, BALL_RADIUS, HOLE_RADIUS};
 use glam::Vec2;
 use tungsten::core::{
     AnimationRegistry, AssetRegistry, AudioCommand, Collider, Entity, Position, RigidBodyBundle,
     SoundRegistry, Sprite, Time, Transform, Velocity,
 };
 use tungsten::extract_sprites_default;
-use tungsten::kit::Children;
+use tungsten::kit::{Children, Cooldown};
 use tungsten::testing::UiHarness;
 
 use super::{aim_at, ball, choose, mock_sprite, pin_camera, run, teleport};
@@ -38,7 +38,7 @@ fn rainbow_ball_hue_system_advances_each_ball_hue() {
         speed: 0.2,
     };
     world.resource_mut::<Time>().advance_frame(0.5);
-    tick(world);
+    tick(world, &mut tungsten::core::EventCursor::new());
     let hue = world.get::<BallHue>(e).unwrap();
     assert!((hue.hue - 0.05).abs() < 1e-6, "{}", hue.hue);
 }
@@ -77,7 +77,11 @@ fn black_hole_lifetime_system_despawns_expired_hole() {
         .iter()
         .collect();
     assert_eq!(dust.len(), 1);
-    harness.world_mut().get_mut::<BlackHole>(hole).unwrap().left = 0.01;
+    harness
+        .world_mut()
+        .get_mut::<Cooldown>(hole)
+        .unwrap()
+        .set_left(0.01);
     harness.step(1);
     let world = harness.world();
     assert!(!world.is_alive(hole));
@@ -189,13 +193,13 @@ fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
     harness.step(1);
     harness.harness_mut().release_action("cast");
     let world = harness.world();
-    let holes: Vec<(Entity, BlackHole)> = world
-        .query::<(Entity, &BlackHole)>()
-        .map(|(e, hole)| (e, *hole))
+    let holes: Vec<(Entity, Cooldown)> = world
+        .query::<(Entity, &BlackHole, &Cooldown)>()
+        .map(|(e, _, life)| (e, life.clone()))
         .collect();
     assert_eq!(holes.len(), 1);
-    let (hole, life) = holes[0];
-    assert_eq!(life.left, HOLE_SECS);
+    let (hole, life) = holes[0].clone();
+    assert_eq!(life.left(), life.seconds(), "its whole life");
     let placed = world.get::<Transform>(hole).unwrap().position;
     assert!((placed - at).length() < 1e-3, "at the cursor: {placed}");
     let sound = world

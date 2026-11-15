@@ -6,10 +6,11 @@
 
 use glam::Vec2;
 use tungsten::core::{AssetRegistry, Transform, World};
+use tungsten::kit::Cooldown;
 use tungsten::render::SpriteBatch;
 
 use super::components::{BlackHole, Element, Ring, ShockRing, Spray};
-use super::{HOLE_DIAMETER, HOLE_OPEN_SECS, HOLE_SECS, HOLE_SHRINK_SECS, RING_SECS};
+use super::{HOLE_DIAMETER, HOLE_OPEN_SECS, HOLE_SHRINK_SECS, RING_SECS};
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{CORE, CORE_MATERIAL, HALO, HALO_MATERIAL, drawn_time};
 
@@ -140,10 +141,10 @@ pub fn vortices(world: &World) -> Vec<SpriteBatch> {
         (PHOTON_RING, D * 0.57, time * 6.0, [255, 235, 215, 255]),
         ("ex10_vortex_core", D * 0.47, -time * 1.3, [255; 4]),
     ];
-    for (hole, at) in world.query::<(&BlackHole, &Transform)>() {
+    for (_, life, at) in world.query::<(&BlackHole, &Cooldown, &Transform)>() {
         let at = at.position;
-        let opened = ((HOLE_SECS - hole.left) / HOLE_OPEN_SECS).clamp(0.0, 1.0);
-        let shrink = (hole.left / HOLE_SHRINK_SECS).clamp(0.0, 1.0)
+        let opened = ((life.seconds() - life.left()) / HOLE_OPEN_SECS).clamp(0.0, 1.0);
+        let shrink = (life.left() / HOLE_SHRINK_SECS).clamp(0.0, 1.0)
             * (0.08 + 0.92 * (1.0 - (1.0 - opened).powi(3)));
         let layer =
             |batches: &mut Vec<SpriteBatch>,

@@ -813,7 +813,10 @@ fn cloud_parallax_and_vortex_instances_animate_without_world_mutation() {
     }
     let centre = world.resource::<CameraState>().position + Vec2::new(300.0, 200.0);
     let hole = toys::place_black_hole(world, centre);
-    world.get_mut::<BlackHole>(hole).unwrap().left = 2.0;
+    world
+        .get_mut::<tungsten::kit::Cooldown>(hole)
+        .unwrap()
+        .set_left(2.0);
     world.insert_resource(SceneTime(0.0));
     let first = draw::backdrop(world);
     let still = toys::draw::vortices(world);
@@ -1521,7 +1524,9 @@ fn a_hole_opens_over_three_tenths_of_a_second() {
     assert_eq!(rushes, 1, "the rush's emitter names the hole");
     // The vortex at its age 0 and at 0.3 s, at the same drawn time.
     let sizes = |world: &mut tungsten::core::World, age: f32| {
-        world.get_mut::<BlackHole>(hole).unwrap().left = toys::HOLE_SECS - age;
+        let life = world.get_mut::<tungsten::kit::Cooldown>(hole).unwrap();
+        let seconds = life.seconds();
+        life.set_left(seconds - age);
         toys::draw::vortices(world)
             .iter()
             .flat_map(|batch| &batch.instances)

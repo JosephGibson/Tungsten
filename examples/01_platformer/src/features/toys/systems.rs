@@ -10,9 +10,9 @@ use tungsten::core::{
     Transform, Velocity, Visibility, With, World,
 };
 use tungsten::kit::{
-    Blast, Children, EffectInstance, Effects, Health, LinearMotion, Modifier, PlatformerController,
-    Projectile, ProjectileExpired, Stats, Steering, Tags, TopDownMover, blast, carrier_of,
-    knock_back, steered_direction, stimulate,
+    Blast, Children, CooldownElapsed, EffectInstance, Effects, Health, LinearMotion, Modifier,
+    PlatformerController, Projectile, ProjectileExpired, Stats, Steering, Tags, TopDownMover,
+    blast, carrier_of, knock_back, steered_direction, stimulate,
 };
 use tungsten::physics::wake;
 
@@ -76,22 +76,29 @@ pub const FLAME_WALL_HIT: &str = "ex10_flame_wall_hit";
 const COLD_LOOP: &str = "ex10_ice_spray_sfx";
 const FIRE_LOOP: &str = "ex10_flame_spray_sfx";
 
-/// `toys_tick`, in the tick phase: the holes' lives, each collapsing at
-/// its end, the small balls' impact cooldowns, the hues' turn and the
-/// shock rings' growth, each by the step.
-pub fn tick(world: &mut World) {
+/// `toys_tick`, in the tick phase after the kit's cooldowns: the hues' turn
+/// and the shock rings' growth, each by the step, then each hole whose
+/// life's cooldown elapsed this step ([`CooldownElapsed`], read once
+/// through `cursor`) collapsing, in save-ID order.
+pub fn tick(world: &mut World, cursor: &mut EventCursor<CooldownElapsed>) {
+    let mut collapsed: Vec<(Option<SaveId>, Entity)> = world
+        .get_resource::<EventQueue<CooldownElapsed>>()
+        .map(|events| {
+            cursor
+                .read(events)
+                .filter(|elapsed| world.has::<BlackHole>(elapsed.entity))
+                .map(|elapsed| {
+                    let id = world.get::<Saved>(elapsed.entity).map(Saved::id);
+                    (id, elapsed.entity)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let dt = world.resource::<Time>().delta();
     if dt <= 0.0 {
         return;
     }
     let mut closed = Vec::new();
-    let mut collapsed: Vec<(Option<SaveId>, Entity)> = Vec::new();
-    for (entity, hole, id) in world.query_mut::<(Entity, &mut BlackHole, Option<&Saved>)>() {
-        hole.left -= dt;
-        if hole.left <= 0.0 {
-            collapsed.push((id.map(Saved::id), entity));
-        }
-    }
     for hue in world.query_mut::<&mut BallHue>() {
         hue.hue = (hue.hue + hue.speed * dt).rem_euclid(1.0);
     }

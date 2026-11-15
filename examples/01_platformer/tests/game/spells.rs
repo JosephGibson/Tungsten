@@ -436,7 +436,11 @@ fn the_holes_hum_on_one_voice_that_falls_silent_when_the_last_closes() {
         "{heard:?}"
     );
     for hole in near {
-        harness.world_mut().get_mut::<BlackHole>(hole).unwrap().left = 0.01;
+        harness
+            .world_mut()
+            .get_mut::<tungsten::kit::Cooldown>(hole)
+            .unwrap()
+            .set_left(0.01);
     }
     heard.clear();
     listen(&mut harness, 10, &mut heard);
@@ -1301,4 +1305,57 @@ fn a_missile_flying_left_is_mirrored_along_its_flight() {
             "left {left}: {lies} for {unit}"
         );
     }
+}
+
+#[test]
+fn a_hole_collapses_at_its_sixth_second() {
+    let (mut harness, player) = run();
+    ground(&mut harness, 600.0);
+    stand(&mut harness, player, 700.0, 600.0);
+    harness.step(1);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    pin_camera(&mut harness, Vec2::new(200.0, 200.0));
+    // Placed in a step at 1/60 s, the press's.
+    let at = centre(&harness, player) + Vec2::new(300.0, -200.0);
+    aim_at(&mut harness, at);
+    choose(&mut harness, Spell::BlackHole);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    assert_eq!(super::steps_this_frame(&harness), 1, "the press met a step");
+    let hole = harness
+        .world()
+        .query::<(Entity, &BlackHole)>()
+        .map(|(entity, _)| entity)
+        .next()
+        .expect("the press opened a hole");
+    let mut steps = 0;
+    for _ in 0..400 {
+        if steps == 359 {
+            break;
+        }
+        harness.step(1);
+        steps += super::steps_this_frame(&harness);
+        assert!(harness.world().is_alive(hole), "open after {steps} steps");
+    }
+    assert_eq!(steps, 359, "open 359 steps on");
+    harness.step(1);
+    assert_eq!(super::steps_this_frame(&harness), 1);
+    let world = harness.world();
+    assert!(!world.is_alive(hole), "collapsed at the 360th");
+    assert_eq!(
+        world
+            .query::<&ShockRing>()
+            .filter(|ring| ring.kind == Ring::Collapse)
+            .count(),
+        1,
+        "its ring"
+    );
+    assert!(
+        harness
+            .harness()
+            .events::<Sounded>()
+            .any(|sounded| sounded.sound == Sound::HoleCollapsed),
+        "its collapse's sound"
+    );
 }

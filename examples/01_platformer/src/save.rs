@@ -89,9 +89,10 @@ impl SaveData for SaveGame {
     /// kit's `facing` ([`to_31`]), 32 a foe's rests and "!" onto the
     /// kit's cooldowns and effects ([`to_32`]), 33 the crawler's
     /// snowball onto the kit's projectile ([`to_33`]), 34 the lightning's
-    /// chain onto the kit's conduction ([`to_34`]), and 35 the missile's
-    /// and the tracers' turns onto the kit's facing ([`to_35`]).
-    const SCHEMA: u32 = 35;
+    /// chain onto the kit's conduction ([`to_34`]), 35 the missile's and
+    /// the tracers' turns onto the kit's facing ([`to_35`]), and 36 the
+    /// black hole's life onto a kit cooldown ([`to_36`]).
+    const SCHEMA: u32 = 36;
 
     fn migrate_step(
         from: u32,
@@ -138,6 +139,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 34: the save has no world")?;
                 to_35(world);
+                Ok(data)
+            }
+            35 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 35: the save has no world")?;
+                to_36(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -424,6 +432,50 @@ fn to_35(value: &mut Value) {
         }
         _ => {}
     }
+}
+
+/// Schema 35 to 36 over a save's `world`: each saved `black_hole`, a
+/// record's or a patch's, loses its `left`, which becomes the kit's
+/// `cooldown` beside it, the hole's life of [`S35_HOLE_LIFE`] with that
+/// left, at least 0, and its one elapse to go, as the prefab gives it at
+/// schema 36.
+fn to_36(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let left = object
+                .get_mut(S35_BLACK_HOLE)
+                .and_then(Value::as_object_mut)
+                .and_then(|hole| hole.remove("left"))
+                .and_then(|left| left.as_f64());
+            if let Some(left) = left {
+                object.insert("cooldown".to_owned(), s35_life(left.max(0.0)));
+            }
+            for inner in object.values_mut() {
+                to_36(inner);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                to_36(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The name schema 35 saved a black hole under and its life's seconds,
+/// frozen for the migration.
+const S35_BLACK_HOLE: &str = "black_hole";
+const S35_HOLE_LIFE: f64 = 6.0;
+
+/// A black hole's life at schema 35 as the kit's `cooldown`, `left`
+/// seconds of its six to go and one elapse: frozen for the migration.
+fn s35_life(left: f64) -> Value {
+    Value::from_iter([
+        ("seconds".to_owned(), Value::from(S35_HOLE_LIFE)),
+        ("left".to_owned(), Value::from(left)),
+        ("remaining".to_owned(), Value::from(1)),
+    ])
 }
 
 /// The prefabs of schema 34's shots, frozen for the migration.
