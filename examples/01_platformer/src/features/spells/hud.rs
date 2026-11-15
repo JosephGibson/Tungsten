@@ -73,8 +73,9 @@ pub struct Slot {
     pub flash: Option<WidgetId>,
     /// Its action's key, on a plate in the tile's top-left corner.
     pub key: WidgetId,
-    /// One pip a charge, for a spell with charges.
-    pub pips: Option<[WidgetId; PIPS]>,
+    /// The row of its pips, one a charge of its ability's most, for an
+    /// ability with charges: the row's children, in order.
+    pub pips: Option<WidgetId>,
 }
 
 /// The gun, set apart from the spells: its tile with the reload's sweep,
@@ -211,8 +212,7 @@ const BORDER: f32 = 2.0;
 const KEY_TEXT: [f32; 2] = [9.5, 12.0];
 const KEY_PAD: f32 = 2.0;
 const PLATE_ALPHA: u8 = 225;
-/// The most charges a slot shows, and a pip's side.
-pub const PIPS: usize = 3;
+/// A pip's side.
 const PIP: f32 = 4.0;
 /// A slot's flash: its seconds and its peak alpha, fading to none, white as
 /// a cooldown of at least [`FLASH_COOLDOWN`] seconds ends (I14), the danger
@@ -264,8 +264,11 @@ const TAKE_PROMPT: &str = "{action:interact} Take";
 /// shown and frozen under a pause.
 pub fn start(world: &mut World) {
     let tomes = TomeKind::ALL.map(|kind| crate::features::tomes::data(world, kind).icon.clone());
+    let charges = SLOTS.map(|slot| slot.and_then(|spell| most_charges(world, spell)));
     let assets = world.resource_mut::<AssetRegistry>();
-    let icons = SLOTS.map(|slot| slot.map(|spell| (spell, assets.intern_sprite(spell.icon()))));
+    let icons = std::array::from_fn(|i| {
+        SLOTS[i].map(|spell| (assets.intern_sprite(spell.icon()), charges[i]))
+    });
     let art = Art {
         gun: assets.intern_sprite(GUN_ICON),
         health: assets.intern_sprite(HEALTH_LIQUID),
@@ -286,6 +289,13 @@ pub fn start(world: &mut World) {
     stack.own_root(hud.panel.root, RootCover::Hide);
     world.insert_resource(hud);
     update(world);
+}
+
+/// The most charges `spell`'s ability holds, for one with charges.
+fn most_charges(world: &World, spell: Spell) -> Option<u32> {
+    let data = world.get_resource::<DataRegistry>()?;
+    let ability = data.get::<Ability>(spell.ability())?;
+    ability.charges().map(|(most, _, _)| most)
 }
 
 /// The UI's scale: screen pixels a UI unit.
@@ -316,15 +326,15 @@ fn meters_style(spacing: SpacingTokens, scale: f32) -> LayoutStyle {
         .anchored(Anchor::TopStart, Vec2::splat(snap(spacing.lg, scale)))
 }
 
-/// A label's or a button's text, its spans joined: the shell's old helper,
-/// kept so the HUD's comparisons allocate as before (`e01-pit`'s pin).
-fn text_of(tree: &UiTree, id: WidgetId) -> String {
-    let spans = tree.text(id).map(|styled| styled.spans.as_slice());
-    spans
-        .unwrap_or_default()
-        .iter()
-        .map(|span| span.text.as_str())
-        .collect()
+/// Whether `id` shows `text` as its one span, read with no copy: the book
+/// panel's check before it copies a text out of the data.
+fn shows(tree: &UiTree, id: WidgetId, text: &str) -> bool {
+    tree.text(id)
+        .is_some_and(|styled| match styled.spans.as_slice() {
+            [] => text.is_empty(),
+            [span] => span.text == text,
+            _ => false,
+        })
 }
 
 /// Notes a press of the selected spell refused as not ready: its slot
@@ -444,7 +454,7 @@ fn readout(tree: &mut UiTree, parent: WidgetId, [size, line]: [f32; 2], room: f3
 
 fn build(
     tree: &mut UiTree,
-    icons: [Option<(Spell, SpriteAssetId)>; SLOT_COUNT],
+    icons: [Option<(SpriteAssetId, Option<u32>)>; SLOT_COUNT],
     art: Art,
     scale: f32,
 ) -> Hud {
@@ -678,7 +688,7 @@ pub fn panel(world: &mut World, book: Option<(TomeKind, Vec2)>) {
             (panel.costs, &tome.costs),
         ]
         .into_iter()
-        .filter(|&(id, text)| text_of(tree, id) != *text)
+        .filter(|&(id, text)| !shows(tree, id, text))
         .map(|(id, text)| (id, text.clone()))
         .collect()
     };
@@ -712,10 +722,10 @@ fn edged(tree: &mut UiTree, id: WidgetId, color: [u8; 4], background: [u8; 4], w
     tree.set_overrides(id, style);
 }
 
-/// A slot: the ring, inside it the icon tile with its sweep, its flash, its
-/// charges' pips and its key on a corner plate; an empty slot keeps its
-/// place, its tile as large as a full one's.
-fn slot(tree: &mut UiTree, bar: WidgetId, art: Option<(Spell, SpriteAssetId)>) -> Slot {
+/// A slot: the ring, inside it the icon tile with its sweep, its flash, a
+/// pip a charge of its ability's most, and its key on a corner plate; an
+/// empty slot keeps its place, its tile as large as a full one's.
+fn slot(tree: &mut UiTree, bar: WidgetId, art: Option<(SpriteAssetId, Option<u32>)>) -> Slot {
     let ring = tree.panel(bar, LayoutStyle::row().with_padding(BORDER));
     edged(tree, ring, CLEAR, CLEAR, BORDER);
     let tile = tree.panel(ring, LayoutStyle::column());
@@ -727,7 +737,7 @@ fn slot(tree: &mut UiTree, bar: WidgetId, art: Option<(Spell, SpriteAssetId)>) -
         .anchored(Anchor::Center, Vec2::ZERO);
     let (icon, sweep, flash, pips) = match art {
         None => (None, None, None, None),
-        Some((spell, icon)) => {
+        Some((icon, charges)) => {
             let image = tree.image(tile, icon, Vec2::splat(ICON), whole);
             // A mesh's own box takes the panel's style: clear, so the icon
             // shows.
@@ -735,17 +745,17 @@ fn slot(tree: &mut UiTree, bar: WidgetId, art: Option<(Spell, SpriteAssetId)>) -
             widgets::fill(tree, sweep, CLEAR);
             let flash = tree.panel(tile, inside);
             widgets::fill(tree, flash, CLEAR);
-            let pips = (spell == Spell::IronBlock).then(|| {
+            let pips = charges.map(|most| {
                 let style = LayoutStyle::row()
                     .with_gap(PIP / 2.0)
                     .anchored(Anchor::BottomCenter, Vec2::new(0.0, BORDER));
                 let row = tree.panel(tile, style);
                 widgets::fill(tree, row, CLEAR);
-                [(); PIPS].map(|()| {
+                for _ in 0..most {
                     let pip = tree.panel(row, sized(LayoutStyle::default(), PIP, PIP));
                     widgets::fill(tree, pip, colors.text);
-                    pip
-                })
+                }
+                row
             });
             (Some(image), Some(sweep), Some(flash), pips)
         }
@@ -1016,13 +1026,11 @@ pub fn update(world: &mut World) {
             CLEAR
         };
         edged(tree, slot.ring, ring, CLEAR, BORDER);
-        if text_of(tree, slot.key) != key {
-            tree.set_plain_text(slot.key, &key);
-        }
+        tree.set_plain_text(slot.key, &key);
         let (Some(icon), Some(sweep)) = (slot.icon, slot.sweep) else {
             continue;
         };
-        if SLOTS[index] == Some(Spell::Summon) && tree.image_sprite(icon) != Some(summoned_icon) {
+        if SLOTS[index] == Some(Spell::Summon) {
             tree.set_image(icon, summoned_icon, Vec2::splat(ICON));
         }
         let state = state.unwrap_or(Shown {
@@ -1032,8 +1040,9 @@ pub fn update(world: &mut World) {
         });
         tree.set_image_tint(icon, if state.payable { WHITE } else { GREYED });
         tree.set_mesh(sweep, &veil(state.cooling));
-        if let (Some(pips), Some((left, most))) = (slot.pips, state.charges) {
-            for (i, pip) in pips.into_iter().enumerate() {
+        if let (Some(row), Some((left, most))) = (slot.pips, state.charges) {
+            for i in 0..tree.children(row).len() {
+                let pip = tree.children(row)[i];
                 let color = if i < left as usize {
                     colors.text
                 } else {
@@ -1048,25 +1057,18 @@ pub fn update(world: &mut World) {
     for (tile, kind) in hud.strip.tiles.into_iter().zip(taken) {
         widgets::show(tree, tile, kind.is_some());
         if let Some(kind) = kind {
-            let art = hud.art.tomes[kind.index()];
-            if tree.image_sprite(tile) != Some(art) {
-                tree.set_image(tile, art, Vec2::splat(ICON));
-            }
+            tree.set_image(tile, hud.art.tomes[kind.index()], Vec2::splat(ICON));
         }
     }
     let name = titled(summoned.name);
-    if text_of(tree, hud.name) != name {
-        tree.set_plain_text(hud.name, &name);
-    }
+    tree.set_plain_text(hud.name, &name);
     if let Some((left, most)) = rounds {
         let readout = if reload.is_some() {
             "reloading".to_string()
         } else {
             format!("{left} / {most}")
         };
-        if text_of(tree, hud.magazine.text) != readout {
-            tree.set_plain_text(hud.magazine.text, &readout);
-        }
+        tree.set_plain_text(hud.magazine.text, &readout);
         let shade = if reload.is_some() {
             colors.text_muted
         } else {
@@ -1084,9 +1086,7 @@ pub fn update(world: &mut World) {
             } else {
                 hud.art.spent
             };
-            if tree.image_sprite(round) != Some(art) {
-                tree.set_image(round, art, Vec2::from(BULLET));
-            }
+            tree.set_image(round, art, Vec2::from(BULLET));
         }
     }
     if rescaled && let Some(shown) = world.get_resource_mut::<Hud>() {
@@ -1117,20 +1117,12 @@ fn shield_fill(tree: &mut UiTree, bar: ShieldBar, share: f32, shield: f32, time:
     if held <= 0.0 {
         return;
     }
-    let text = format!("+{held}");
-    if text_of(tree, bar.text) != text {
-        tree.set_plain_text(bar.text, &text);
-    }
+    tree.set_plain_text(bar.text, &format!("+{held}"));
     let width = Sizing::Percent((share * 100.0).clamp(0.0, 100.0));
-    if tree
-        .layout_style(bar.fill)
-        .is_some_and(|style| style.width != width)
-    {
-        let style = LayoutStyle::default()
-            .with_size(width, Sizing::Percent(100.0))
-            .anchored(Anchor::TopStart, Vec2::ZERO);
-        tree.set_layout_style(bar.fill, style);
-    }
+    let style = LayoutStyle::default()
+        .with_size(width, Sizing::Percent(100.0))
+        .anchored(Anchor::TopStart, Vec2::ZERO);
+    tree.set_layout_style(bar.fill, style);
     let scrolled = (time * SHIELD_FLOW).rem_euclid(LIQUID[0]) * texel;
     tree.set_translation(bar.strip, Vec2::new(-scrolled, 0.0));
 }
@@ -1145,20 +1137,12 @@ fn fill(
     flow: f32,
     texel: f32,
 ) {
-    let text = format!("{shown} / {max}");
-    if text_of(tree, meter.text) != text {
-        tree.set_plain_text(meter.text, &text);
-    }
+    tree.set_plain_text(meter.text, &format!("{shown} / {max}"));
     let width = Sizing::Percent((current / max.max(f32::EPSILON) * 100.0).clamp(0.0, 100.0));
-    if tree
-        .layout_style(meter.fill)
-        .is_some_and(|style| style.width != width)
-    {
-        tree.set_layout_style(
-            meter.fill,
-            LayoutStyle::default().with_size(width, Sizing::Fill),
-        );
-    }
+    tree.set_layout_style(
+        meter.fill,
+        LayoutStyle::default().with_size(width, Sizing::Fill),
+    );
     let scrolled = flow.rem_euclid(LIQUID[0]) * texel;
     tree.set_translation(meter.strip, Vec2::new(-scrolled, 0.0));
 }
