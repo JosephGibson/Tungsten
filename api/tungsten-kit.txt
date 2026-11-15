@@ -882,6 +882,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ClipRule
 pub struct tungsten_kit::prelude::Clips
 impl tungsten_kit::Clips
 pub fn tungsten_kit::Clips::aim(impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+pub fn tungsten_kit::Clips::by_aim(self) -> Self
 pub fn tungsten_kit::Clips::four(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::mirrored(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::one(impl core::convert::Into<alloc::string::String>) -> Self
@@ -5545,6 +5546,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ClipRule
 pub struct tungsten_kit::Clips
 impl tungsten_kit::Clips
 pub fn tungsten_kit::Clips::aim(impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+pub fn tungsten_kit::Clips::by_aim(self) -> Self
 pub fn tungsten_kit::Clips::four(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::mirrored(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::Clips::one(impl core::convert::Into<alloc::string::String>) -> Self

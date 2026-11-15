@@ -677,6 +677,128 @@ fn an_aim_set_picks_by_elevation_and_flips_left() {
     }
 }
 
+/// An `Aim` pointing along `x`, `y`, as an intent sets one.
+fn aiming(x: f32, y: f32) -> crate::Aim {
+    let unit = Vec2::new(x, y).normalize();
+    serde_json::from_value(json!({ "from": "intent", "direction": [unit.x, unit.y] })).unwrap()
+}
+
+#[test]
+fn a_set_by_the_aim_shows_the_aims_side() {
+    use tungsten_core::components::SpriteFlip;
+    let dt = 1.0 / 60.0;
+    let (mut world, mut schedule) = rig();
+    let sides = Clips::sides("walk_left", "walk_right").by_aim();
+    // Idling below its minimum speed, its velocity its facing.
+    let caster = world.spawn_with((
+        CharacterAnimator::new(sides.clone()),
+        Velocity(Vec2::new(1.0, 0.0)),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    let mut shows = |world: &mut World, aim: Option<(f32, f32)>, facing: f32| {
+        match aim {
+            Some((x, y)) => world.insert(caster, aiming(x, y)),
+            None => {
+                world.remove_component::<crate::Aim>(caster);
+            }
+        }
+        world.get_mut::<Velocity>(caster).unwrap().0 = Vec2::new(facing, 0.0);
+        frame(world, &mut schedule, dt);
+        shown(world, caster).1
+    };
+    for (aim, facing, want) in [
+        // The aim's side whatever the facing; straight up or down keeps it.
+        (Some((-1.0, 0.0)), 1.0, "walk_left"),
+        (Some((0.0, -1.0)), 1.0, "walk_left"),
+        (Some((1.0, 0.3)), -1.0, "walk_right"),
+        (Some((0.0, 1.0)), -1.0, "walk_right"),
+        // Any lean turns it, mostly up included.
+        (Some((-0.2, -1.0)), 1.0, "walk_left"),
+        // With no aim, the facing's.
+        (None, -1.0, "walk_left"),
+        (None, 1.0, "walk_right"),
+    ] {
+        assert_eq!(
+            shows(&mut world, aim, facing),
+            want,
+            "{aim:?} facing {facing}"
+        );
+    }
+    assert!(
+        world.get::<SpriteFlip>(caster).is_none(),
+        "a twin set writes no flip"
+    );
+    // The data form: `side` written only as `aim`, one of two.
+    let data = json!({ "left": "walk_left", "right": "walk_right", "side": "aim" });
+    assert_eq!(
+        serde_json::from_value::<Clips>(data.clone()).unwrap(),
+        sides
+    );
+    assert_eq!(serde_json::to_value(&sides).unwrap(), data);
+    let facing: Clips = serde_json::from_value(
+        json!({ "left": "walk_left", "right": "walk_right", "side": "facing" }),
+    )
+    .unwrap();
+    assert_eq!(facing, Clips::sides("walk_left", "walk_right"));
+    assert_eq!(
+        serde_json::to_value(&facing).unwrap(),
+        json!({ "left": "walk_left", "right": "walk_right" })
+    );
+    for refused in [
+        json!({ "right": "walk_right", "side": "up" }),
+        json!({ "aim": ["aim_down", "aim_up"], "side": "aim" }),
+    ] {
+        assert!(
+            serde_json::from_value::<Clips>(refused.clone()).is_err(),
+            "{refused}"
+        );
+    }
+    assert_eq!(Clips::one("idle").by_aim(), Clips::one("idle"));
+}
+
+/// `walk_right` and `walk_left`, three frames of 100 ms, as one-shots: 18
+/// frames at 1/60 s.
+#[test]
+fn a_one_shot_by_the_aim_keeps_its_first_side() {
+    let dt = 1.0 / 60.0;
+    let (mut world, mut schedule) = rig();
+    let caster = world.spawn_with((
+        CharacterAnimator::new("idle"),
+        Velocity(Vec2::new(1.0, 0.0)),
+        aiming(1.0, -0.5),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    frame(&mut world, &mut schedule, dt);
+    let play = |world: &mut World, clips: Clips| {
+        world
+            .get_mut::<CharacterAnimator>(caster)
+            .unwrap()
+            .play(clips);
+    };
+    play(&mut world, Clips::sides("walk_left", "walk_right").by_aim());
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(
+        shown(&world, caster).1,
+        "walk_right",
+        "its first frame's aim"
+    );
+    // The aim crosses to the left mid-clip: the right side to its end.
+    world.insert(caster, aiming(-1.0, 0.0));
+    for i in 1..18 {
+        frame(&mut world, &mut schedule, dt);
+        assert_eq!(shown(&world, caster).1, "walk_right", "frame {i}");
+    }
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(shown(&world, caster).1, "idle", "ended with its length");
+    // One by the facing still turns with it.
+    play(&mut world, Clips::sides("walk_left", "walk_right"));
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(shown(&world, caster).1, "walk_right");
+    world.get_mut::<Velocity>(caster).unwrap().0 = Vec2::new(-1.0, 0.0);
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(shown(&world, caster).1, "walk_left", "turned mid-clip");
+}
+
 #[test]
 fn an_animator_holds_its_clip_while_its_hold_passes() {
     use crate::{TagFilter, Tags, TagsPlugin};

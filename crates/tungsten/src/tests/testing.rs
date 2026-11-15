@@ -828,7 +828,7 @@ fn register_sprites_gives_each_sprite_and_frame_its_size() {
 }
 
 #[test]
-fn load_manifest_still_registers_no_sprite() {
+fn load_manifest_interns_its_sprite_names_and_registers_no_sprite() {
     let dir = std::env::temp_dir().join(format!("tungsten_load_no_sprites_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -844,7 +844,16 @@ fn load_manifest_still_registers_no_sprite() {
     let mut harness = Harness::new(app());
     harness.load_manifest(dir.join("manifest.json")).unwrap();
     let sprites = harness.app.world().resource::<AssetRegistry>();
-    assert_eq!(sprites.sprite_names().count(), 0);
+    // The hero and the sheet's four frames, in sorted order, as a window's
+    // load interns them.
+    let names = ["hero", "walk_0", "walk_1", "walk_2", "walk_3"];
+    let ids: Vec<u32> = names
+        .iter()
+        .map(|name| sprites.sprite_id(name).expect(name).index())
+        .collect();
+    assert!(ids.windows(2).all(|pair| pair[0] < pair[1]), "{ids:?}");
+    assert!(names.iter().all(|name| sprites.get_sprite(name).is_none()));
+    assert_eq!(sprites.sprite_names().count(), 0, "no sprite registered");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

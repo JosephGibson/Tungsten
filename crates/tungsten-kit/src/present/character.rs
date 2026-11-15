@@ -37,7 +37,7 @@ const CHARACTER_ANIMATOR_COMPONENT: &str = "character_animator";
 const CLIP_RULE: &str = "clip_rule";
 
 /// The data form of a [`Clips`], as every description of one writes it.
-pub(crate) const CLIPS_FORM: &str = "an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out; or { aim: [..] }, two or more drawn facing right from straight down to straight up";
+pub(crate) const CLIPS_FORM: &str = "an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out, or by the aim with `side: aim`, a one-shot keeping its first frame's aim; or { aim: [..] }, two or more drawn facing right from straight down to straight up";
 
 /// The default speed from which a character moves, in world pixels per
 /// second.
@@ -53,14 +53,19 @@ const ONE_SHOT_EPSILON_MS: f32 = 1e-3;
 /// `down` shows the last side faced while the entity faces up or down. A
 /// set without `left` shows `right` flipped while the entity faces left:
 /// the animator writes its `SpriteFlip` while such a set shows, for art
-/// drawn facing right (redo 7.9). Aim poses ([`aim`](Self::aim)) are drawn
-/// facing right from straight down to straight up, and show the one nearest
-/// the elevation of the entity's [`Aim`](crate::Aim) direction, else its
-/// facing's, flipped on the left as a `right`-only set is.
+/// drawn facing right (redo 7.9). A set picks by the way the entity faces,
+/// or ([`by_aim`](Self::by_aim)) by its [`Aim`](crate::Aim) direction,
+/// else its facing's: its side the aim's, kept while the aim points
+/// straight up or down, a one-shot of it keeping the aim its first frame
+/// read. Aim poses ([`aim`](Self::aim)) are drawn facing right from
+/// straight down to straight up, and show the one nearest the elevation of
+/// the entity's `Aim` direction, else its facing's, flipped on the left as
+/// a `right`-only set is.
 ///
 /// Data form: a manifest animation ID, `"hero_run"`, or
 /// `{ "left": "seeker_walk_left", "right": "seeker_walk_right", "up": "seeker_walk_up", "down": "seeker_walk_down" }`,
-/// or `{ "right": "hero_run" }` for one set of frames on both sides, or
+/// or `{ "right": "hero_run" }` for one set of frames on both sides, a set
+/// taking `"side": "aim"` to pick by the aim (`"facing"` by default), or
 /// `{ "aim": ["cast_down", "cast_fwd", "cast_up"] }`, two or more.
 ///
 /// # Examples
@@ -72,6 +77,10 @@ const ONE_SHOT_EPSILON_MS: f32 = 1e-3;
 /// let data = serde_json::to_value(&run).unwrap();
 /// assert_eq!(data, serde_json::json!({ "left": "hero_run_left", "right": "hero_run_right" }));
 /// assert_eq!(serde_json::from_value::<Clips>(data).unwrap(), run);
+/// let thrust = Clips::sides("thrust_left", "thrust_right").by_aim();
+/// let data = serde_json::to_value(&thrust).unwrap();
+/// assert_eq!(data, serde_json::json!({ "left": "thrust_left", "right": "thrust_right", "side": "aim" }));
+/// assert_eq!(serde_json::from_value::<Clips>(data).unwrap(), thrust);
 /// assert_eq!(Clips::from("hero_idle"), Clips::one("hero_idle"));
 /// let cast: Clips = serde_json::from_str(r#"{ "aim": ["cast_down", "cast_fwd", "cast_up"] }"#).unwrap();
 /// assert_eq!(cast, Clips::aim(["cast_down", "cast_fwd", "cast_up"]));
@@ -90,7 +99,7 @@ enum ClipsKind {
     Aim(Vec<String>),
 }
 
-/// A clip set by facing, as data writes it.
+/// A clip set by facing or by the aim, as data writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 struct ClipSet {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -100,6 +109,27 @@ struct ClipSet {
     up: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     down: Option<String>,
+    #[serde(skip_serializing_if = "Side::is_facing")]
+    side: Side,
+}
+
+/// What a clip set picks its entry by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Side {
+    /// The way the entity faces.
+    #[default]
+    Facing,
+    /// The entity's aim, else its facing.
+    Aim,
+}
+
+impl Side {
+    /// Whether it is the default, which data leaves unwritten.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_facing(&self) -> bool {
+        *self == Side::Facing
+    }
 }
 
 impl Clips {
@@ -122,6 +152,7 @@ impl Clips {
                 right: right.into(),
                 up: None,
                 down: None,
+                side: Side::Facing,
             }),
         }
     }
@@ -137,6 +168,7 @@ impl Clips {
                 right: right.into(),
                 up: None,
                 down: None,
+                side: Side::Facing,
             }),
         }
     }
@@ -156,6 +188,7 @@ impl Clips {
                 right: right.into(),
                 up: Some(up.into()),
                 down: Some(down.into()),
+                side: Side::Facing,
             }),
         }
     }
@@ -182,6 +215,25 @@ impl Clips {
         Self {
             kind: ClipsKind::Aim(ids),
         }
+    }
+
+    /// The clips, a set picking by the entity's [`Aim`](crate::Aim)
+    /// direction, else its facing's: its side the aim's whenever the aim
+    /// leans either way, kept while it points straight up or down, and `up`
+    /// and `down` by the aim's dominant axis. A one-shot of it keeps the aim
+    /// its first frame read, so a gesture faces where it was cast. One
+    /// animation and aim poses are left as they are.
+    #[must_use]
+    pub fn by_aim(mut self) -> Self {
+        if let ClipsKind::Set(set) = &mut self.kind {
+            set.side = Side::Aim;
+        }
+        self
+    }
+
+    /// Whether it is a set by the aim, whose one-shot keeps its first aim.
+    fn keeps_its_aim(&self) -> bool {
+        matches!(&self.kind, ClipsKind::Set(set) if set.side == Side::Aim)
     }
 
     /// Every animation ID it names, with its field under `field` (`move`,
@@ -212,9 +264,10 @@ impl Clips {
 
     /// The animation for `direction`, the way the entity faces or moves:
     /// a set's side by the dominant axis, `up` and `down` when it names them
-    /// and the last side faced otherwise; aim poses by `aim`'s elevation, on
-    /// its side. `left` is the last side, updated as the entity faces or
-    /// aims left or right. With it comes the `SpriteFlip` to write, for a
+    /// and the last side faced otherwise, a set by the aim reading `aim` in
+    /// its place, its side as any lean of it; aim poses by `aim`'s
+    /// elevation, on its side. `left` is the last side, updated as the
+    /// entity faces or aims left or right. With it comes the `SpriteFlip` to write, for a
     /// set without `left` and aim poses alone: flipped while it shows
     /// frames drawn facing right for the left side.
     fn pick(&self, direction: Vec2, aim: Vec2, left: &mut bool) -> (&str, Option<bool>) {
@@ -222,6 +275,16 @@ impl Clips {
             ClipsKind::One(id) => return (id, None),
             ClipsKind::Aim(ids) => return (pose(ids, aim, left), Some(*left)),
             ClipsKind::Set(set) => set,
+        };
+        let direction = match set.side {
+            Side::Facing => direction,
+            // The aim's side whenever it leans, as a pose's.
+            Side::Aim => {
+                if aim.x != 0.0 {
+                    *left = aim.x < 0.0;
+                }
+                aim
+            }
         };
         let vertical = if direction.x.abs() >= direction.y.abs() {
             if direction.x != 0.0 {
@@ -252,11 +315,15 @@ impl Clips {
                     .left
                     .clone()
                     .unwrap_or_else(|| format!("{} flipped", set.right));
-                match (&set.up, &set.down) {
+                let sides = match (&set.up, &set.down) {
                     (Some(up), Some(down)) => format!("{left} | {} | {up} | {down}", set.right),
                     (Some(up), None) => format!("{left} | {} | {up} | -", set.right),
                     (None, Some(down)) => format!("{left} | {} | - | {down}", set.right),
                     (None, None) => format!("{left} | {}", set.right),
+                };
+                match set.side {
+                    Side::Facing => sides,
+                    Side::Aim => format!("{sides} by aim"),
                 }
             }
         }
@@ -310,6 +377,8 @@ struct ClipsForm {
     down: Option<String>,
     #[serde(default)]
     aim: Option<Vec<String>>,
+    #[serde(default)]
+    side: Option<Side>,
 }
 
 impl ClipsForm {
@@ -324,11 +393,19 @@ impl ClipsForm {
                     right,
                     up: self.up,
                     down: self.down,
+                    side: self.side.unwrap_or_default(),
                 }),
             });
         };
-        if self.left.is_some() || self.right.is_some() || self.up.is_some() || self.down.is_some() {
-            return Err(E::custom("aim: alone, without left, right, up or down"));
+        if self.left.is_some()
+            || self.right.is_some()
+            || self.up.is_some()
+            || self.down.is_some()
+            || self.side.is_some()
+        {
+            return Err(E::custom(
+                "aim: alone, without left, right, up, down or side",
+            ));
         }
         if aim.len() < 2 {
             return Err(E::custom(format!(
@@ -584,12 +661,14 @@ impl From<ClipRuleDef> for ClipRule {
 }
 
 /// A clip shown once over the state's: its clips, the game milliseconds it
-/// has shown at the entity's animation speed, and whether a pass started it.
+/// has shown at the entity's animation speed, whether a pass started it,
+/// and for a set by the aim the aim its first pass read, which it keeps.
 #[derive(Debug, Clone, PartialEq)]
 struct OneShot {
     clips: Clips,
     shown_ms: f32,
     started: bool,
+    aim: Option<Vec2>,
 }
 
 /// Picks its entity's animation clip each frame by what the entity is
@@ -805,13 +884,15 @@ impl CharacterAnimator {
     /// first frame, for its length: its frames' durations at the entity's
     /// animation speed, counted by the game clock, so a pause holds it.
     /// Then the state's clip shows from its first frame. A play during one
-    /// restarts with the new clip, the same one included. Unsaved: a load
-    /// shows the state's clip.
+    /// restarts with the new clip, the same one included. A set by the aim
+    /// ([`Clips::by_aim`]) keeps the aim its first frame reads to its end.
+    /// Unsaved: a load shows the state's clip.
     pub fn play(&mut self, clips: impl Into<Clips>) {
         self.one_shot = Some(OneShot {
             clips: clips.into(),
             shown_ms: 0.0,
             started: false,
+            aim: None,
         });
         self.clip = None;
     }
@@ -1156,6 +1237,11 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
         let mut shot_pick = None;
         let mut ended = false;
         if let Some(shot) = animator.one_shot.as_mut() {
+            // A set by the aim keeps the aim its first pass read.
+            if !shot.started && shot.clips.keeps_its_aim() {
+                shot.aim = Some(aim);
+            }
+            let aim = shot.aim.unwrap_or(aim);
             let (id, flip) = shot.clips.pick(direction, aim, &mut left);
             let length = clip_ms(&registry, id);
             let id = id.to_owned();

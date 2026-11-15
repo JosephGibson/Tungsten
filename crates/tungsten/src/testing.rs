@@ -125,17 +125,21 @@ impl Harness {
         handle
     }
 
-    /// Loads the manifest at `path` without the renderer: its animations,
-    /// UI themes, sounds, tilemaps and particle configs, in the order a
-    /// window's startup loads them; each `materials` entry's metadata (its
+    /// Loads the manifest at `path` without the renderer: first every
+    /// sprite name it names, sheet frames included, interned in sorted
+    /// order as a window's load interns them, so a load-time sprite check
+    /// (an ability's `icon`, a prefab's `variants`) passes headless; then its
+    /// animations, UI themes, sounds, tilemaps and particle configs, in the
+    /// order a window's startup loads them; each `materials` entry's metadata (its
     /// ID, source manifest, shader ID and uniform defaults) in the
     /// `MaterialRegistry`, with no upload, then the stock glow's and, unless
     /// the manifest declares it, the engine's `damage_flash`, so a kit
     /// `HitFlash` finds it headless; then the prefabs and data entries in two
     /// phases, every ID checked ([`load_prefabs`](asset_loader::load_prefabs)).
-    /// What needs the renderer is skipped: sprites, fonts, shaders and
-    /// particle meshes; a prefab's sprite name is interned at its spawn. A
-    /// manifest that fails to load is the error the loader gives.
+    /// What needs the renderer is skipped: the sprites themselves, none
+    /// registered (no size, no texture; [`register_sprites`](Self::register_sprites)
+    /// gives their sizes), fonts, shaders and particle meshes. A manifest
+    /// that fails to load is the error the loader gives.
     ///
     /// Call it after the plugins are built, as the window's startup does,
     /// so the prefabs check against every registered component and data
@@ -143,6 +147,9 @@ impl Harness {
     pub fn load_manifest(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
         let manifest = ResolvedManifest::load(path)?;
         let world = self.app.world_mut();
+        if let Some(assets) = world.get_resource_mut::<AssetRegistry>() {
+            assets.intern_sprites(manifest.sprites.keys().map(String::as_str));
+        }
         asset_loader::load_animations(&manifest, world)?;
         asset_loader::load_ui_themes(&manifest, world)?;
         asset_loader::load_ui_screens(&manifest, world)?;
