@@ -15,8 +15,8 @@ use serde::Deserialize;
 use tungsten::SceneEntity;
 use tungsten::core::save::Value;
 use tungsten::core::{
-    AnimationState, AssetRegistry, Entity, EventCursor, EventQueue, PhysicsLayers, PrefabRegistry,
-    PrevPosition, Sprite, Transform, Visibility, World,
+    AnimationState, Entity, EventCursor, EventQueue, PhysicsLayers, PrefabRegistry, PrevPosition,
+    Sprite, Transform, Visibility, World,
 };
 use tungsten::kit::{
     Blast, HitShape, Lifetime, LinearMotion, Projectile, ProjectileExpired, Source, lob_velocity,
@@ -120,8 +120,8 @@ pub fn ends(world: &mut World, cursor: &mut EventCursor<ProjectileExpired>) {
 /// A flask's burst's look at `at`, its splash the kit's: its clip once over
 /// its centre, its particles and its sound.
 pub fn burst(world: &mut World, at: Vec2) {
-    if let Some(assets) = world.get_resource_mut::<AssetRegistry>() {
-        let mut sprite = Sprite::new(assets.intern_sprite(&format!("{BURST_CLIP}_0")));
+    if let Some(frame) = crate::shared::clip_sprite(world, BURST_CLIP) {
+        let mut sprite = Sprite::new(frame);
         sprite.z_order = BURST_Z;
         world.spawn_with((
             Transform::from_position(at - BURST_CENTRE),

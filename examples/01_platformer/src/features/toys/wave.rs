@@ -10,8 +10,8 @@
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AnimationState, AssetRegistry, BodyKind, Collider, Entity, Position, RigidBody, Shape, Sprite,
-    Time, Transform, Velocity, Visibility, World,
+    AnimationState, BodyKind, Collider, Entity, Position, RigidBody, Shape, Sprite, Time,
+    Transform, Velocity, Visibility, World,
 };
 use tungsten::kit::{Health, Knockback, Lifetime, PlatformerController, knock_back};
 use tungsten::physics::{SpatialFilter, cast_ray, wake};
@@ -96,10 +96,7 @@ pub fn cast(world: &mut World, centre: Vec2, aim: Vec2) {
 /// A sprite playing `clip` from its first frame at `z`, hidden, owned by
 /// gameplay.
 fn part(world: &mut World, clip: &str, z: i32) -> Option<Entity> {
-    let asset = world
-        .get_resource_mut::<AssetRegistry>()?
-        .intern_sprite(&format!("{clip}_0"));
-    let mut sprite = Sprite::new(asset);
+    let mut sprite = Sprite::new(crate::shared::clip_sprite(world, clip)?);
     sprite.z_order = z;
     Some(world.spawn_with((
         Transform::from_position(Vec2::ZERO),

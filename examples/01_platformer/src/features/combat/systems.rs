@@ -8,9 +8,9 @@
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AnimationState, AssetRegistry, Collider, DataRef, DataRegistry, Entity, EventCursor,
-    EventQueue, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
-    PrevPosition, Sprite, Transform, Visibility, World,
+    AnimationState, Collider, DataRef, DataRegistry, Entity, EventCursor, EventQueue,
+    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Sprite,
+    Transform, Visibility, World,
 };
 use tungsten::kit::{
     DamagedPart, EffectApplied, EffectExpired, EffectRequest, Effects, Follow, Health, ImmunePart,
@@ -215,10 +215,10 @@ pub fn reaction(world: &mut World, target: Entity) {
         .is_some_and(|enemy| enemy.kind == EnemyKind::Troll);
     let (clip, side) = REACTION_CLIPS[usize::from(large)];
     let offset = middle - Vec2::splat(side * 0.5);
-    let Some(assets) = world.get_resource_mut::<AssetRegistry>() else {
+    let Some(frame) = crate::shared::clip_sprite(world, clip) else {
         return;
     };
-    let mut sprite = Sprite::new(assets.intern_sprite(&format!("{clip}_0")));
+    let mut sprite = Sprite::new(frame);
     sprite.z_order = REACTION_Z;
     let at = corner + offset;
     world.spawn_with((

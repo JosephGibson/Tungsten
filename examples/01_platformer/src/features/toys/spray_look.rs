@@ -9,8 +9,8 @@ use glam::{Vec2, Vec3};
 use serde::Deserialize;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, AssetRegistry, DataRegistry, Entity, Light, Sprite, Time,
-    Transform, Visibility, World,
+    AnimationRegistry, AnimationState, DataRegistry, Entity, Light, Sprite, Time, Transform,
+    Visibility, World,
 };
 
 use super::SPRAY_HALF_ANGLE;
@@ -253,10 +253,7 @@ pub(super) fn end(world: &mut World, spray: Entity) {
 /// A sprite playing `clip` from its first frame at `z`, hidden, owned by
 /// gameplay.
 fn part(world: &mut World, clip: &str, z: i32) -> Option<Entity> {
-    let asset = world
-        .get_resource_mut::<AssetRegistry>()?
-        .intern_sprite(&format!("{clip}_0"));
-    let mut sprite = Sprite::new(asset);
+    let mut sprite = Sprite::new(crate::shared::clip_sprite(world, clip)?);
     sprite.z_order = z;
     Some(world.spawn_with((
         Transform::from_position(Vec2::ZERO),

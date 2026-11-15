@@ -13,8 +13,8 @@
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AnimationState, AssetRegistry, Entity, EventCursor, EventQueue, Position, PrevPosition, Sprite,
-    Transform, Visibility, World,
+    AnimationState, Entity, EventCursor, EventQueue, Position, PrevPosition, Sprite, Transform,
+    Visibility, World,
 };
 use tungsten::kit::{DamagePart, Hitbox, Lifetime, LinearMotion, ProjectileExpired, Source};
 
@@ -129,8 +129,8 @@ pub fn burst(world: &mut World, ball: Entity) {
 /// A snowball's burst's look at `at`: its clip once over its centre, its
 /// particles and its sound.
 fn look(world: &mut World, at: Vec2) {
-    if let Some(assets) = world.get_resource_mut::<AssetRegistry>() {
-        let mut sprite = Sprite::new(assets.intern_sprite(&format!("{BURST_CLIP}_0")));
+    if let Some(frame) = crate::shared::clip_sprite(world, BURST_CLIP) {
+        let mut sprite = Sprite::new(frame);
         sprite.z_order = BURST_Z;
         world.spawn_with((
             Transform::from_position(at - BURST_CENTRE),

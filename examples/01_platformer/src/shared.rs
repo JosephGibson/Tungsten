@@ -9,7 +9,8 @@ use glam::Vec2;
 use serde::Deserialize;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    ActionMap, Collider, DataRegistry, Entity, InputState, Position, RoutedInput, Shape, World,
+    ActionMap, AnimationRegistry, AnimationState, Collider, DataRegistry, Entity, InputState,
+    Position, RoutedInput, Shape, SpriteAssetId, World,
 };
 
 use tungsten::kit::{Aim, Children, Hurtbox};
@@ -226,6 +227,16 @@ pub fn spawn_burst(world: &mut World, name: &str, at: Vec2) -> Option<Entity> {
 /// with every slot a key burst's, it is dropped.
 pub fn spawn_key_burst(world: &mut World, name: &str, at: Vec2) -> Option<Entity> {
     tungsten::kit::burst_with(world, name, at, true, OWNED)
+}
+
+/// The first frame's sprite of the animation `clip`, as an
+/// [`AnimationState`] starting it shows it, from the World's
+/// [`AnimationRegistry`]: a one-shot look's sprite before its clip's first
+/// tick, so no look names a frame by hand. None when the registry lacks the
+/// clip.
+#[must_use]
+pub fn clip_sprite(world: &World, clip: &str) -> Option<SpriteAssetId> {
+    AnimationState::new(clip).current_sprite(world.get_resource::<AnimationRegistry>()?)
 }
 
 /// A burst's gameplay ownership, spawned with it in one archetype move.

@@ -2,9 +2,7 @@
 
 use glam::Vec2;
 use tungsten::SceneEntity;
-use tungsten::core::{
-    AnimationState, AssetRegistry, Entity, Sprite, Time, Transform, Visibility, World,
-};
+use tungsten::core::{AnimationState, Entity, Sprite, Time, Transform, Visibility, World};
 use tungsten::kit::{
     Health, Lifetime, Line, Modifier, PlatformerController, Shield, Stats, TagFilter,
 };
@@ -128,10 +126,10 @@ pub fn bound(world: &mut World, feet: Vec2) {
 /// (the sprite extract draws only what says so), owned by gameplay and gone
 /// `secs` later, as it ends.
 fn one_shot(world: &mut World, clip: &str, corner: Vec2, secs: f32, z: i32) {
-    let Some(assets) = world.get_resource_mut::<AssetRegistry>() else {
+    let Some(frame) = crate::shared::clip_sprite(world, clip) else {
         return;
     };
-    let mut sprite = Sprite::new(assets.intern_sprite(&format!("{clip}_0")));
+    let mut sprite = Sprite::new(frame);
     sprite.z_order = z;
     world.spawn_with((
         Transform::from_position(corner),
