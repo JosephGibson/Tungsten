@@ -27,13 +27,13 @@ use tungsten::RootCover;
 use tungsten::core::text::{TextAlign, TextWrap};
 use tungsten::core::ui::{
     Align, Anchor, Edges, Justify, LayoutStyle, Sizing, SpacingTokens, StyleOverrides, UiLayer,
-    UiTree, UiVertex, Visibility, WidgetId, widgets,
+    UiTrack, UiTree, UiVertex, Visibility, WidgetId, widgets,
 };
 use tungsten::core::{
-    ActionMap, AssetRegistry, Binding, CameraState, DataRegistry, Entity, ScaleFactor,
-    SpriteAssetId, Time, World,
+    ActionMap, AssetRegistry, Binding, CameraState, DataRegistry, Entity, EventCursor, EventQueue,
+    ScaleFactor, SpriteAssetId, World,
 };
-use tungsten::kit::{Abilities, Ability, Health, Shield, Stats};
+use tungsten::kit::{Abilities, Ability, AbilityReady, Health, Shield, Stats};
 
 use super::components::{Spell, Spellbook};
 use super::{SLOT_ACTIONS, SLOT_COUNT, SLOTS, mana, slot_of, summon_type};
@@ -136,8 +136,9 @@ pub struct Art {
     pub tomes: [SpriteAssetId; 3],
 }
 
-/// The HUD's widgets and what it shows over time: a `World` resource while
-/// gameplay runs.
+/// The HUD's widgets: a `World` resource while gameplay runs, written back
+/// only when the UI's scale changes. Its flashes and the summon's name run
+/// as the tree's tracks on the game clock.
 #[derive(Debug, Clone, Copy)]
 pub struct Hud {
     /// The top left's root, with the health and mana bars.
@@ -158,13 +159,6 @@ pub struct Hud {
     /// The UI's scale the HUD was sized for: an art pixel is a whole
     /// number of screen pixels at it, and the bars sit on whole pixels.
     pub scale: f32,
-    /// Game seconds each slot's ready flash and refused flash still show,
-    /// and the summon's name.
-    pub ready: [f32; SLOT_COUNT],
-    pub refused: [f32; SLOT_COUNT],
-    pub named: f32,
-    /// Each slot's cooldown share as last shown, so its end is seen.
-    pub cooling: [f32; SLOT_COUNT],
 }
 
 /// The bars' liquid, in its texels, and the frame and gap round it; the
@@ -220,13 +214,13 @@ const PLATE_ALPHA: u8 = 225;
 /// The most charges a slot shows, and a pip's side.
 pub const PIPS: usize = 3;
 const PIP: f32 = 4.0;
-/// A slot's flash: its seconds and its peak alpha, white as a cooldown of
-/// at least [`FLASH_COOLDOWN`] seconds ends (I14), the danger colour on a
-/// press refused as not ready (I1).
+/// A slot's flash: its seconds and its peak alpha, fading to none, white as
+/// a cooldown of at least [`FLASH_COOLDOWN`] seconds ends (I14), the danger
+/// colour on a press refused as not ready (I1).
 const FLASH_SECS: f32 = 0.25;
 const FLASH_COOLDOWN: f32 = 0.5;
-const READY_ALPHA: f32 = 120.0;
-const REFUSED_ALPHA: f32 = 110.0;
+const READY_ALPHA: u8 = 120;
+const REFUSED_ALPHA: u8 = 110;
 /// The summon's name over its slot after a turn: its seconds, the last of
 /// them fading, its plate's height, padding and background alpha.
 const NAMED_SECS: f32 = 1.2;
@@ -340,17 +334,81 @@ pub fn refused(world: &mut World) {
         .get_resource::<Run>()
         .and_then(|run| world.get::<Spellbook>(run.player))
         .map(|book| book.slot);
-    if let (Some(slot), Some(hud)) = (slot, world.get_resource_mut::<Hud>())
-        && let Some(left) = hud.refused.get_mut(slot)
-    {
-        *left = FLASH_SECS;
+    let flash = slot
+        .zip(world.get_resource::<Hud>())
+        .and_then(|(slot, hud)| hud.slots.get(slot))
+        .and_then(|slot| slot.flash);
+    if let Some(flash) = flash {
+        let tree = world.resource_mut::<UiTree>();
+        let danger = tree.theme().tokens.colors.danger;
+        tree.animate(flash, flash_track(danger, REFUSED_ALPHA));
     }
 }
 
-/// Notes a turn of the summon's type: its name shows over its slot.
+/// A slot's flash in `color`, from its peak `alpha` to none over
+/// [`FLASH_SECS`] on the game clock, so a pause holds it; a later flash
+/// replaces it.
+fn flash_track(color: [u8; 4], alpha: u8) -> UiTrack {
+    UiTrack::background(faded(color, alpha), faded(color, 0), FLASH_SECS).on_game_clock()
+}
+
+/// Notes a turn of the summon's type: its name shows over its slot for
+/// [`NAMED_SECS`], its last [`NAMED_FADE`] fading, on the game clock.
 pub fn summon_turned(world: &mut World) {
-    if let Some(hud) = world.get_resource_mut::<Hud>() {
-        hud.named = NAMED_SECS;
+    let Some(plate) = world.get_resource::<Hud>().map(|hud| hud.name_plate) else {
+        return;
+    };
+    let shown = UiTrack::opacity(1.0, 1.0, NAMED_SECS - NAMED_FADE).on_game_clock();
+    let fading = UiTrack::opacity(1.0, 0.0, NAMED_FADE).on_game_clock();
+    world
+        .resource_mut::<UiTree>()
+        .animate_chain(plate, shown.then(fading));
+}
+
+/// Starts the white flash of each slot whose spell's ability the run's
+/// player readied since the last read ([`AbilityReady`]), a cooldown of at
+/// least [`FLASH_COOLDOWN`] seconds still ready now: a cast that restarts
+/// it in its ready step flashes nothing. `spells_hud` reads every event
+/// through its `cursor` each frame, with no HUD too.
+pub fn ready(world: &mut World, cursor: &mut EventCursor<AbilityReady>) {
+    let Some(queue) = world.get_resource::<EventQueue<AbilityReady>>() else {
+        return;
+    };
+    let player = world.get_resource::<Run>().map(|run| run.player);
+    let mut readied = [false; SLOT_COUNT];
+    for event in cursor.read(queue) {
+        let slot = SLOTS
+            .iter()
+            .position(|slot| slot.is_some_and(|spell| spell.ability() == event.name));
+        if let Some(slot) = slot.filter(|_| Some(event.entity) == player) {
+            readied[slot] = true;
+        }
+    }
+    if !readied.contains(&true) {
+        return;
+    }
+    let (Some(player), Some(hud)) = (player, world.get_resource::<Hud>()) else {
+        return;
+    };
+    let mut flashes = [None; SLOT_COUNT];
+    for (index, (slot, spell)) in hud.slots.iter().zip(SLOTS).enumerate() {
+        let Some(spell) = spell.filter(|_| readied[index]) else {
+            continue;
+        };
+        let long = world
+            .get_resource::<DataRegistry>()
+            .and_then(|data| data.get::<Ability>(spell.ability()))
+            .is_some_and(|ability| ability.cooldown() >= FLASH_COOLDOWN);
+        let still = world
+            .get::<Abilities>(player)
+            .is_some_and(|abilities| abilities.ready(spell.ability()));
+        if long && still {
+            flashes[index] = slot.flash;
+        }
+    }
+    let tree = world.resource_mut::<UiTree>();
+    for flash in flashes.into_iter().flatten() {
+        tree.animate(flash, flash_track(WHITE, READY_ALPHA));
     }
 }
 
@@ -426,10 +484,6 @@ fn build(
         panel,
         art,
         scale,
-        ready: [0.0; SLOT_COUNT],
-        refused: [0.0; SLOT_COUNT],
-        named: 0.0,
-        cooling: [0.0; SLOT_COUNT],
     };
     size(tree, &hud, scale);
     hud
@@ -794,12 +848,11 @@ fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art) -> Magazine {
 }
 
 /// What a slot shows of its spell: whether the player can pay for a use,
-/// the share of its cooldown still to run and the cooldown's length, and
-/// its charges left of its most.
+/// the share of its cooldown still to run, and its charges left of its
+/// most.
 struct Shown {
     payable: bool,
     cooling: f32,
-    cooldown: f32,
     charges: Option<(u32, u32)>,
 }
 
@@ -825,7 +878,6 @@ fn shown(world: &World, player: Entity, spell: Spell, mana: f32) -> Option<Shown
     Some(Shown {
         payable,
         cooling,
-        cooldown,
         charges,
     })
 }
@@ -884,11 +936,11 @@ fn titled(text: &str) -> String {
     })
 }
 
-/// `spells_hud`, in `Update`: writes the run's health, mana, spells and gun
-/// into the HUD, and runs its flashes and the summon's name by the game
-/// clock.
+/// `spells_hud`, in `Update` after [`ready`]: writes the run's health, mana,
+/// spells and gun into the HUD, and `Hud` back only when the UI's scale
+/// changes; the flashes and the summon's name run as tracks.
 pub fn update(world: &mut World) {
-    let (Some(mut hud), Some(player)) = (
+    let (Some(hud), Some(player)) = (
         world.get_resource::<Hud>().copied(),
         world.get_resource::<Run>().map(|run| run.player),
     ) else {
@@ -920,12 +972,11 @@ pub fn update(world: &mut World) {
     let scale = ui_scale(world);
     let texel = texel(scale);
     let time = drawn_time(world);
-    let dt = world.resource::<Time>().delta();
     let tree = world.resource_mut::<UiTree>();
     let colors = tree.theme().tokens.colors;
-    if scale != hud.scale {
+    let rescaled = scale != hud.scale;
+    if rescaled {
         size(tree, &hud, scale);
-        hud.scale = scale;
     }
     let low = health.0 * 3.0 <= health.1;
     let beat = 0.5 + 0.5 * (time * TAU * PULSE_HZ).sin();
@@ -968,9 +1019,7 @@ pub fn update(world: &mut World) {
         if text_of(tree, slot.key) != key {
             tree.set_plain_text(slot.key, &key);
         }
-        hud.ready[index] = (hud.ready[index] - dt).max(0.0);
-        hud.refused[index] = (hud.refused[index] - dt).max(0.0);
-        let (Some(icon), Some(sweep), Some(flash)) = (slot.icon, slot.sweep, slot.flash) else {
+        let (Some(icon), Some(sweep)) = (slot.icon, slot.sweep) else {
             continue;
         };
         if SLOTS[index] == Some(Spell::Summon) && tree.image_sprite(icon) != Some(summoned_icon) {
@@ -979,23 +1028,10 @@ pub fn update(world: &mut World) {
         let state = state.unwrap_or(Shown {
             payable: false,
             cooling: 0.0,
-            cooldown: 0.0,
             charges: None,
         });
-        if hud.cooling[index] > 0.0 && state.cooling <= 0.0 && state.cooldown >= FLASH_COOLDOWN {
-            hud.ready[index] = FLASH_SECS;
-        }
-        hud.cooling[index] = state.cooling;
         tree.set_image_tint(icon, if state.payable { WHITE } else { GREYED });
         tree.set_mesh(sweep, &veil(state.cooling));
-        let lit = if hud.refused[index] > 0.0 {
-            faded(colors.danger, alpha(REFUSED_ALPHA, hud.refused[index]))
-        } else if hud.ready[index] > 0.0 {
-            faded(WHITE, alpha(READY_ALPHA, hud.ready[index]))
-        } else {
-            CLEAR
-        };
-        widgets::fill(tree, flash, lit);
         if let (Some(pips), Some((left, most))) = (slot.pips, state.charges) {
             for (i, pip) in pips.into_iter().enumerate() {
                 let color = if i < left as usize {
@@ -1018,12 +1054,10 @@ pub fn update(world: &mut World) {
             }
         }
     }
-    hud.named = (hud.named - dt).max(0.0);
     let name = titled(summoned.name);
     if text_of(tree, hud.name) != name {
         tree.set_plain_text(hud.name, &name);
     }
-    tree.set_opacity(hud.name_plate, (hud.named / NAMED_FADE).min(1.0));
     if let Some((left, most)) = rounds {
         let readout = if reload.is_some() {
             "reloading".to_string()
@@ -1055,13 +1089,9 @@ pub fn update(world: &mut World) {
             }
         }
     }
-    world.insert_resource(hud);
-}
-
-/// A flash's alpha from its `peak`, fading over [`FLASH_SECS`] with `left`
-/// of them to go.
-fn alpha(peak: f32, left: f32) -> u8 {
-    (peak * (left / FLASH_SECS).clamp(0.0, 1.0)).round() as u8
+    if rescaled && let Some(shown) = world.get_resource_mut::<Hud>() {
+        shown.scale = scale;
+    }
 }
 
 /// Health as the HUD and a save's summary read it: whole, rounded up while
