@@ -10,8 +10,8 @@ use tungsten::core::{
     With, World,
 };
 use tungsten::kit::{
-    DamageRequest, Damaged, Facing, Health, Intent, PlatformerController, Shield, Stats, Used,
-    use_ability,
+    CharacterAnimator, DamageRequest, Damaged, Facing, Health, Intent, PlatformerController,
+    Shield, Stats, Used, use_ability,
 };
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
@@ -27,17 +27,13 @@ use crate::features::level::{KILL_Y, WORLD_MAX, WORLD_MIN};
 use crate::features::tomes;
 use crate::shared::{body_centre, just_pressed, spawn_burst};
 
-/// The one-shot clips, each with a left-facing twin named `<clip>_left`:
-/// the land, the air jump's tuck, a blow's hurt, the death and the
-/// gestures'.
+/// 01's one-shot clips, each with a left-facing twin named `<clip>_left`:
+/// the land, the air jump's tuck, a blow's hurt and the death. A pressed
+/// spell's gesture is its ability's `clip`, which the kit's animator plays.
 pub const LAND_CLIP: &str = "ex10_player_land";
 pub const AIR_JUMP_CLIP: &str = "ex10_player_double_jump";
 pub const HURT_CLIP: &str = "ex10_player_hurt";
 pub const DEATH_CLIP: &str = "ex10_player_death";
-pub const TOSS_CLIP: &str = "ex10_player_toss";
-pub const BOLT_CLIP: &str = "ex10_player_bolt";
-pub const PUSH_CLIP: &str = "ex10_player_push";
-pub const CONJURE_CLIP: &str = "ex10_player_conjure";
 /// The idle clip, which a cast's pose replaces with a pose frame.
 pub const IDLE_CLIP: &str = "ex10_player_idle";
 /// The pose frames, facing right from straight up (0) to straight down (4)
@@ -422,9 +418,10 @@ pub fn moves(world: &mut World) {
 
 /// `player_clips`, in the present phase after the character animator: the
 /// death clip once the wizard dies, held on its last frame, facing as he
-/// died; else the hurt clip after a blow, facing as he does; a cast's
-/// gesture facing its aim; the air jump's tuck while he rises and the land
-/// clip while it holds on the ground, facing as he does: shown over the
+/// died; else the hurt clip after a blow, facing as he does; else, while
+/// the animator plays no one-shot (a pressed spell's gesture, its
+/// ability's clip), the air jump's tuck while he rises and the land clip
+/// while it holds on the ground, facing as he does: shown over the
 /// animator's clip and then handed back to it. Then, standing, a cast's
 /// pose over the idle clip's frame.
 pub fn clips(world: &mut World) {
@@ -439,6 +436,9 @@ pub fn clips(world: &mut World) {
     let left = world
         .get::<Facing>(player)
         .is_some_and(|facing| facing.direction().x < 0.0);
+    let gesturing = world
+        .get::<CharacterAnimator>(player)
+        .is_some_and(|animator| animator.playing().is_some());
     let Some(moves) = world.get_mut::<Moves>(player) else {
         return;
     };
@@ -458,8 +458,8 @@ pub fn clips(world: &mut World) {
         Some((DEATH_CLIP, moves.dead_left))
     } else if moves.hurt_clip > 0.0 {
         Some((HURT_CLIP, left))
-    } else if let Some(clip) = gesture.and_then(one_shot) {
-        Some((clip, aim.x < 0.0))
+    } else if gesturing {
+        None
     } else if !grounded && rising && moves.tuck {
         Some((AIR_JUMP_CLIP, left))
     } else if grounded && moves.landing > 0.0 {
@@ -525,23 +525,12 @@ pub fn clips(world: &mut World) {
     world.insert_resource(registry);
 }
 
-/// A gesture's one-shot clip, none for a pose.
-fn one_shot(gesture: Gesture) -> Option<&'static str> {
-    match gesture {
-        Gesture::Toss => Some(TOSS_CLIP),
-        Gesture::Bolt => Some(BOLT_CLIP),
-        Gesture::Push => Some(PUSH_CLIP),
-        Gesture::Conjure => Some(CONJURE_CLIP),
-        Gesture::Pour | Gesture::Shoot => None,
-    }
-}
-
-/// A pose's frames, none for a one-shot gesture.
+/// A pose's frames, none for a pressed spell's cast.
 fn pose_frames(gesture: Gesture) -> Option<&'static str> {
     match gesture {
         Gesture::Pour => Some(STAFF_FRAME),
         Gesture::Shoot => Some(AIM_FRAME),
-        _ => None,
+        Gesture::Cast => None,
     }
 }
 

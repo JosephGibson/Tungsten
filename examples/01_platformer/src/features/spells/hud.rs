@@ -261,13 +261,17 @@ const PANEL_LIFT: f32 = 10.0;
 const TAKE_PROMPT: &str = "{action:interact} Take";
 
 /// Builds the HUD for the run gameplay starts: its roots owned by gameplay,
-/// shown and frozen under a pause.
+/// shown and frozen under a pause; each slot's icon its spell's ability's
+/// (`Abilities::icon`), the summon's following its type.
 pub fn start(world: &mut World) {
     let tomes = TomeKind::ALL.map(|kind| crate::features::tomes::data(world, kind).icon.clone());
     let charges = SLOTS.map(|slot| slot.and_then(|spell| most_charges(world, spell)));
+    let names = SLOTS.map(|slot| slot.and_then(|spell| icon_of(world, spell)));
     let assets = world.resource_mut::<AssetRegistry>();
     let icons = std::array::from_fn(|i| {
-        SLOTS[i].map(|spell| (assets.intern_sprite(spell.icon()), charges[i]))
+        names[i]
+            .as_deref()
+            .map(|name| (assets.intern_sprite(name), charges[i]))
     });
     let art = Art {
         gun: assets.intern_sprite(GUN_ICON),
@@ -289,6 +293,15 @@ pub fn start(world: &mut World) {
     stack.own_root(hud.panel.root, RootCover::Hide);
     world.insert_resource(hud);
     update(world);
+}
+
+/// The icon of the run's player's ability for `spell`, a sprite ID; none
+/// leaves its slot without an icon.
+fn icon_of(world: &World, spell: Spell) -> Option<String> {
+    let player = world.get_resource::<Run>()?.player;
+    let data = world.get_resource::<DataRegistry>()?;
+    let abilities = world.get::<Abilities>(player)?;
+    abilities.icon(data, spell.ability()).map(str::to_owned)
 }
 
 /// The most charges `spell`'s ability holds, for one with charges.

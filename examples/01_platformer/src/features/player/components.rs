@@ -56,8 +56,9 @@ pub struct Moves {
     pub tuck: bool,
     /// Game seconds the land clip still holds.
     pub landing: f32,
-    /// The last cast's gesture, and the game seconds it still holds: its
-    /// one-shot clip facing the aim, or standing, its pose along it.
+    /// The last cast's gesture, and the game seconds it still holds:
+    /// standing, a pour's or a shot's pose along the aim; a pressed
+    /// spell's clip is its ability's, on the kit's animator.
     pub gesture: Option<Gesture>,
     pub cast: f32,
     /// Game seconds the staff still flares from a spell.
@@ -72,7 +73,7 @@ pub struct Moves {
     /// tick's at least `systems::TICK_EDGE`, falling to 0 over
     /// `systems::EDGE_SECS`.
     pub edge: f32,
-    /// The last cast's aim, which its gesture faces.
+    /// The last cast's aim.
     pub aim: Vec2,
     /// The one-shot clip shown over the animator's.
     pub shown: Option<Shown>,

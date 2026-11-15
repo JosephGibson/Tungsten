@@ -12,5 +12,11 @@
     {
       "effect": "casting"
     }
-  ]
+  ],
+  "icon": "ex10_icon_bowling_ball",
+  "clip": {
+    "right": "ex10_player_toss",
+    "left": "ex10_player_toss_left",
+    "side": "aim"
+  }
 }

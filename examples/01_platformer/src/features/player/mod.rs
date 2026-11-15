@@ -14,7 +14,8 @@ pub mod systems;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
-    ACTION_INPUT, CHARACTER_ANIMATOR, CUES, Modifier, Phase, Stats, TagFilter, ensure_phases,
+    ACTION_INPUT, CHARACTER_ANIMATOR, CUES, CharacterAnimator, Modifier, Phase, Stats, TagFilter,
+    ensure_phases,
 };
 use tungsten::{Plugin, SceneEntity};
 
@@ -35,8 +36,8 @@ pub const SAVE_NAME: &str = "player";
 pub const OVERLAY_SIDE: f32 = 64.0;
 /// Game seconds a landing holds the land clip.
 pub const LAND_SECS: f32 = 0.18;
-/// Game seconds a cast's gesture holds, its one-shot clip or its pose, and
-/// the staff flares.
+/// Game seconds a cast's pose holds and the staff flares; a pressed
+/// spell's clip, its ability's, lasts its own length.
 pub const CAST_SECS: f32 = 0.3;
 /// The staff's flare over a cast: the staff light's halo radius, its hot
 /// core and its light, each times the prefab's; its reach stays the
@@ -129,18 +130,15 @@ impl Plugin for PlayerPlugin {
     }
 }
 
-/// What a cast shows the wizard doing, by its spell or the gun: a one-shot
-/// clip facing its aim, or, standing, a pose along it, for [`CAST_SECS`].
+/// What a cast shows the wizard doing, by its spell or the gun, for
+/// [`CAST_SECS`]: a pressed spell's flare, its clip its ability's, or,
+/// standing, a pose along the aim.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gesture {
-    /// The bowling ball: the free hand throws it.
-    Toss,
-    /// The fire missile and lightning: the staff thrust at the aim.
-    Bolt,
-    /// The force push and the black hole: the free hand shoves out.
-    Push,
-    /// Iron and the summons: the staff raised high and struck down.
-    Conjure,
+    /// A pressed spell: the staff flares, and its ability's clip, a twin
+    /// set by the aim, plays on the kit's animator (a toss, a bolt, a push
+    /// or a conjuring strike).
+    Cast,
     /// The held sprays and the small balls: the staff levelled along the
     /// aim, a pose.
     Pour,
@@ -201,8 +199,14 @@ pub fn holds_combat_values(world: &World, player: Entity) -> bool {
 }
 
 /// Shows a cast by `player` along `aim` with `gesture`, for [`CAST_SECS`]:
-/// a spell's flares the staff; a shot, the gun's, leaves it be.
+/// a spell's flares the staff; a shot, the gun's, leaves it be. A pour or a
+/// shot cuts a pressed spell's clip short, so its pose shows at once.
 pub fn cast(world: &mut World, player: Entity, aim: Vec2, gesture: Gesture) {
+    if matches!(gesture, Gesture::Pour | Gesture::Shoot)
+        && let Some(animator) = world.get_mut::<CharacterAnimator>(player)
+    {
+        animator.stop();
+    }
     if let Some(moves) = world.get_mut::<Moves>(player) {
         if gesture != Gesture::Shoot {
             moves.glow = CAST_SECS;

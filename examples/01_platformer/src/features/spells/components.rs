@@ -51,36 +51,15 @@ impl Spell {
         }
     }
 
-    /// Its icon's sprite ID: the summon's first type's, which the bar
-    /// follows to the type selected.
-    #[must_use]
-    pub const fn icon(self) -> &'static str {
-        match self {
-            Spell::FireMissile => "ex10_icon_fire_missile",
-            Spell::Flamethrower => "ex10_icon_flamethrower",
-            Spell::IceSpray => "ex10_icon_ice_spray",
-            Spell::ForcePush => "ex10_icon_force_push",
-            Spell::BlackHole => "ex10_icon_black_hole",
-            Spell::IronBlock => "ex10_icon_iron_block",
-            Spell::BowlingBall => "ex10_icon_bowling_ball",
-            Spell::SmallBalls => "ex10_icon_small_balls",
-            Spell::Lightning => "ex10_icon_lightning",
-            Spell::ToxicFlask => "ex10_icon_toxic_flask",
-            Spell::Summon => super::SUMMONS[0].icon,
-        }
-    }
-
-    /// The gesture the wizard casts it with: a toss, a bolt of the staff,
-    /// a push of the hand, a conjuring strike, or, held, the staff levelled
-    /// along the aim.
+    /// The gesture the wizard casts it with: held, the staff levelled along
+    /// the aim; pressed, a cast, whose clip is its ability's (a toss, a bolt
+    /// of the staff, a push of the hand or a conjuring strike).
     #[must_use]
     pub const fn gesture(self) -> Gesture {
-        match self {
-            Spell::BowlingBall | Spell::ToxicFlask => Gesture::Toss,
-            Spell::FireMissile | Spell::Lightning => Gesture::Bolt,
-            Spell::ForcePush | Spell::BlackHole => Gesture::Push,
-            Spell::IronBlock | Spell::Summon => Gesture::Conjure,
-            Spell::Flamethrower | Spell::IceSpray | Spell::SmallBalls => Gesture::Pour,
+        if self.held() {
+            Gesture::Pour
+        } else {
+            Gesture::Cast
         }
     }
 

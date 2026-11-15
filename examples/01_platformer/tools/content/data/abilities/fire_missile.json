@@ -19,5 +19,11 @@
         "offset": 24
       }
     }
-  ]
+  ],
+  "icon": "ex10_icon_fire_missile",
+  "clip": {
+    "right": "ex10_player_bolt",
+    "left": "ex10_player_bolt_left",
+    "side": "aim"
+  }
 }

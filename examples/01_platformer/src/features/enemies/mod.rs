@@ -41,8 +41,8 @@ use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::save::{SaveOptions, Value};
 use tungsten::core::{
-    AnimationRegistry, AssetRegistry, DataRegistry, Entity, EventCursor, Position, PrefabRegistry,
-    Schedule, Shape, Stage, World, system,
+    AnimationRegistry, DataRegistry, Entity, EventCursor, Position, PrefabRegistry, Schedule,
+    Shape, Stage, World, system,
 };
 use tungsten::kit::{
     CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, FOLLOW, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line,
@@ -74,8 +74,6 @@ pub const SEARCH_SECS: f32 = 3.0;
 /// How long a search lasts before its "?" shows; a fresh alert's "!" is
 /// its `alert_mark` effect's seconds.
 pub const SEARCH_MARK_AFTER: f32 = 0.4;
-/// The "!" and "?" marks' sprites, which the foes' prefabs' looks show.
-const MARK_SPRITES: [&str; 2] = ["ex10_mark_alert", "ex10_mark_search"];
 /// The most summoned enemies live at once (Q12, Q45), beside the dummies'
 /// eight.
 pub const SUMMON_CAP: usize = 10;
@@ -247,14 +245,6 @@ impl Plugin for EnemiesPlugin {
         );
         world.register_data_kind::<Body>(BODIES);
         world.register_data_kind::<KindInfo>(ENEMY_KINDS);
-        // The marks' plain sprites, which the foes' looks name: interned
-        // before the manifest loads and checks each look's sprite. A load
-        // interns the manifest's every sprite first; the headless harness
-        // only those its animations, particles and prefabs' own sprites
-        // name (known issues).
-        world
-            .resource_mut::<AssetRegistry>()
-            .intern_sprites(MARK_SPRITES);
         world.register_event::<Spotted>();
         world.insert_resource(Throws::default());
         world.resource_mut::<Extracts>().add_sprites(draw::rings);

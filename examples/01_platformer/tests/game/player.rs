@@ -640,6 +640,99 @@ fn each_gesture_shows_its_clip_and_the_staff_flares() {
     );
 }
 
+/// The wizard standing on the sky's ground at 60 Hz, mana to spare, the
+/// camera pinned: the gesture tests' stage.
+fn caster() -> (UiHarness, Entity) {
+    use tungsten::kit::Stats;
+    const TOP: f32 = 1000.0;
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    ground(&mut harness, TOP);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.harness_mut().set_dt(DT);
+    harness.step(10);
+    super::pin_camera(&mut harness, Vec2::new(0.0, 500.0));
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.set_base("max_mana", 1000.0);
+    stats.set_base("mana", 1000.0);
+    (harness, player)
+}
+
+/// The name of the sprite `player` shows.
+fn sprite_shown(harness: &UiHarness, player: Entity) -> String {
+    use tungsten::core::{AssetRegistry, Sprite};
+    let world = harness.world();
+    let id = world.get::<Sprite>(player).unwrap().asset_id;
+    let assets = world.resource::<AssetRegistry>();
+    assets.sprite_name(id).unwrap().to_owned()
+}
+
+/// Casts the fire missile at `at`: pressed for a frame, then let go.
+fn bolt_at(harness: &mut UiHarness, at: Vec2) {
+    super::choose(harness, Spell::FireMissile);
+    super::aim_at(harness, at);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+}
+
+#[test]
+fn a_gesture_faces_the_aim_it_was_cast_at() {
+    use example_01_platformer::features::level::components::Glow;
+    use example_01_platformer::features::player::components::StaffGlow;
+    use tungsten::kit::Facing;
+    let (mut harness, player) = caster();
+    let facing = harness.world().get::<Facing>(player).unwrap().direction();
+    assert!(facing.x > 0.0, "the wizard faces right: {facing}");
+    let base = harness.world().get::<StaffGlow>(player).unwrap().0;
+    let behind = centre(&harness, player) + Vec2::new(-240.0, -60.0);
+    let ahead = centre(&harness, player) + Vec2::new(240.0, -60.0);
+    bolt_at(&mut harness, behind);
+    assert_eq!(clip(&harness, player), "ex10_player_bolt_left");
+    let glow = harness.world().get::<Glow>(player).unwrap().radius;
+    assert!(glow > base.radius, "the staff flares");
+    // The cursor crosses right within its 0.3 s: the bolt keeps its side
+    // for its 300 ms, 18 frames, then the idle clip, facing right.
+    super::aim_at(&mut harness, ahead);
+    for frame in 1..18 {
+        harness.step(1);
+        assert_eq!(
+            clip(&harness, player),
+            "ex10_player_bolt_left",
+            "frame {frame}"
+        );
+    }
+    harness.step(1);
+    assert_eq!(clip(&harness, player), "ex10_player_idle", "ended");
+}
+
+#[test]
+fn a_shot_or_a_pour_cuts_a_gesture_short() {
+    use example_01_platformer::features::gun;
+    let (mut harness, player) = caster();
+    let ahead = centre(&harness, player) + Vec2::new(240.0, -120.0);
+    // A bolt, then the gun fired 5 frames on: the pistol's pose at once.
+    bolt_at(&mut harness, ahead);
+    assert_eq!(clip(&harness, player), "ex10_player_bolt");
+    harness.step(5);
+    harness.harness_mut().press_action(gun::SHOOT);
+    harness.step(1);
+    harness.harness_mut().release_action(gun::SHOOT);
+    let shown = sprite_shown(&harness, player);
+    assert!(shown.starts_with("ex10_player_aim_"), "{shown}");
+    harness.step(30);
+    // A bolt, then the flamethrower held 5 frames on: the staff's pose.
+    bolt_at(&mut harness, ahead);
+    assert_eq!(clip(&harness, player), "ex10_player_bolt");
+    harness.step(4);
+    super::choose(&mut harness, Spell::Flamethrower);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    let shown = sprite_shown(&harness, player);
+    harness.harness_mut().release_action("cast");
+    assert!(shown.starts_with("ex10_player_staff_"), "{shown}");
+}
+
 #[test]
 fn an_air_jump_and_a_spell_switch_each_sound_once() {
     use example_01_platformer::features::audio::components::{Sound, Sounded};

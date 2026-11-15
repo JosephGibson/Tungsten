@@ -17,5 +17,11 @@
     {
       "effect": "casting"
     }
-  ]
+  ],
+  "icon": "ex10_icon_iron_block",
+  "clip": {
+    "right": "ex10_player_conjure",
+    "left": "ex10_player_conjure_left",
+    "side": "aim"
+  }
 }
