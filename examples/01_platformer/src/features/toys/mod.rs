@@ -435,7 +435,8 @@ pub fn spawn_ball(world: &mut World, at: Vec2, small: bool) -> Entity {
 
 /// Tosses a bowling ball from `from`, the caster's centre, along `aim`: it
 /// leaves the hand at [`TOSS_SPEED`], no steeper than [`TOSS_STEEPEST`].
-/// None past the ball cap.
+/// None past the ball cap. Its sound is its ability's `ability_used`
+/// rule's.
 pub fn toss_bowling_ball(world: &mut World, from: Vec2, aim: Vec2) -> Option<Entity> {
     if ball_count(world) >= BALL_CAP {
         return None;
@@ -449,7 +450,6 @@ pub fn toss_bowling_ball(world: &mut World, from: Vec2, aim: Vec2) -> Option<Ent
     if let Some(velocity) = world.get_mut::<Velocity>(ball) {
         velocity.0 = launch * TOSS_SPEED;
     }
-    audio::play(world, Sound::Tossed, centre);
     Some(ball)
 }
 

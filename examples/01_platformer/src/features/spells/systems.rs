@@ -266,10 +266,10 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
     let at = at.unwrap_or(centre);
     match spell {
         // The ability's spawn payload fires it; `adopt` takes it in.
-        Spell::FireMissile => audio::play(world, Sound::Cast, centre),
+        // Its sound, and each cast's, is its ability's `ability_used` rule.
+        Spell::FireMissile => {}
         Spell::ForcePush => {
             toys::wave::cast(world, centre, aim);
-            audio::play(world, Sound::Pushed, centre);
         }
         Spell::BlackHole => {
             toys::place_black_hole(world, at);
@@ -285,7 +285,6 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         }
         Spell::ToxicFlask => {
             toys::flask::throw(world, player, centre, at);
-            audio::play(world, Sound::FlaskThrown, centre);
         }
         Spell::Summon => {
             let summoned = summon_type(world);
@@ -300,7 +299,6 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
                     dummy::summon(world, summoned.prefab, at);
                 }
             }
-            audio::play(world, Sound::Summoned, at);
         }
         Spell::Flamethrower | Spell::IceSpray | Spell::SmallBalls => {}
     }

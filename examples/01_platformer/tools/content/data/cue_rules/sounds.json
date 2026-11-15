@@ -146,16 +146,18 @@
     ]
   },
   {
-    "on": "tossed",
+    "on": "ability_used",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": "bowling_ball",
     "do": [
       {
         "sound": {
-          "id": "ex10_toss_sfx"
+          "id": "ex10_toss_sfx",
+          "at": "centre"
         }
       }
     ]
@@ -177,31 +179,35 @@
     ]
   },
   {
-    "on": "cast",
+    "on": "ability_used",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": "fire_missile",
     "do": [
       {
         "sound": {
-          "id": "ex10_fireball_cast_sfx"
+          "id": "ex10_fireball_cast_sfx",
+          "at": "centre"
         }
       }
     ]
   },
   {
-    "on": "pushed",
+    "on": "ability_used",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": "force_push",
     "do": [
       {
         "sound": {
-          "id": "ex10_force_push_sfx"
+          "id": "ex10_force_push_sfx",
+          "at": "centre"
         }
       }
     ]
@@ -324,16 +330,18 @@
     ]
   },
   {
-    "on": "summoned",
+    "on": "ability_used",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": "summon",
     "do": [
       {
         "sound": {
-          "id": "ex10_summon_sfx"
+          "id": "ex10_summon_sfx",
+          "at": "aim"
         }
       }
     ]
@@ -1369,17 +1377,19 @@
     ]
   },
   {
-    "on": "flask_thrown",
+    "on": "ability_used",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": "toxic_flask",
     "do": [
       {
         "sound": {
           "id": "ex10_flask_throw_sfx",
-          "min_interval": 0.08
+          "min_interval": 0.08,
+          "at": "centre"
         }
       }
     ]

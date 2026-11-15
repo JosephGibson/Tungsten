@@ -19,7 +19,8 @@ use super::combat::apply;
 use super::{ball, centre, ground, harness, player_entity, run, settle, stand, teleport};
 
 const TOP: f32 = 1000.0;
-const TOSS: &str = "ex10_toss_sfx";
+/// The black hole's opening, a cue sound with no interval.
+const OPENED: &str = "ex10_black_hole_sfx";
 
 /// The volumes `id` played at this frame, as one-shots.
 fn plays(harness: &UiHarness, id: &str) -> Vec<f32> {
@@ -58,13 +59,13 @@ fn crackle(harness: &mut UiHarness, frames: u32) -> f32 {
 #[test]
 fn a_cue_sound_plays_by_its_distance_from_the_player() {
     let (mut harness, player) = run();
-    let level = volume(&harness, TOSS);
+    let level = volume(&harness, OPENED);
     let mut heard = Vec::new();
     for x in [0.0, 500.0, 2000.0, 3500.0] {
         let at = centre(&harness, player) + Vec2::new(x, 0.0);
-        audio::play(harness.world_mut(), Sound::Tossed, at);
+        audio::play(harness.world_mut(), Sound::HoleOpened, at);
         harness.step(1);
-        heard.push((plays(&harness, TOSS), level * listener(&harness).gain(at)));
+        heard.push((plays(&harness, OPENED), level * listener(&harness).gain(at)));
     }
     assert_eq!(heard[0].0, [level], "the player's own, at full");
     assert_eq!(heard[1].0, [level], "within {LISTEN_FULL} px");

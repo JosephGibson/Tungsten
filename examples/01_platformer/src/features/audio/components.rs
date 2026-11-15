@@ -64,14 +64,8 @@ pub enum Sound {
     ColdEnded,
     /// A fire spray starting.
     FireStarted,
-    /// A bowling ball tossed.
-    Tossed,
     /// An iron block or small balls set down.
     Placed,
-    /// A fire missile cast.
-    Cast,
-    /// A force push.
-    Pushed,
     /// A steam burst: cold on fire, or a fire hazard put out.
     Steamed,
     /// Thermal shock: a frozen thing exploding.
@@ -86,8 +80,6 @@ pub enum Sound {
     Reloaded,
     /// A bullet turned off iron.
     Ricocheted,
-    /// A dummy or an enemy summoned.
-    Summoned,
     /// A wisp's alert: its flame flaring.
     WispFlare,
     /// A crawler's tell before its lunge.
@@ -204,8 +196,7 @@ pub enum Sound {
     GeyserErupt,
     /// A rubble stone meeting something hard (e01hollow).
     StoneKnock,
-    /// The toxic flask tossed, and its burst (e01flask).
-    FlaskThrown,
+    /// The toxic flask's burst (e01flask).
     FlaskBurst,
     /// Corrosive taking a target's armour (e01flask).
     Corroded,
@@ -213,7 +204,7 @@ pub enum Sound {
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 84] = [
+    pub const ALL: [Sound; 79] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -223,10 +214,7 @@ impl Sound {
         Sound::ColdStarted,
         Sound::ColdEnded,
         Sound::FireStarted,
-        Sound::Tossed,
         Sound::Placed,
-        Sound::Cast,
-        Sound::Pushed,
         Sound::Steamed,
         Sound::FrostBlasted,
         Sound::Thundered,
@@ -234,7 +222,6 @@ impl Sound {
         Sound::Shot,
         Sound::Reloaded,
         Sound::Ricocheted,
-        Sound::Summoned,
         Sound::WispFlare,
         Sound::CrawlerHiss,
         Sound::CrawlerLunge,
@@ -295,7 +282,6 @@ impl Sound {
         Sound::GeyserSputter,
         Sound::GeyserErupt,
         Sound::StoneKnock,
-        Sound::FlaskThrown,
         Sound::FlaskBurst,
         Sound::Corroded,
     ];
@@ -313,10 +299,7 @@ impl Sound {
             Sound::ColdStarted => "cold_started",
             Sound::ColdEnded => "cold_ended",
             Sound::FireStarted => "fire_started",
-            Sound::Tossed => "tossed",
             Sound::Placed => "placed",
-            Sound::Cast => "cast",
-            Sound::Pushed => "pushed",
             Sound::Steamed => "steamed",
             Sound::FrostBlasted => "frost_blasted",
             Sound::Thundered => "thundered",
@@ -324,7 +307,6 @@ impl Sound {
             Sound::Shot => "shot",
             Sound::Reloaded => "reloaded",
             Sound::Ricocheted => "ricocheted",
-            Sound::Summoned => "summoned",
             Sound::WispFlare => "wisp_flared",
             Sound::CrawlerHiss => "crawler_hissed",
             Sound::CrawlerLunge => "crawler_lunged",
@@ -385,7 +367,6 @@ impl Sound {
             Sound::GeyserSputter => "geyser_sputtered",
             Sound::GeyserErupt => "geyser_erupted",
             Sound::StoneKnock => "stone_knocked",
-            Sound::FlaskThrown => "flask_thrown",
             Sound::FlaskBurst => "flask_burst",
             Sound::Corroded => "corroded",
         }

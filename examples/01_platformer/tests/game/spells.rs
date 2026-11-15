@@ -549,20 +549,70 @@ fn the_holes_hum_on_one_voice_that_falls_silent_when_the_last_closes() {
 
 /// Presses `cast` until a fixed step has read it, then lets it go: the
 /// sounds those frames made.
-fn cast_once(harness: &mut UiHarness) -> Vec<Sound> {
-    let mut heard = Vec::new();
+fn cast_once(harness: &mut UiHarness) -> Heard {
+    let mut heard = Heard::default();
     harness.harness_mut().press_action("cast");
     for _ in 0..4 {
         harness.step(1);
-        heard.extend(harness.harness().events::<Sounded>().map(|s| s.sound));
+        heard.listen(harness);
         if super::steps_this_frame(harness) > 0 {
             break;
         }
     }
     harness.harness_mut().release_action("cast");
     harness.step(1);
-    heard.extend(harness.harness().events::<Sounded>().map(|s| s.sound));
+    heard.listen(harness);
     heard
+}
+
+/// What a cast's frames sounded: the `Sounded` events, and the audio log's
+/// one-shot plays, each sound with its volume, read as the slice of the
+/// first.
+#[derive(Debug, Default)]
+struct Heard {
+    sounds: Vec<Sound>,
+    plays: Vec<(tungsten::core::AudioHandle, f32)>,
+}
+
+impl Heard {
+    /// The frame's `Sounded` events and one-shot plays.
+    fn listen(&mut self, harness: &UiHarness) {
+        self.sounds
+            .extend(harness.harness().events::<Sounded>().map(|s| s.sound));
+        self.plays.extend(
+            harness
+                .harness()
+                .audio()
+                .iter()
+                .filter_map(|command| match command {
+                    AudioCommand::Play {
+                        handle,
+                        volume,
+                        looping: false,
+                        ..
+                    } => Some((*handle, *volume)),
+                    _ => None,
+                }),
+        );
+    }
+
+    /// The volumes the manifest sound `id` played at.
+    fn plays(&self, harness: &UiHarness, id: &str) -> Vec<f32> {
+        let sound = harness.world().resource::<SoundRegistry>().get_by_id(id);
+        self.plays
+            .iter()
+            .filter(|&&(handle, _)| Some(handle) == sound)
+            .map(|&(_, volume)| volume)
+            .collect()
+    }
+}
+
+impl std::ops::Deref for Heard {
+    type Target = [Sound];
+
+    fn deref(&self) -> &[Sound] {
+        &self.sounds
+    }
 }
 
 #[test]
@@ -602,7 +652,7 @@ fn a_refused_cast_says_why_and_spends_nothing() {
     let before = spent(&harness, Spell::FireMissile);
     let heard = cast_once(&mut harness);
     assert_eq!(count(&heard, Sound::NotReady), 1, "{heard:?}");
-    assert_eq!(count(&heard, Sound::Cast), 0, "{heard:?}");
+    assert!(heard.plays(&harness, CAST_SFX).is_empty(), "{heard:?}");
     assert_eq!(spent(&harness, Spell::FireMissile), before, "nothing spent");
     // Iron in a wall fizzles at the cursor, once.
     aim_at(&mut harness, slab);
@@ -747,6 +797,12 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
 /// The sky's ground for the spray tests, and the flamethrower's and the ice
 /// spray's slots.
 const SKY: f32 = 1000.0;
+/// The five pressed casts' sounds, their abilities' `ability_used` rules'.
+const CAST_SFX: &str = "ex10_fireball_cast_sfx";
+const PUSH_SFX: &str = "ex10_force_push_sfx";
+const FLASK_SFX: &str = "ex10_flask_throw_sfx";
+const TOSS_SFX: &str = "ex10_toss_sfx";
+const SUMMON_SFX: &str = "ex10_summon_sfx";
 const FLAMETHROWER: Spell = Spell::Flamethrower;
 const ICE_SPRAY: Spell = Spell::IceSpray;
 
@@ -1076,7 +1132,7 @@ fn still_foe(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
 }
 
 /// Tosses the flask at `at` with one press: the sounds those frames made.
-fn toss_flask(harness: &mut UiHarness, at: Vec2) -> Vec<Sound> {
+fn toss_flask(harness: &mut UiHarness, at: Vec2) -> Heard {
     aim_at(harness, at);
     choose(harness, Spell::ToxicFlask);
     cast_once(harness)
@@ -1162,7 +1218,7 @@ fn a_flask_at_a_cursor_on_the_floor_400_px_off_bursts_within_24_px_of_it() {
     let me = centre(&harness, player);
     let cursor = Vec2::new(me.x + 400.0, SKY);
     let heard = toss_flask(&mut harness, cursor);
-    assert!(heard.contains(&Sound::FlaskThrown), "{heard:?}");
+    assert!(!heard.plays(&harness, FLASK_SFX).is_empty(), "{heard:?}");
     let flight = flask_flight(&mut harness, 90);
     let at = flight.burst.expect("it bursts");
     assert!(at.distance(cursor) <= 24.0, "{at} for {cursor}");
@@ -1361,7 +1417,7 @@ fn a_fourth_flask_with_three_in_flight_is_refused_and_spends_nothing() {
     let before = spent(&harness);
     let heard = cast_once(&mut harness);
     assert!(heard.contains(&Sound::Fizzled), "{heard:?}");
-    assert!(!heard.contains(&Sound::FlaskThrown), "{heard:?}");
+    assert!(heard.plays(&harness, FLASK_SFX).is_empty(), "{heard:?}");
     let after = spent(&harness);
     assert!(after.0 >= before.0, "no mana spent: {before:?} → {after:?}");
     assert_eq!(after.1, before.1, "no cooldown");
@@ -1410,6 +1466,56 @@ fn a_seventh_missile_is_refused_before_the_spend() {
     assert!(after.1 <= 0.0, "no cooldown begun: {after:?}");
     assert_eq!(flying(&harness), 6, "no seventh");
     assert_eq!(bursts(&harness), fizzles + 1, "one fizzle");
+}
+
+#[test]
+fn each_cast_sounds_from_its_ability() {
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.set_base("max_mana", 1000.0);
+    stats.set_base("mana", 1000.0);
+    let volume = |h: &UiHarness, id: &str| {
+        let registry = h.world().resource::<SoundRegistry>();
+        registry.get_volume(registry.get_by_id(id).expect(id))
+    };
+    let casts = [
+        (Spell::FireMissile, CAST_SFX),
+        (Spell::ForcePush, PUSH_SFX),
+        (Spell::ToxicFlask, FLASK_SFX),
+        (Spell::BowlingBall, TOSS_SFX),
+        (Spell::Summon, SUMMON_SFX),
+    ];
+    // Each over the open sky, its sound once at full gain, from no
+    // `Sounded`.
+    for (spell, id) in casts {
+        aim_at(&mut harness, me + Vec2::new(300.0, -200.0));
+        choose(&mut harness, spell);
+        harness.step(70);
+        let heard = cast_once(&mut harness);
+        assert_eq!(
+            heard.plays(&harness, id),
+            [volume(&harness, id)],
+            "{spell:?}: {heard:?}"
+        );
+        assert!(heard.is_empty(), "{spell:?}: no `Sounded`: {heard:?}");
+    }
+    // Refused for mana, none of them.
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.set_base("max_mana", 0.0);
+    stats.set_base("mana", 0.0);
+    for (spell, _) in casts {
+        choose(&mut harness, spell);
+        harness.step(70);
+        let heard = cast_once(&mut harness);
+        for (_, id) in casts {
+            assert!(
+                heard.plays(&harness, id).is_empty(),
+                "{spell:?}: {id}: {heard:?}"
+            );
+        }
+        assert!(heard.contains(&Sound::NoMana), "{spell:?}: {heard:?}");
+    }
 }
 
 #[test]
