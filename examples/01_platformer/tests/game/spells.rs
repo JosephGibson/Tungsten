@@ -626,10 +626,16 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
     // Past its cap, the oldest crate goes in a poof.
     turn(&mut harness, SUMMON_PREV);
     let first = props_of(&harness, PropKind::Crate)[0];
-    for i in 1..props::CRATE_CAP {
+    // The crates' cap, their prefab's as the first holds it.
+    let cap = harness
+        .world()
+        .get::<tungsten::kit::Cap>(first)
+        .expect("its cap")
+        .max() as usize;
+    for i in 1..cap {
         summon_at(&mut harness, Vec2::new(1440.0 + 60.0 * i as f32, 960.0));
     }
-    assert_eq!(props_of(&harness, PropKind::Crate).len(), props::CRATE_CAP);
+    assert_eq!(props_of(&harness, PropKind::Crate).len(), cap);
     assert!(harness.world().is_alive(first), "the cap holds it");
     aim_at(&mut harness, Vec2::new(1700.0, 600.0));
     harness.harness_mut().press_action("cast");
@@ -637,7 +643,7 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
     harness.harness_mut().release_action("cast");
     assert!(!harness.world().is_alive(first), "the oldest went");
     assert!(super::bursts(&harness, "ex10_poof") > 0, "in a poof");
-    assert_eq!(props_of(&harness, PropKind::Crate).len(), props::CRATE_CAP);
+    assert_eq!(props_of(&harness, PropKind::Crate).len(), cap);
 }
 
 /// The sky's ground for the spray tests, and the flamethrower's and the ice

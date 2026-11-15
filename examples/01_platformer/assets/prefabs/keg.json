@@ -49,6 +49,10 @@
       "most": 120,
       "floor": 2,
       "prepare": "armour"
+    },
+    "cap": {
+      "group": "keg",
+      "max": 8
     }
   }
 }

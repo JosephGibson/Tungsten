@@ -90,9 +90,10 @@ impl SaveData for SaveGame {
     /// kit's cooldowns and effects ([`to_32`]), 33 the crawler's
     /// snowball onto the kit's projectile ([`to_33`]), 34 the lightning's
     /// chain onto the kit's conduction ([`to_34`]), 35 the missile's and
-    /// the tracers' turns onto the kit's facing ([`to_35`]), and 36 the
-    /// black hole's life onto a kit cooldown ([`to_36`]).
-    const SCHEMA: u32 = 36;
+    /// the tracers' turns onto the kit's facing ([`to_35`]), 36 the
+    /// black hole's life onto a kit cooldown ([`to_36`]), and 37 the
+    /// props' caps onto the kit's, marking their records ([`to_37`]).
+    const SCHEMA: u32 = 37;
 
     fn migrate_step(
         from: u32,
@@ -146,6 +147,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 35: the save has no world")?;
                 to_36(world);
+                Ok(data)
+            }
+            36 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 36: the save has no world")?;
+                to_37(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -477,6 +485,53 @@ fn s35_life(left: f64) -> Value {
         ("remaining".to_owned(), Value::from(1)),
     ])
 }
+
+/// Schema 36 to 37 over a save's `world`: each record of a placed crate
+/// or keg (one without [`S36_MAP_PROP`]), of a goblin's rock and of a
+/// plank takes the kit's admission mark, [`S36_ADMITTED`], as schema 37
+/// gives each one placed, so a loaded older save's props count toward
+/// their prefabs' caps as they counted toward 01's; the map's own stay
+/// aside, and a record already marked keeps its one mark.
+fn to_37(value: &mut Value) {
+    mark_admitted(value, &S36_PROPS);
+}
+
+/// Each record of `prefabs` within `value` the map did not set down
+/// takes [`S36_ADMITTED`].
+fn mark_admitted(value: &mut Value, prefabs: &[&str]) {
+    match value {
+        Value::Object(object) => {
+            let placed = object
+                .get("prefab")
+                .and_then(Value::as_str)
+                .is_some_and(|prefab| prefabs.contains(&prefab));
+            if placed
+                && let Some(Value::Object(components)) = object.get_mut("components")
+                && !components.contains_key(S36_MAP_PROP)
+            {
+                components
+                    .entry(S36_ADMITTED)
+                    .or_insert_with(|| Value::Object(Default::default()));
+            }
+            for inner in object.values_mut() {
+                mark_admitted(inner, prefabs);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                mark_admitted(item, prefabs);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The kit's admission mark as schema 37 saves it, the name schema 36
+/// saved a map's prop's mark under and its placed props' prefabs, frozen
+/// for the migration.
+const S36_ADMITTED: &str = "cap_admitted";
+const S36_MAP_PROP: &str = "map_prop";
+const S36_PROPS: [&str; 4] = ["crate", "keg", "goblin_rock", "plank"];
 
 /// The prefabs of schema 34's shots, frozen for the migration.
 const S34_MISSILE: &str = "fire_missile";

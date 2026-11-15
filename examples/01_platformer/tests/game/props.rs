@@ -25,8 +25,8 @@ use example_01_platformer::features::lightning;
 use example_01_platformer::features::props::components::{MapProp, PropFire, PropKind, StoneSize};
 use example_01_platformer::features::props::systems::bomb_tip;
 use example_01_platformer::features::props::{
-    self, BOMB_RADIUS, BURN_SECS, CRATE_HALF, KEG_BLAST, KEG_HALF, ROCK_CAP, ROCK_RADIUS,
-    SPREAD_AFTER, STONE_HALVES,
+    self, BOMB_RADIUS, BURN_SECS, CRATE_HALF, KEG_BLAST, KEG_HALF, ROCK_RADIUS, SPREAD_AFTER,
+    STONE_HALVES,
 };
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::{self, SMALL_BALL_RADIUS};
@@ -70,6 +70,12 @@ fn fuel(harness: &UiHarness, crate_: Entity) -> PropFire {
 
 fn alive(harness: &UiHarness, entity: Entity) -> bool {
     harness.world().is_alive(entity)
+}
+
+/// The most `prop`'s prefab's kit `cap` holds, as `prop` carries it.
+fn cap_of(harness: &UiHarness, prop: Entity) -> usize {
+    let cap = harness.world().get::<tungsten::kit::Cap>(prop);
+    cap.expect("a capped prop").max() as usize
 }
 
 fn id_of(world: &World, entity: Entity) -> u64 {
@@ -541,9 +547,10 @@ fn a_bomb_rolls_with_its_fuse_and_a_rock_stays_a_body_that_rolls() {
         world.get::<Transform>(rock).unwrap().rotation.abs() > 0.1 / ROCK_RADIUS,
         "turned as it rolled"
     );
-    // Past the cap, the oldest crumbles.
+    // Past the cap, its prefab's as the rock holds it, the oldest crumbles.
+    let cap = cap_of(&harness, rock);
     let world = harness.world_mut();
-    for i in 0..ROCK_CAP {
+    for i in 0..cap {
         let at = Vec2::new(1500.0 + 20.0 * i as f32, TOP - 300.0);
         props::lob_rock(world, at, Vec2::ZERO);
     }
@@ -552,7 +559,7 @@ fn a_bomb_rolls_with_its_fuse_and_a_rock_stays_a_body_that_rolls() {
         .world()
         .query::<&example_01_platformer::features::props::components::Rock>()
         .count();
-    assert_eq!(rocks, ROCK_CAP);
+    assert_eq!(rocks, cap);
 }
 
 #[test]
@@ -583,13 +590,16 @@ pub fn summons_spare_the_maps_crates(harness: &mut UiHarness) {
             Some(PropKind::Crate | PropKind::Keg)
         )
     }));
-    let crates = own
+    let crates: Vec<Entity> = own
         .iter()
-        .filter(|&&prop| props::kind(world, prop) == Some(PropKind::Crate))
-        .count();
-    assert!(crates > 0, "the map sets crates down");
+        .copied()
+        .filter(|&prop| props::kind(world, prop) == Some(PropKind::Crate))
+        .collect();
+    assert!(!crates.is_empty(), "the map sets crates down");
+    // The crates' cap, their prefab's as a map crate holds it.
+    let cap = cap_of(harness, crates[0]);
     let mut summoned = Vec::new();
-    for i in 0..=props::CRATE_CAP {
+    for i in 0..=cap {
         let at = Vec2::new(700.0 + 80.0 * i as f32, TOP - CRATE_HALF.y);
         summoned.push(props::place(harness.world_mut(), PropKind::Crate, at));
     }
@@ -820,7 +830,6 @@ fn a_burning_crate_s_planks_burn_and_fall_in_quietly() {
 
 #[test]
 fn nine_crates_broken_leave_forty_planks_the_oldest_gone() {
-    use example_01_platformer::features::props::PLANK_CAP;
     let (mut harness, _) = sky(200.0);
     let crates: Vec<Entity> = (0..9)
         .map(|i| prop(&mut harness, PropKind::Crate, 400.0 + 200.0 * i as f32))
@@ -833,10 +842,90 @@ fn nine_crates_broken_leave_forty_planks_the_oldest_gone() {
             first = planks(&harness);
         }
     }
-    assert_eq!(planks(&harness).len(), PLANK_CAP);
+    // The planks' cap, their prefab's as a plank holds it.
+    let cap = cap_of(&harness, planks(&harness)[0]);
+    assert_eq!(planks(&harness).len(), cap);
     assert!(
         first.iter().all(|&plank| !alive(&harness, plank)),
         "the oldest went"
+    );
+}
+
+/// The poofs alive within a pixel of `at`.
+fn poofs_at(harness: &UiHarness, at: Vec2) -> usize {
+    use example_01_platformer::shared::Burst;
+    let world = harness.world();
+    let config = world
+        .resource::<ParticleConfigRegistry>()
+        .id_for_name("ex10_poof");
+    world
+        .query::<(&Burst, &ParticleEmitter, &Transform)>()
+        .filter(|(_, emitter, transform)| {
+            Some(emitter.config) == config && transform.position.distance(at) < 1.0
+        })
+        .count()
+}
+
+#[test]
+fn a_capped_prop_counts_through_a_load() {
+    use example_01_platformer::save;
+    use example_01_platformer::shell::{self as game_shell, RunStart};
+    use tungsten::core::Time;
+    let (mut harness, _) = sky(300.0);
+    let world = harness.world();
+    let map: Vec<u64> = props::all(world)
+        .into_iter()
+        .filter(|&prop| world.has::<MapProp>(prop))
+        .map(|prop| id_of(world, prop))
+        .collect();
+    let crate_ = props::all(world)
+        .into_iter()
+        .find(|&prop| props::kind(world, prop) == Some(PropKind::Crate))
+        .expect("the map's crates");
+    // The crates' cap, their prefab's as a map crate holds it.
+    let cap = cap_of(&harness, crate_);
+    let at = |i: usize| Vec2::new(700.0 + 80.0 * i as f32, TOP - CRATE_HALF.y);
+    let summoned: Vec<u64> = (0..cap)
+        .map(|i| {
+            let crate_ = props::place(harness.world_mut(), PropKind::Crate, at(i));
+            id_of(harness.world(), crate_)
+        })
+        .collect();
+    harness.step(1);
+    let saved = save::capture(harness.world()).expect("a live run captures");
+    // Loaded as Continue loads it, the clock held and the test's ground back.
+    let mut fresh = super::harness();
+    fresh.world_mut().resource_mut::<Time>().pause();
+    game_shell::start_run(fresh.world_mut(), RunStart::from(saved), None);
+    super::settle(&mut fresh);
+    fresh.step(1);
+    ground(&mut fresh, TOP);
+    let by_id = |harness: &UiHarness, id: u64| {
+        let world = harness.world();
+        props::all(world)
+            .into_iter()
+            .find(|&prop| id_of(world, prop) == id)
+    };
+    let oldest = by_id(&fresh, summoned[0]).expect("the oldest summoned loaded");
+    let centre = body(&fresh, oldest);
+    let poofs = poofs_at(&fresh, centre);
+    props::place(fresh.world_mut(), PropKind::Crate, at(cap));
+    assert!(
+        !fresh.world().is_alive(oldest),
+        "the oldest summoned gone at once"
+    );
+    assert_eq!(
+        poofs_at(&fresh, centre),
+        poofs + 1,
+        "one poof at its centre"
+    );
+    assert!(
+        summoned[1..].iter().all(|&id| by_id(&fresh, id).is_some()),
+        "the rest summoned stay"
+    );
+    assert!(
+        map.iter().all(|&id| by_id(&fresh, id).is_some()),
+        "the map's crates and kegs untouched"
     );
 }
 

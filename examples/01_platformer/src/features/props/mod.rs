@@ -11,15 +11,15 @@
 //! put it out; a `jolt` sets it off at once: a hard impact, a bullet,
 //! lightning, a blast or the lava. Either runs 01's `detonate` handler,
 //! crediting whoever lit it. A frozen crate or keg never lights: fire on it is thermal shock. The
-//! summon slot places them, [`CRATE_CAP`] crates and [`KEG_CAP`] kegs at
-//! most, the map's own besides ([`MapProp`]). A goblin's bomb is a lit keg
+//! summon slot places them, 16 crates and 8 kegs at most by their
+//! prefabs' kit `cap`s, the map's own besides ([`MapProp`]). A goblin's bomb is a lit keg
 //! in small: thrown on the world's gravity, it rolls, its fuse turning
 //! with it, blows at [`BOMB_BLAST`] after [`FUSE_SECS`], credited to its
 //! goblin, and fizzles out at once when snuffed. A goblin's rock is a stone body that bounces and rolls and
-//! stays, [`ROCK_CAP`] at most, the oldest crumbling. A crate hit hard
+//! stays, 24 at most by its prefab's `cap`, the oldest crumbling. A crate hit hard
 //! enough breaks into five planks ([`break_crate`], e01sfx), which burn as
 //! it does for at most [`PLANK_BURN_SECS`] and fall in quietly,
-//! [`PLANK_CAP`] at most, the oldest crumbling. The hollow's rubble stones
+//! 40 at most by their prefab's `cap`, the oldest crumbling. The hollow's rubble stones
 //! (e01hollow), three sizes the map sets down in heaps, are bodies as a
 //! rock is that slide as a crate does, never burning or freezing, with no
 //! cap, since none is summoned.
@@ -33,7 +33,8 @@ use tungsten::core::{
     BodyKind, DataRef, Entity, RigidBody, Schedule, Shape, Stage, Velocity, World, system,
 };
 use tungsten::kit::{
-    EffectRequest, Effects, Health, Phase, Reaction, Stats, end_effect, ensure_phases, stimulate,
+    Admission, EffectRequest, Effects, Health, Phase, Reaction, Stats, end_effect, ensure_phases,
+    stimulate,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin};
@@ -85,15 +86,6 @@ pub const STONE_CENTRES: [Vec2; 3] = [
     Vec2::new(16.0, 22.0),
     Vec2::new(32.0, 49.0),
 ];
-/// Most summoned crates and most summoned kegs at once, the map's own
-/// besides (Q45): one placed past its cap replaces the oldest summoned,
-/// which poofs.
-pub const CRATE_CAP: usize = 16;
-pub const KEG_CAP: usize = 8;
-/// Most rocks at once: a throw past it crumbles the oldest.
-pub const ROCK_CAP: usize = 24;
-/// Most planks at once: a break past it crumbles the oldest.
-pub const PLANK_CAP: usize = 40;
 /// A plank's fire at most, game seconds.
 pub const PLANK_BURN_SECS: f32 = 4.0;
 /// A broken crate's planks, one a row of its box from the top: each row's
@@ -252,20 +244,6 @@ pub const fn prefab(kind: PropKind) -> &'static str {
     }
 }
 
-/// A kind's cap: bombs have none, bounded by the goblins' pace, and stones
-/// none, the map's own and never summoned.
-#[must_use]
-pub const fn cap(kind: PropKind) -> usize {
-    match kind {
-        PropKind::Crate => CRATE_CAP,
-        PropKind::Keg => KEG_CAP,
-        PropKind::Bomb => usize::MAX,
-        PropKind::Rock => ROCK_CAP,
-        PropKind::Plank => PLANK_CAP,
-        PropKind::Stone(_) => usize::MAX,
-    }
-}
-
 /// Whether a kind rolls: a round bomb or rock, which turns as it travels
 /// and slows by [`ROLL_FRICTION`] where wood slows by [`WOOD_FRICTION`].
 #[must_use]
@@ -295,11 +273,43 @@ pub fn fits(world: &World, kind: PropKind, at: Vec2) -> bool {
 }
 
 /// Spawns a prop of `kind` with its body's centre at `at`, at once and
-/// quietly, with the run's next save ID: a crate's, a rock's or a stone's
-/// art by the ID's parity ([`art`]), a crate's fuel its prefab's whole; a
-/// plank its first art and its fuel whole, which a break sets.
+/// quietly, with the run's next save ID, outside its prefab's kit `cap`,
+/// as the map's crates and kegs, its stones and a goblin's bombs are: a
+/// crate's, a rock's or a stone's art by the ID's parity ([`art`]), a
+/// crate's fuel its prefab's whole; a plank its first art and its fuel
+/// whole, which a break sets.
 pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     let prop = toys::spawn_toy(world, prefab(kind), at - centre(kind), 1.0);
+    dress(world, kind, prop);
+    prop
+}
+
+/// [`spawn`] admitted under its prefab's kit `cap` (`kit::admit_spawn`):
+/// each victim the kit hands back, its group's oldest admitted by save
+/// ID, ends at once by `end`, its look and its despawn, before the prop
+/// spawns.
+fn spawn_capped(
+    world: &mut World,
+    kind: PropKind,
+    at: Vec2,
+    end: fn(&mut World, Entity),
+) -> Entity {
+    let Admission {
+        prepared, culled, ..
+    } = toys::admit_toy(world, prefab(kind), at - centre(kind), 1.0, None)
+        .expect("a prop's cap ends its oldest, refusing none: no kit route spawns a prop");
+    for victim in culled {
+        end(world, victim);
+    }
+    let prop = prepared.spawn(world);
+    dress(world, kind, prop);
+    prop
+}
+
+/// What a fresh prop of `kind` takes past its prefab: a crate's, a rock's
+/// or a stone's art by its save ID's parity ([`art`]), a plank its first
+/// art.
+fn dress(world: &mut World, kind: PropKind, prop: Entity) {
     let variant = art(crate::shared::save_id(world, prop));
     if kind == PropKind::Rock {
         world.insert(prop, Rock { variant });
@@ -316,7 +326,6 @@ pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     if kind == PropKind::Plank {
         world.insert(prop, Plank { variant: 0 });
     }
-    prop
 }
 
 /// What a restored prop's spawn gives it beyond its prefab and its saved
@@ -350,7 +359,8 @@ pub fn restored(world: &mut World, prop: Entity) {
 /// plus [`PLANK_CARRY`] of `hitter`'s velocity, tumbling whole half-turns
 /// as it flies so it lies flat. A burning crate's planks burn with its fire
 /// left, at most [`PLANK_BURN_SECS`], crediting its lighter; a doused one's
-/// keep the douse. Past [`PLANK_CAP`] the oldest crumble first.
+/// keep the douse. Each plank is admitted under its prefab's kit `cap`,
+/// the oldest crumbling as each needs room ([`crumble_plank`]).
 pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
     let Some(at) = body_centre(world, crate_) else {
         return;
@@ -362,15 +372,6 @@ pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
     spawn_key_burst(world, "ex10_plank_splinters", at);
     audio::play(world, Sound::CrateBroke, at);
     despawn_tree(world, crate_);
-    let mut planks: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &Plank, &Saved)>()
-        .map(|(entity, _, id)| (id.id(), entity))
-        .collect();
-    planks.sort_by_key(|(id, _)| *id);
-    let surplus = (planks.len() + PLANK_ROWS.len()).saturating_sub(PLANK_CAP);
-    for &(_, oldest) in planks.iter().take(surplus) {
-        crumble_plank(world, oldest);
-    }
     let lowest = PLANK_ROWS[PLANK_ROWS.len() - 1];
     for (row, &height) in PLANK_ROWS.iter().enumerate() {
         let side = if row % 2 == 0 { -1.0 } else { 1.0 };
@@ -379,7 +380,12 @@ pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
         let speed = PLANK_KICK_LEAST + (PLANK_KICK_MOST - PLANK_KICK_LEAST) * share;
         let away = Vec2::new(side, height / lowest).normalize();
         let kick = away * speed - Vec2::Y * PLANK_LIFT;
-        let plank = spawn(world, PropKind::Plank, at + Vec2::new(0.0, height));
+        let plank = spawn_capped(
+            world,
+            PropKind::Plank,
+            at + Vec2::new(0.0, height),
+            crumble_plank,
+        );
         world.insert(plank, Plank { variant: row });
         systems::show_plank(world, plank, row);
         if let Some(own) = world.get_mut::<Velocity>(plank) {
@@ -401,8 +407,8 @@ pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
     }
 }
 
-/// A plank past [`PLANK_CAP`] crumbling where it is, quietly: its
-/// splinters, a key burst.
+/// A plank past its cap crumbling where it is, quietly: its splinters, a
+/// key burst.
 pub fn crumble_plank(world: &mut World, plank: Entity) {
     if let Some(at) = body_centre(world, plank) {
         spawn_key_burst(world, "ex10_plank_splinters", at);
@@ -411,19 +417,11 @@ pub fn crumble_plank(world: &mut World, plank: Entity) {
 }
 
 /// A goblin's rock with its centre at `at`, flying at `velocity`, at once,
-/// with the run's next save ID; past [`ROCK_CAP`] the oldest, the lowest
-/// save ID, crumbles first. The thrower credits it through `Throws`.
+/// with the run's next save ID, admitted under its prefab's kit `cap`:
+/// past it the oldest, the lowest save ID, crumbles first ([`crumble`]).
+/// The thrower credits it through `Throws`.
 pub fn lob_rock(world: &mut World, at: Vec2, velocity: Vec2) -> Entity {
-    let mut rocks: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &Rock, &Saved)>()
-        .map(|(entity, _, id)| (id.id(), entity))
-        .collect();
-    rocks.sort_by_key(|(id, _)| *id);
-    let surplus = (rocks.len() + 1).saturating_sub(ROCK_CAP);
-    for &(_, oldest) in rocks.iter().take(surplus) {
-        crumble(world, oldest);
-    }
-    let rock = spawn(world, PropKind::Rock, at);
+    let rock = spawn_capped(world, PropKind::Rock, at, crumble);
     if let Some(own) = world.get_mut::<tungsten::core::Velocity>(rock) {
         own.0 = velocity;
     }
@@ -449,24 +447,19 @@ pub fn art(id: Option<SaveId>) -> usize {
 }
 
 /// Places a prop of `kind` with its centre at `at`, as the summon slot
-/// does: past its kind's cap, the map's own aside ([`MapProp`]), the
-/// oldest, the lowest save ID, goes first in a poof.
+/// does, admitted under its prefab's kit `cap`, the map's own aside
+/// ([`MapProp`], spawned outside it): past it the oldest admitted, the
+/// lowest save ID, goes first in a poof ([`poof`]).
 pub fn place(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
-    let mut live: Vec<(SaveId, Entity)> = all(world)
-        .into_iter()
-        .filter(|&entity| self::kind(world, entity) == Some(kind))
-        .filter(|&entity| !world.has::<MapProp>(entity))
-        .filter_map(|entity| Some((crate::shared::save_id(world, entity)?, entity)))
-        .collect();
-    live.sort_by_key(|(id, _)| *id);
-    let surplus = (live.len() + 1).saturating_sub(cap(kind));
-    for &(_, oldest) in live.iter().take(surplus) {
-        if let Some(at) = body_centre(world, oldest) {
-            spawn_key_burst(world, "ex10_poof", at);
-        }
-        despawn_tree(world, oldest);
+    spawn_capped(world, kind, at, poof)
+}
+
+/// A placed prop past its cap going in a poof: a key burst at its centre.
+fn poof(world: &mut World, prop: Entity) {
+    if let Some(at) = body_centre(world, prop) {
+        spawn_key_burst(world, "ex10_poof", at);
     }
-    spawn(world, kind, at)
+    despawn_tree(world, prop);
 }
 
 /// Whether `prop` burns: a crate or a plank on fire, or a keg's or a

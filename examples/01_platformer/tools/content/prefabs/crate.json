@@ -44,6 +44,10 @@
         }
       },
       "prepare": "armour"
+    },
+    "cap": {
+      "group": "crate",
+      "max": 16
     }
   }
 }

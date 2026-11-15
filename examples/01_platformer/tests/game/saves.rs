@@ -666,6 +666,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Bomb>(),
                     name::<Rock>(),
                     name::<Pull>(),
+                    name::<tungsten::kit::Cap>(),
                 ],
             ]
             .concat(),
@@ -692,7 +693,11 @@ fn lists(kind: &str) -> Lists {
             recorded: Vec::new(),
             rebuilt: [
                 &body[..],
-                &[name::<SceneEntity>(), name::<PreviousVelocity>()],
+                &[
+                    name::<SceneEntity>(),
+                    name::<PreviousVelocity>(),
+                    name::<tungsten::kit::Cap>(),
+                ],
             ]
             .concat(),
             presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
@@ -3358,6 +3363,119 @@ fn three_open_black_holes_load_back_to_themselves() {
     load(&mut fresh, loaded);
     assert_eq!(fresh.world().query::<&BlackHole>().count(), 3);
     assert_eq!(holes(&fresh), open, "each where it was, its time left");
+}
+
+/// The placed props' prefabs whose records schema 37 marks.
+const CAPPED_PROPS: [&str; 4] = ["crate", "keg", "goblin_rock", "plank"];
+
+/// Each capped prop prefab's records in `world`, a save's: the placed ones
+/// marked and unmarked, then the map's own (`map_prop`) marked and
+/// unmarked.
+fn prop_marks(world: &serde_json::Value) -> BTreeMap<String, [usize; 4]> {
+    let mut marks: BTreeMap<String, [usize; 4]> = BTreeMap::new();
+    let mut stack = vec![world];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                if let Some(prefab) = object.get("prefab").and_then(serde_json::Value::as_str)
+                    && CAPPED_PROPS.contains(&prefab)
+                    && let Some(components) = object.get("components")
+                {
+                    let map = usize::from(components.get("map_prop").is_some());
+                    let unmarked = usize::from(components.get("cap_admitted").is_none());
+                    marks.entry(prefab.to_owned()).or_default()[2 * map + unmarked] += 1;
+                }
+                stack.extend(object.values());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter()),
+            _ => {}
+        }
+    }
+    marks
+}
+
+#[test]
+fn an_older_saves_props_keep_their_caps() {
+    let dir = user_folder("props-36");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let player = player_entity(&harness);
+    scaffold(&mut harness);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.step(1);
+    pin_camera(&mut harness, CORNER);
+    busy(&mut harness);
+    // A crate and a keg summoned beside the busy run's own.
+    let world = harness.world_mut();
+    for (kind, x) in [(PropKind::Crate, 1850.0), (PropKind::Keg, 1950.0)] {
+        let at = Vec2::new(x, TOP - props::half(kind).y - 0.5);
+        props::place(world, kind, at);
+    }
+    harness.step(1);
+    let saved = capture(&harness);
+    let fresh = prop_marks(&json(&saved)["world"]);
+    // Schema 36's shape: no prop's record holds the mark.
+    let mut older = json(&saved);
+    let mut stripped = 0;
+    let mut stack = vec![&mut older["world"]];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                let prop = object
+                    .get("prefab")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|prefab| CAPPED_PROPS.contains(&prefab));
+                if prop
+                    && let Some(serde_json::Value::Object(components)) =
+                        object.get_mut("components")
+                    && components.remove("cap_admitted").is_some()
+                {
+                    stripped += 1;
+                }
+                stack.extend(object.values_mut());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter_mut()),
+            _ => {}
+        }
+    }
+    assert!(stripped > 0, "the props' marks stripped");
+    let stamp = tungsten::core::SaveStamp::new(36, "0.117.0", 1_760_400_000_000);
+    let slots = harness_slots(&harness);
+    slots
+        .save_stamped("slot_1", &older, &stamp)
+        .expect("a schema 36 save is written");
+    let migrated = slots
+        .load::<SaveGame>("slot_1")
+        .expect("a schema 36 save migrates");
+    let marks = prop_marks(&json(&migrated)["world"]);
+    for prefab in CAPPED_PROPS {
+        let [marked, unmarked, map_marked, _] = marks.get(prefab).copied().unwrap_or_default();
+        assert!(marked > 0, "{prefab}: placed ones marked: {marks:?}");
+        assert_eq!(unmarked, 0, "{prefab}: every placed one marked: {marks:?}");
+        assert_eq!(map_marked, 0, "{prefab}: the map's own unmarked: {marks:?}");
+    }
+    assert!(
+        marks["crate"][3] > 0 && marks["keg"][3] > 0,
+        "the map's own among them"
+    );
+    // The run's rocks and planks as its own capture marked them; its crate
+    // and keg spawned outside the caps, as only the map's are in play, the
+    // migration counts placed.
+    assert_eq!(marks["goblin_rock"], fresh["goblin_rock"]);
+    assert_eq!(marks["plank"], fresh["plank"]);
+    for prefab in ["crate", "keg"] {
+        assert_eq!(
+            fresh[prefab][1], 1,
+            "{prefab}: the busy run's own, unmarked"
+        );
+        assert_eq!(
+            marks[prefab][0],
+            fresh[prefab][0] + 1,
+            "{prefab}: marked by the migration"
+        );
+    }
+    let mut loaded = super::harness();
+    load(&mut loaded, migrated);
 }
 
 #[test]

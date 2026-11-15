@@ -25,6 +25,10 @@
       "most": 120,
       "floor": 2,
       "prepare": "armour"
+    },
+    "cap": {
+      "group": "rock",
+      "max": 24
     }
   }
 }

@@ -42,6 +42,10 @@
         }
       },
       "prepare": "armour"
+    },
+    "cap": {
+      "group": "plank",
+      "max": 40
     }
   }
 }
