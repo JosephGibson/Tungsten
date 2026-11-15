@@ -92,9 +92,10 @@ impl SaveData for SaveGame {
     /// chain onto the kit's conduction ([`to_34`]), 35 the missile's and
     /// the tracers' turns onto the kit's facing ([`to_35`]), 36 the
     /// black hole's life onto a kit cooldown ([`to_36`]), 37 the props'
-    /// caps onto the kit's, marking their records ([`to_37`]), and 38
-    /// iron's and the black holes' ([`to_38`]).
-    const SCHEMA: u32 = 38;
+    /// caps onto the kit's, marking their records ([`to_37`]), 38 iron's
+    /// and the black holes' ([`to_38`]), and 39 the summoned dummies' and
+    /// enemies' ([`to_39`]).
+    const SCHEMA: u32 = 39;
 
     fn migrate_step(
         from: u32,
@@ -162,6 +163,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 37: the save has no world")?;
                 to_38(world);
+                Ok(data)
+            }
+            38 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 38: the save has no world")?;
+                to_39(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -516,6 +524,27 @@ fn to_38(value: &mut Value) {
 /// The prefabs of schema 37's iron and black holes, frozen for the
 /// migration.
 const S37_IRON_HOLES: [&str; 2] = ["iron_block", "black_hole"];
+
+/// Schema 38 to 39 over a save's `world`: each record of a dummy or an
+/// enemy, every one a summon's, the map's being named objects, takes the
+/// kit's admission mark, [`S36_ADMITTED`], as schema 39 gives each one
+/// summoned, so a loaded older save's summons count toward their
+/// prefabs' caps as they counted toward 01's.
+fn to_39(value: &mut Value) {
+    mark_admitted(value, &S38_SUMMONS);
+}
+
+/// The prefabs of schema 38's summons, frozen for the migration.
+const S38_SUMMONS: [&str; 8] = [
+    "dummy",
+    "wisp",
+    "crawler",
+    "beetle",
+    "bat",
+    "troll",
+    "goblin",
+    "troll_armoured",
+];
 
 /// Each record of `prefabs` within `value` the map did not set down
 /// takes [`S36_ADMITTED`].

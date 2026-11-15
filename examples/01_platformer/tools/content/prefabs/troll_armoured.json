@@ -417,6 +417,11 @@
           }
         }
       }
-    ]
+    ],
+    "cap": {
+      "group": "summon.foes",
+      "max": 10,
+      "count_dead": false
+    }
   }
 }

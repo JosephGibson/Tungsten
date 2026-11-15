@@ -42,7 +42,7 @@ use example_01_platformer::features::enemies::goblin::{
     BOMB_CHANCE, DASH_CHANCE, DASH_SPEED, KEEP_OFF, LEAP_BACK, ROCK_DAMAGE, STAB_DAMAGE,
 };
 use example_01_platformer::features::enemies::snowball::{self, SNOWBALL_COLD};
-use example_01_platformer::features::enemies::{self, ARRIVED, DORMANT_PAST, SUMMON_CAP, troll};
+use example_01_platformer::features::enemies::{self, ARRIVED, DORMANT_PAST, troll};
 use example_01_platformer::features::gun::components::Bullet;
 use example_01_platformer::features::gun::{self, SHOT_DAMAGE};
 use example_01_platformer::features::level::TILE;
@@ -339,6 +339,13 @@ fn first_impact(
 
 fn body_of(harness: &UiHarness, entity: Entity) -> Vec2 {
     body(harness, entity)
+}
+
+/// The most living summoned foes the foes' prefabs' one kit `cap` holds,
+/// as `foe` carries it.
+fn summons_cap(harness: &UiHarness, foe: Entity) -> usize {
+    let cap = harness.world().get::<tungsten::kit::Cap>(foe);
+    cap.expect("a summoned foe's cap").max() as usize
 }
 
 /// Loads `saved` into a fresh game as Continue does, its clock held until
@@ -2792,7 +2799,9 @@ fn killing_or_evicting_the_troll_drops_what_it_holds() {
     let block = iron_at(&mut harness, 1460.0);
     harness.step(2);
     assert!(troll::pick_up(harness.world_mut(), troll, block));
-    for i in 0..SUMMON_CAP {
+    // The summons' cap, the foes' prefabs' as the troll holds it.
+    let cap = summons_cap(&harness, troll);
+    for i in 0..cap {
         let at = Vec2::new(900.0 + 60.0 * i as f32, 600.0);
         enemies::summon(harness.world_mut(), EnemyKind::Wisp, at);
     }
@@ -3387,6 +3396,72 @@ fn harness_loaded(saved: save::SaveGame) -> UiHarness {
 }
 
 #[test]
+fn a_summon_past_its_cap_ends_the_oldest_living() {
+    use example_01_platformer::features::run::pit;
+    use example_01_platformer::shared::Burst;
+    let (mut harness, _) = run();
+    let world = harness.world_mut();
+    let map: Vec<Entity> = enemies::live(world).into_iter().map(|(_, e)| e).collect();
+    assert!(!map.is_empty(), "the map's foes");
+    // The pit's six, a script's, outside the summons' count.
+    let six = pit::wake_foes(world).expect("the pit's six");
+    let poofs_at = |world: &tungsten::core::World, at: Vec2| {
+        let config = world
+            .resource::<tungsten::core::ParticleConfigRegistry>()
+            .id_for_name("ex10_poof");
+        world
+            .query::<(
+                &Burst,
+                &tungsten::core::ParticleEmitter,
+                &tungsten::core::Transform,
+            )>()
+            .filter(|(_, emitter, transform)| {
+                Some(emitter.config) == config && transform.position.distance(at) < 1.0
+            })
+            .count()
+    };
+    let at = |i: usize| Vec2::new(600.0 + 90.0 * i as f32, 300.0);
+    let first = enemies::summon(world, EnemyKind::Wisp, at(0)).expect("a wisp");
+    let cap = world
+        .get::<tungsten::kit::Cap>(first)
+        .expect("its cap")
+        .max() as usize;
+    let mut summoned = vec![first];
+    for i in 1..cap {
+        summoned.push(enemies::summon(world, EnemyKind::Wisp, at(i)).expect("a wisp"));
+    }
+    assert!(
+        summoned.iter().all(|&foe| world.is_alive(foe)),
+        "ten, none ended"
+    );
+    // The oldest killed: an eleventh ends none.
+    tungsten::kit::kill(world, first);
+    let eleventh = enemies::summon(world, EnemyKind::Crawler, at(cap)).expect("a crawler");
+    assert!(
+        summoned[1..].iter().all(|&foe| world.is_alive(foe)),
+        "the dead holds no place"
+    );
+    // A twelfth ends the oldest living at once, in a poof at its centre.
+    let oldest = summoned[1];
+    let centre = enemies::centre(world, oldest).expect("its centre");
+    let poofs = poofs_at(world, centre);
+    let twelfth = enemies::summon(world, EnemyKind::Bat, at(cap + 1)).expect("a bat");
+    assert!(!world.is_alive(oldest), "the oldest living gone at once");
+    assert_eq!(poofs_at(world, centre), poofs + 1, "one poof at its centre");
+    assert!(summoned[2..].iter().all(|&foe| world.is_alive(foe)));
+    assert!(world.is_alive(eleventh) && world.is_alive(twelfth));
+    assert!(world.is_alive(first), "the dead one is no victim");
+    assert!(
+        map.iter().all(|&foe| world.is_alive(foe)),
+        "the map's untouched"
+    );
+    assert!(
+        six.iter().all(|&foe| world.is_alive(foe)),
+        "the pit's six untouched"
+    );
+}
+
+#[test]
 fn slot_zero_summons_each_enemy_after_the_dummy_capped() {
     let (mut harness, player) = arena();
     let stats = harness
@@ -3428,11 +3503,12 @@ fn slot_zero_summons_each_enemy_after_the_dummy_capped() {
         assert_eq!(harness.world().get::<Enemy>(last).unwrap().kind, *kind);
     }
     let first = summoned(&harness)[0].1;
-    // Past six summoned, the oldest goes.
-    for i in 0..SUMMON_CAP {
+    // Past six summoned, the oldest goes, the cap the foes' prefabs'.
+    let cap = summons_cap(&harness, first);
+    for i in 0..cap {
         cast_at(&mut harness, Vec2::new(1000.0 + 100.0 * i as f32, 600.0));
     }
-    assert_eq!(summoned(&harness).len(), SUMMON_CAP);
+    assert_eq!(summoned(&harness).len(), cap);
     assert!(!harness.world().is_alive(first), "the oldest went");
 }
 

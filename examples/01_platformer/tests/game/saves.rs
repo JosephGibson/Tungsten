@@ -607,6 +607,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Knockback>(),
                     name::<Stats>(),
                     name::<Cues>(),
+                    name::<tungsten::kit::Cap>(),
                 ],
             ]
             .concat(),
@@ -737,6 +738,7 @@ fn lists(kind: &str) -> Lists {
                         name::<Cues>(),
                         name::<Glow>(),
                         name::<Children>(),
+                        name::<tungsten::kit::Cap>(),
                     ],
                 ]
                 .concat(),
@@ -3606,6 +3608,105 @@ fn an_older_saves_iron_and_holes_keep_their_caps() {
             .iter()
             .all(|&(_, block)| loaded.world().is_alive(block))
     );
+}
+
+#[test]
+fn an_older_saves_summons_keep_their_caps() {
+    const SUMMONS: [&str; 8] = [
+        "dummy",
+        "wisp",
+        "crawler",
+        "beetle",
+        "bat",
+        "troll",
+        "goblin",
+        "troll_armoured",
+    ];
+    let dir = user_folder("summons-38");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let player = player_entity(&harness);
+    scaffold(&mut harness);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.step(1);
+    let world = harness.world_mut();
+    let dummy = example_01_platformer::features::dummy::DUMMY_PREFAB;
+    example_01_platformer::features::dummy::summon(world, dummy, Vec2::new(800.0, TOP - 100.0))
+        .expect("a dummy");
+    for (i, kind) in [EnemyKind::Wisp, EnemyKind::Goblin, EnemyKind::Troll]
+        .into_iter()
+        .enumerate()
+    {
+        let at = Vec2::new(1000.0 + 200.0 * i as f32, TOP - 120.0);
+        enemies::summon(world, kind, at).expect("a summoned foe");
+    }
+    harness.step(1);
+    let saved = capture(&harness);
+    // Schema 38's shape: no summon's record holds the mark.
+    let mut older = json(&saved);
+    let mut stripped = 0;
+    let mut stack = vec![&mut older["world"]];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                let summon = object
+                    .get("prefab")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|prefab| SUMMONS.contains(&prefab));
+                if summon
+                    && let Some(serde_json::Value::Object(components)) =
+                        object.get_mut("components")
+                    && components.remove("cap_admitted").is_some()
+                {
+                    stripped += 1;
+                }
+                stack.extend(object.values_mut());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter_mut()),
+            _ => {}
+        }
+    }
+    assert_eq!(stripped, 4, "the dummy's and the three foes' records");
+    let stamp = tungsten::core::SaveStamp::new(38, "0.117.0", 1_760_400_000_000);
+    let slots = harness_slots(&harness);
+    slots
+        .save_stamped("slot_1", &older, &stamp)
+        .expect("a schema 38 save is written");
+    let migrated = slots
+        .load::<SaveGame>("slot_1")
+        .expect("a schema 38 save migrates");
+    // Each summon's record marked as the run marked it, and the map's
+    // dummy and foes, named objects, left without a mark.
+    let marks = record_marks(&json(&migrated)["world"], &SUMMONS);
+    assert_eq!(marks.len(), 4);
+    assert!(
+        marks.values().all(|&(_, marked)| marked),
+        "each summon's marked"
+    );
+    assert_eq!(marks, record_marks(&json(&saved)["world"], &SUMMONS));
+    let named_marks = |world: &serde_json::Value| -> usize {
+        let mut count = 0;
+        let mut stack = vec![world];
+        while let Some(value) = stack.pop() {
+            if let serde_json::Value::Object(object) = value {
+                if let Some(serde_json::Value::Object(named)) = object.get("named") {
+                    count += named
+                        .values()
+                        .filter(|record| record["components"].get("cap_admitted").is_some())
+                        .count();
+                }
+                stack.extend(object.values());
+            }
+        }
+        count
+    };
+    assert_eq!(
+        named_marks(&json(&migrated)["world"]),
+        0,
+        "the map's untouched"
+    );
+    let mut loaded = super::harness();
+    load(&mut loaded, migrated);
 }
 
 #[test]

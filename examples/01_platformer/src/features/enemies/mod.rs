@@ -21,7 +21,8 @@
 //! read, the troll's steps and its shifted drawing; the kit's animator
 //! shows their clips and draws the troll's bar. A run keeps its placed
 //! enemies' save IDs, so a save names the dead as gone; the summon slot
-//! places more, [`SUMMON_CAP`] at most, the oldest going.
+//! places more, ten living at most by their prefabs' one kit `cap`, the
+//! oldest going.
 
 pub mod armour;
 pub mod bat;
@@ -41,13 +42,13 @@ use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::save::{SaveOptions, Value};
 use tungsten::core::{
-    AnimationRegistry, DataRegistry, Entity, EventCursor, Position, PrefabRegistry, Schedule,
-    Shape, Stage, World, system,
+    AnimationRegistry, DataRegistry, Entity, EventCursor, Position, PrefabRegistry, PreparedPrefab,
+    Schedule, Shape, Stage, World, system,
 };
 use tungsten::kit::{
-    CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, FOLLOW, Facing, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line,
-    Modifier, PLATFORMER_CONTROLLER, PROJECTILE_TICK, Phase, Stats, Steering, TOP_DOWN_MOVER,
-    TagFilter, WorldSource, WorldSources, ensure_phases,
+    Admission, CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, FOLLOW, Facing, Health, KIT_DEBUG_DRAW,
+    KNOCKBACK, Line, Modifier, PLATFORMER_CONTROLLER, PROJECTILE_TICK, Phase, Stats, Steering,
+    TOP_DOWN_MOVER, TagFilter, WorldSource, WorldSources, admit_spawn, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -74,9 +75,6 @@ pub const SEARCH_SECS: f32 = 3.0;
 /// How long a search lasts before its "?" shows; a fresh alert's "!" is
 /// its `alert_mark` effect's seconds.
 pub const SEARCH_MARK_AFTER: f32 = 0.4;
-/// The most summoned enemies live at once (Q12, Q45), beside the dummies'
-/// eight.
-pub const SUMMON_CAP: usize = 10;
 /// The world source of the difficulty's lines on the enemies' stats, and
 /// the key they sit under.
 pub const DIFFICULTY: &str = "difficulty";
@@ -387,27 +385,42 @@ pub fn spawn_as(
 
 /// Spawns an enemy of `kind`'s `variant` with its sprite's top-left at
 /// `corner`, owned by gameplay, as one of the run's records
-/// (`PreparedPrefab::saved`, the map's area), at once: a summon's or a
-/// test's. Its body is its kind's data's ([`fit`]), and its home where it
-/// stands, a bat's the roost above.
+/// (`PreparedPrefab::saved`, the map's area), at once and outside the
+/// summons' cap: the pit's or a test's ([`summon_as`] admits a summon's).
+/// Its body is its kind's data's ([`fit`]), and its home where it stands,
+/// a bat's the roost above.
 pub fn spawn_record(
     world: &mut World,
     kind: EnemyKind,
     variant: Variant,
     corner: Vec2,
 ) -> Option<Entity> {
-    let enemy = world
+    let enemy = prepare_record(world, kind, variant, corner)?.spawn(world);
+    settle_record(world, enemy, kind, corner);
+    Some(enemy)
+}
+
+/// [`spawn_record`]'s prefab, prepared with its save ID.
+fn prepare_record(
+    world: &mut World,
+    kind: EnemyKind,
+    variant: Variant,
+    corner: Vec2,
+) -> Option<PreparedPrefab> {
+    let prepared = world
         .prepare_prefab(prefab(kind, variant), corner.to_array())
         .ok()?
-        .with((SceneEntity { state_id: GAMEPLAY },))
-        .saved(world, Some(level::MAP))
-        .spawn(world);
+        .with((SceneEntity { state_id: GAMEPLAY },));
+    Some(prepared.saved(world, Some(level::MAP)))
+}
+
+/// A fresh record's body and home, as [`spawn_record`] gives them.
+fn settle_record(world: &mut World, enemy: Entity, kind: EnemyKind, corner: Vec2) {
     fit(world, enemy);
     let home = home(world, kind, corner + body(world, kind).centre);
     if let Some(mine) = world.get_mut::<Enemy>(enemy) {
         mine.home = home.to_array();
     }
-    Some(enemy)
 }
 
 /// What a restored enemy's spawn gave it beyond its prefab and its saved
@@ -506,23 +519,23 @@ pub fn summon(world: &mut World, kind: EnemyKind, at: Vec2) -> Option<Entity> {
 }
 
 /// Summons an enemy of `kind`'s `variant` with its body's centre at `at`,
-/// at the run's difficulty, with a poof; past [`SUMMON_CAP`] summoned live,
-/// the oldest goes, with its own.
+/// at the run's difficulty, with a poof, admitted under its prefab's kit
+/// `cap`, one count over the seven foes', the map's own and the pit's
+/// aside: past it the oldest living summoned goes at once, with its own
+/// poof.
 pub fn summon_as(world: &mut World, kind: EnemyKind, variant: Variant, at: Vec2) -> Option<Entity> {
     let difficulty =
         crate::shell::run_meta(world).map_or(Difficulty::Normal, |meta| meta.difficulty);
     let corner = at - body(world, kind).centre;
-    let enemy = spawn_record(world, kind, variant, corner)?;
+    let prepared = prepare_record(world, kind, variant, corner)?;
+    let Admission {
+        prepared, culled, ..
+    } = admit_spawn(world, prepared, None)?;
+    let enemy = prepared.spawn(world);
+    settle_record(world, enemy, kind, corner);
     scale(world, enemy, difficulty);
     spawn_key_burst(world, "ex10_poof", at);
-    let summoned: Vec<(u64, Entity)> = live(world)
-        .into_iter()
-        .filter(|&(id, _)| !placed(world, id))
-        .collect();
-    for &(_, oldest) in summoned
-        .iter()
-        .take(summoned.len().saturating_sub(SUMMON_CAP))
-    {
+    for oldest in culled {
         if let Some(centre) = centre(world, oldest) {
             spawn_key_burst(world, "ex10_poof", centre);
         }

@@ -92,6 +92,11 @@
       "floor": 2,
       "prepare": "armour",
       "scale": 0
+    },
+    "cap": {
+      "group": "summon.dummies",
+      "max": 8,
+      "count_dead": false
     }
   }
 }
