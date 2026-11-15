@@ -360,6 +360,10 @@ const EMITTER: &str = "tungsten_kit::overlap::grid::Emitter";
 /// troll's `Holding`.
 const CARRIED: &str = "tungsten_kit::motion::carry::Carried";
 
+/// A cap's admission mark, a type no game can name, saved as
+/// `cap_admitted` on an engine record.
+const CAP_ADMITTED: &str = "tungsten_kit::lifecycle::cap::Admitted";
+
 /// The components an engine record's load does not give back.
 fn lost(kind: &str) -> &'static [&'static str] {
     match kind {
@@ -385,9 +389,9 @@ macro_rules! registered {
 }
 
 /// The component types the registry saves, by type name: every one 01's
-/// saved entities could carry, the kit's hold ([`CARRIED`]) by its literal
-/// name. It names two more, the kit's own `became` and `spawned`, whose
-/// types no game can name.
+/// saved entities could carry, the kit's hold ([`CARRIED`]) and a cap's
+/// mark ([`CAP_ADMITTED`]) by their literal names. It names two more, the
+/// kit's own `became` and `spawned`, whose types no game can name.
 fn registered(world: &World) -> BTreeSet<&'static str> {
     use example_01_platformer::features::enemies::components::{
         Brain, Displaced, EnemyState, Holding, Sight,
@@ -414,6 +418,13 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
     if registry.component_names().any(|saved| saved == "carried") {
         types.insert(CARRIED);
         names.insert("carried".to_owned());
+    }
+    if registry
+        .component_names()
+        .any(|saved| saved == "cap_admitted")
+    {
+        types.insert(CAP_ADMITTED);
+        names.insert("cap_admitted".to_owned());
     }
     let unnamed: BTreeSet<&str> = registry
         .component_names()

@@ -297,7 +297,7 @@ pub use intent::aim::{AIM, Aim, AimPlugin};
 pub use intent::cursor::cursor_to_world;
 pub use intent::sheet::{Delivery, Skill, SkillLine};
 pub use intent::state_machine::{StateMachine, StateMachinePlugin};
-pub use lifecycle::cap::{Cap, CapPlugin, Past};
+pub use lifecycle::cap::{Admission, Cap, CapPlugin, Past, admit_spawn, cap_refuses};
 pub use lifecycle::children::{SPAWN_CHILDREN, SpawnChildren, SpawnChildrenPlugin};
 pub use lifecycle::cooldown::{COOLDOWN_TICK, Cooldown, CooldownElapsed, CooldownPlugin};
 pub use lifecycle::despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlugin, WorldBounds};

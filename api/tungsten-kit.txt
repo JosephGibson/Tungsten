@@ -706,11 +706,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraZone
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraZone
 pub struct tungsten_kit::prelude::Cap
 impl tungsten_kit::Cap
+pub fn tungsten_kit::Cap::counts_dead(&self) -> bool
 pub fn tungsten_kit::Cap::group(&self) -> &str
 pub fn tungsten_kit::Cap::max(&self) -> u32
 pub fn tungsten_kit::Cap::new(impl core::convert::Into<alloc::string::String>, u32) -> Self
 pub fn tungsten_kit::Cap::past(&self) -> tungsten_kit::Past
 pub fn tungsten_kit::Cap::refusing(self) -> Self
+pub fn tungsten_kit::Cap::without_dead(self) -> Self
 impl core::clone::Clone for tungsten_kit::Cap
 pub fn tungsten_kit::Cap::clone(&self) -> tungsten_kit::Cap
 impl core::cmp::PartialEq for tungsten_kit::Cap
@@ -5131,6 +5133,18 @@ impl core::marker::Unpin for tungsten_kit::ActionInputPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::ActionInputPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ActionInputPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ActionInputPlugin
+#[non_exhaustive] pub struct tungsten_kit::Admission
+pub tungsten_kit::Admission::culled: alloc::vec::Vec<tungsten_core::ecs::entity::Entity>
+pub tungsten_kit::Admission::prepared: tungsten_core::assets::prefab::PreparedPrefab
+impl core::fmt::Debug for tungsten_kit::Admission
+pub fn tungsten_kit::Admission::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::Admission
+impl !core::marker::Send for tungsten_kit::Admission
+impl !core::marker::Sync for tungsten_kit::Admission
+impl core::marker::Unpin for tungsten_kit::Admission
+impl core::marker::UnsafeUnpin for tungsten_kit::Admission
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Admission
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_kit::Admission
 pub struct tungsten_kit::Aim
 impl tungsten_kit::Aim
 pub fn tungsten_kit::Aim::at(tungsten_kit::Target) -> Self
@@ -5373,11 +5387,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CameraZone
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CameraZone
 pub struct tungsten_kit::Cap
 impl tungsten_kit::Cap
+pub fn tungsten_kit::Cap::counts_dead(&self) -> bool
 pub fn tungsten_kit::Cap::group(&self) -> &str
 pub fn tungsten_kit::Cap::max(&self) -> u32
 pub fn tungsten_kit::Cap::new(impl core::convert::Into<alloc::string::String>, u32) -> Self
 pub fn tungsten_kit::Cap::past(&self) -> tungsten_kit::Past
 pub fn tungsten_kit::Cap::refusing(self) -> Self
+pub fn tungsten_kit::Cap::without_dead(self) -> Self
 impl core::clone::Clone for tungsten_kit::Cap
 pub fn tungsten_kit::Cap::clone(&self) -> tungsten_kit::Cap
 impl core::cmp::PartialEq for tungsten_kit::Cap
@@ -9885,9 +9901,11 @@ pub const tungsten_kit::UNSAVED_COMPONENTS: &[(&str, &str)]
 pub const tungsten_kit::WRAP: &str
 pub const tungsten_kit::ZONE_TICK: &str
 pub fn tungsten_kit::add_hit_prep(&mut tungsten_core::ecs::world::World, impl core::convert::Into<alloc::string::String>, tungsten_kit::HitPrep)
+pub fn tungsten_kit::admit_spawn(&mut tungsten_core::ecs::world::World, tungsten_core::assets::prefab::PreparedPrefab, core::option::Option<tungsten_core::ecs::entity::Entity>) -> core::option::Option<tungsten_kit::Admission>
 pub fn tungsten_kit::blast(&mut tungsten_core::ecs::world::World, glam::f32::vec2::Vec2, &tungsten_kit::Blast, core::option::Option<tungsten_core::ecs::entity::Entity>, core::option::Option<tungsten_core::ecs::entity::Entity>)
 pub fn tungsten_kit::burst(&mut tungsten_core::ecs::world::World, &str, glam::f32::vec2::Vec2, bool) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::burst_with<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, &str, glam::f32::vec2::Vec2, bool, B) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::cap_refuses(&tungsten_core::ecs::world::World, &str) -> bool
 pub fn tungsten_kit::carried_by(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::carrier_of(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::carry(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity, tungsten_kit::Hold) -> bool

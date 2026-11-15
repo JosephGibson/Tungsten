@@ -142,6 +142,214 @@ fn world_cue(world: &mut World, name: &str, actions: Value) {
     world.resource_mut::<DataRegistry>().insert(name, actions);
 }
 
+/// A game's own sourceless spawn of `id` at once, admitted, given a save ID
+/// when `saved`: the entity and the victims handed back; `None` when
+/// refused.
+fn at_once(world: &mut World, id: &str, saved: bool) -> Option<(Entity, Vec<Entity>)> {
+    let mut prepared = world.prepare_prefab(id, [0.0, 0.0]).unwrap();
+    if saved {
+        prepared = prepared.saved(world, None);
+    }
+    let Admission { prepared, culled } = admit_spawn(world, prepared, None)?;
+    Some((prepared.spawn(world), culled))
+}
+
+/// The despawns traced about `entity`.
+fn despawns(world: &World, entity: Entity) -> usize {
+    world
+        .resource::<KitTrace>()
+        .about(entity)
+        .filter(|entry| matches!(entry.kind, TraceKind::Despawn { .. }))
+        .count()
+}
+
+#[test]
+fn a_games_spawn_at_once_is_admitted_under_its_cap() {
+    let (mut world, mut schedule) = rig();
+    frame(&mut world);
+    let mut salts = Vec::new();
+    for _ in 0..2 {
+        let (salt, victims) = at_once(&mut world, "salt", false).unwrap();
+        assert!(victims.is_empty(), "room for two");
+        salts.push(salt);
+    }
+    let [first, second] = salts[..] else {
+        panic!("two salts");
+    };
+    assert!(
+        world.get::<Admitted>(first).is_some() && world.get::<Source>(first).is_none(),
+        "stamped, with no source"
+    );
+    // The third ends the oldest, listed for the kit's end and handed back.
+    let (third, victims) = at_once(&mut world, "salt", false).unwrap();
+    assert_eq!(victims, [first]);
+    assert!(ending(&world, first) && world.is_alive(first));
+    // Live at once, not queued: a fourth in the frame ends exactly one more.
+    let (fourth, victims) = at_once(&mut world, "salt", false).unwrap();
+    assert_eq!(victims, [second], "one more, the next oldest");
+    // The game ends the second at once with its own look; the kit's end
+    // takes the first.
+    world.despawn(second);
+    fixed(&mut world, &mut schedule);
+    flush(&mut world);
+    assert_eq!(culled(&world), [first]);
+    assert_eq!(despawns(&world, second), 0, "skipped, gone, with no trace");
+    assert_eq!(
+        skipped(&world, second, "the subject is gone"),
+        1,
+        "its `culled` skipped as a gone subject's"
+    );
+    assert_eq!(game(&world, "culled"), 1, "the first's `culled` ran");
+    assert_eq!(tagged(&world, "salt").len(), 2);
+    assert!(world.is_alive(third) && world.is_alive(fourth));
+    assert!(
+        !cap_refuses(&world, "salt"),
+        "its oldest end, it refuses none"
+    );
+
+    // A refusing cap: a kit spawn queued this frame counts toward it.
+    let caster = world.spawn_with((Transform::default(),));
+    frame(&mut world);
+    assert!(!cap_refuses(&world, "plain"), "uncapped");
+    assert!(at_once(&mut world, "mine", false).unwrap().1.is_empty());
+    assert!(!cap_refuses(&world, "mine"), "room for one more");
+    assert!(kit_spawn(&mut world, "mine", caster));
+    assert!(cap_refuses(&world, "mine"), "the queued spawn fills it");
+    assert!(at_once(&mut world, "mine", false).is_none(), "refused");
+    fixed(&mut world, &mut schedule);
+    flush(&mut world);
+    frame(&mut world);
+    assert!(cap_refuses(&world, "mine"));
+    assert!(at_once(&mut world, "mine", false).is_none());
+    fixed(&mut world, &mut schedule);
+    flush(&mut world);
+    assert_eq!(tagged(&world, "mine").len(), 2);
+    assert_eq!(culled(&world), [first], "a refusal ends nothing");
+}
+
+#[test]
+fn an_admitted_holder_counts_through_a_load() {
+    let (mut a, mut schedule_a) = save_rig();
+    // The map's salt, named and unadmitted, and three admitted at once.
+    let map = a.spawn_prefab("salt", [0.0, 0.0]).unwrap();
+    save::name(&mut a, map, None, "map_salt").unwrap();
+    for _ in 0..3 {
+        assert!(at_once(&mut a, "salt", true).unwrap().1.is_empty());
+        step(&mut a, &mut schedule_a);
+    }
+    let saved = capture_world(&a).unwrap();
+    assert!(
+        serde_json::to_string(&saved)
+            .unwrap()
+            .contains(r#""cap_admitted":{}"#),
+        "the mark saved, its form empty"
+    );
+
+    let (mut b, mut schedule_b) = save_rig();
+    // Churn, so the restored salts take other indices.
+    let spare: Vec<Entity> = (0..20).map(|_| b.spawn()).collect();
+    for (index, entity) in spare.into_iter().enumerate() {
+        if index % 3 != 1 {
+            b.despawn(entity);
+        }
+    }
+    let map_b = b.spawn_prefab("salt", [0.0, 0.0]).unwrap();
+    save::name(&mut b, map_b, None, "map_salt").unwrap();
+    let report = restore_world(&mut b, &saved, &(Probe,)).unwrap();
+    assert!(report.is_clean(), "{report:?}");
+    let mut restored: Vec<Entity> = tagged(&b, "salt")
+        .into_iter()
+        .filter(|&salt| salt != map_b)
+        .collect();
+    assert_eq!(restored.len(), 3);
+    assert!(
+        restored
+            .iter()
+            .all(|&salt| b.get::<Admitted>(salt) == Some(&Admitted(0))
+                && b.get::<Source>(salt).is_none()),
+        "restored with the earliest stamp, sourceless"
+    );
+    assert!(b.get::<Admitted>(map_b).is_none());
+    restored.sort_by_key(|&salt| save::order_key(&b, salt));
+    assert_ne!(
+        restored[0],
+        *restored.iter().min_by_key(|salt| salt.id()).unwrap(),
+        "the churn put the lowest save ID off the lowest index"
+    );
+    // A fourth ends the oldest restored, by save ID; a fifth the next
+    // restored before this run's admission.
+    frame(&mut b);
+    let (fourth, victims) = at_once(&mut b, "salt", true).unwrap();
+    assert_eq!(victims, [restored[0]]);
+    fixed(&mut b, &mut schedule_b);
+    flush(&mut b);
+    frame(&mut b);
+    assert_eq!(at_once(&mut b, "salt", true).unwrap().1, [restored[1]]);
+    fixed(&mut b, &mut schedule_b);
+    flush(&mut b);
+    assert!(b.is_alive(fourth) && b.is_alive(restored[2]));
+    assert!(b.is_alive(map_b), "the map's stays aside");
+    assert_eq!(culled(&b), [restored[0], restored[1]]);
+}
+
+#[test]
+fn a_cap_without_its_dead_counts_the_living() {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(KitTrace::default());
+    world.insert_resource(PrefabRegistry::new());
+    prefab(
+        &mut world,
+        "ghost",
+        json!({ "cap": { "group": "ghosts", "max": 2, "count_dead": false } }),
+    );
+    prefab(
+        &mut world,
+        "shade",
+        json!({ "cap": { "group": "shades", "max": 2 } }),
+    );
+    let mut schedule = Schedule::new();
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    CapPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    let placed = world.spawn_prefab("ghost", [0.0, 0.0]).unwrap();
+    assert_eq!(
+        world.get::<Cap>(placed).map(Cap::counts_dead),
+        Some(false),
+        "the form's flag"
+    );
+    for (id, counts_dead) in [("ghost", false), ("shade", true)] {
+        frame(&mut world);
+        let mut two = Vec::new();
+        for _ in 0..2 {
+            let (holder, _) = at_once(&mut world, id, false).unwrap();
+            world.insert(holder, Health::new(10.0));
+            two.push(holder);
+        }
+        let [older, younger] = two[..] else {
+            panic!("{id}: two");
+        };
+        crate::kill(&mut world, older);
+        assert!(world.get::<Health>(older).unwrap().is_dead());
+        let (_, victims) = at_once(&mut world, id, false).unwrap();
+        if counts_dead {
+            assert_eq!(victims, [older], "{id}: the dead count until they end");
+        } else {
+            assert!(victims.is_empty(), "{id}: the dead hold no place");
+            let (_, victims) = at_once(&mut world, id, false).unwrap();
+            assert_eq!(
+                victims,
+                [younger],
+                "{id}: the oldest living, never the dead"
+            );
+            assert!(world.is_alive(older) && !ending(&world, older));
+        }
+        fixed(&mut world, &mut schedule);
+        flush(&mut world);
+    }
+}
+
 #[test]
 fn past_its_cap_the_oldest_is_culled_or_the_spawn_refused() {
     let (mut world, mut schedule) = rig();
@@ -419,10 +627,9 @@ fn a_restored_group_counts_oldest_first() {
     let mut restored = tagged(&b, "salt");
     assert_eq!(restored.len(), 3);
     assert!(
-        restored
-            .iter()
-            .all(|&salt| b.get::<Source>(salt).is_some() && b.get::<Admitted>(salt).is_none()),
-        "restored with their source, unstamped"
+        restored.iter().all(|&salt| b.get::<Source>(salt).is_some()
+            && b.get::<Admitted>(salt) == Some(&Admitted(0))),
+        "restored with their source and the earliest stamp"
     );
     restored.sort_by_key(|&salt| save::order_key(&b, salt));
     assert_ne!(

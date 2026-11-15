@@ -39,10 +39,11 @@ component camera_zone: A zone's camera: beside a `zone` on a sensor, its rig, lo
   field rig: a `camera_rig` form, its `live` refused — the rig the zone raises and lowers
   genres: platformer, rpg
   sample: { "rig": { "fixed": { "at": [640, 360] } } }
-component cap: Holds its group's live instances to a number: a kit spawn past it ends the group's oldest, or is refused.
-  field group: text — the group's name, dotted: the live holders the kit spawned or that hold a `Source`, a map-placed one aside
+component cap: Holds its group's live instances to a number: a kit spawn or a game's admitted one past it ends the group's oldest, or is refused.
+  field group: text — the group's name, dotted: the live holders the kit or a game admitted, through a load too, or that hold a `Source`, a map-placed one aside
   field max: u32 (>= 1) — the most live instances, counting the frame's admissions
   field past: one of oldest | refuse = "oldest" — past the max: the oldest end, restored ones first, then by admission, each sending `culled` when named, or the spawn is refused
+  field count_dead: bool = true — whether a holder whose `health` is dead counts and can be ended for room; false leaves it aside
   genres: rpg, shooter
   sample: { "group": "salt", "max": 2 }
 component character_animator: Picks the entity's animation clip each frame: idle, move, rise or fall, by its facing when a clip is a set, its rules over that, a one-shot over both.
