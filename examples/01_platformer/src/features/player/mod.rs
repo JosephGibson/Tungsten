@@ -15,7 +15,7 @@ use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
     ACTION_INPUT, CHARACTER_ANIMATOR, CUES, CharacterAnimator, Modifier, Phase, Stats, TagFilter,
-    ensure_phases,
+    Tags, ensure_phases,
 };
 use tungsten::{Plugin, SceneEntity};
 
@@ -39,6 +39,11 @@ pub const LAND_SECS: f32 = 0.18;
 /// Game seconds a cast's pose holds and the staff flares; a pressed
 /// spell's clip, its ability's, lasts its own length.
 pub const CAST_SECS: f32 = 0.3;
+/// The pose tags, held while a pour's or a shot's [`CAST_SECS`] run, whose
+/// rules in the player's prefab show the staff's and the pistol's strips
+/// on the kit's animator, standing.
+pub const POURING: &str = "state.pouring";
+pub const AIMING: &str = "state.aiming";
 /// The staff's flare over a cast: the staff light's halo radius, its hot
 /// core and its light, each times the prefab's; its reach stays the
 /// prefab's, which the crawlers' edge reads.
@@ -200,13 +205,15 @@ pub fn holds_combat_values(world: &World, player: Entity) -> bool {
 
 /// Shows a cast by `player` along `aim` with `gesture`, for [`CAST_SECS`]:
 /// a spell's flares the staff; a shot, the gun's, leaves it be. A pour or a
-/// shot cuts a pressed spell's clip short, so its pose shows at once.
+/// shot cuts a pressed spell's clip short and takes its pose's tag at once,
+/// the other's going, so a switch shows its pose on its first frame.
 pub fn cast(world: &mut World, player: Entity, aim: Vec2, gesture: Gesture) {
     if matches!(gesture, Gesture::Pour | Gesture::Shoot)
         && let Some(animator) = world.get_mut::<CharacterAnimator>(player)
     {
         animator.stop();
     }
+    pose_tags(world, player, Some(gesture));
     if let Some(moves) = world.get_mut::<Moves>(player) {
         if gesture != Gesture::Shoot {
             moves.glow = CAST_SECS;
@@ -214,6 +221,27 @@ pub fn cast(world: &mut World, player: Entity, aim: Vec2, gesture: Gesture) {
         moves.aim = aim;
         moves.gesture = Some(gesture);
         moves.cast = CAST_SECS;
+    }
+}
+
+/// Gives `player` the pose tag of `gesture`, [`POURING`] for a pour and
+/// [`AIMING`] for a shot, and takes the other's: neither for a pressed
+/// spell's cast or none. Only a changed tag is inserted or removed.
+pub fn pose_tags(world: &mut World, player: Entity, gesture: Option<Gesture>) {
+    let Some(tags) = world.get_mut::<Tags>(player) else {
+        return;
+    };
+    for (tag, wanted) in [
+        (POURING, gesture == Some(Gesture::Pour)),
+        (AIMING, gesture == Some(Gesture::Shoot)),
+    ] {
+        if wanted != tags.has(tag) {
+            if wanted {
+                tags.insert(tag);
+            } else {
+                tags.remove(tag);
+            }
+        }
     }
 }
 

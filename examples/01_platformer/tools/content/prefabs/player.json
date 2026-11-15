@@ -17,7 +17,11 @@
       "move": { "left": "ex10_player_walk_left", "right": "ex10_player_walk" },
       "rise": { "left": "ex10_player_jump_left", "right": "ex10_player_jump" },
       "fall": { "left": "ex10_player_fall_left", "right": "ex10_player_fall" },
-      "min_speed": 1
+      "min_speed": 1,
+      "rules": [
+        { "when": { "all": ["state.pouring"] }, "motion": "idle", "clip": { "aim": { "right": "ex10_player_staff", "left": "ex10_player_staff_left", "from": "up" } } },
+        { "when": { "all": ["state.aiming"] }, "motion": "idle", "clip": { "aim": { "right": "ex10_player_aim", "left": "ex10_player_aim_left", "from": "up" } } }
+      ]
     },
     "stats": { "max_health": 100, "mana": 100, "max_mana": 100, "move_speed": 560, "pickup_radius": 192, "crit_chance": 0.05, "crit_multiplier": 2, "status_threshold": 50, "damage_taken": { "base": 1, "lines": [{ "modifier": { "mul": 0.5 }, "with": { "all": ["hit.blast"] } }] } },
     "effects": ["mana_regen"],

@@ -17,9 +17,9 @@ use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::components::{Lantern, LanternAnchors, Moves, Player, Shown, StaffGlow};
 use super::{
-    FLARE_CORE, FLARE_LIGHT, FLARE_RADIUS, GUTTER_PUFF, Gesture, JUMP_SPEED, LAND_SECS,
-    RELIGHT_MANA, SHOVE_BESIDE, SHOVE_HEAD, SHOVE_OVER, SHOVE_SIDE, STAFF_LIGHT, STUCK_BY,
-    ZOOM_MAX, ZOOM_MIN, ZOOM_STEP,
+    FLARE_CORE, FLARE_LIGHT, FLARE_RADIUS, GUTTER_PUFF, JUMP_SPEED, LAND_SECS, RELIGHT_MANA,
+    SHOVE_BESIDE, SHOVE_HEAD, SHOVE_OVER, SHOVE_SIDE, STAFF_LIGHT, STUCK_BY, ZOOM_MAX, ZOOM_MIN,
+    ZOOM_STEP,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::{Glow, Zoom};
@@ -34,14 +34,6 @@ pub const LAND_CLIP: &str = "ex10_player_land";
 pub const AIR_JUMP_CLIP: &str = "ex10_player_double_jump";
 pub const HURT_CLIP: &str = "ex10_player_hurt";
 pub const DEATH_CLIP: &str = "ex10_player_death";
-/// The idle clip, which a cast's pose replaces with a pose frame.
-pub const IDLE_CLIP: &str = "ex10_player_idle";
-/// The pose frames, facing right from straight up (0) to straight down (4)
-/// by eighths of a turn, each with a left-facing twin: the staff levelled
-/// along the aim, the sprays' and the small balls', and the pistol, the
-/// gun's.
-pub const STAFF_FRAME: &str = "ex10_player_staff";
-pub const AIM_FRAME: &str = "ex10_player_aim";
 /// The bursts a jump, an air jump and a landing play.
 pub const JUMP_PUFF: &str = "ex10_jump_puff";
 pub const AIR_JUMP_BURST: &str = "ex10_double_jump";
@@ -422,8 +414,10 @@ pub fn moves(world: &mut World) {
 /// the animator plays no one-shot (a pressed spell's gesture, its
 /// ability's clip), the air jump's tuck while he rises and the land clip
 /// while it holds on the ground, facing as he does: shown over the
-/// animator's clip and then handed back to it. Then, standing, a cast's
-/// pose over the idle clip's frame.
+/// animator's clip and then handed back to it. And the pose tags, held
+/// exactly while a pour's or a shot's cast seconds run, whose rules show
+/// the pose strips on the animator, standing ([`super::pose_tags`]): a tag
+/// a load restored goes at its first frame.
 pub fn clips(world: &mut World) {
     let Some(player) = player(world) else {
         return;
@@ -452,7 +446,6 @@ pub fn clips(world: &mut World) {
         *timer = (*timer - dt).max(0.0);
     }
     moves.edge = (moves.edge - dt / EDGE_SECS).max(0.0);
-    let aim = moves.aim;
     let gesture = moves.gesture.filter(|_| moves.cast > 0.0);
     let clip = if moves.dead {
         Some((DEATH_CLIP, moves.dead_left))
@@ -475,6 +468,7 @@ pub fn clips(world: &mut World) {
         }
     });
     let shown = moves.shown.take();
+    super::pose_tags(world, player, gesture);
     let Some(registry) = world.remove_resource::<AnimationRegistry>() else {
         return;
     };
@@ -515,72 +509,10 @@ pub fn clips(world: &mut World) {
         }
         (None, None) => None,
     };
-    let pose = gesture
-        .and_then(pose_frames)
-        .filter(|_| grounded && next.is_none());
     if let Some(moves) = world.get_mut::<Moves>(player) {
         moves.shown = next;
     }
-    dress(world, player, &registry, pose, aim);
     world.insert_resource(registry);
-}
-
-/// A pose's frames, none for a pressed spell's cast.
-fn pose_frames(gesture: Gesture) -> Option<&'static str> {
-    match gesture {
-        Gesture::Pour => Some(STAFF_FRAME),
-        Gesture::Shoot => Some(AIM_FRAME),
-        Gesture::Cast => None,
-    }
-}
-
-/// Dresses the frame `player` shows for a cast's pose: standing in its idle
-/// clip, the frame of `pose`'s set nearest `aim`, facing it. A pose no
-/// longer wanted gives the clip's frame back.
-fn dress(
-    world: &mut World,
-    player: Entity,
-    registry: &AnimationRegistry,
-    pose: Option<&str>,
-    aim: Vec2,
-) {
-    let (Some(state), Some(assets)) = (
-        world.get::<AnimationState>(player),
-        world.get_resource::<AssetRegistry>(),
-    ) else {
-        return;
-    };
-    let shown = world.get::<Sprite>(player).map(|sprite| sprite.asset_id);
-    let dressed = shown
-        .and_then(|id| assets.sprite_name(id))
-        .is_some_and(|name| name.starts_with(STAFF_FRAME) || name.starts_with(AIM_FRAME));
-    let Some(frame) = state.current_sprite(registry) else {
-        return;
-    };
-    let name = match pose {
-        Some(frames) if state.animation_id.starts_with(IDLE_CLIP) => pose_frame(frames, aim),
-        _ if dressed => match assets.sprite_name(frame) {
-            Some(name) => name.to_string(),
-            None => return,
-        },
-        _ => return,
-    };
-    let id = assets.sprite_id(&name).unwrap_or(frame);
-    if let Some(sprite) = world.get_mut::<Sprite>(player) {
-        sprite.asset_id = id;
-    }
-}
-
-/// The frame of the pose set `frames` nearest `aim`, facing it.
-#[must_use]
-pub fn pose_frame(frames: &str, aim: Vec2) -> String {
-    let up = (-aim.y).atan2(aim.x.abs()).to_degrees();
-    let index = ((90.0 - up) / 45.0).round().clamp(0.0, 4.0) as usize;
-    if aim.x < 0.0 {
-        format!("{frames}_{index}_left")
-    } else {
-        format!("{frames}_{index}")
-    }
 }
 
 /// Shows `state` on `player`, its current frame in the sprite at once.

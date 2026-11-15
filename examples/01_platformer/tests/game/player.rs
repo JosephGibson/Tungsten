@@ -734,6 +734,84 @@ fn a_shot_or_a_pour_cuts_a_gesture_short() {
 }
 
 #[test]
+fn a_pose_follows_the_aim_and_its_side() {
+    use example_01_platformer::features::gun;
+    use example_01_platformer::features::player::{AIMING, POURING};
+    use tungsten::core::components::SpriteFlip;
+    use tungsten::kit::Tags;
+    let (mut harness, player) = caster();
+    let from = |h: &UiHarness, x: f32, y: f32| centre(h, player) + Vec2::new(x, y);
+    let posed = |h: &UiHarness| {
+        let tags = h.world().get::<Tags>(player).unwrap();
+        (tags.has(POURING), tags.has(AIMING))
+    };
+    // Standing, a pour up, level and down: the staff strip's frames 0, 2
+    // and 4; level to the left, its twin's, no flip written.
+    super::choose(&mut harness, Spell::Flamethrower);
+    for ((x, y), want) in [
+        ((10.0, -300.0), "ex10_player_staff_0"),
+        ((300.0, 0.0), "ex10_player_staff_2"),
+        ((10.0, 300.0), "ex10_player_staff_4"),
+        ((-300.0, 0.0), "ex10_player_staff_2_left"),
+    ] {
+        let at = from(&harness, x, y);
+        super::aim_at(&mut harness, at);
+        harness.harness_mut().press_action("cast");
+        harness.step(1);
+        harness.harness_mut().release_action("cast");
+        assert_eq!(sprite_shown(&harness, player), want, "({x}, {y})");
+        assert_eq!(posed(&harness), (true, false), "({x}, {y})");
+        harness.step(20);
+    }
+    assert!(harness.world().get::<SpriteFlip>(player).is_none());
+    // A shot level: the pistol strip's frame 2. The cursor raised 6 frames
+    // on, its live aim: straight up, frame 0.
+    let level = from(&harness, 300.0, 0.0);
+    super::aim_at(&mut harness, level);
+    harness.harness_mut().press_action(gun::SHOOT);
+    harness.step(1);
+    harness.harness_mut().release_action(gun::SHOOT);
+    assert_eq!(sprite_shown(&harness, player), "ex10_player_aim_2");
+    harness.step(5);
+    let up = from(&harness, 10.0, -300.0);
+    super::aim_at(&mut harness, up);
+    harness.step(1);
+    assert_eq!(sprite_shown(&harness, player), "ex10_player_aim_0");
+    harness.step(20);
+    // A shot right after a pour, with no wait: the pistol's pose the frame
+    // after its press, the pour's tag gone.
+    super::aim_at(&mut harness, level);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    assert_eq!(sprite_shown(&harness, player), "ex10_player_staff_2");
+    harness.harness_mut().press_action(gun::SHOOT);
+    harness.step(1);
+    harness.harness_mut().release_action(gun::SHOOT);
+    assert_eq!(sprite_shown(&harness, player), "ex10_player_aim_2");
+    assert_eq!(posed(&harness), (false, true));
+    harness.step(20);
+    // Walking, no pose.
+    harness.harness_mut().press_action("move_right");
+    harness.step(3);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    let walking = sprite_shown(&harness, player);
+    harness.harness_mut().release_action("cast");
+    harness.harness_mut().release_action("move_right");
+    assert!(walking.starts_with("ex10_player_walk"), "{walking}");
+    // Standing again, a pour, then 0.3 s on: the idle clip, no pose tag.
+    harness.step(40);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    assert!(sprite_shown(&harness, player).starts_with("ex10_player_staff_"));
+    harness.step(20);
+    assert_eq!(clip(&harness, player), "ex10_player_idle");
+    assert_eq!(posed(&harness), (false, false));
+}
+
+#[test]
 fn an_air_jump_and_a_spell_switch_each_sound_once() {
     use example_01_platformer::features::audio::components::{Sound, Sounded};
     let (mut harness, player) = buried(false);
