@@ -91,9 +91,10 @@ impl SaveData for SaveGame {
     /// snowball onto the kit's projectile ([`to_33`]), 34 the lightning's
     /// chain onto the kit's conduction ([`to_34`]), 35 the missile's and
     /// the tracers' turns onto the kit's facing ([`to_35`]), 36 the
-    /// black hole's life onto a kit cooldown ([`to_36`]), and 37 the
-    /// props' caps onto the kit's, marking their records ([`to_37`]).
-    const SCHEMA: u32 = 37;
+    /// black hole's life onto a kit cooldown ([`to_36`]), 37 the props'
+    /// caps onto the kit's, marking their records ([`to_37`]), and 38
+    /// iron's and the black holes' ([`to_38`]).
+    const SCHEMA: u32 = 38;
 
     fn migrate_step(
         from: u32,
@@ -154,6 +155,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 36: the save has no world")?;
                 to_37(world);
+                Ok(data)
+            }
+            37 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 37: the save has no world")?;
+                to_38(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -495,6 +503,19 @@ fn s35_life(left: f64) -> Value {
 fn to_37(value: &mut Value) {
     mark_admitted(value, &S36_PROPS);
 }
+
+/// Schema 37 to 38 over a save's `world`: each record of an iron block,
+/// the map's among them, and of a black hole takes the kit's admission
+/// mark, [`S36_ADMITTED`], as schema 38 gives each one placed, so a
+/// loaded older save's iron and holes count toward their prefabs' caps
+/// as they counted toward 01's.
+fn to_38(value: &mut Value) {
+    mark_admitted(value, &S37_IRON_HOLES);
+}
+
+/// The prefabs of schema 37's iron and black holes, frozen for the
+/// migration.
+const S37_IRON_HOLES: [&str; 2] = ["iron_block", "black_hole"];
 
 /// Each record of `prefabs` within `value` the map did not set down
 /// takes [`S36_ADMITTED`].

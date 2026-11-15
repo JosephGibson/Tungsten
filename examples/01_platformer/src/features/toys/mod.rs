@@ -3,9 +3,9 @@
 //! aim (`wave`), sprays of fire or cold along an aim, the fire missile's
 //! flight, blast and bending, and the toxic flask's lob and splash
 //! (`flask`), each a function the spells call. Their caps bound the pile:
-//! [`BALL_CAP`] balls, [`IRON_CAP`] blocks and [`HOLE_CAP`] black holes;
-//! the missiles' and the flasks' are their prefabs' kit `cap`s, which
-//! refuse a seventh missile and a fourth flask.
+//! [`BALL_CAP`] balls by their table; the rest are their prefabs' kit
+//! `cap`s, which refuse a seventh missile and a fourth flask and end the
+//! oldest of 24 iron blocks and of three black holes.
 
 pub mod components;
 pub mod draw;
@@ -32,7 +32,7 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::level::{self, TILE};
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::{Joined, SaveId, Saved, body_centre, despawn_tree, spawn_burst};
+use crate::shared::{Joined, Saved, body_centre, despawn_tree, spawn_burst};
 use components::{
     Ball, BallHue, BallSpawner, BlackHole, BowlingBall, Element, FireMissile, HoleHold, IronBlock,
     IronScrap, OpeningOf, PreviousVelocity, Ring, ShockRing, SmallBall, Spray,
@@ -62,11 +62,10 @@ pub const TOSS_STEEPEST: f32 = 25.0 * std::f32::consts::PI / 180.0;
 /// Where a tossed ball leaves the caster's centre, along the aim.
 pub const TOSS_OFFSET: f32 = 28.0;
 /// An iron block's half size, its mass, and its art's offset: 128 px of
-/// art about the 120 px block. Most blocks at once: a new one replaces the
-/// oldest, which poofs.
+/// art about the 120 px block. Its prefab's `cap` holds 24: a new one
+/// replaces the oldest, which poofs.
 pub const IRON_HALF: Vec2 = Vec2::splat(4.0 * BALL_RADIUS);
 pub const IRON_MASS: f32 = 400.0;
-pub const IRON_CAP: usize = 24;
 /// Iron's weight: a block falling faster than [`IRON_FALL_FROM`] falls
 /// harder by [`IRON_WEIGHT`] px/s², half the world's gravity again, unless
 /// a troll holds or throws it.
@@ -86,12 +85,11 @@ pub const SCRAP_SCALE: f32 = 0.5;
 /// scrap's is a sixteenth.
 pub const IRON_FRICTION: f32 = 1500.0;
 pub const FROZEN_FRICTION: f32 = 120.0;
-/// A black hole's reach and pull, its life its prefab's `cooldown`; at most
-/// [`HOLE_CAP`] are open, a further one closing the oldest.
+/// A black hole's reach and pull, its life its prefab's `cooldown`; its
+/// prefab's `cap` holds three open, a further one closing the oldest.
 pub const HOLE_RADIUS: f32 = 6.0 * TILE;
 pub const HOLE_FORCE: f32 = 12_000.0;
 pub const HOLE_DIAMETER: f32 = 2.8125 * TILE;
-pub const HOLE_CAP: usize = 3;
 /// A hole shrinks to nothing over its last seconds, and its collapse
 /// leaves a small ring this many pixels across.
 pub const HOLE_SHRINK_SECS: f32 = 0.5;
@@ -477,27 +475,22 @@ pub fn iron_fits(world: &World, at: Vec2) -> bool {
     })
 }
 
-/// Places an iron block with its centre at `at`; past [`IRON_CAP`] the
-/// oldest goes in a poof, as a summon's oldest does.
+/// Places an iron block with its centre at `at`, admitted under its
+/// prefab's kit `cap`, the map's own among them: past it the oldest, the
+/// lowest save ID, goes in a poof first, as a summon's oldest does.
 pub fn place_iron(world: &mut World, at: Vec2) -> Entity {
-    let mut blocks: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &IronBlock, &Saved)>()
-        .map(|(entity, _, id)| (id.id(), entity))
-        .collect();
-    blocks.sort_by_key(|(id, _)| *id);
-    let surplus = (blocks.len() + 1).saturating_sub(IRON_CAP);
-    for &(_, oldest) in blocks.iter().take(surplus) {
+    let corner = at - IRON_HALF - Vec2::splat(4.0);
+    let Admission {
+        prepared, culled, ..
+    } = admit_toy(world, IRON_BLOCK_PREFAB, corner, 1.0, None)
+        .expect("iron's cap ends its oldest, refusing none: no kit route spawns iron");
+    for oldest in culled {
         if let Some(centre) = body_centre(world, oldest) {
             spawn_burst(world, "ex10_poof", centre);
         }
         despawn_tree(world, oldest);
     }
-    let block = spawn_toy(
-        world,
-        IRON_BLOCK_PREFAB,
-        at - IRON_HALF - Vec2::splat(4.0),
-        1.0,
-    );
+    let block = prepared.spawn(world);
     audio::play(world, Sound::Placed, at);
     block
 }
@@ -561,19 +554,17 @@ pub fn rest(world: &mut World, entity: Entity) {
 }
 
 /// Opens a black hole at `at` for its prefab's cooldown, with its opening's
-/// ring and rush of sparks; past [`HOLE_CAP`] the oldest, the lowest save ID,
-/// collapses first.
+/// ring and rush of sparks, admitted under its prefab's kit `cap`: past
+/// it the oldest, the lowest save ID, collapses first.
 pub fn place_black_hole(world: &mut World, at: Vec2) -> Entity {
-    let mut open: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &BlackHole, &Saved)>()
-        .map(|(entity, _, id)| (id.id(), entity))
-        .collect();
-    open.sort_by_key(|(id, _)| *id);
-    let surplus = (open.len() + 1).saturating_sub(HOLE_CAP);
-    for &(_, oldest) in open.iter().take(surplus) {
+    let Admission {
+        prepared, culled, ..
+    } = admit_toy(world, BLACK_HOLE_PREFAB, at, 1.0, None)
+        .expect("a hole's cap ends its oldest, refusing none: no kit route spawns a hole");
+    for oldest in culled {
         systems::collapse(world, oldest);
     }
-    let hole = spawn_toy(world, BLACK_HOLE_PREFAB, at, 1.0);
+    let hole = prepared.spawn(world);
     audio::play(world, Sound::HoleOpened, at);
     systems::ring(world, at, OPEN_RING, Ring::Open);
     if let Some(rush) = spawn_burst(world, "ex10_hole_open", at) {

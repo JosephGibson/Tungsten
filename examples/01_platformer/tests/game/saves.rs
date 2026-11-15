@@ -559,6 +559,7 @@ fn lists(kind: &str) -> Lists {
                     name::<PreviousVelocity>(),
                     name::<Children>(),
                     name::<Pull>(),
+                    name::<tungsten::kit::Cap>(),
                 ],
             ]
             .concat(),
@@ -589,6 +590,7 @@ fn lists(kind: &str) -> Lists {
                 name::<PreviousVelocity>(),
                 name::<Children>(),
                 name::<ParticleEmitter>(),
+                name::<tungsten::kit::Cap>(),
             ]),
             presentation: names([name::<Visibility>(), name::<ParticleEmitterState>()]),
         },
@@ -3476,6 +3478,134 @@ fn an_older_saves_props_keep_their_caps() {
     }
     let mut loaded = super::harness();
     load(&mut loaded, migrated);
+}
+
+/// Each record of `prefabs` in `world`, a save's, by save ID: its prefab and
+/// whether it holds the kit's admission mark.
+fn record_marks(world: &serde_json::Value, prefabs: &[&str]) -> BTreeMap<u64, (String, bool)> {
+    let mut marks = BTreeMap::new();
+    let mut stack = vec![world];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                if let Some(prefab) = object.get("prefab").and_then(serde_json::Value::as_str)
+                    && prefabs.contains(&prefab)
+                    && let Some(id) = object.get("id").and_then(serde_json::Value::as_u64)
+                {
+                    let marked = object
+                        .get("components")
+                        .is_some_and(|components| components.get("cap_admitted").is_some());
+                    marks.insert(id, (prefab.to_owned(), marked));
+                }
+                stack.extend(object.values());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter()),
+            _ => {}
+        }
+    }
+    marks
+}
+
+#[test]
+fn an_older_saves_iron_and_holes_keep_their_caps() {
+    let dir = user_folder("iron-37");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let player = player_entity(&harness);
+    scaffold(&mut harness);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.step(1);
+    let world = harness.world_mut();
+    toys::place_black_hole(world, Vec2::new(1700.0, TOP - 300.0));
+    // The map's own blocks, and as many placed as fill the cap of 24.
+    let map = world.query::<&IronBlock>().count();
+    for i in 0..24 - map {
+        let (column, row) = ((i % 12) as f32, (i / 12) as f32);
+        let at = Vec2::new(
+            700.0 + 125.0 * column,
+            TOP - IRON_HALF.y - 1.0 - 130.0 * row,
+        );
+        toys::place_iron(world, at);
+    }
+    harness.step(1);
+    let saved = capture(&harness);
+    // Schema 37's shape: no iron block's or hole's record holds the mark.
+    let mut older = json(&saved);
+    let mut stripped = BTreeMap::<String, usize>::new();
+    let mut stack = vec![&mut older["world"]];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                let prefab = object
+                    .get("prefab")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|prefab| ["iron_block", "black_hole"].contains(prefab))
+                    .map(str::to_owned);
+                if let Some(prefab) = prefab
+                    && let Some(serde_json::Value::Object(components)) =
+                        object.get_mut("components")
+                    && components.remove("cap_admitted").is_some()
+                {
+                    *stripped.entry(prefab).or_default() += 1;
+                }
+                stack.extend(object.values_mut());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter_mut()),
+            _ => {}
+        }
+    }
+    assert_eq!(
+        stripped,
+        BTreeMap::from([("black_hole".to_owned(), 1), ("iron_block".to_owned(), 24)]),
+        "the map's own and those placed, and the hole"
+    );
+    let stamp = tungsten::core::SaveStamp::new(37, "0.117.0", 1_760_400_000_000);
+    let slots = harness_slots(&harness);
+    slots
+        .save_stamped("slot_1", &older, &stamp)
+        .expect("a schema 37 save is written");
+    let migrated = slots
+        .load::<SaveGame>("slot_1")
+        .expect("a schema 37 save migrates");
+    let prefabs = ["iron_block", "black_hole"];
+    let marks = record_marks(&json(&migrated)["world"], &prefabs);
+    assert_eq!(marks.len(), 25, "the iron and the hole");
+    assert!(
+        marks.values().all(|&(_, marked)| marked),
+        "each record marked"
+    );
+    assert_eq!(
+        marks,
+        record_marks(&json(&saved)["world"], &prefabs),
+        "as the run marked them"
+    );
+    // Loaded, a twenty-fifth block ends the oldest, the map's first.
+    let mut loaded = super::harness();
+    load(&mut loaded, migrated);
+    scaffold(&mut loaded);
+    let blocks = |harness: &UiHarness| -> Vec<(u64, Entity)> {
+        let mut blocks: Vec<(u64, Entity)> = harness
+            .world()
+            .query::<(Entity, &IronBlock, &Saved)>()
+            .map(|(entity, _, id)| (id.id().0, entity))
+            .collect();
+        blocks.sort_unstable_by_key(|&(id, _)| id);
+        blocks
+    };
+    let before = blocks(&loaded);
+    assert_eq!(before.len(), 24);
+    toys::place_iron(
+        loaded.world_mut(),
+        Vec2::new(2300.0, TOP - IRON_HALF.y - 1.0),
+    );
+    let after = blocks(&loaded);
+    assert_eq!(after.len(), 24);
+    assert!(!loaded.world().is_alive(before[0].1), "the oldest gone");
+    assert!(
+        before[1..]
+            .iter()
+            .all(|&(_, block)| loaded.world().is_alive(block))
+    );
 }
 
 #[test]

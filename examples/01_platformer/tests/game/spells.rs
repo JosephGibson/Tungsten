@@ -354,6 +354,104 @@ fn three_black_holes_stay_open_and_a_fourth_collapses_the_oldest() {
     assert_eq!(rings(&harness, Ring::Collapse), 1, "its ring");
 }
 
+/// The iron blocks alive, in save-ID order.
+fn iron_blocks(harness: &UiHarness) -> Vec<Entity> {
+    use example_01_platformer::features::toys::components::IronBlock;
+    let world = harness.world();
+    let mut blocks: Vec<(u64, Entity)> = world
+        .query::<(Entity, &IronBlock, &example_01_platformer::shared::Saved)>()
+        .map(|(entity, _, id)| (id.id().0, entity))
+        .collect();
+    blocks.sort_unstable_by_key(|&(id, _)| id);
+    blocks.into_iter().map(|(_, entity)| entity).collect()
+}
+
+/// The poofs alive within a pixel of `at`.
+fn poofs_at(harness: &UiHarness, at: Vec2) -> usize {
+    let world = harness.world();
+    let config = world
+        .resource::<tungsten::core::ParticleConfigRegistry>()
+        .id_for_name("ex10_poof");
+    world
+        .query::<(
+            &Burst,
+            &tungsten::core::ParticleEmitter,
+            &tungsten::core::Transform,
+        )>()
+        .filter(|(_, emitter, transform)| {
+            Some(emitter.config) == config && transform.position.distance(at) < 1.0
+        })
+        .count()
+}
+
+#[test]
+fn iron_past_its_cap_ends_the_oldest_the_maps_first() {
+    use example_01_platformer::save;
+    use example_01_platformer::shell::{self as game_shell, RunStart};
+    use tungsten::core::Time;
+    use tungsten::kit::Cap;
+    let (mut harness, _) = run();
+    ground(&mut harness, SKY);
+    let map = iron_blocks(&harness);
+    let markers = example_01_platformer::features::level::markers(
+        harness.world(),
+        example_01_platformer::features::level::IRON_MARKER,
+    );
+    assert_eq!(map.len(), markers.len(), "the map's own, one a marker");
+    // Its prefab's cap, as the map's first block holds it.
+    let cap = harness.world().get::<Cap>(map[0]).expect("its cap").max() as usize;
+    // Along the sky's ground, a second row over the first.
+    let at = |i: usize| {
+        let (column, row) = ((i % 18) as f32, (i / 18) as f32);
+        Vec2::new(
+            150.0 + 125.0 * column,
+            SKY - IRON_HALF.y - 1.0 - 130.0 * row,
+        )
+    };
+    for i in map.len()..cap {
+        toys::place_iron(harness.world_mut(), at(i - map.len()));
+    }
+    harness.step(1);
+    assert_eq!(iron_blocks(&harness).len(), cap);
+    let saved = save::capture(harness.world()).expect("a live run captures");
+    let first = example_01_platformer::shared::save_id(harness.world(), map[0]).unwrap();
+    // One more, here and after a save and a load: the map's first goes.
+    let mut fresh = super::harness();
+    fresh.world_mut().resource_mut::<Time>().pause();
+    game_shell::start_run(fresh.world_mut(), RunStart::from(saved), None);
+    super::settle(&mut fresh);
+    fresh.step(1);
+    ground(&mut fresh, SKY);
+    for harness in [&mut harness, &mut fresh] {
+        let blocks = iron_blocks(harness);
+        let oldest = blocks[0];
+        assert_eq!(
+            example_01_platformer::shared::save_id(harness.world(), oldest),
+            Some(first),
+            "the map's first is the oldest"
+        );
+        let centre = body(harness, oldest);
+        let poofs = poofs_at(harness, centre);
+        toys::place_iron(harness.world_mut(), at(cap - map.len()));
+        assert!(!harness.world().is_alive(oldest), "gone at once");
+        assert_eq!(
+            poofs_at(harness, centre),
+            poofs + 1,
+            "one poof at its centre"
+        );
+        assert_eq!(
+            iron_blocks(harness).len(),
+            cap,
+            "the cap's twenty-four left"
+        );
+        assert!(
+            blocks[1..]
+                .iter()
+                .all(|&block| harness.world().is_alive(block))
+        );
+    }
+}
+
 #[test]
 fn an_open_hole_sweeps_small_balls_from_its_core_a_few_a_step() {
     let (mut harness, _) = run();

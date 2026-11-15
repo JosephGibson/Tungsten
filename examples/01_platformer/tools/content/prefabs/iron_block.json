@@ -93,6 +93,10 @@
       },
       "land": "now",
       "prepare": "armour"
+    },
+    "cap": {
+      "group": "iron",
+      "max": 24
     }
   }
 }
