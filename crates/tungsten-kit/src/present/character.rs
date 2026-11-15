@@ -6,7 +6,7 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use std::fmt;
 
 use glam::Vec2;
-use serde::de::{self, MapAccess, Visitor};
+use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use tungsten_core::physics::{BodyKind, Position, PrevPosition, RigidBody, Velocity};
 use tungsten_core::{
@@ -37,7 +37,7 @@ const CHARACTER_ANIMATOR_COMPONENT: &str = "character_animator";
 const CLIP_RULE: &str = "clip_rule";
 
 /// The data form of a [`Clips`], as every description of one writes it.
-pub(crate) const CLIPS_FORM: &str = "an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out, or by the aim with `side: aim`, a one-shot keeping its first frame's aim; or { aim: [..] }, two or more drawn facing right from straight down to straight up";
+pub(crate) const CLIPS_FORM: &str = "an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out, or by the aim with `side: aim`, a one-shot keeping its first frame's aim; or { aim: [..] }, two or more drawn facing right from straight down to straight up; or { aim: { right, left, from } }, a strip a side whose frame nearest the aim holds, from straight down or with `from: up` from straight up, `right` flipped when `left` is left out";
 
 /// The default speed from which a character moves, in world pixels per
 /// second.
@@ -60,13 +60,17 @@ const ONE_SHOT_EPSILON_MS: f32 = 1e-3;
 /// read. Aim poses ([`aim`](Self::aim)) are drawn facing right from
 /// straight down to straight up, and show the one nearest the elevation of
 /// the entity's `Aim` direction, else its facing's, flipped on the left as
-/// a `right`-only set is.
+/// a `right`-only set is; or they are the frames of one strip a side
+/// ([`aim_strip`](Self::aim_strip), [`aim_strips`](Self::aim_strips)),
+/// the frame nearest that elevation held.
 ///
 /// Data form: a manifest animation ID, `"hero_run"`, or
 /// `{ "left": "seeker_walk_left", "right": "seeker_walk_right", "up": "seeker_walk_up", "down": "seeker_walk_down" }`,
 /// or `{ "right": "hero_run" }` for one set of frames on both sides, a set
 /// taking `"side": "aim"` to pick by the aim (`"facing"` by default), or
-/// `{ "aim": ["cast_down", "cast_fwd", "cast_up"] }`, two or more.
+/// `{ "aim": ["cast_down", "cast_fwd", "cast_up"] }`, two or more, or
+/// `{ "aim": { "right": "staff_right", "left": "staff_left", "from": "up" } }`,
+/// a strip a side (`left` optional, `from` `down` by default).
 ///
 /// # Examples
 ///
@@ -85,6 +89,10 @@ const ONE_SHOT_EPSILON_MS: f32 = 1e-3;
 /// let cast: Clips = serde_json::from_str(r#"{ "aim": ["cast_down", "cast_fwd", "cast_up"] }"#).unwrap();
 /// assert_eq!(cast, Clips::aim(["cast_down", "cast_fwd", "cast_up"]));
 /// assert!(serde_json::from_str::<Clips>(r#"{ "aim": ["cast_fwd"] }"#).is_err(), "two or more");
+/// let pose = Clips::aim_strips("staff_left", "staff_right").from_up();
+/// let data = serde_json::to_value(&pose).unwrap();
+/// assert_eq!(data, serde_json::json!({ "aim": { "right": "staff_right", "left": "staff_left", "from": "up" } }));
+/// assert_eq!(serde_json::from_value::<Clips>(data).unwrap(), pose);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Clips {
@@ -97,6 +105,38 @@ enum ClipsKind {
     Set(ClipSet),
     /// Poses drawn facing right, from straight down to straight up.
     Aim(Vec<String>),
+    /// Poses as the frames of one strip a side, held.
+    Strip(AimStrip),
+}
+
+/// Aim poses as one strip's frames a side, as data writes them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AimStrip {
+    right: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    left: Option<String>,
+    #[serde(default, skip_serializing_if = "Start::is_down")]
+    from: Start,
+}
+
+/// Where a strip's frames start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Start {
+    /// Its first frame is straight down, its last straight up.
+    #[default]
+    Down,
+    /// Its first frame is straight up, its last straight down.
+    Up,
+}
+
+impl Start {
+    /// Whether it is the default, which data leaves unwritten.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_down(&self) -> bool {
+        *self == Start::Down
+    }
 }
 
 /// A clip set by facing or by the aim, as data writes it.
@@ -217,6 +257,50 @@ impl Clips {
         }
     }
 
+    /// Aim poses as the frames of one strip, `right`, drawn facing right
+    /// from straight down to straight up: the frame nearest the elevation
+    /// of the entity's [`Aim`](crate::Aim) direction, else its facing's,
+    /// shows held on the side it points to, flipped on the left as a
+    /// [`mirrored`](Self::mirrored) set is; a straight-up or straight-down
+    /// direction keeps the last side. Each pass writes the frame, its
+    /// sprite and `playing` false, so a turn within the strip moves only
+    /// the frame; leaving the pose is a change of clip, its own animation
+    /// included. A strip with no frames shows nothing new.
+    #[must_use]
+    pub fn aim_strip(right: impl Into<String>) -> Self {
+        Self {
+            kind: ClipsKind::Strip(AimStrip {
+                right: right.into(),
+                left: None,
+                from: Start::Down,
+            }),
+        }
+    }
+
+    /// Aim poses as a strip a side, as [`aim_strip`](Self::aim_strip):
+    /// `left`'s frames on the left, drawn facing left, so no flip is
+    /// written, as with [`sides`](Self::sides).
+    #[must_use]
+    pub fn aim_strips(left: impl Into<String>, right: impl Into<String>) -> Self {
+        Self {
+            kind: ClipsKind::Strip(AimStrip {
+                right: right.into(),
+                left: Some(left.into()),
+                from: Start::Down,
+            }),
+        }
+    }
+
+    /// The clips, a strip's frames from straight up to straight down; any
+    /// other clip is left as it is.
+    #[must_use]
+    pub fn from_up(mut self) -> Self {
+        if let ClipsKind::Strip(strip) = &mut self.kind {
+            strip.from = Start::Up;
+        }
+        self
+    }
+
     /// The clips, a set picking by the entity's [`Aim`](crate::Aim)
     /// direction, else its facing's: its side the aim's whenever the aim
     /// leans either way, kept while it points straight up or down, and `up`
@@ -246,6 +330,13 @@ impl Clips {
                 .enumerate()
                 .map(|(i, id)| (format!("{field}.aim.{i}"), id.as_str()))
                 .collect(),
+            ClipsKind::Strip(strip) => {
+                let mut ids = vec![(format!("{field}.aim.right"), strip.right.as_str())];
+                if let Some(left) = &strip.left {
+                    ids.push((format!("{field}.aim.left"), left.as_str()));
+                }
+                ids
+            }
             ClipsKind::Set(set) => {
                 let mut ids = vec![(format!("{field}.right"), set.right.as_str())];
                 if let Some(left) = &set.left {
@@ -266,14 +357,25 @@ impl Clips {
     /// a set's side by the dominant axis, `up` and `down` when it names them
     /// and the last side faced otherwise, a set by the aim reading `aim` in
     /// its place, its side as any lean of it; aim poses by `aim`'s
-    /// elevation, on its side. `left` is the last side, updated as the
-    /// entity faces or aims left or right. With it comes the `SpriteFlip` to write, for a
-    /// set without `left` and aim poses alone: flipped while it shows
-    /// frames drawn facing right for the left side.
+    /// elevation, on its side, and a strip by `aim`'s side. `left` is the
+    /// last side, updated as the entity faces or aims left or right. With
+    /// it comes the `SpriteFlip` to write, for a set or a strip without
+    /// `left` and aim poses alone: flipped while it shows frames drawn
+    /// facing right for the left side.
     fn pick(&self, direction: Vec2, aim: Vec2, left: &mut bool) -> (&str, Option<bool>) {
         let set = match &self.kind {
             ClipsKind::One(id) => return (id, None),
             ClipsKind::Aim(ids) => return (pose(ids, aim, left), Some(*left)),
+            ClipsKind::Strip(strip) => {
+                if aim.x != 0.0 {
+                    *left = aim.x < 0.0;
+                }
+                return match &strip.left {
+                    Some(side) if *left => (side, None),
+                    Some(_) => (&strip.right, None),
+                    None => (&strip.right, Some(*left)),
+                };
+            }
             ClipsKind::Set(set) => set,
         };
         let direction = match set.side {
@@ -305,11 +407,39 @@ impl Clips {
         }
     }
 
+    /// For a strip pose, the frame of a strip of `frames` nearest `aim`'s
+    /// elevation, within its length: frame 0 of one with none. `None` for
+    /// any other clip.
+    fn strip_frame(&self, aim: Vec2, frames: usize) -> Option<usize> {
+        let ClipsKind::Strip(strip) = &self.kind else {
+            return None;
+        };
+        let Some(last) = frames.checked_sub(1) else {
+            return Some(0);
+        };
+        let at = nearest(aim, last);
+        Some(match strip.from {
+            Start::Down => at,
+            Start::Up => last - at,
+        })
+    }
+
     /// The clip in a line, for inspector rows.
     fn summary(&self) -> String {
         match &self.kind {
             ClipsKind::One(id) => id.clone(),
             ClipsKind::Aim(ids) => format!("aim {}", ids.join(" | ")),
+            ClipsKind::Strip(strip) => {
+                let left = strip
+                    .left
+                    .clone()
+                    .unwrap_or_else(|| format!("{} flipped", strip.right));
+                let from = match strip.from {
+                    Start::Down => "down",
+                    Start::Up => "up",
+                };
+                format!("aim strip {left} | {} from {from}", strip.right)
+            }
             ClipsKind::Set(set) => {
                 let left = set
                     .left
@@ -337,11 +467,16 @@ fn pose<'a>(ids: &'a [String], aim: Vec2, left: &mut bool) -> &'a str {
     if aim.x != 0.0 {
         *left = aim.x < 0.0;
     }
+    &ids[nearest(aim, ids.len() - 1)]
+}
+
+/// Of `last + 1` poses evenly spread from straight down (0) to straight up
+/// (`last`), the one nearest `aim`'s elevation.
+fn nearest(aim: Vec2, last: usize) -> usize {
     // y points down: up is a negative y.
     let elevation = (-aim.y).atan2(aim.x.abs());
-    let last = ids.len() - 1;
     let at = ((elevation + FRAC_PI_2) / PI * last as f32).round();
-    &ids[(at.max(0.0) as usize).min(last)]
+    (at.max(0.0) as usize).min(last)
 }
 
 impl From<&str> for Clips {
@@ -362,8 +497,46 @@ struct AimForm<'a> {
     aim: &'a [String],
 }
 
+/// A strip a side as data writes it.
+#[derive(Serialize)]
+struct StripForm<'a> {
+    aim: &'a AimStrip,
+}
+
+/// What `aim` holds: poses by their IDs, or a strip a side.
+enum AimField {
+    Poses(Vec<String>),
+    Strip(AimStrip),
+}
+
+impl<'de> Deserialize<'de> for AimField {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct AimVisitor;
+
+        impl<'de> Visitor<'de> for AimVisitor {
+            type Value = AimField;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a list of animation IDs, or { right, left, from }")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, seq: A) -> Result<AimField, A::Error> {
+                Vec::<String>::deserialize(de::value::SeqAccessDeserializer::new(seq))
+                    .map(AimField::Poses)
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<AimField, A::Error> {
+                AimStrip::deserialize(de::value::MapAccessDeserializer::new(map))
+                    .map(AimField::Strip)
+            }
+        }
+
+        deserializer.deserialize_any(AimVisitor)
+    }
+}
+
 /// A clip's object form, before its fields are checked: a set's sides, or
-/// aim poses alone.
+/// aim poses or strips alone.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ClipsForm {
@@ -376,7 +549,7 @@ struct ClipsForm {
     #[serde(default)]
     down: Option<String>,
     #[serde(default)]
-    aim: Option<Vec<String>>,
+    aim: Option<AimField>,
     #[serde(default)]
     side: Option<Side>,
 }
@@ -407,14 +580,22 @@ impl ClipsForm {
                 "aim: alone, without left, right, up, down or side",
             ));
         }
-        if aim.len() < 2 {
+        let ids = match aim {
+            AimField::Poses(ids) => ids,
+            AimField::Strip(strip) => {
+                return Ok(Clips {
+                    kind: ClipsKind::Strip(strip),
+                });
+            }
+        };
+        if ids.len() < 2 {
             return Err(E::custom(format!(
                 "aim: two or more animation IDs (got {})",
-                aim.len()
+                ids.len()
             )));
         }
         Ok(Clips {
-            kind: ClipsKind::Aim(aim),
+            kind: ClipsKind::Aim(ids),
         })
     }
 }
@@ -425,6 +606,7 @@ impl Serialize for Clips {
             ClipsKind::One(id) => serializer.serialize_str(id),
             ClipsKind::Set(set) => set.serialize(serializer),
             ClipsKind::Aim(ids) => AimForm { aim: ids }.serialize(serializer),
+            ClipsKind::Strip(strip) => StripForm { aim: strip }.serialize(serializer),
         }
     }
 }
@@ -438,7 +620,7 @@ impl<'de> Deserialize<'de> for Clips {
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str(
-                    "an animation ID, { left, right, up, down } of animation IDs, or { aim: [..] }",
+                    "an animation ID, { left, right, up, down } of animation IDs, or { aim: [..] } or { aim: { right, left, from } }",
                 )
             }
 
@@ -681,7 +863,10 @@ struct OneShot {
 /// standing still on a moving deck idles. A state's clip is one animation,
 /// or a set ([`Clips`]) whose entry is picked by the entity's
 /// [`Facing`](crate::Facing) by its dominant axis, else by its velocity's
-/// side. `move`, `rise` and `fall` fall back to `idle` when not given.
+/// side. `move`, `rise` and `fall` fall back to `idle` when not given. A
+/// strip pose ([`Clips::aim_strip`]) holds its frame: each pass writes the
+/// frame nearest the aim, its sprite and `playing` false, over another
+/// writer's clip too.
 /// Its [`ClipRule`]s pick over the motion state's clip by the entity's tags
 /// and motion, the first that passes. A one-shot
 /// ([`play`](Self::play)), such as a landing, a hurt or an attack a cue's
@@ -769,6 +954,9 @@ pub struct CharacterAnimator {
     left: bool,
     /// The clip shown once over the rest; unsaved presentation.
     one_shot: Option<OneShot>,
+    /// Whether its last frame showed a strip pose, which leaving changes
+    /// the clip even to its own animation; unsaved presentation.
+    posed: bool,
 }
 
 /// An animator as a save writes it, before its values are checked.
@@ -822,6 +1010,7 @@ impl TryFrom<CharacterAnimatorFields> for CharacterAnimator {
             clip: fields.clip,
             left: fields.left,
             one_shot: None,
+            posed: false,
         })
     }
 }
@@ -860,6 +1049,7 @@ impl CharacterAnimator {
             clip: None,
             left: false,
             one_shot: None,
+            posed: false,
         }
     }
 
@@ -1244,6 +1434,7 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
             let aim = shot.aim.unwrap_or(aim);
             let (id, flip) = shot.clips.pick(direction, aim, &mut left);
             let length = clip_ms(&registry, id);
+            let frame = shot.clips.strip_frame(aim, frames_of(&registry, id));
             let id = id.to_owned();
             if shot.started && held != Some(true) {
                 shot.shown_ms += delta.max(0.0) * 1000.0 * speed;
@@ -1251,20 +1442,25 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
             }
             shot.started = true;
             if !ended {
-                shot_pick = Some((id, flip));
+                shot_pick = Some((id, flip, frame));
             }
         }
         if ended {
             animator.one_shot = None;
             animator.clip = None;
         }
-        let (id, flip) = shot_pick.unwrap_or_else(|| {
+        let (id, flip, frame) = shot_pick.unwrap_or_else(|| {
             let clips = rule.map_or_else(|| animator.clips(state), |i| &animator.rules[i].clips);
             let (id, flip) = clips.pick(direction, aim, &mut left);
-            (id.to_owned(), flip)
+            let frame = clips.strip_frame(aim, frames_of(&registry, id));
+            (id.to_owned(), flip, frame)
         });
         animator.left = left;
-        let unchanged = animator.clip.as_deref() == Some(id.as_str());
+        // Leaving a strip pose changes the clip even to its own animation,
+        // so no pose's hold outlives it.
+        let posed = frame.is_some();
+        let unchanged = animator.clip.as_deref() == Some(id.as_str()) && (posed || !animator.posed);
+        animator.posed = posed;
         if !unchanged {
             animator.clip = Some(id.clone());
         }
@@ -1272,6 +1468,10 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
         // which changes with no change of clip.
         if let Some(flip) = flip {
             write_flip(world, entity, flip);
+        }
+        if let Some(frame) = frame {
+            hold_pose(world, entity, &registry, (id, frame), unchanged, speed);
+            continue;
         }
         if unchanged {
             if let Some(held) = held
@@ -1296,6 +1496,46 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
         }
     }
     world.insert_resource(registry);
+}
+
+/// How many frames clip `id` has, 0 for an ID the registry lacks.
+fn frames_of(registry: &AnimationRegistry, id: &str) -> usize {
+    registry.get(id).map_or(0, |clip| clip.frames.len())
+}
+
+/// Shows strip pose `id`'s `frame` held on `entity`: into its state of that
+/// clip, `unchanged`, the frame and `playing` false, holding back what
+/// another writer gave it; else, over another writer's clip too, a fresh
+/// state of the clip, so held, at `speed`. Then the frame's sprite, none
+/// for a strip with no frames.
+fn hold_pose(
+    world: &mut World,
+    entity: Entity,
+    registry: &AnimationRegistry,
+    (id, frame): (String, usize),
+    unchanged: bool,
+    speed: f32,
+) {
+    let sprite = registry
+        .get(&id)
+        .and_then(|clip| clip.frames.get(frame))
+        .map(|frame| frame.sprite);
+    match world.get_mut::<AnimationState>(entity) {
+        Some(state) if unchanged && state.animation_id == id => {
+            state.frame_index = frame;
+            state.accumulated_ms = 0.0;
+            state.playing = false;
+        }
+        _ => {
+            let mut shown = AnimationState::new(id).with_speed(speed);
+            shown.frame_index = frame;
+            shown.playing = false;
+            world.insert(entity, shown);
+        }
+    }
+    if let (Some(sprite), Some(drawn)) = (sprite, world.get_mut::<Sprite>(entity)) {
+        drawn.asset_id = sprite;
+    }
 }
 
 /// The velocity `floor` carries what stands on it at: a kinematic body's

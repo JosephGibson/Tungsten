@@ -799,6 +799,185 @@ fn a_one_shot_by_the_aim_keeps_its_first_side() {
     assert_eq!(shown(&world, caster).1, "walk_left", "turned mid-clip");
 }
 
+/// Adds the strips `pose_right` (sprites 200 to 204) and `pose_left` (210
+/// to 214), five frames of 100 ms each, to `world`'s registry.
+fn strips(world: &mut World) {
+    let clips = world.resource_mut::<AnimationRegistry>();
+    clips.insert("pose_right".to_string(), clip(200, 5, 100));
+    clips.insert("pose_left".to_string(), clip(210, 5, 100));
+}
+
+/// `entity`'s clip, frame and whether it plays.
+fn held(world: &World, entity: Entity) -> (String, usize, bool) {
+    let state = world.get::<AnimationState>(entity).unwrap();
+    (state.animation_id.clone(), state.frame_index, state.playing)
+}
+
+#[test]
+fn an_aim_strip_holds_the_frame_nearest_the_aim() {
+    use tungsten_core::components::SpriteFlip;
+    let dt = 1.0 / 60.0;
+    let (mut world, mut schedule) = rig();
+    strips(&mut world);
+    let twin = Clips::aim_strips("pose_left", "pose_right").from_up();
+    let caster = world.spawn_with((
+        CharacterAnimator::new(twin),
+        Velocity(Vec2::new(1.0, 0.0)),
+        aiming(1.0, 0.0),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    let mut at = |world: &mut World, x: f32, y: f32| {
+        world.insert(caster, aiming(x, y));
+        frame(world, &mut schedule, dt);
+        (
+            held(world, caster),
+            world.get::<Sprite>(caster).unwrap().asset_id,
+        )
+    };
+    // From straight up: 90°, 45°, 0°, −45° and −90° are frames 0 to 4, held,
+    // each turn moving the frame alone.
+    for (x, y, want) in [
+        (0.0, -1.0, 0),
+        (1.0, -1.0, 1),
+        (1.0, 0.0, 2),
+        (1.0, 1.0, 3),
+        (0.0, 1.0, 4),
+    ] {
+        let sprite = SpriteAssetId::new(200 + want as u32);
+        assert_eq!(
+            at(&mut world, x, y),
+            (("pose_right".into(), want, false), sprite),
+            "({x}, {y})"
+        );
+    }
+    // On the left its twin, no flip written.
+    let left = at(&mut world, -1.0, 0.0);
+    assert_eq!(
+        left,
+        (("pose_left".into(), 2, false), SpriteAssetId::new(212))
+    );
+    assert!(world.get::<SpriteFlip>(caster).is_none());
+    // A state another writer gave the strip is held back to its frame, and
+    // another clip's state gives way.
+    for other in ["pose_left", "idle"] {
+        world.insert(caster, AnimationState::new(other));
+        let back = at(&mut world, -1.0, 0.0);
+        let want = (("pose_left".into(), 2, false), SpriteAssetId::new(212));
+        assert_eq!(back, want, "{other}");
+    }
+    // A strip a reload left with no frames: frame 0, the sprite as it was.
+    world.resource_mut::<AnimationRegistry>().insert(
+        "pose_left".to_string(),
+        AnimationData {
+            looping: false,
+            frames: Vec::new(),
+        },
+    );
+    let empty = at(&mut world, -1.0, 1.0);
+    assert_eq!(
+        empty,
+        (("pose_left".into(), 0, false), SpriteAssetId::new(212))
+    );
+    // With no twin, `right` flipped on the left.
+    let mirrored = world.spawn_with((
+        CharacterAnimator::new(Clips::aim_strip("pose_right").from_up()),
+        aiming(-1.0, 0.0),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(held(&world, mirrored), ("pose_right".into(), 2, false));
+    assert_eq!(world.get::<SpriteFlip>(mirrored), Some(&SpriteFlip(true)));
+    // The load checks each strip's ID, naming its field.
+    let components = world.resource::<ComponentRegistry>();
+    let bad = json!({ "idle": { "aim": { "right": "pose_right", "left": "pose_lfet" } } });
+    let error = components
+        .check_in("character_animator", &bad, &world)
+        .unwrap_err();
+    assert!(error.to_string().contains("idle.aim.left"), "{error}");
+    for refused in [
+        json!({ "aim": { "left": "pose_left" } }),
+        json!({ "aim": { "right": "pose_right", "from": "side" } }),
+        json!({ "aim": { "right": "pose_right" }, "side": "aim" }),
+    ] {
+        assert!(
+            serde_json::from_value::<Clips>(refused.clone()).is_err(),
+            "{refused}"
+        );
+    }
+}
+
+/// A strip from straight down shows, for each aim on either side, the
+/// frame whose index the list form's pose has.
+#[test]
+fn an_aim_strip_from_down_matches_a_pose_list() {
+    let dt = 1.0 / 60.0;
+    let (mut world, mut schedule) = rig();
+    strips(&mut world);
+    let poses = ["aim_down", "land", "aim_fwd", "alert", "aim_up"];
+    let list = world.spawn_with((
+        CharacterAnimator::new(Clips::aim(poses)),
+        aiming(1.0, 0.0),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    let strip = world.spawn_with((
+        CharacterAnimator::new(Clips::aim_strip("pose_right")),
+        aiming(1.0, 0.0),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    for side in [1.0, -1.0] {
+        for step in 0..=32 {
+            let angle = -FRAC_PI_2 + PI * step as f32 / 32.0;
+            let aim = Vec2::new(side * angle.cos(), -angle.sin());
+            let aim = if aim.x.abs() < 1e-6 {
+                Vec2::new(0.0, aim.y)
+            } else {
+                aim
+            };
+            for caster in [list, strip] {
+                world.insert(caster, aiming(aim.x, aim.y));
+            }
+            frame(&mut world, &mut schedule, dt);
+            let shown = held(&world, list).0;
+            let pose = poses.iter().position(|id| *id == shown).unwrap();
+            assert_eq!(held(&world, strip).1, pose, "{aim}");
+        }
+    }
+}
+
+#[test]
+fn a_strip_pose_left_for_its_own_clip_plays_again() {
+    use crate::{ClipRule, TagFilter, Tags};
+    let dt = 1.0 / 60.0;
+    let (mut world, mut schedule) = rig();
+    strips(&mut world);
+    let posing = || TagFilter::new().all(["state.posing"]);
+    let animator = CharacterAnimator::new("pose_right")
+        .with_rule(ClipRule::when(posing(), Clips::aim_strip("pose_right")));
+    let poser = world.spawn_with((
+        animator,
+        Tags::new(["state.posing"]),
+        aiming(1.0, -1.0),
+        Velocity(Vec2::ZERO),
+        Sprite::new(SpriteAssetId::new(99)),
+    ));
+    // 45° up, from straight down: frame 3, held.
+    for _ in 0..3 {
+        frame(&mut world, &mut schedule, dt);
+        assert_eq!(held(&world, poser), ("pose_right".into(), 3, false));
+    }
+    assert_eq!(shown(&world, poser).2, SpriteAssetId::new(203));
+    // The rule stops passing: the idle clip, the same animation, plays from
+    // its first frame and on.
+    world.get_mut::<Tags>(poser).unwrap().remove("state.posing");
+    frame(&mut world, &mut schedule, dt);
+    assert_eq!(held(&world, poser), ("pose_right".into(), 0, true));
+    assert_eq!(shown(&world, poser).2, SpriteAssetId::new(200));
+    for _ in 0..7 {
+        frame(&mut world, &mut schedule, dt);
+    }
+    assert_eq!(held(&world, poser), ("pose_right".into(), 1, true));
+}
+
 #[test]
 fn an_animator_holds_its_clip_while_its_hold_passes() {
     use crate::{TagFilter, Tags, TagsPlugin};
