@@ -32,6 +32,7 @@ use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared, val
 use crate::foundation::trace::{TraceKind, trace};
 use crate::foundation::{non_negative, optional_positive};
 use crate::intent::ability::{Abilities, AbilityUsed, Used, use_ability};
+use crate::intent::aim::Aim;
 use crate::lifecycle::cap::admit;
 use crate::lifecycle::cooldown::CooldownElapsed;
 use crate::lifecycle::ended::{Despawning, mark_despawning};
@@ -431,29 +432,48 @@ pub(crate) enum Target {
 }
 
 /// Where a `prefab`, `roll`, `burst` or `sound` action happens: the
-/// event's point, or its subject's body centre with `centre`, moved by
-/// `offset`, its x mirrored while the subject's [`Facing`] points left.
+/// event's point, its subject's body centre with `centre` or its aim's
+/// point with `aim`, moved by `offset`, its x mirrored while the subject's
+/// [`Facing`] points left.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub(crate) struct ActionPlace {
-    centre: bool,
+    base: PlaceBase,
     offset: Vec2,
+}
+
+/// The point an [`ActionPlace`] starts from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum PlaceBase {
+    /// The event's point.
+    #[default]
+    Event,
+    /// The subject's body centre.
+    Centre,
+    /// The subject's [`Aim`] point, else the event's.
+    Aim,
 }
 
 impl ActionPlace {
     /// Whether it is the event's point, unmoved.
     fn is_event(self) -> bool {
-        !self.centre && self.offset == Vec2::ZERO
+        self.base == PlaceBase::Event && self.offset == Vec2::ZERO
     }
 
     /// The point it names for `occurrence`.
     fn of(self, world: &World, occurrence: &Occurrence) -> Vec2 {
         let subject = occurrence.subject;
-        let base =
-            if self.centre && (world.has::<Position>(subject) || world.has::<Transform>(subject)) {
+        let base = match self.base {
+            PlaceBase::Centre
+                if world.has::<Position>(subject) || world.has::<Transform>(subject) =>
+            {
                 body_point(world, subject)
-            } else {
-                occurrence.position
-            };
+            }
+            PlaceBase::Aim => world
+                .get::<Aim>(subject)
+                .and_then(Aim::point)
+                .unwrap_or(occurrence.position),
+            _ => occurrence.position,
+        };
         if self.offset == Vec2::ZERO {
             return base;
         }
@@ -467,19 +487,25 @@ impl ActionPlace {
         }
     }
 
-    /// Its data fields: `at`, written only at `centre`, and `offset`,
-    /// written only when set.
+    /// Its data fields: `at`, written only at `centre` or `aim`, and
+    /// `offset`, written only when set.
     fn fields(self) -> (Option<AtField>, Option<Vec2>) {
-        (
-            self.centre.then_some(AtField::Centre),
-            (self.offset != Vec2::ZERO).then_some(self.offset),
-        )
+        let at = match self.base {
+            PlaceBase::Event => None,
+            PlaceBase::Centre => Some(AtField::Centre),
+            PlaceBase::Aim => Some(AtField::Aim),
+        };
+        (at, (self.offset != Vec2::ZERO).then_some(self.offset))
     }
 
     /// The place data's `at` and `offset` give.
     fn from_fields(at: Option<AtField>, offset: Option<Vec2>) -> Self {
         Self {
-            centre: at == Some(AtField::Centre),
+            base: match at {
+                None | Some(AtField::Event) => PlaceBase::Event,
+                Some(AtField::Centre) => PlaceBase::Centre,
+                Some(AtField::Aim) => PlaceBase::Aim,
+            },
             offset: offset.unwrap_or(Vec2::ZERO),
         }
     }
@@ -493,6 +519,8 @@ enum AtField {
     Event,
     /// The subject's body centre.
     Centre,
+    /// The subject's aim point.
+    Aim,
 }
 
 impl CueAction {
@@ -594,8 +622,37 @@ impl CueAction {
     pub fn at_centre(mut self) -> Self {
         let name = self.name();
         match self.place_mut() {
-            Some(place) => place.centre = true,
+            Some(place) => place.base = PlaceBase::Centre,
             None => panic!("CueAction::at_centre: a `{name}` action has no place"),
+        }
+        self
+    }
+
+    /// The `prefab`, `roll`, `burst` or `sound` action, at its subject's
+    /// [`Aim`] point, the world point it aims at, rather than the event's
+    /// point, which it falls back to while the subject has no aim or its
+    /// aim no point: a cast's sound at the cursor. Data form `"at": "aim"`.
+    ///
+    /// ```
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let fizzle = CueAction::sound("fizzle").at_aim();
+    /// assert_eq!(
+    ///     serde_json::to_value(&fizzle).unwrap(),
+    ///     serde_json::json!({ "sound": { "id": "fizzle", "min_interval": 0.0, "at": "aim" } })
+    /// );
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// When the action is none of those.
+    #[must_use]
+    #[track_caller]
+    pub fn at_aim(mut self) -> Self {
+        let name = self.name();
+        match self.place_mut() {
+            Some(place) => place.base = PlaceBase::Aim,
+            None => panic!("CueAction::at_aim: a `{name}` action has no place"),
         }
         self
     }
@@ -2496,7 +2553,7 @@ fn filters_ability(world: &World) -> bool {
                 rules
                     .0
                     .iter()
-                    .any(|rule| rule.on == ABILITY_USED && rule.ability.is_some())
+                    .any(|rule| rule.on == ABILITY_USED && !rule.ability.is_empty())
             })
         })
     })
@@ -2754,9 +2811,9 @@ struct CueRuleDef {
     #[serde(default)]
     absorbed: Option<bool>,
     #[serde(default)]
-    ability: Option<String>,
+    ability: Option<OneOrList<String>>,
     #[serde(default)]
-    reason: Option<ReasonDef>,
+    reason: Option<OneOrList<ReasonDef>>,
     #[serde(default, deserialize_with = "non_negative")]
     min_interval: f32,
     #[serde(default, deserialize_with = "positive_cap")]
@@ -2765,6 +2822,25 @@ struct CueRuleDef {
     group: Option<String>,
     #[serde(rename = "do")]
     actions: Vec<CueAction>,
+}
+
+/// A rule filter's value as data writes it: one, or a list of them, each
+/// written back in its own form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum OneOrList<T> {
+    One(T),
+    List(Vec<T>),
+}
+
+impl<T> OneOrList<T> {
+    /// Its values, in order.
+    fn into_vec(self) -> Vec<T> {
+        match self {
+            Self::One(value) => vec![value],
+            Self::List(values) => values,
+        }
+    }
 }
 
 /// A rule's `reason`, as data writes it.
@@ -3000,10 +3076,12 @@ struct CueRule {
     fresh: Option<bool>,
     ended: Option<bool>,
     absorbed: Option<bool>,
-    /// An ability's name, on the ability events.
-    ability: Option<String>,
-    /// A refusal's reason code, on `ability_refused`.
-    reason: Option<u8>,
+    /// The abilities' names any of which passes, on the ability events;
+    /// empty for no filter.
+    ability: Vec<String>,
+    /// The refusal reasons' codes any of which passes, a bit each by
+    /// [`reason_of`]'s code, on `ability_refused`; 0 for no filter.
+    reasons: u8,
     /// Game seconds per subject between runs; 0 for none.
     min_interval: f32,
     /// Runs a step at most.
@@ -3036,12 +3114,11 @@ impl CueRule {
                     .get(usize::from(occurrence.effect))
                     .is_some_and(|known| known == id)
             })
-            && self.ability.as_ref().is_none_or(|name| {
-                effect_ids
+            && (self.ability.is_empty()
+                || effect_ids
                     .get(usize::from(occurrence.effect))
-                    .is_some_and(|known| known == name)
-            })
-            && self.reason.is_none_or(|code| occurrence.reason() == code)
+                    .is_some_and(|known| self.ability.contains(known)))
+            && (self.reasons == 0 || self.reasons & (1 << occurrence.reason()) != 0)
             && (self.flags.is_everything() || self.flags.matches(flags))
     }
 }
@@ -3063,8 +3140,19 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
                     rule.on
                 ));
             }
-            if rule.ability.as_deref() == Some("") {
+            let ability = rule.ability.map(OneOrList::into_vec);
+            if ability.as_ref().is_some_and(Vec::is_empty) {
+                return Err(format!("{i}.ability: at least one ability's name"));
+            }
+            if ability
+                .as_ref()
+                .is_some_and(|names| names.iter().any(String::is_empty))
+            {
                 return Err(format!("{i}.ability: an ability's name, not empty"));
+            }
+            let reasons = rule.reason.map(OneOrList::into_vec);
+            if reasons.as_ref().is_some_and(Vec::is_empty) {
+                return Err(format!("{i}.reason: at least one reason"));
             }
             if let Some(group) = &rule.group
                 && !valid_tag(group)
@@ -3090,8 +3178,11 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
                 fresh: rule.fresh,
                 ended: rule.ended,
                 absorbed: rule.absorbed,
-                ability: rule.ability,
-                reason: rule.reason.map(ReasonDef::code),
+                ability: ability.unwrap_or_default(),
+                reasons: reasons
+                    .unwrap_or_default()
+                    .into_iter()
+                    .fold(0, |mask, reason| mask | 1 << reason.code()),
                 min_interval: rule.min_interval,
                 cap: rule.cap,
                 group: rule.group.map(Arc::from),
@@ -3141,10 +3232,10 @@ fn check_rule_list(rules: &CueRules, world: &World) -> Result<(), MissingAsset> 
         if rule.absorbed.is_some() && event.name != DAMAGED {
             return refuse("absorbed", "cue event with a shield's take");
         }
-        if rule.ability.is_some() && !ABILITY_EVENTS.contains(&event.name) {
+        if !rule.ability.is_empty() && !ABILITY_EVENTS.contains(&event.name) {
             return refuse("ability", "cue event about an ability");
         }
-        if rule.reason.is_some() && event.name != ABILITY_REFUSED {
+        if rule.reasons != 0 && event.name != ABILITY_REFUSED {
             return refuse("reason", "cue event with a refusal's reason");
         }
         for (field, name) in rule.kind.names() {
@@ -5124,8 +5215,8 @@ fn describe_cues(world: &mut World) {
             .field(
                 FieldDescription::new(
                     "at",
-                    FieldType::Enum(&["event", "centre"]),
-                    "the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out",
+                    FieldType::Enum(&["event", "centre", "aim"]),
+                    "the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out",
                 )
                 .default("null"),
             )
@@ -5402,8 +5493,8 @@ fn describe_cues(world: &mut World) {
         .field(
             FieldDescription::new(
                 "at",
-                FieldType::Enum(&["event", "centre"]),
-                "the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out",
+                FieldType::Enum(&["event", "centre", "aim"]),
+                "the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out",
             )
             .default("null"),
         )
@@ -5437,8 +5528,8 @@ fn describe_cues(world: &mut World) {
         .field(
             FieldDescription::new(
                 "at",
-                FieldType::Enum(&["event", "centre"]),
-                "the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out",
+                FieldType::Enum(&["event", "centre", "aim"]),
+                "the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out",
             )
             .default("null"),
         )
@@ -5472,8 +5563,8 @@ fn describe_cues(world: &mut World) {
         .field(
             FieldDescription::new(
                 "at",
-                FieldType::Enum(&["event", "centre"]),
-                "the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out",
+                FieldType::Enum(&["event", "centre", "aim"]),
+                "the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out",
             )
             .default("null"),
         )
@@ -5571,23 +5662,18 @@ fn describe_cues(world: &mut World) {
         .field(
             FieldDescription::new(
                 "ability",
-                FieldType::Text,
-                "an ability's name in its user's `abilities`; `ability_used`, `ability_refused`, `ability_ready`, `ability_held` and `ability_released` only",
+                FieldType::Object("a name, or a list of names"),
+                "an ability's name in its user's `abilities`, or a list passing any of them; `ability_used`, `ability_refused`, `ability_ready`, `ability_held` and `ability_released` only",
             )
             .default("null"),
         )
         .field(
             FieldDescription::new(
                 "reason",
-                FieldType::Enum(&[
-                    "not_ready",
-                    "no_charge",
-                    "no_cost",
-                    "no_target",
-                    "no_room",
-                    "capped",
-                ]),
-                "why the use was refused; `ability_refused` only",
+                FieldType::Object(
+                    "one of not_ready | no_charge | no_cost | no_target | no_room | capped, or a list of them",
+                ),
+                "why the use was refused, or a list passing any of them; `ability_refused` only",
             )
             .default("null"),
         )

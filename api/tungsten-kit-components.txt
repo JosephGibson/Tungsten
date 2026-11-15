@@ -476,7 +476,7 @@ shape build_output: A status built by a fixed amount or by the entry's hits, rel
 shape burst_action: A one-off burst of a manifest particle config, spawned at once and gone with its particles, under the World's burst budget.
   field particles: text — the manifest particle config; the load checks the ID
   field key: bool = false — a key burst, which takes the oldest cosmetic burst's slot at the budget's cap rather than being dropped
-  field at: one of event | centre = null — the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out
+  field at: one of event | centre | aim = null — the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out
   field offset: [x, y] = null — moved from that point, its x mirrored while the subject faces left; unmoved when left out
   sample: { "particles": "sparks" }
 shape camera_action: A camera rig raised or released by its ID.
@@ -590,8 +590,8 @@ shape cue_rule: A shared reaction: on an event, for each subject whose tags pass
   field fresh: bool = null — `true` passes a new instance or an instant effect's landing, `false` a stack or a refresh; `effect_applied` only
   field ended: bool = null — `false` passes an instance that ran out, `true` one ended early; `effect_expired` only
   field absorbed: bool = null — `true` passes a hit the shield took whole, `false` one that hurt; `damaged` only
-  field ability: text = null — an ability's name in its user's `abilities`; `ability_used`, `ability_refused`, `ability_ready`, `ability_held` and `ability_released` only
-  field reason: one of not_ready | no_charge | no_cost | no_target | no_room | capped = null — why the use was refused; `ability_refused` only
+  field ability: a name, or a list of names = null — an ability's name in its user's `abilities`, or a list passing any of them; `ability_used`, `ability_refused`, `ability_ready`, `ability_held` and `ability_released` only
+  field reason: one of not_ready | no_charge | no_cost | no_target | no_room | capped, or a list of them = null — why the use was refused, or a list passing any of them; `ability_refused` only
   field min_interval: f32 (>= 0) = 0.0 — game seconds the rule waits for a subject once it ran for it
   field cap: u32 (>= 1) = null — the rule's runs a step at most
   field group: text = null — rules naming one group run once a subject a step: the first in load order of those the step's occurrences about it pass, on the first it passes
@@ -825,7 +825,7 @@ shape position_wave: A position channel: amplitude · sin(2π(t / period + phase
 shape prefab_action: A prefab spawned from the subject at the event's position, its point or its centre there.
   field id: prefab ID — the manifest prefab; the load checks the ID
   field centred: bool = false — its centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the position rather than its point
-  field at: one of event | centre = null — the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out
+  field at: one of event | centre | aim = null — the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out
   field offset: [x, y] = null — moved from that point, its x mirrored while the subject faces left; unmoved when left out
   sample: { "id": "puff" }
 shape projectile_end: What a projectile sets off at its own end: a hit past its pierce, a wall it neither passes nor turns at, or its range.
@@ -842,7 +842,7 @@ shape resist_modifier: A modifier on the target's resistance to one damage tag, 
 shape roll_action: A weighted table drawn, each prefab drawn spawned from the subject at the event's position, its point or its centre there.
   field table: loot_tables ID or entry — the table: a `loot_tables` entry's ID or a table in place; the load checks its IDs
   field centred: bool = false — each prefab's centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the position rather than its point
-  field at: one of event | centre = null — the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out
+  field at: one of event | centre | aim = null — the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out
   field offset: [x, y] = null — moved from that point, its x mirrored while the subject faces left; unmoved when left out
   sample: { "table": "drops" }
 shape set_tile_output: A tile cell written: the first tileset entry with a sprite, and the old tile back after a while.
@@ -879,7 +879,7 @@ shape skill_line: A line a skill reads: a stat's modifier, flat damage of a type
 shape sound_action: A manifest sound played at its volume, never looping.
   field id: text — the manifest sound; the load checks the ID
   field min_interval: f32 (>= 0) = 0.0 — game seconds before this sound plays again from a cue
-  field at: one of event | centre = null — the event's point, or the subject's body centre, its `Position` plus its collider's offset; the event's point when left out
+  field at: one of event | centre | aim = null — the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out
   field offset: [x, y] = null — moved from that point, its x mirrored while the subject faces left; unmoved when left out
   sample: { "id": "blip" }
 shape spawn_payload: A prefab spawned from the entity at its point.

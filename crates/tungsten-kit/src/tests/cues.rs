@@ -1303,6 +1303,103 @@ mod running {
     }
 
     #[test]
+    fn an_action_at_the_aim_plays_at_the_subjects_aim_point() {
+        use std::sync::Arc;
+
+        use tungsten_core::{ParticleConfig, ParticleConfigRegistry};
+
+        use crate::{Aim, AimPlugin, Facing, ParticleBurst, Target};
+
+        let (mut world, mut schedule) = rig();
+        AimPlugin.build(&mut schedule, &mut world);
+        schedule.resolve().unwrap();
+        let sparks: ParticleConfig = serde_json::from_value(json!({
+            "sprite": "spark", "max_alive": 8,
+            "emission": { "kind": "continuous", "rate_hz": 30.0 },
+            "lifetime": { "min": 0.2, "max": 0.2 },
+            "initial_velocity": { "kind": "radial", "speed": { "min": 40.0, "max": 60.0 } }
+        }))
+        .unwrap();
+        let mut configs = ParticleConfigRegistry::new();
+        configs.register(
+            "sparks".into(),
+            PathBuf::from("sparks.json"),
+            Arc::new(sparks),
+        );
+        world.insert_resource(configs);
+        // A listener at the aim's point, hearing it whole and the hits'
+        // points, 700 px off and more, not at all.
+        let aimed = Vec2::new(1000.0, 0.0);
+        world.insert_resource(CueListener::new(100.0, 300.0).at(aimed));
+        let offset = Vec2::new(6.0, -2.0);
+        // Bodies hit 50 px under their points: aiming at the point, the same
+        // facing left with an offset, with no aim, and with an aim that has
+        // no point.
+        let lanes: [(f32, Option<Aim>, bool, Vec2); 4] = [
+            (0.0, Some(Aim::at(Target::point(aimed))), false, Vec2::ZERO),
+            (100.0, Some(Aim::at(Target::point(aimed))), true, offset),
+            (200.0, None, false, Vec2::ZERO),
+            (300.0, Some(Aim::intent()), false, Vec2::ZERO),
+        ];
+        let mut seen = Vec::new();
+        for (x, aim, left, offset) in lanes {
+            let mut sound = CueAction::sound("blip").at_aim();
+            let mut burst = CueAction::burst("sparks").at_aim();
+            if offset != Vec2::ZERO {
+                sound = sound.with_offset(offset);
+                burst = burst.with_offset(offset);
+            }
+            let target = body(
+                &mut world,
+                Vec2::new(x, 0.0),
+                Cues::new().on("killed", [sound, burst]),
+            );
+            let mut facing = Facing::new();
+            facing.face(if left { Vec2::NEG_X } else { Vec2::X });
+            world.insert(target, facing);
+            if let Some(aim) = aim {
+                world.insert(target, aim);
+            }
+            // A step for the aim to take its point, then the hit.
+            step(&mut world, &mut schedule);
+            let _ = volumes(&mut world);
+            crate::DamageRequest::new(target, 1.0)
+                .with_position(Vec2::new(x, 50.0))
+                .apply(&mut world);
+            step(&mut world, &mut schedule);
+            let bursts: Vec<Vec2> = world
+                .query::<(&ParticleBurst, &Transform)>()
+                .map(|(_, transform)| transform.position)
+                .collect();
+            seen.push((volumes(&mut world), bursts));
+            let bursts: Vec<Entity> = world
+                .query::<(Entity, &ParticleBurst)>()
+                .map(|(burst, _)| burst)
+                .collect();
+            for burst in bursts {
+                world.despawn(burst);
+            }
+            flush(&mut world);
+        }
+        assert_eq!(
+            seen,
+            [
+                (vec![1.0], vec![aimed]),
+                (vec![1.0], vec![aimed + Vec2::new(-6.0, -2.0)]),
+                (vec![], vec![Vec2::new(200.0, 50.0)]),
+                (vec![], vec![Vec2::new(300.0, 50.0)]),
+            ],
+            "the aim's point, its offset mirrored facing left; the event's point with no aim \
+             or one with no point"
+        );
+        // Its data form.
+        let action = CueAction::burst("sparks").at_aim();
+        let data = json!({ "burst": { "particles": "sparks", "key": false, "at": "aim" } });
+        assert_eq!(serde_json::to_value(&action).unwrap(), data);
+        assert_eq!(serde_json::from_value::<CueAction>(data).unwrap(), action);
+    }
+
+    #[test]
     fn a_roll_of_a_missing_table_is_skipped_and_traced() {
         let (mut world, mut schedule) = rig();
         let chest = world.spawn_with((
@@ -3280,6 +3377,67 @@ mod ability_events {
             capacity,
             "the pushes stayed in the reserve"
         );
+    }
+
+    #[test]
+    fn a_rule_names_abilities_and_reasons_in_lists() {
+        let (mut world, mut schedule) = rig(true);
+        let data = world.resource_mut::<DataRegistry>();
+        data.insert("gong", Ability::new().with_payload(Payload::Hitbox(0.1)));
+        data.insert(
+            "dear",
+            Ability::new()
+                .with_cost("mana", 50.0)
+                .with_payload(Payload::Hitbox(0.1)),
+        );
+        let count =
+            |name: &str| json!([{ "counter": { "name": name, "add": 1, "target": "game" } }]);
+        let written = json!([
+            { "on": "ability_used", "ability": ["bell", "flask"], "do": count("pair") },
+            { "on": "ability_used", "ability": "bell", "do": count("bells") },
+            { "on": "ability_refused", "reason": ["not_ready", "no_charge"], "do": count("waits") },
+            { "on": "ability_refused", "reason": "no_cost", "do": count("dear") }
+        ]);
+        // Both forms round-trip, each as written.
+        let defs: Vec<CueRuleDef> = serde_json::from_value(written.clone()).unwrap();
+        let back = serde_json::to_value(&defs).unwrap();
+        for (i, field) in [(0, "ability"), (1, "ability"), (2, "reason"), (3, "reason")] {
+            assert_eq!(back[i][field], written[i][field], "{i}.{field}");
+        }
+        let loaded: CueRules = serde_json::from_value(written).unwrap();
+        world.resource_mut::<DataRegistry>().insert("lists", loaded);
+        let abilities = ["bell", "flask", "gong", "dear"]
+            .into_iter()
+            .fold(Abilities::new(), |abilities, id| {
+                abilities.with(DataRef::by_id(id))
+            });
+        let hero = world.spawn_with((
+            abilities,
+            Intent::default(),
+            Counters::new(),
+            crate::Stats::new().with("mana", 5.0),
+            Cues::new(),
+        ));
+        let game = |world: &World, name: &str| world.resource::<Counters>().get(name);
+        for name in ["bell", "bell", "flask", "flask", "gong", "dear"] {
+            use_ability(&mut world, hero, name);
+            step(&mut world, &mut schedule);
+        }
+        assert_eq!(
+            ["pair", "bells", "waits", "dear"].map(|name| game(&world, name)),
+            [2, 1, 2, 1],
+            "the bell's and the flask's uses, not the gong's; the bell's alone by its name; \
+             not ready and no charge by the list, not no cost; no cost by its name"
+        );
+        // A list names at least one, and each name is one.
+        for rule in [
+            json!({ "on": "ability_used", "ability": [], "do": [] }),
+            json!({ "on": "ability_used", "ability": ["bell", ""], "do": [] }),
+            json!({ "on": "ability_refused", "reason": [], "do": [] }),
+            json!({ "on": "ability_refused", "reason": ["no_cost", "no_mana"], "do": [] }),
+        ] {
+            assert!(rules(json!([rule])).is_err(), "{rule}");
+        }
     }
 
     #[test]

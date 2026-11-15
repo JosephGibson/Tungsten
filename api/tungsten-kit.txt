@@ -1186,6 +1186,7 @@ pub struct tungsten_kit::prelude::CueAction
 impl tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::ability(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::as_key(self) -> Self
+pub fn tungsten_kit::CueAction::at_aim(self) -> Self
 pub fn tungsten_kit::CueAction::at_centre(self) -> Self
 pub fn tungsten_kit::CueAction::burst(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::centred(self) -> Self
@@ -5959,6 +5960,7 @@ pub struct tungsten_kit::CueAction
 impl tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::ability(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::as_key(self) -> Self
+pub fn tungsten_kit::CueAction::at_aim(self) -> Self
 pub fn tungsten_kit::CueAction::at_centre(self) -> Self
 pub fn tungsten_kit::CueAction::burst(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::centred(self) -> Self
