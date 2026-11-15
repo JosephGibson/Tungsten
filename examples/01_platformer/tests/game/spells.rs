@@ -1234,14 +1234,17 @@ fn a_flask_after_its_wizards_death_credits_nobody() {
 
 #[test]
 fn a_fourth_flask_with_three_in_flight_is_refused_and_spends_nothing() {
-    use tungsten::kit::Abilities;
+    use tungsten::kit::{Abilities, Cap};
     let (mut harness, player) = flask_range();
     let me = centre(&harness, player);
     let far = Vec2::new(me.x + 1400.0, SKY);
-    for _ in 0..flask::FLASK_CAP {
+    let first = flask::throw(harness.world_mut(), player, me, far).expect("a flask");
+    // Its prefab's cap, as the flask holds it.
+    let cap = harness.world().get::<Cap>(first).expect("its cap").max() as usize;
+    for _ in 1..cap {
         assert!(flask::throw(harness.world_mut(), player, me, far).is_some());
     }
-    assert_eq!(flask::count(harness.world()), flask::FLASK_CAP);
+    assert_eq!(flask::count(harness.world()), cap);
     aim_at(&mut harness, far);
     choose(&mut harness, Spell::ToxicFlask);
     let spent = |h: &UiHarness| {
@@ -1258,7 +1261,51 @@ fn a_fourth_flask_with_three_in_flight_is_refused_and_spends_nothing() {
     let after = spent(&harness);
     assert!(after.0 >= before.0, "no mana spent: {before:?} → {after:?}");
     assert_eq!(after.1, before.1, "no cooldown");
-    assert!(flask::count(harness.world()) <= flask::FLASK_CAP);
+    assert!(flask::count(harness.world()) <= cap);
+}
+
+#[test]
+fn a_seventh_missile_is_refused_before_the_spend() {
+    use tungsten::kit::Abilities;
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    // Up and to the right over the open sky, so six stay in flight.
+    aim_at(&mut harness, me + Vec2::new(400.0, -300.0));
+    choose(&mut harness, Spell::FireMissile);
+    let ability = Spell::FireMissile.ability();
+    let ready = |h: &UiHarness| h.world().get::<Abilities>(player).unwrap().ready(ability);
+    let spent = |h: &UiHarness| {
+        let abilities = h.world().get::<Abilities>(player).unwrap();
+        (mana(h), abilities.cooldown_left(ability).unwrap_or(0.0))
+    };
+    let flying = |h: &UiHarness| toys::missile_count(h.world());
+    let count = |heard: &[Sound], sound: Sound| heard.iter().filter(|&&s| s == sound).count();
+    for cast in 1..=6 {
+        assert!(until(&mut harness, 60, ready), "cast {cast}: ready");
+        cast_once(&mut harness);
+        assert_eq!(flying(&harness), cast, "cast {cast}: in flight");
+    }
+    // Pressed during the sixth's cooldown: the cap's check comes first.
+    assert!(!ready(&harness));
+    let before = spent(&harness);
+    let heard = cast_once(&mut harness);
+    assert_eq!(count(&heard, Sound::Fizzled), 1, "{heard:?}");
+    assert_eq!(count(&heard, Sound::NotReady), 0, "{heard:?}");
+    let after = spent(&harness);
+    assert!(after.0 >= before.0, "no mana spent: {before:?} → {after:?}");
+    assert!(after.1 <= before.1, "the cooldown not begun again");
+    assert_eq!(flying(&harness), 6, "no seventh");
+    // Once the cooldown has run out: refused still, nothing spent.
+    assert!(until(&mut harness, 60, ready));
+    let before = spent(&harness);
+    let fizzles = bursts(&harness);
+    let heard = cast_once(&mut harness);
+    assert_eq!(count(&heard, Sound::Fizzled), 1, "{heard:?}");
+    let after = spent(&harness);
+    assert!(after.0 >= before.0, "no mana spent: {before:?} → {after:?}");
+    assert!(after.1 <= 0.0, "no cooldown begun: {after:?}");
+    assert_eq!(flying(&harness), 6, "no seventh");
+    assert_eq!(bursts(&harness), fizzles + 1, "one fizzle");
 }
 
 #[test]

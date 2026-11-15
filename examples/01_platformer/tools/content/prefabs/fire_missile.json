@@ -58,6 +58,11 @@
     "facing": {
       "turn": true,
       "mirror": true
+    },
+    "cap": {
+      "group": "fire_missile",
+      "max": 6,
+      "past": "refuse"
     }
   }
 }

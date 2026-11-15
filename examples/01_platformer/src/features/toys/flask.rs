@@ -7,8 +7,8 @@
 //! tile or a body in its body walls but the wizard's, or at its range's end
 //! in the air, and sets off its prefab's end blast, its splash: poison on
 //! the living in reach, the wizard spared, a spell's hit from him while he
-//! lives, at the step's resolve. [`ends`] shows its burst. At most
-//! [`FLASK_CAP`] fly at once.
+//! lives, at the step's resolve. [`ends`] shows its burst. At most three
+//! fly at once, its prefab's refusing kit `cap`.
 
 use glam::Vec2;
 use serde::Deserialize;
@@ -19,7 +19,8 @@ use tungsten::core::{
     Sprite, Transform, Visibility, World,
 };
 use tungsten::kit::{
-    Blast, HitShape, Lifetime, LinearMotion, Projectile, ProjectileExpired, Source, lob_velocity,
+    Blast, HitShape, Lifetime, LinearMotion, Projectile, ProjectileExpired, Source, cap_refuses,
+    lob_velocity,
 };
 
 use super::components::ToxicFlask;
@@ -28,12 +29,11 @@ use crate::features::level::GRAVITY;
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, Saved, spawn_burst};
 
-/// Its prefab, its radius, its centre from its sprite's top-left and the
-/// most that fly at once, past which a toss is refused.
+/// Its prefab, whose `cap` refuses a toss past three in flight, its radius
+/// and its centre from its sprite's top-left.
 pub const FLASK_PREFAB: &str = "toxic_flask";
 pub const FLASK_RADIUS: f32 = 5.0;
 pub const FLASK_CENTRE: Vec2 = Vec2::splat(8.0);
-pub const FLASK_CAP: usize = 3;
 /// Its flight to the cursor: `sqrt(2 d / g)` seconds over the distance `d`,
 /// within these (Q10).
 pub const FLIGHT_LEAST: f32 = 0.25;
@@ -73,20 +73,28 @@ pub fn flight(distance: f32) -> f32 {
 }
 
 /// `thrower` tosses a flask from `from`, its centre, through `to` in
-/// [`flight`]'s seconds. None at [`FLASK_CAP`].
+/// [`flight`]'s seconds. None at its prefab's cap, which refuses it.
 pub fn throw(world: &mut World, thrower: Entity, from: Vec2, to: Vec2) -> Option<Entity> {
-    if count(world) >= FLASK_CAP {
+    if cap_refuses(world, FLASK_PREFAB) {
         return None;
     }
     let time = flight(from.distance(to));
     let velocity = lob_velocity(from, to, time, Vec2::new(0.0, GRAVITY));
-    Some(spawn(world, from - FLASK_CENTRE, velocity, Some(thrower)))
+    spawn(world, from - FLASK_CENTRE, velocity, Some(thrower))
 }
 
 /// A flask with its sprite's top-left at `corner` flying at `velocity`,
-/// from `source`, at once, one of the run's records: a toss's.
-pub fn spawn(world: &mut World, corner: Vec2, velocity: Vec2, source: Option<Entity>) -> Entity {
-    let flask = super::spawn_toy(world, FLASK_PREFAB, corner, 1.0);
+/// from `source`, at once, one of the run's records admitted under its
+/// prefab's `cap` from `source`: a toss's. None when the cap refuses it.
+pub fn spawn(
+    world: &mut World,
+    corner: Vec2,
+    velocity: Vec2,
+    source: Option<Entity>,
+) -> Option<Entity> {
+    let flask = super::admit_toy(world, FLASK_PREFAB, corner, 1.0, source)?
+        .prepared
+        .spawn(world);
     if let Some(motion) = world.get_mut::<LinearMotion>(flask) {
         motion.set_velocity(velocity);
     }
@@ -96,7 +104,7 @@ pub fn spawn(world: &mut World, corner: Vec2, velocity: Vec2, source: Option<Ent
     if let Some(source) = source {
         world.insert(flask, Source::new(source));
     }
-    flask
+    Some(flask)
 }
 
 /// `flask_ends`, in the overlap phase after the kit's projectile step: a

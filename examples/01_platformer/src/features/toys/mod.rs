@@ -3,8 +3,9 @@
 //! aim (`wave`), sprays of fire or cold along an aim, the fire missile's
 //! flight, blast and bending, and the toxic flask's lob and splash
 //! (`flask`), each a function the spells call. Their caps bound the pile:
-//! [`BALL_CAP`] balls, [`IRON_CAP`] blocks, [`MISSILE_CAP`] missiles and
-//! [`HOLE_CAP`] black holes.
+//! [`BALL_CAP`] balls, [`IRON_CAP`] blocks and [`HOLE_CAP`] black holes;
+//! the missiles' and the flasks' are their prefabs' kit `cap`s, which
+//! refuse a seventh missile and a fourth flask.
 
 pub mod components;
 pub mod draw;
@@ -20,8 +21,8 @@ use tungsten::core::{
     Schedule, Shape, Stage, Time, Transform, Velocity, World, system,
 };
 use tungsten::kit::{
-    COOLDOWN_TICK, ImpactDamage, LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase,
-    TOP_DOWN_MOVER, ensure_phases,
+    Admission, COOLDOWN_TICK, ImpactDamage, LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase,
+    TOP_DOWN_MOVER, admit_spawn, cap_refuses, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
@@ -111,14 +112,14 @@ pub const HOLD_SWIRL: f32 = 0.55;
 /// hole's centre go, at most this many a hole a step.
 pub const BROOM_REACH: f32 = 24.0;
 pub const BROOM_MOST: usize = 12;
-/// The fire missile: its speed, its reach, its body's radius, its drawn
-/// size (its prefab's `scale`, 40 / 64), and at most so many at once; its
-/// fall is its prefab's `linear_motion`, which its spell's payload keeps.
+/// The fire missile: its speed, its reach, its body's radius and its drawn
+/// size (its prefab's `scale`, 40 / 64); its fall is its prefab's
+/// `linear_motion`, which its spell's payload keeps, and its cap of six in
+/// flight its prefab's `cap`.
 pub const MISSILE_SPEED: f32 = 900.0;
 pub const MISSILE_RANGE: f32 = MISSILE_SPEED * 2.1;
 pub const MISSILE_RADIUS: f32 = 10.0;
 pub const MISSILE_SIZE: f32 = 40.0;
-pub const MISSILE_CAP: usize = 6;
 /// A blast: its heat's reach, which lights small balls and shatters frozen
 /// iron, and its push's reach and speed at its centre.
 pub const BLAST_RADIUS: f32 = 72.0;
@@ -295,6 +296,24 @@ pub(crate) fn spawn_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -
     prepare_toy(world, prefab, at, scale)
         .saved(world, Some(level::MAP))
         .spawn(world)
+}
+
+/// A toy's prefab at `at`, prepared as [`spawn_toy`] prepares it, admitted
+/// under its prefab's kit `cap` from `source` (`kit::admit_spawn`): the
+/// prefab to spawn at once and its group's holders the kit listed to end
+/// for it, oldest first, which the caller ends at once with their look
+/// before it spawns the prefab; none when the cap refuses it. A refusing
+/// cap's caller asks `kit::cap_refuses` first, so a refusal takes no save
+/// ID.
+pub(crate) fn admit_toy(
+    world: &mut World,
+    prefab: &str,
+    at: Vec2,
+    scale: f32,
+    source: Option<Entity>,
+) -> Option<Admission> {
+    let prepared = prepare_toy(world, prefab, at, scale).saved(world, Some(level::MAP));
+    admit_spawn(world, prepared, source)
 }
 
 /// [`spawn_toy`] for a ball, under a kept identity of the run's next save
@@ -570,14 +589,16 @@ pub fn missile_count(world: &World) -> usize {
 }
 
 /// Fires a missile from `centre` at `velocity`, at once: the prefab the
-/// fire missile's spell spawns, set at its centre. None past
-/// [`MISSILE_CAP`].
+/// fire missile's spell spawns, set at its centre, admitted under its
+/// prefab's `cap`. None at that cap, which refuses it.
 pub fn fire_missile(world: &mut World, centre: Vec2, velocity: Vec2) -> Option<Entity> {
-    if missile_count(world) >= MISSILE_CAP {
+    if cap_refuses(world, FIRE_MISSILE_PREFAB) {
         return None;
     }
     let at = centre - Vec2::splat(MISSILE_SIZE * 0.5);
-    let missile = spawn_toy(world, FIRE_MISSILE_PREFAB, at, MISSILE_SIZE / 64.0);
+    let missile = admit_toy(world, FIRE_MISSILE_PREFAB, at, MISSILE_SIZE / 64.0, None)?
+        .prepared
+        .spawn(world);
     world.insert(missile, Joined);
     if let Some(motion) = world.get_mut::<LinearMotion>(missile) {
         motion.set_velocity(velocity);

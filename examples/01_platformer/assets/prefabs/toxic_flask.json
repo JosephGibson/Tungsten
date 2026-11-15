@@ -56,6 +56,11 @@
     },
     "animation": {
       "id": "ex10_toxic_flask"
+    },
+    "cap": {
+      "group": "toxic_flask",
+      "max": 3,
+      "past": "refuse"
     }
   }
 }

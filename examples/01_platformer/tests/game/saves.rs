@@ -619,6 +619,7 @@ fn lists(kind: &str) -> Lists {
                 name::<PreviousVelocity>(),
                 name::<Glow>(),
                 name::<Children>(),
+                name::<tungsten::kit::Cap>(),
             ]),
             // Its facing's flip, which a mirror inserts the first time it
             // flies left.
@@ -638,6 +639,7 @@ fn lists(kind: &str) -> Lists {
                 name::<example_01_platformer::features::toys::components::ToxicFlask>(),
                 name::<SceneEntity>(),
                 name::<PreviousVelocity>(),
+                name::<tungsten::kit::Cap>(),
             ]),
             presentation: [&drawn[..], &[name::<AnimationState>()]].concat(),
         },
