@@ -9,8 +9,8 @@ use glam::Vec2;
 use serde::Deserialize;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    ActionMap, AnimationRegistry, AnimationState, Collider, DataRegistry, Entity, InputState,
-    Position, RoutedInput, Shape, SpriteAssetId, World,
+    ActionMap, AnimationRegistry, AnimationState, AssetRegistry, Collider, DataRegistry, Entity,
+    InputState, Position, RoutedInput, Shape, SpriteAssetId, World,
 };
 
 use tungsten::kit::{Aim, Children, Hurtbox};
@@ -237,6 +237,33 @@ pub fn spawn_key_burst(world: &mut World, name: &str, at: Vec2) -> Option<Entity
 #[must_use]
 pub fn clip_sprite(world: &World, clip: &str) -> Option<SpriteAssetId> {
     AnimationState::new(clip).current_sprite(world.get_resource::<AnimationRegistry>()?)
+}
+
+/// The size of the sprite `name`, else of the first frame of the clip
+/// `name`, in its art's pixels, as the World's registry knows it: a loaded
+/// sprite's, or the size a headless run noted for it
+/// (`Harness::note_sprite_sizes`), so what is laid out, placed or tiled by
+/// its art reads the art.
+///
+/// # Panics
+///
+/// When the registry knows no size for it: each sprite and clip the game
+/// names loads with the manifest.
+#[must_use]
+pub fn sprite_size(world: &World, name: &str) -> Vec2 {
+    world
+        .get_resource::<AssetRegistry>()
+        .and_then(|assets| {
+            let named = assets.sprite_id(name).and_then(|id| assets.sprite_size(id));
+            named.or_else(|| {
+                let clip = world.get_resource::<AnimationRegistry>()?.get(name)?;
+                assets.sprite_size(clip.frames.first()?.sprite)
+            })
+        })
+        .map(|(width, height)| Vec2::new(width as f32, height as f32))
+        .unwrap_or_else(|| {
+            panic!("no size for the sprite or clip `{name}`: each loads with the manifest")
+        })
 }
 
 /// A burst's gameplay ownership, spawned with it in one archetype move.

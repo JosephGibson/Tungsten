@@ -8,7 +8,7 @@ use tungsten::core::{AssetRegistry, SpriteAsset, World};
 use tungsten::render::{SpriteBatch, SpriteInstance};
 
 use super::components::{Arc, Bolt};
-use super::{ARC_JITTER, ARC_SECS, EXITS, SEGMENT};
+use super::{ARC_JITTER, ARC_SECS, EXITS};
 use crate::features::level::draw::{instance, push_quad, view};
 
 /// The bolt's segments, by piece.
@@ -73,10 +73,18 @@ fn stack(batches: &mut Vec<SpriteBatch>, assets: &AssetRegistry, bolt: &Bolt, to
     if reach <= 0.0 || bolt.pieces.is_empty() {
         return;
     }
-    let scale = (reach / (bolt.pieces.len() as f32 * SEGMENT.y))
+    // Each piece's art is its first's size.
+    let Some((width, height)) = assets
+        .sprite_id(BOLT_PIECES[0])
+        .and_then(|id| assets.sprite_size(id))
+    else {
+        return;
+    };
+    let segment = Vec2::new(width as f32, height as f32);
+    let scale = (reach / (bolt.pieces.len() as f32 * segment.y))
         .ceil()
         .max(1.0);
-    let size = SEGMENT * scale;
+    let size = segment * scale;
     let mut bottom = bolt.landing;
     for &piece in bolt.pieces.iter().rev() {
         let piece = piece % BOLT_PIECES.len();

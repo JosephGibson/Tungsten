@@ -430,3 +430,29 @@ fn a_body_moved_in_its_data_file_moves_the_spawned_body() {
     let summoned = enemies::summon(world, EnemyKind::Goblin, at).expect("its prefab");
     assert_eq!(body_centre(world, summoned), Some(at));
 }
+
+#[test]
+fn the_harness_knows_each_sprites_size() {
+    use example_01_platformer::shared::sprite_size;
+    use tungsten::core::AssetRegistry;
+    let harness = super::harness();
+    let world = harness.world();
+    // Headless, each size noted from its image's header; a clip's its
+    // first frame's.
+    assert_eq!(sprite_size(world, "ex10_icon_gun"), Vec2::new(36.0, 36.0));
+    assert_eq!(
+        sprite_size(world, "ex10_hud_liquid_health"),
+        Vec2::new(128.0, 10.0)
+    );
+    assert_eq!(
+        sprite_size(world, "ex10_flame_muzzle"),
+        Vec2::new(40.0, 32.0)
+    );
+    let assets = world.resource::<AssetRegistry>();
+    assert!(assets.get_sprite("ex10_icon_gun").is_none());
+    assert_eq!(
+        assets.sprite_names().count(),
+        0,
+        "no manifest sprite registered"
+    );
+}

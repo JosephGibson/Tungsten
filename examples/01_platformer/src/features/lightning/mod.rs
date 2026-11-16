@@ -52,9 +52,8 @@ pub const MAX_JUMPS: u32 = 6;
 /// The tags a conductive thing carries, any one of them: metal's and the
 /// conducting targets' `conductive`, and every enemy's team.
 pub const RECEIVERS: [&str; 2] = ["conductive", "team.enemy"];
-/// A bolt segment's size, and the sideways step each leaves at its
-/// bottom, as the art draws them.
-pub const SEGMENT: Vec2 = Vec2::new(24.0, 64.0);
+/// The sideways step each bolt segment leaves at its bottom, as the art
+/// draws them.
 pub const EXITS: [f32; 8] = [-8.0, -4.0, 0.0, 4.0, 8.0, -6.0, 6.0, 2.0];
 /// How long a bolt shows, the strike's light, its reach, its colour and
 /// the seconds it fades over.

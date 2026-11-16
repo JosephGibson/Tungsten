@@ -27,20 +27,20 @@ pub const SPRAY_LOOKS: &str = "spray_looks";
 pub const LEAST_EVERY: f32 = 0.001;
 
 /// A spray's look by its element, its entry in the [`SPRAY_LOOKS`] data:
-/// its muzzle clip, its art's size and how far ahead of the spray's start
-/// its centre sits, so the flare's root is at the start; its splash, its
+/// its muzzle clip and how far ahead of the spray's start its art's centre
+/// sits, so the flare's root is at the start; its splash, its
 /// point this far behind the art's centre; its stream's puff clip, one
 /// every `every` game seconds at `speed` px/s, growing from `grow.0` to
 /// `grow.1` times its art over its clip's `life`; its light, `ahead` of
 /// the start; and the ice's core, the frost's alone. Checked as it loads:
-/// every number finite, `every` at least [`LEAST_EVERY`], its life, speed,
-/// sizes and core's height and frame above 0, a refused entry failing the
-/// load at its field.
+/// every number finite, `every` at least [`LEAST_EVERY`], its life, speed
+/// and core's height and frame above 0, a refused entry failing the load at
+/// its field. Each clip's art's size is its first frame's
+/// ([`crate::shared::sprite_size`]).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(try_from = "StyleForm")]
 pub struct SprayStyle {
     pub muzzle: String,
-    pub muzzle_size: Vec2,
     pub muzzle_ahead: f32,
     pub splash: String,
     pub puff: String,
@@ -55,13 +55,12 @@ pub struct SprayStyle {
     pub core: Option<SprayCore>,
 }
 
-/// The ice's core: its clip, its tiles' art, laid end to end from the
+/// The ice's core: its clip, whose tiles' art is laid end to end from the
 /// start, drawn `tall` times as tall, on one frame of `frame_ms`
 /// milliseconds stepped by the spray's age.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SprayCore {
     pub clip: String,
-    pub size: Vec2,
     pub tall: f32,
     pub frame_ms: f32,
 }
@@ -71,7 +70,6 @@ pub struct SprayCore {
 #[serde(deny_unknown_fields)]
 struct StyleForm {
     muzzle: String,
-    muzzle_size: [f32; 2],
     muzzle_ahead: f32,
     splash: String,
     puff: String,
@@ -92,7 +90,6 @@ struct StyleForm {
 #[serde(deny_unknown_fields)]
 struct CoreForm {
     clip: String,
-    size: [f32; 2],
     tall: f32,
     frame_ms: f32,
 }
@@ -103,8 +100,6 @@ impl TryFrom<StyleForm> for SprayStyle {
     fn try_from(form: StyleForm) -> Result<Self, Self::Error> {
         let core = form.core.as_ref();
         let finite = [
-            ("muzzle_size", form.muzzle_size[0]),
-            ("muzzle_size", form.muzzle_size[1]),
             ("muzzle_ahead", form.muzzle_ahead),
             ("every", form.every),
             ("speed", form.speed),
@@ -119,14 +114,10 @@ impl TryFrom<StyleForm> for SprayStyle {
             ("light_ahead", form.light_ahead),
         ]
         .into_iter()
-        .chain(core.into_iter().flat_map(|core| {
-            [
-                ("core.size", core.size[0]),
-                ("core.size", core.size[1]),
-                ("core.tall", core.tall),
-                ("core.frame_ms", core.frame_ms),
-            ]
-        }));
+        .chain(
+            core.into_iter()
+                .flat_map(|core| [("core.tall", core.tall), ("core.frame_ms", core.frame_ms)]),
+        );
         for (field, value) in finite {
             if !value.is_finite() {
                 return Err(format!("{field}: must be finite (got {value})"));
@@ -138,21 +129,12 @@ impl TryFrom<StyleForm> for SprayStyle {
                 form.every
             ));
         }
-        let positive = [
-            ("life", form.life),
-            ("speed", form.speed),
-            ("muzzle_size", form.muzzle_size[0]),
-            ("muzzle_size", form.muzzle_size[1]),
-        ]
-        .into_iter()
-        .chain(core.into_iter().flat_map(|core| {
-            [
-                ("core.size", core.size[0]),
-                ("core.size", core.size[1]),
-                ("core.tall", core.tall),
-                ("core.frame_ms", core.frame_ms),
-            ]
-        }));
+        let positive = [("life", form.life), ("speed", form.speed)]
+            .into_iter()
+            .chain(
+                core.into_iter()
+                    .flat_map(|core| [("core.tall", core.tall), ("core.frame_ms", core.frame_ms)]),
+            );
         for (field, value) in positive {
             if value <= 0.0 {
                 return Err(format!("{field}: must be > 0 (got {value})"));
@@ -160,7 +142,6 @@ impl TryFrom<StyleForm> for SprayStyle {
         }
         Ok(Self {
             muzzle: form.muzzle,
-            muzzle_size: Vec2::from(form.muzzle_size),
             muzzle_ahead: form.muzzle_ahead,
             splash: form.splash,
             puff: form.puff,
@@ -174,7 +155,6 @@ impl TryFrom<StyleForm> for SprayStyle {
             light_ahead: form.light_ahead,
             core: form.core.map(|core| SprayCore {
                 clip: core.clip,
-                size: Vec2::from(core.size),
                 tall: core.tall,
                 frame_ms: core.frame_ms,
             }),
@@ -199,11 +179,8 @@ pub fn style(world: &World, element: Element) -> &SprayStyle {
         .unwrap_or_else(|| panic!("no {SPRAY_LOOKS} entry {look}"))
 }
 
-/// The splashes' and the puffs' art, 48 px; the splash's point sits this
-/// far ahead of its centre.
-const SPLASH_SIZE: f32 = 48.0;
+/// The splash's point sits this far ahead of its art's centre.
 const SPLASH_AHEAD: f32 = 12.0;
-const PUFF_SIZE: f32 = 48.0;
 /// A puff's spread, a share of the cone's half angle, its speed's spread,
 /// and how far short of the surface its line meets it stops.
 const PUFF_SPREAD: f32 = 0.75;
@@ -211,6 +188,11 @@ const PUFF_SPEED_SPREAD: f32 = 0.16;
 const PUFF_SHORT: f32 = 6.0;
 /// A young puff's streak along its line: its length's extra at its birth.
 const STREAK: f32 = 0.9;
+
+/// A puff's art's size, its clip's first frame's, read at its spawn, so
+/// each frame places it about its centre with no registry read.
+#[derive(Debug, Clone, Copy)]
+struct PuffArt(Vec2);
 
 /// Gives the spray `spray` of `element` its look: its muzzle, its light
 /// and its impact, hidden until its first frame places them.
@@ -306,12 +288,14 @@ pub fn sprites(world: &mut World) {
         let Some(mut look) = world.get::<SprayLook>(entity).cloned() else {
             continue;
         };
-        // Its look's numbers, copied out so the World is free to place.
-        let (muzzle_ahead, muzzle_size, light_ahead, every, speed, life, grow) = {
+        // Its look's numbers and its art's sizes, copied out so the World
+        // is free to place.
+        let (muzzle_ahead, muzzle_art, splash_art, light_ahead, every, speed, life, grow) = {
             let style = style(world, spray.element);
             (
                 style.muzzle_ahead,
-                style.muzzle_size,
+                crate::shared::sprite_size(world, &style.muzzle),
+                crate::shared::sprite_size(world, &style.splash),
                 style.light_ahead,
                 style.every,
                 style.speed,
@@ -324,7 +308,7 @@ pub fn sprites(world: &mut World) {
         let upright = Vec2::new(1.0, flip);
         if let Some(muzzle) = look.muzzle {
             let centre = spray.start + spray.aim * muzzle_ahead;
-            place(world, muzzle, centre, muzzle_size, angle, upright);
+            place(world, muzzle, centre, muzzle_art, angle, upright);
         }
         if let Some(light) = look.light
             && let Some(transform) = world.get_mut::<Transform>(light)
@@ -335,14 +319,7 @@ pub fn sprites(world: &mut World) {
             match spray.contact {
                 Some(at) => {
                     let centre = at - spray.aim * SPLASH_AHEAD;
-                    place(
-                        world,
-                        impact,
-                        centre,
-                        Vec2::splat(SPLASH_SIZE),
-                        angle,
-                        upright,
-                    );
+                    place(world, impact, centre, splash_art, angle, upright);
                 }
                 None => show(world, impact, false),
             }
@@ -371,20 +348,19 @@ pub fn sprites(world: &mut World) {
                 lines
             };
             let clip = style(world, spray.element).puff.clone();
+            let art = PuffArt(crate::shared::sprite_size(world, &clip));
             for (direction, stop, speed) in lines {
                 if let Some(puff) = part(world, &clip, SPRAY_Z) {
-                    world.insert(
-                        puff,
-                        SprayPuff {
-                            origin: spray.start,
-                            direction,
-                            speed,
-                            stop,
-                            age: 0.0,
-                            life,
-                            grow,
-                        },
-                    );
+                    let flight = SprayPuff {
+                        origin: spray.start,
+                        direction,
+                        speed,
+                        stop,
+                        age: 0.0,
+                        life,
+                        grow,
+                    };
+                    world.insert_bundle(puff, (flight, art));
                 }
             }
         }
@@ -396,11 +372,10 @@ pub fn sprites(world: &mut World) {
 /// the spray's start to its end, each centred along the aim, drawn its
 /// `tall` times as tall, all on the frame the spray's age has reached.
 fn lay_core(world: &mut World, look: &mut SprayLook, spray: &Spray, angle: f32, flip: f32) {
-    let Some((size, tall, frame_ms)) = style(world, spray.element)
-        .core
-        .as_ref()
-        .map(|core| (core.size, core.tall, core.frame_ms))
-    else {
+    let Some((size, tall, frame_ms)) = style(world, spray.element).core.as_ref().map(|core| {
+        let size = crate::shared::sprite_size(world, &core.clip);
+        (size, core.tall, core.frame_ms)
+    }) else {
         return;
     };
     let length = spray.start.distance(spray.end);
@@ -455,9 +430,13 @@ fn lay_core(world: &mut World, look: &mut SprayLook, spray: &Spray, angle: f32, 
 pub fn puffs(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let mut gone = Vec::new();
-    for (entity, puff, transform, visibility) in
-        world.query_mut::<(Entity, &mut SprayPuff, &mut Transform, &mut Visibility)>()
-    {
+    for (entity, puff, PuffArt(art), transform, visibility) in world.query_mut::<(
+        Entity,
+        &mut SprayPuff,
+        &PuffArt,
+        &mut Transform,
+        &mut Visibility,
+    )>() {
         puff.age += dt;
         if puff.age >= puff.life {
             gone.push(entity);
@@ -471,7 +450,7 @@ pub fn puffs(world: &mut World) {
         let scale = Vec2::new(grown * streak, grown * flip);
         transform.rotation = puff.direction.y.atan2(puff.direction.x);
         transform.scale = scale;
-        transform.position = centre - Vec2::splat(PUFF_SIZE) * scale * 0.5;
+        transform.position = centre - *art * scale * 0.5;
         visibility.visible = true;
     }
     for entity in gone {

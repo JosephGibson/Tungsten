@@ -125,7 +125,7 @@ pub struct Panel {
 
 /// The HUD's sprites: the gun's icon, the bars' and the shield's liquids,
 /// the cartridges, live and spent, and the tomes' tiles in
-/// [`TomeKind::ALL`]'s order.
+/// [`TomeKind::ALL`]'s order; and their sizes.
 #[derive(Debug, Clone, Copy)]
 pub struct Art {
     pub gun: SpriteAssetId,
@@ -135,6 +135,25 @@ pub struct Art {
     pub live: SpriteAssetId,
     pub spent: SpriteAssetId,
     pub tomes: [SpriteAssetId; 3],
+    pub sizes: ArtSizes,
+}
+
+/// The HUD's art's sizes, in its pixels, read off its sprites at
+/// [`start`] (`shared::sprite_size`), so sizing it and scrolling its
+/// liquids read no registry: each slot's icon, an empty slot's the gun's;
+/// the gun's icon; the tomes' icons in [`TomeKind::ALL`]'s order; the
+/// bars' and the shield's liquids, a strip's tile and its scroll's period;
+/// and the cartridges, live and spent.
+#[derive(Debug, Clone, Copy)]
+pub struct ArtSizes {
+    pub slots: [Vec2; SLOT_COUNT],
+    pub gun: Vec2,
+    pub tomes: [Vec2; 3],
+    pub health: Vec2,
+    pub mana: Vec2,
+    pub shield: Vec2,
+    pub live: Vec2,
+    pub spent: Vec2,
 }
 
 /// The HUD's widgets: a `World` resource while gameplay runs, written back
@@ -169,10 +188,9 @@ const METER: [f32; 2] = [168.0, 10.0];
 const TRACK_EDGE: f32 = 2.0;
 const READOUT: f32 = 84.0;
 const READOUT_TEXT: [f32; 2] = [14.0, 18.0];
-/// The liquids' textures, in their texels, how many a strip lays side by
-/// side, and how fast the game clock scrolls each, in texels a second;
-/// the mana's starts on its own phase.
-const LIQUID: [f32; 2] = [128.0, 10.0];
+/// How many of a liquid's textures a strip lays side by side, and how fast
+/// the game clock scrolls each, in texels a second; the mana's starts on
+/// its own phase.
 const LIQUID_TILES: usize = 3;
 const HEALTH_LIQUID: &str = "ex10_hud_liquid_health";
 const MANA_LIQUID: &str = "ex10_hud_liquid_mana";
@@ -201,10 +219,9 @@ const PULSE: f32 = 31.0;
 /// The room under the spell bar for one toast: its line, beside its padding,
 /// two of the theme's `spacing.sm`.
 const TOAST_LINE: f32 = 20.0;
-/// The icon tiles' art, in its pixels, and the share of it inside their
-/// bevel, which a sweep and a flash cover.
-const ICON: f32 = 36.0;
-const INSIDE: f32 = (ICON - 4.0) / ICON * 100.0;
+/// The icon tiles' bevel, both sides together, in their art's pixels: a
+/// sweep and a flash cover what lies inside it.
+const BEVEL: f32 = 4.0;
 /// The focus ring's width round the selected slot.
 const BORDER: f32 = 2.0;
 /// The key's plate: its text's size and line, its padding and the alpha
@@ -239,7 +256,6 @@ pub const ROUNDS: usize = MAGAZINE as usize;
 const GUN_ICON: &str = "ex10_icon_gun";
 const LIVE_ROUND: &str = "ex10_hud_bullet";
 const SPENT_ROUND: &str = "ex10_hud_bullet_spent";
-const BULLET: [f32; 2] = [5.0, 11.0];
 const BULLET_GAP: f32 = 2.0;
 const MAGAZINE_READOUT: f32 = 72.0;
 const COUNT_TEXT: [f32; 2] = [12.0, 16.0];
@@ -267,6 +283,19 @@ pub fn start(world: &mut World) {
     let tomes = TomeKind::ALL.map(|kind| crate::features::tomes::data(world, kind).icon.clone());
     let charges = SLOTS.map(|slot| slot.and_then(|spell| most_charges(world, spell)));
     let names = SLOTS.map(|slot| slot.and_then(|spell| icon_of(world, spell)));
+    let size_of = |name: &str| crate::shared::sprite_size(world, name);
+    let sizes = ArtSizes {
+        slots: names
+            .each_ref()
+            .map(|name| size_of(name.as_deref().unwrap_or(GUN_ICON))),
+        gun: size_of(GUN_ICON),
+        tomes: tomes.each_ref().map(|icon| size_of(icon)),
+        health: size_of(HEALTH_LIQUID),
+        mana: size_of(MANA_LIQUID),
+        shield: size_of(SHIELD_LIQUID),
+        live: size_of(LIVE_ROUND),
+        spent: size_of(SPENT_ROUND),
+    };
     let assets = world.resource_mut::<AssetRegistry>();
     let icons = std::array::from_fn(|i| {
         names[i]
@@ -281,6 +310,7 @@ pub fn start(world: &mut World) {
         live: assets.intern_sprite(LIVE_ROUND),
         spent: assets.intern_sprite(SPENT_ROUND),
         tomes: tomes.map(|icon| assets.intern_sprite(&icon)),
+        sizes,
     };
     let scale = ui_scale(world);
     let tree = world.resource_mut::<UiTree>();
@@ -322,6 +352,22 @@ fn ui_scale(world: &World) -> f32 {
 /// screen pixels within it, at least one.
 fn texel(scale: f32) -> f32 {
     scale.floor().max(1.0) / scale
+}
+
+/// The share of an icon `side` texels across inside its bevel, a
+/// percentage of its tile.
+fn inside(side: f32) -> f32 {
+    (side - BEVEL) / side * 100.0
+}
+
+/// A box over the part of a tile of `icon`'s art inside its bevel.
+fn inner(icon: Vec2) -> LayoutStyle {
+    LayoutStyle::default()
+        .with_size(
+            Sizing::Percent(inside(icon.x)),
+            Sizing::Percent(inside(icon.y)),
+        )
+        .anchored(Anchor::Center, Vec2::ZERO)
 }
 
 /// `units` UI units at `scale`, to whole screen pixels.
@@ -476,9 +522,10 @@ fn build(
     let meters = tree.add_root(UiLayer::Game, meters_style(spacing, scale));
     tree.set_hit_testable(meters, false);
     widgets::fill(tree, meters, faded(colors.background, METERS_ALPHA));
-    let health = meter(tree, meters, art.health, HEALTH_EDGE);
-    let shield = shield_bar(tree, &health, art.shield);
-    let mana = meter(tree, meters, art.mana, MANA_EDGE);
+    let sizes = art.sizes;
+    let health = meter(tree, meters, (art.health, sizes.health), HEALTH_EDGE);
+    let shield = shield_bar(tree, &health, (art.shield, sizes.shield));
+    let mana = meter(tree, meters, (art.mana, sizes.mana), MANA_EDGE);
     let strip = strip(tree, meters, art);
     let lane = 2.0 * spacing.sm + TOAST_LINE;
     let style = LayoutStyle::row().with_gap(spacing.sm).anchored(
@@ -488,7 +535,11 @@ fn build(
     let bar = tree.add_root(UiLayer::Game, style);
     tree.set_hit_testable(bar, false);
     widgets::fill(tree, bar, CLEAR);
-    let slots: Vec<Slot> = icons.into_iter().map(|art| slot(tree, bar, art)).collect();
+    let slots: Vec<Slot> = icons
+        .into_iter()
+        .zip(sizes.slots)
+        .map(|(art, side)| slot(tree, bar, art, side))
+        .collect();
     let summon = slot_of(Spell::Summon).unwrap_or(SLOT_COUNT - 1);
     let (name_plate, name) = name_plate(tree, slots[summon].ring);
     divider(tree, bar);
@@ -519,46 +570,55 @@ fn size(tree: &mut UiTree, hud: &Hud, scale: f32) {
     let texel = texel(scale);
     let spacing = tree.theme().tokens.spacing;
     tree.set_layout_style(hud.meters, meters_style(spacing, scale));
-    let tile = ICON * texel;
-    for id in hud
+    let sizes = hud.art.sizes;
+    for (id, icon) in hud
         .slots
         .iter()
         .map(|slot| slot.tile)
-        .chain([hud.magazine.tile])
-        .chain(hud.strip.tiles)
+        .zip(sizes.slots)
+        .chain([(hud.magazine.tile, sizes.gun)])
+        .chain(hud.strip.tiles.into_iter().zip(sizes.tomes))
     {
-        resize(tree, id, tile, tile);
+        let tile = icon * texel;
+        resize(tree, id, tile.x, tile.y);
     }
     let [width, height] = METER;
     let edge = TRACK_EDGE * texel;
-    for meter in [hud.health, hud.mana] {
+    for (meter, liquid) in [(hud.health, sizes.health), (hud.mana, sizes.mana)] {
         let track = LayoutStyle::row().with_padding(edge);
         let (outer, tall) = (width * texel + 2.0 * edge, height * texel + 2.0 * edge);
         tree.set_layout_style(meter.track, sized(track, outer, tall));
         resize(tree, meter.well, width * texel, height * texel);
-        let strip = LIQUID[0] * LIQUID_TILES as f32;
+        let strip = liquid.x * LIQUID_TILES as f32;
         resize(tree, meter.strip, strip * texel, height * texel);
         for tile in tree.children(meter.strip).to_vec() {
-            resize(tree, tile, LIQUID[0] * texel, LIQUID[1] * texel);
+            resize(tree, tile, liquid.x * texel, liquid.y * texel);
         }
         resize(tree, meter.edge, texel, height * texel);
     }
-    let strip = LIQUID[0] * LIQUID_TILES as f32;
+    let liquid = sizes.shield;
+    let strip = liquid.x * LIQUID_TILES as f32;
     resize(tree, hud.shield.strip, strip * texel, height * texel);
     for tile in tree.children(hud.shield.strip).to_vec() {
-        resize(tree, tile, LIQUID[0] * texel, LIQUID[1] * texel);
+        resize(tree, tile, liquid.x * texel, liquid.y * texel);
     }
     resize(tree, hud.shield.edge, texel, height * texel);
     for round in hud.magazine.rounds {
-        resize(tree, round, BULLET[0] * texel, BULLET[1] * texel);
+        resize(tree, round, sizes.live.x * texel, sizes.live.y * texel);
     }
     let row = LayoutStyle::row().with_gap(BULLET_GAP * texel);
     tree.set_layout_style(hud.magazine.row, row);
 }
 
-/// A bar's widgets, `liquid` its texture and `edge` the colour where it
-/// stands, then its readout; [`size`] gives them their sizes.
-fn meter(tree: &mut UiTree, parent: WidgetId, liquid: SpriteAssetId, edge: [u8; 4]) -> Meter {
+/// A bar's widgets, `liquid` its texture and that texture's size and `edge`
+/// the colour where it stands, then its readout; [`size`] gives them their
+/// sizes.
+fn meter(
+    tree: &mut UiTree,
+    parent: WidgetId,
+    (liquid, art): (SpriteAssetId, Vec2),
+    edge: [u8; 4],
+) -> Meter {
     let row = widgets::row(tree, parent);
     let track = tree.panel(row, LayoutStyle::row());
     let well = tree.panel(track, LayoutStyle::row());
@@ -575,7 +635,7 @@ fn meter(tree: &mut UiTree, parent: WidgetId, liquid: SpriteAssetId, edge: [u8; 
     );
     widgets::fill(tree, strip, CLEAR);
     for _ in 0..LIQUID_TILES {
-        tree.image(strip, liquid, Vec2::from(LIQUID), LayoutStyle::default());
+        tree.image(strip, liquid, art, LayoutStyle::default());
     }
     let whole = LayoutStyle::default()
         .with_size(Sizing::Percent(100.0), Sizing::Percent(100.0))
@@ -600,8 +660,13 @@ fn meter(tree: &mut UiTree, parent: WidgetId, liquid: SpriteAssetId, edge: [u8; 
 }
 
 /// The shield's layer in `health`'s well, over its fill, and its readout
-/// after the health's, collapsed; [`size`] gives them their sizes.
-fn shield_bar(tree: &mut UiTree, health: &Meter, liquid: SpriteAssetId) -> ShieldBar {
+/// after the health's, collapsed, `liquid` its texture and that texture's
+/// size; [`size`] gives them their sizes.
+fn shield_bar(
+    tree: &mut UiTree,
+    health: &Meter,
+    (liquid, art): (SpriteAssetId, Vec2),
+) -> ShieldBar {
     let style = LayoutStyle::default()
         .with_size(Sizing::Percent(0.0), Sizing::Percent(100.0))
         .anchored(Anchor::TopStart, Vec2::ZERO);
@@ -614,7 +679,7 @@ fn shield_bar(tree: &mut UiTree, health: &Meter, liquid: SpriteAssetId) -> Shiel
     );
     widgets::fill(tree, strip, CLEAR);
     for _ in 0..LIQUID_TILES {
-        tree.image(strip, liquid, Vec2::from(LIQUID), LayoutStyle::default());
+        tree.image(strip, liquid, art, LayoutStyle::default());
     }
     let edge = tree.panel(
         fill,
@@ -640,9 +705,14 @@ fn strip(tree: &mut UiTree, parent: WidgetId, art: Art) -> Strip {
     let gap = tree.theme().tokens.spacing.sm / 2.0;
     let row = tree.panel(parent, LayoutStyle::row().with_gap(gap));
     widgets::fill(tree, row, CLEAR);
-    let tiles = art
-        .tomes
-        .map(|icon| tree.image(row, icon, Vec2::splat(ICON), LayoutStyle::default()));
+    let tiles = std::array::from_fn(|k| {
+        tree.image(
+            row,
+            art.tomes[k],
+            art.sizes.tomes[k],
+            LayoutStyle::default(),
+        )
+    });
     widgets::show(tree, row, false);
     Strip { row, tiles }
 }
@@ -737,22 +807,26 @@ fn edged(tree: &mut UiTree, id: WidgetId, color: [u8; 4], background: [u8; 4], w
 }
 
 /// A slot: the ring, inside it the icon tile with its sweep, its flash, a
-/// pip a charge of its ability's most, and its key on a corner plate; an
-/// empty slot keeps its place, its tile as large as a full one's.
-fn slot(tree: &mut UiTree, bar: WidgetId, art: Option<(SpriteAssetId, Option<u32>)>) -> Slot {
+/// pip a charge of its ability's most, and its key on a corner plate, its
+/// icon's art `icon` across; an empty slot keeps its place, its tile as
+/// large as a full one's.
+fn slot(
+    tree: &mut UiTree,
+    bar: WidgetId,
+    art: Option<(SpriteAssetId, Option<u32>)>,
+    icon: Vec2,
+) -> Slot {
     let ring = tree.panel(bar, LayoutStyle::row().with_padding(BORDER));
     edged(tree, ring, CLEAR, CLEAR, BORDER);
     let tile = tree.panel(ring, LayoutStyle::column());
     widgets::fill(tree, tile, CLEAR);
     let colors = tree.theme().tokens.colors;
     let whole = LayoutStyle::default().with_size(Sizing::Percent(100.0), Sizing::Percent(100.0));
-    let inside = LayoutStyle::default()
-        .with_size(Sizing::Percent(INSIDE), Sizing::Percent(INSIDE))
-        .anchored(Anchor::Center, Vec2::ZERO);
+    let inside = inner(icon);
     let (icon, sweep, flash, pips) = match art {
         None => (None, None, None, None),
-        Some((icon, charges)) => {
-            let image = tree.image(tile, icon, Vec2::splat(ICON), whole);
+        Some((sprite, charges)) => {
+            let image = tree.image(tile, sprite, icon, whole);
             // A mesh's own box takes the panel's style: clear, so the icon
             // shows.
             let sweep = tree.mesh(tile, inside.clone());
@@ -840,13 +914,8 @@ fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art) -> Magazine {
     let tile = tree.panel(ring, LayoutStyle::column());
     widgets::fill(tree, tile, CLEAR);
     let whole = LayoutStyle::default().with_size(Sizing::Percent(100.0), Sizing::Percent(100.0));
-    let icon = tree.image(tile, art.gun, Vec2::splat(ICON), whole);
-    let sweep = tree.mesh(
-        tile,
-        LayoutStyle::default()
-            .with_size(Sizing::Percent(INSIDE), Sizing::Percent(INSIDE))
-            .anchored(Anchor::Center, Vec2::ZERO),
-    );
+    let icon = tree.image(tile, art.gun, art.sizes.gun, whole);
+    let sweep = tree.mesh(tile, inner(art.sizes.gun));
     widgets::fill(tree, sweep, CLEAR);
     let mut style = LayoutStyle::column().with_gap(tree.theme().tokens.spacing.sm / 2.0);
     style.align_items = Align::Center;
@@ -855,8 +924,8 @@ fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art) -> Magazine {
     widgets::fill(tree, column, CLEAR);
     let row = tree.panel(column, LayoutStyle::row());
     widgets::fill(tree, row, CLEAR);
-    let rounds = [(); ROUNDS]
-        .map(|()| tree.image(row, art.live, Vec2::from(BULLET), LayoutStyle::default()));
+    let rounds =
+        [(); ROUNDS].map(|()| tree.image(row, art.live, art.sizes.live, LayoutStyle::default()));
     let text = readout(tree, column, COUNT_TEXT, MAGAZINE_READOUT);
     widgets::restyle(tree, text, |text| {
         text.align = Some(TextAlign::Center);
@@ -1005,13 +1074,22 @@ pub fn update(world: &mut World) {
     let low = health.0 * 3.0 <= health.1;
     let beat = 0.5 + 0.5 * (time * TAU * PULSE_HZ).sin();
     let health_flow = time * HEALTH_FLOW;
-    fill(tree, hud.health, health, shown_health, health_flow, texel);
+    let sizes = hud.art.sizes;
+    let health_period = sizes.health.x;
+    fill(
+        tree,
+        hud.health,
+        health,
+        shown_health,
+        (health_flow, health_period),
+        texel,
+    );
     shield_fill(
         tree,
         hud.shield,
         shield / health.1.max(f32::EPSILON),
         shield,
-        time,
+        (time, sizes.shield.x),
         texel,
     );
     let border = if low && beat > 0.5 {
@@ -1031,7 +1109,14 @@ pub fn update(world: &mut World) {
     widgets::fill(tree, hud.health.pulse, glow);
     let held = held.floor();
     let mana_flow = time * MANA_FLOW + MANA_PHASE;
-    fill(tree, hud.mana, (held, most), held, mana_flow, texel);
+    fill(
+        tree,
+        hud.mana,
+        (held, most),
+        held,
+        (mana_flow, sizes.mana.x),
+        texel,
+    );
     edged(tree, hud.mana.track, colors.border, track, texel);
     for (index, ((slot, state), key)) in hud.slots.iter().zip(states).zip(keys).enumerate() {
         let ring = if selected == Some(index) {
@@ -1045,7 +1130,7 @@ pub fn update(world: &mut World) {
             continue;
         };
         if SLOTS[index] == Some(Spell::Summon) {
-            tree.set_image(icon, summoned_icon, Vec2::splat(ICON));
+            tree.set_image(icon, summoned_icon, hud.art.sizes.slots[index]);
         }
         let state = state.unwrap_or(Shown {
             payable: false,
@@ -1071,7 +1156,8 @@ pub fn update(world: &mut World) {
     for (tile, kind) in hud.strip.tiles.into_iter().zip(taken) {
         widgets::show(tree, tile, kind.is_some());
         if let Some(kind) = kind {
-            tree.set_image(tile, hud.art.tomes[kind.index()], Vec2::splat(ICON));
+            let index = kind.index();
+            tree.set_image(tile, hud.art.tomes[index], hud.art.sizes.tomes[index]);
         }
     }
     let name = titled(summoned.name);
@@ -1095,12 +1181,12 @@ pub fn update(world: &mut World) {
         tree.set_mesh(hud.magazine.sweep, &veil(sweep));
         for (i, round) in hud.magazine.rounds.into_iter().enumerate() {
             widgets::show(tree, round, i < most as usize);
-            let art = if i < left as usize && reload.is_none() {
-                hud.art.live
+            let (art, drawn) = if i < left as usize && reload.is_none() {
+                (hud.art.live, hud.art.sizes.live)
             } else {
-                hud.art.spent
+                (hud.art.spent, hud.art.sizes.spent)
             };
-            tree.set_image(round, art, Vec2::from(BULLET));
+            tree.set_image(round, art, drawn);
         }
     }
     if rescaled && let Some(shown) = world.get_resource_mut::<Hud>() {
@@ -1122,9 +1208,17 @@ pub fn whole_health(health: Option<&Health>) -> f32 {
 }
 
 /// Fills the shield's layer to `share` of the bar, capped at its width,
-/// scrolls its liquid by the game clock `time`, and writes `+shield`,
-/// rounded up, after the health's readout; with no shield, both collapse.
-fn shield_fill(tree: &mut UiTree, bar: ShieldBar, share: f32, shield: f32, time: f32, texel: f32) {
+/// scrolls its liquid by the game clock `time`, over the `period` texels
+/// its texture spans, and writes `+shield`, rounded up, after the health's
+/// readout; with no shield, both collapse.
+fn shield_fill(
+    tree: &mut UiTree,
+    bar: ShieldBar,
+    share: f32,
+    shield: f32,
+    (time, period): (f32, f32),
+    texel: f32,
+) {
     let held = shield.ceil();
     widgets::show(tree, bar.fill, held > 0.0);
     widgets::show(tree, bar.text, held > 0.0);
@@ -1137,18 +1231,19 @@ fn shield_fill(tree: &mut UiTree, bar: ShieldBar, share: f32, shield: f32, time:
         .with_size(width, Sizing::Percent(100.0))
         .anchored(Anchor::TopStart, Vec2::ZERO);
     tree.set_layout_style(bar.fill, style);
-    let scrolled = (time * SHIELD_FLOW).rem_euclid(LIQUID[0]) * texel;
+    let scrolled = (time * SHIELD_FLOW).rem_euclid(period) * texel;
     tree.set_translation(bar.strip, Vec2::new(-scrolled, 0.0));
 }
 
 /// Writes `shown / max` into `meter`, fills it to `current / max` and
-/// scrolls its liquid `flow` texels left, a texel `texel` UI units.
+/// scrolls its liquid `flow` texels left, over the `period` texels its
+/// texture spans, a texel `texel` UI units.
 fn fill(
     tree: &mut UiTree,
     meter: Meter,
     (current, max): (f32, f32),
     shown: f32,
-    flow: f32,
+    (flow, period): (f32, f32),
     texel: f32,
 ) {
     tree.set_plain_text(meter.text, &format!("{shown} / {max}"));
@@ -1157,7 +1252,7 @@ fn fill(
         meter.fill,
         LayoutStyle::default().with_size(width, Sizing::Fill),
     );
-    let scrolled = flow.rem_euclid(LIQUID[0]) * texel;
+    let scrolled = flow.rem_euclid(period) * texel;
     tree.set_translation(meter.strip, Vec2::new(-scrolled, 0.0));
 }
 

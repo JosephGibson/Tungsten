@@ -42,11 +42,11 @@ pub const WAVE_BODY_HOP: f32 = 750.0;
 pub const WAVE_FAR: f32 = 0.5;
 /// The samples across the front that raise its dust.
 pub const DUST_SAMPLES: usize = 9;
-/// The crescent's art, the seam's x in it, the share longer it grows over
-/// its life, how much wider than the sector it is drawn, its tint and its
-/// draw order; it fades in over the first share of its life and out over
-/// the last.
-const ART: Vec2 = Vec2::new(72.0, 128.0);
+/// The crescent's clip, its art's size its first frame's, the seam's x in
+/// it, the share longer it grows over its life, how much wider than the
+/// sector it is drawn, its tint and its draw order; it fades in over the
+/// first share of its life and out over the last.
+const CRESCENT: &str = "ex10_push_wave";
 const ART_SEAM: f32 = 66.0;
 const GROWS: f32 = 0.35;
 const MARGIN: f32 = 22.0;
@@ -55,12 +55,12 @@ const WAVE_Z: i32 = 11;
 const FADE_IN: f32 = 0.12;
 const FADE_OUT: f32 = 0.3;
 /// Its dust: a floor this far under a sample of its front raises a puff of
-/// [`DUST_SIZE`] and a burst of grit each [`DUST_EVERY`] px the sample
+/// [`DUST`]'s art and a burst of grit each [`DUST_EVERY`] px the sample
 /// moves, at most [`DUST_MOST`] a wave, each puff living its clip.
 const DUST_BELOW: f32 = 40.0;
 const DUST_EVERY: f32 = 44.0;
 const DUST_MOST: usize = 12;
-const DUST_SIZE: Vec2 = Vec2::new(48.0, 32.0);
+const DUST: &str = "ex10_push_dust";
 const DUST_SECS: f32 = 7.0 * 0.055;
 
 /// The sector's half angle at `age`, widening linearly over the wave's life.
@@ -78,7 +78,7 @@ fn falloff(along: f32) -> f32 {
 /// it to the right.
 pub fn cast(world: &mut World, centre: Vec2, aim: Vec2) {
     let aim = aim.try_normalize().unwrap_or(Vec2::X);
-    let look = part(world, "ex10_push_wave", WAVE_Z);
+    let look = part(world, CRESCENT, WAVE_Z);
     world.spawn_with((
         Wave {
             origin: centre + aim * WAVE_START,
@@ -253,12 +253,13 @@ fn dust(world: &mut World, wave: &mut Wave, reach: f32) {
         }
         wave.dusted[i] = reach;
         wave.puffs += 1;
-        if let Some(puff) = part(world, "ex10_push_dust", WAVE_Z - 1) {
+        if let Some(puff) = part(world, DUST, WAVE_Z - 1) {
             // The art's foot is its bottom-left; a negative scale spans the
             // quad leftward from its point, so the foot stays on the floor.
+            let tall = crate::shared::sprite_size(world, DUST).y;
             if let Some(transform) = world.get_mut::<Transform>(puff) {
                 transform.scale = Vec2::new(if left { -1.0 } else { 1.0 }, 1.0);
-                transform.position = hit.point - Vec2::new(0.0, DUST_SIZE.y - 2.0);
+                transform.position = hit.point - Vec2::new(0.0, tall - 2.0);
             }
             if let Some(visibility) = world.get_mut::<Visibility>(puff) {
                 visibility.visible = true;
@@ -274,28 +275,29 @@ fn dust(world: &mut World, wave: &mut Wave, reach: f32) {
 /// as the sprays are, growing longer, as wide as the sector there and
 /// [`MARGIN`] more, fading in and out.
 pub fn looks(world: &mut World) {
-    let shown: Vec<(Entity, Vec2, f32, Vec2, u8)> = world
+    let shown: Vec<(Entity, Vec2, Vec2, f32, Vec2, u8)> = world
         .query::<&Wave>()
         .filter_map(|wave| {
             let look = wave.look?;
+            let art = crate::shared::sprite_size(world, CRESCENT);
             let t = (wave.age / WAVE_SECS).clamp(0.0, 1.0);
             let reach = (wave.age * WAVE_SPEED).clamp(18.0, WAVE_RANGE);
             let width = 2.0 * reach * half_angle(wave.age).sin() + MARGIN;
             let along = 1.0 + GROWS * t;
             let flip = if wave.aim.x < 0.0 { -1.0 } else { 1.0 };
-            let scale = Vec2::new(along, width / ART.y * flip);
+            let scale = Vec2::new(along, width / art.y * flip);
             let front = wave.origin + wave.aim * reach;
-            let centre = front - wave.aim * (ART_SEAM - ART.x * 0.5) * along;
+            let centre = front - wave.aim * (ART_SEAM - art.x * 0.5) * along;
             let fade = (t / FADE_IN).min(1.0) * ((1.0 - t) / FADE_OUT).clamp(0.0, 1.0);
             let angle = wave.aim.y.atan2(wave.aim.x);
-            Some((look, centre, angle, scale, (255.0 * fade) as u8))
+            Some((look, art, centre, angle, scale, (255.0 * fade) as u8))
         })
         .collect();
-    for (look, centre, angle, scale, alpha) in shown {
+    for (look, art, centre, angle, scale, alpha) in shown {
         if let Some(transform) = world.get_mut::<Transform>(look) {
             transform.rotation = angle;
             transform.scale = scale;
-            transform.position = centre - ART * scale * 0.5;
+            transform.position = centre - art * scale * 0.5;
         }
         if let Some(sprite) = world.get_mut::<Sprite>(look) {
             sprite.color = [TINT[0], TINT[1], TINT[2], alpha];

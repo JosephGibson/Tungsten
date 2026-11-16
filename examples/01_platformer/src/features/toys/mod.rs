@@ -598,16 +598,13 @@ pub fn fire_missile(world: &mut World, centre: Vec2, velocity: Vec2) -> Option<E
     Some(missile)
 }
 
-/// Makes `missile`, which an ability's spawn payload landed from its
-/// caster's point, the top-left of the caster's art, with its prefab's
-/// fall and size, one of the toys ([`Joined`], its save ID the flush's):
-/// shown, and moved so its centre sits `centre` from where it landed, as
-/// the caster's centre sits from the caster's point.
-pub fn adopt_missile(world: &mut World, missile: Entity, centre: Vec2) {
+/// Makes `missile`, which an ability's spawn payload landed centred on its
+/// caster's centre, by its art's drawn centre at its prefab's scale, with
+/// its prefab's fall and size, one of the toys ([`Joined`], its save ID
+/// the flush's): shown where it landed.
+pub fn adopt_missile(world: &mut World, missile: Entity) {
     world.insert(missile, Joined);
     world.insert(missile, PreviousVelocity::default());
-    let shift = centre - Vec2::splat(MISSILE_SIZE * 0.5);
-    systems::shift(world, missile, shift);
     systems::show(world, missile);
 }
 

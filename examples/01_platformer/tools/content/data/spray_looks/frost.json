@@ -1,9 +1,5 @@
 {
   "muzzle": "ex10_frost_muzzle",
-  "muzzle_size": [
-    32,
-    32
-  ],
   "muzzle_ahead": 8,
   "splash": "ex10_frost_splash",
   "puff": "ex10_frost_puff",
@@ -24,10 +20,6 @@
   "light_ahead": 24,
   "core": {
     "clip": "ex10_frost_core",
-    "size": [
-      32,
-      14
-    ],
     "tall": 1.5,
     "frame_ms": 40
   }

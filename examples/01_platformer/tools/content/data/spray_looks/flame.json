@@ -1,9 +1,5 @@
 {
   "muzzle": "ex10_flame_muzzle",
-  "muzzle_size": [
-    40,
-    32
-  ],
   "muzzle_ahead": 17,
   "splash": "ex10_flame_splash",
   "puff": "ex10_flame_puff",

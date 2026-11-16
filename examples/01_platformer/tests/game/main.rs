@@ -96,8 +96,9 @@ pub fn app(user_folder: UserFolder) -> App {
     app
 }
 
-/// The game with its manifest's headless sections loaded and one frame
-/// stepped: the title on top.
+/// The game with its manifest's headless sections loaded, its sprites'
+/// sizes noted (none registered, so none draws) and one frame stepped: the
+/// title on top.
 pub fn harness() -> UiHarness {
     harness_with(UserFolder::Off)
 }
@@ -108,6 +109,10 @@ pub fn harness_with(user_folder: UserFolder) -> UiHarness {
         .harness_mut()
         .load_manifest(game::MANIFEST)
         .expect("the manifest loads");
+    harness
+        .harness_mut()
+        .note_sprite_sizes(game::MANIFEST)
+        .expect("the sprites' sizes read");
     harness.step(1);
     harness
 }

@@ -351,14 +351,13 @@ pub fn held(world: &mut World) {
 
 /// `missile_adopt`, in `PreUpdate` before the shell's save: each missile
 /// the fire missile's spawn payload landed at the last flush joins the
-/// toys from where the payload set it, the caster's point plus the offset
-/// along the aim, its centre moved to the caster's centre's place.
+/// toys where the payload set it, centred on the caster's centre plus the
+/// offset along the aim.
 pub fn adopt(world: &mut World) {
     let fresh: Vec<Entity> = world
         .query_filtered::<Entity, (With<FireMissile>, Without<Joined>)>()
         .collect();
-    let centre = player::body(world).centre;
     for missile in fresh {
-        toys::adopt_missile(world, missile, centre);
+        toys::adopt_missile(world, missile);
     }
 }

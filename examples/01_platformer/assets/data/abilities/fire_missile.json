@@ -16,7 +16,8 @@
       "spawn": {
         "prefab": "fire_missile",
         "speed": 900,
-        "offset": 24
+        "offset": 24,
+        "centred": true
       }
     }
   ],

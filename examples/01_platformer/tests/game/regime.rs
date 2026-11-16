@@ -101,6 +101,10 @@ fn run(name: &str, dt: f32) -> (String, Vec<String>) {
         .harness_mut()
         .load_manifest(game::MANIFEST)
         .expect("the manifest loads");
+    harness
+        .harness_mut()
+        .note_sprite_sizes(game::MANIFEST)
+        .expect("the sprites' sizes read");
     harness.step(1);
     start(&mut harness);
     harness.harness_mut().set_dt(dt);
