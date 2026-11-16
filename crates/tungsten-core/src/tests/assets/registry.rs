@@ -265,3 +265,44 @@ fn a_sheets_path_maps_to_every_frame() {
         (Some([16, 0, 16, 16]), Some([8.0, 15.0]))
     );
 }
+
+#[test]
+fn a_noted_sprite_size_reads_until_the_sprite_registers() {
+    let mut reg = AssetRegistry::new();
+    let epoch = reg.sprite_epoch();
+    let id = reg.note_sprite_size("banner", 64, 32, Some([8.0, 30.0]));
+    assert_eq!(reg.sprite_id("banner"), Some(id), "the name interned");
+    assert_eq!(reg.sprite_size(id), Some((64, 32)));
+    assert_eq!(reg.sprite_anchor(id), Some([8.0, 30.0]));
+    assert!(reg.sprite(id).is_none() && reg.get_sprite("banner").is_none());
+    assert_eq!(reg.sprite_names().count(), 0, "noted, not registered");
+    assert_eq!(
+        reg.sprite_epoch(),
+        epoch,
+        "noting changes no registered sprite"
+    );
+    // Registered at another size, its own size and anchor win.
+    register(
+        &mut reg,
+        "banner",
+        FilterMode::Nearest,
+        48,
+        48,
+        "banner.png",
+    );
+    assert_eq!(reg.sprite_size(id), Some((48, 48)));
+    assert_eq!(reg.sprite_anchor(id), None, "registered with no anchor");
+    reg.set_sprite_frame("banner", None, Some([24.0, 47.0]));
+    assert_eq!(reg.sprite_anchor(id), Some([24.0, 47.0]));
+    // An interned name noted nothing, and an ID past the end, read none.
+    let bare = reg.intern_sprite("bare");
+    assert_eq!(
+        (reg.sprite_size(bare), reg.sprite_anchor(bare)),
+        (None, None)
+    );
+    let past = SpriteAssetId::new(99);
+    assert_eq!(
+        (reg.sprite_size(past), reg.sprite_anchor(past)),
+        (None, None)
+    );
+}

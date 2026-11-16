@@ -70,8 +70,19 @@ pub struct AssetRegistry {
     /// Every sprite on a source path, in registration order: a sheet's
     /// frames share one.
     path_to_sprite_id: HashMap<PathBuf, Vec<SpriteAssetId>>,
+    /// Sizes and anchors noted for unregistered names; see
+    /// [`Self::note_sprite_size`].
+    noted: HashMap<SpriteAssetId, NotedSprite>,
     /// Rises on every change to a registered sprite; see [`Self::sprite_epoch`].
     sprite_epoch: u64,
+}
+
+/// A sprite's size and anchor noted with no texture.
+#[derive(Debug, Clone, Copy)]
+struct NotedSprite {
+    width: u32,
+    height: u32,
+    anchor: Option<[f32; 2]>,
 }
 
 impl AssetRegistry {
@@ -121,6 +132,54 @@ impl AssetRegistry {
     #[must_use]
     pub fn sprite(&self, id: SpriteAssetId) -> Option<&SpriteAsset> {
         self.sprites.get(id.index() as usize)?.as_ref()
+    }
+
+    /// Interns `name` and notes its size, `width` × `height` source pixels,
+    /// and its anchor, with no texture: a headless run's record of a sprite
+    /// it never draws. A noted sprite is not registered: [`Self::sprite`]
+    /// and [`Self::get_sprite`] stay `None`, so nothing draws it, and
+    /// [`Self::sprite_size`] and [`Self::sprite_anchor`] read the noted
+    /// values until it registers, when its own win. Noting again replaces
+    /// the note; it moves no [`Self::sprite_epoch`].
+    pub fn note_sprite_size(
+        &mut self,
+        name: &str,
+        width: u32,
+        height: u32,
+        anchor: Option<[f32; 2]>,
+    ) -> SpriteAssetId {
+        let id = self.intern_sprite(name);
+        self.noted.insert(
+            id,
+            NotedSprite {
+                width,
+                height,
+                anchor,
+            },
+        );
+        id
+    }
+
+    /// The size of the sprite interned as `id`, `(width, height)` in source
+    /// pixels: a registered sprite's own (a sheet frame's, its frame's), else
+    /// the size noted for it, else `None`.
+    #[must_use]
+    pub fn sprite_size(&self, id: SpriteAssetId) -> Option<(u32, u32)> {
+        match self.sprite(id) {
+            Some(asset) => Some((asset.width, asset.height)),
+            None => self.noted.get(&id).map(|noted| (noted.width, noted.height)),
+        }
+    }
+
+    /// The anchor of the sprite interned as `id`, `[x, y]` in source pixels:
+    /// a registered sprite's own, else the anchor noted for it; `None` when
+    /// it has none (it draws from its top-left) or nothing is known of it.
+    #[must_use]
+    pub fn sprite_anchor(&self, id: SpriteAssetId) -> Option<[f32; 2]> {
+        match self.sprite(id) {
+            Some(asset) => asset.anchor,
+            None => self.noted.get(&id).and_then(|noted| noted.anchor),
+        }
     }
 
     /// Name interned as `id`; `None` for an ID past the end.

@@ -137,8 +137,9 @@ impl Harness {
     /// `HitFlash` finds it headless; then the prefabs and data entries in two
     /// phases, every ID checked ([`load_prefabs`](asset_loader::load_prefabs)).
     /// What needs the renderer is skipped: the sprites themselves, none
-    /// registered (no size, no texture; [`register_sprites`](Self::register_sprites)
-    /// gives their sizes), fonts, shaders and particle meshes. A manifest
+    /// registered (no size, no texture; [`note_sprite_sizes`](Self::note_sprite_sizes)
+    /// notes their sizes, [`register_sprites`](Self::register_sprites)
+    /// registers them to draw), fonts, shaders and particle meshes. A manifest
     /// that fails to load is the error the loader gives.
     ///
     /// Call it after the plugins are built, as the window's startup does,
@@ -200,17 +201,7 @@ impl Harness {
             self.allocate_texture_handle(),
             self.allocate_texture_handle(),
         ];
-        let mut ids: Vec<&String> = manifest.sprites.keys().collect();
-        ids.sort();
-        let mut sizes: HashMap<&Path, (u32, u32)> = HashMap::new();
-        for id in &ids {
-            let file = manifest.sprites[*id].path.as_path();
-            if !sizes.contains_key(file) {
-                let size = image::image_dimensions(file)
-                    .map_err(|e| anyhow::anyhow!("Failed to read '{}': {e}", file.display()))?;
-                sizes.insert(file, size);
-            }
-        }
+        let (ids, sizes) = sorted_with_sizes(&manifest)?;
         let registry = self.app.world_mut().resource_mut::<AssetRegistry>();
         registry.intern_sprites(ids.iter().map(|id| id.as_str()));
         for id in ids {
@@ -238,6 +229,34 @@ impl Harness {
                 None,
                 None,
             );
+        }
+        Ok(())
+    }
+
+    /// Notes the size and anchor of each sprite and sheet frame the
+    /// manifest at `path` names, in sorted order as
+    /// [`register_sprites`](Self::register_sprites) takes them: its size
+    /// from its image's header, each file read once, a frame's its rect's,
+    /// and its anchor from the manifest
+    /// ([`AssetRegistry::note_sprite_size`]). Nothing is registered, so
+    /// nothing draws: no texture handle is taken and no `engine_white`
+    /// registered. A test whose code reads a sprite's size headless (a
+    /// prefab's centre, a HUD laid out by its art) calls this once, after
+    /// [`load_manifest`](Self::load_manifest).
+    ///
+    /// # Errors
+    ///
+    /// The manifest's load error, or an image whose header does not read.
+    pub fn note_sprite_sizes(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+        let manifest = ResolvedManifest::load(path)?;
+        let (ids, sizes) = sorted_with_sizes(&manifest)?;
+        let registry = self.app.world_mut().resource_mut::<AssetRegistry>();
+        registry.intern_sprites(ids.iter().map(|id| id.as_str()));
+        for id in ids {
+            let sprite = &manifest.sprites[id];
+            let (width, height) =
+                asset_loader::check::frame_size(sprite, sizes[sprite.path.as_path()]);
+            registry.note_sprite_size(id, width, height, sprite.anchor);
         }
         Ok(())
     }
@@ -562,6 +581,25 @@ impl Harness {
             .get_resource_mut::<InputState>()
             .expect("InputState resource missing")
     }
+}
+
+/// The manifest's sprite names, sorted, and each one's file size from its
+/// image's header, each file read once.
+type SortedSizes<'a> = (Vec<&'a String>, HashMap<&'a Path, (u32, u32)>);
+
+fn sorted_with_sizes(manifest: &ResolvedManifest) -> anyhow::Result<SortedSizes<'_>> {
+    let mut ids: Vec<&String> = manifest.sprites.keys().collect();
+    ids.sort();
+    let mut sizes: HashMap<&Path, (u32, u32)> = HashMap::new();
+    for id in &ids {
+        let file = manifest.sprites[*id].path.as_path();
+        if !sizes.contains_key(file) {
+            let size = image::image_dimensions(file)
+                .map_err(|e| anyhow::anyhow!("Failed to read '{}': {e}", file.display()))?;
+            sizes.insert(file, size);
+        }
+    }
+    Ok((ids, sizes))
 }
 
 /// What a frame would have drawn: the plain data its extract handed the

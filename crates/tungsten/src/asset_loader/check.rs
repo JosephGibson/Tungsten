@@ -392,6 +392,14 @@ fn check_sprites(manifest: &ResolvedManifest, world: &mut World, errors: &mut Er
 /// check` and the headless harness do (redo 7.9): its size (its frame's, or
 /// `file`'s for a whole file), filter, siblings, nine-slice, frame, anchor
 /// and named points, on `atlas` with full UVs, and lit on it when `lit`.
+/// A sprite's size in source pixels from its file's, `(width, height)`:
+/// a sheet frame's rect's, else the whole file's.
+pub(crate) fn frame_size(sprite: &ResolvedSprite, file: (u32, u32)) -> (u32, u32) {
+    sprite
+        .rect
+        .map_or(file, |[_, _, width, height]| (width, height))
+}
+
 pub(crate) fn register_metadata(
     registry: &mut AssetRegistry,
     id: &str,
@@ -400,9 +408,7 @@ pub(crate) fn register_metadata(
     atlas: TextureHandle,
     lit: bool,
 ) {
-    let (width, height) = sprite
-        .rect
-        .map_or(file, |[_, _, width, height]| (width, height));
+    let (width, height) = frame_size(sprite, file);
     registry.register_sprite(
         id.to_string(),
         sprite.filter,

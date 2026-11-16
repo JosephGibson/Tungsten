@@ -828,6 +828,69 @@ fn register_sprites_gives_each_sprite_and_frame_its_size() {
 }
 
 #[test]
+fn note_sprite_sizes_gives_each_sprite_its_size_and_draws_nothing() {
+    let dir = std::env::temp_dir().join(format!("tungsten_note_sizes_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    image::RgbaImage::new(12, 20)
+        .save(dir.join("hero.png"))
+        .unwrap();
+    image::RgbaImage::new(64, 16)
+        .save(dir.join("walk.png"))
+        .unwrap();
+    std::fs::write(
+        dir.join("manifest.json"),
+        r#"{"sprites": {"hero": {"path": "hero.png", "anchor": [6, 19]}},
+            "sheets": {"walk": {"path": "walk.png", "frame": [32, 16], "count": 2,
+                                "anchor": [16, 15]}}}"#,
+    )
+    .unwrap();
+    let mut harness = Harness::new(app());
+    harness.load_manifest(dir.join("manifest.json")).unwrap();
+    let next = harness.next_texture_handle;
+    harness
+        .note_sprite_sizes(dir.join("manifest.json"))
+        .unwrap();
+    assert_eq!(harness.next_texture_handle, next, "no texture handle taken");
+    let sprites = harness.app.world().resource::<AssetRegistry>();
+    let id = |name: &str| sprites.sprite_id(name).expect(name);
+    assert_eq!(sprites.sprite_size(id("hero")), Some((12, 20)));
+    assert_eq!(sprites.sprite_anchor(id("hero")), Some([6.0, 19.0]));
+    for name in ["walk_0", "walk_1"] {
+        assert_eq!(sprites.sprite_size(id(name)), Some((32, 16)), "{name}");
+        assert_eq!(
+            sprites.sprite_anchor(id(name)),
+            Some([16.0, 15.0]),
+            "{name}"
+        );
+    }
+    assert_eq!(sprites.sprite_names().count(), 0, "no sprite registered");
+    assert!(
+        sprites
+            .get_sprite(crate::asset_loader::ENGINE_WHITE)
+            .is_none()
+    );
+    // Names take IDs in sorted order, as a window's load interns them.
+    assert!(id("hero").index() < id("walk_0").index());
+    // A noted sprite draws no batch where a registered one would.
+    let hero = id("hero");
+    harness.world_mut().spawn_with((
+        Transform::from_position(Vec2::new(5.0, 7.0)),
+        Sprite::new(hero),
+        Visibility::default(),
+    ));
+    harness.step(1);
+    assert!(harness.draw().unwrap().sprites.is_empty(), "nothing drawn");
+    // Registered after, it draws at its registered size.
+    harness.register_sprites(dir.join("manifest.json")).unwrap();
+    harness.step(1);
+    let draw = harness.draw().unwrap();
+    assert_eq!(draw.sprites.len(), 1, "drawn once registered");
+    assert_eq!(draw.sprites[0].instances[0].size, [12.0, 20.0]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn load_manifest_interns_its_sprite_names_and_registers_no_sprite() {
     let dir = std::env::temp_dir().join(format!("tungsten_load_no_sprites_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);

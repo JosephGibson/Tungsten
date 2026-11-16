@@ -1,6 +1,6 @@
-# 01's toys' traces, looks, draws and art sizes on the engine (example-01-toys-data) — draft
+# 01's toys' traces, looks, draws and art sizes on the engine (example-01-toys-data) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13d's toys and data (§2.8), from 7.13d's casts and toys' §2.1 as it stood at `2715082c`, read with 7.13d's placements and sounds' plan as it stood at `0438b1b4`, split on 2026-11-15 (`ea26566e`). In core and the umbrella: a sprite's size and anchor known headless without the sprite registered, a harness call noting them, a tween channel eased on its own, and a tween that ends its entity. In the kit: a bodiless prefab centred by a noted sprite. Then example 01 on them: its art sizes read off its sprites and its missile centred by the kit (S-174, S-88); its missile's sweep and its sprays' beams as core shape casts (S-32); its unit draws on `splitmix64` (S-107); its shock rings and cold pulses as tweened sprites ended by their tweens and drawn where they draw today, and its scraps' tumble as a tween (S-7); its tests' outcomes unchanged but §2.2's named moves. S-15's cones go to Later with their gap (§2.13).
 - **non-goals:**
   - S-13's restated constants, `MISSILE_SIZE` and the art's seams, tips, exits and points among them: 7.13d's restated data, written when this plan closes, its gap in §2.1.
@@ -289,6 +289,7 @@ Round 2: the same reviewer at xhigh, 2026-11-15, `--repo` on the plan without th
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-15 | landed | `assets::registry::` 17 passed with `a_noted_sprite_size_reads_until_the_sprite_registers`; `testing::` 88 passed with `note_sprite_sizes_gives_each_sprite_its_size_and_draws_nothing` (a control: registered after, the sprite draws one batch at 12 × 20) and `load_manifest_interns_its_sprite_names_and_registers_no_sprite` unchanged; `ability::` 46 passed with `a_centred_spawn_centres_a_bodiless_sprite_by_its_noted_size` (80, 80; registered 32 px wins at 90, 90; neither 100, 100); clippy core, kit, umbrella exit 0; fmt, `just lint`, `just repo-check`, `just ctx`, `just docs-ratchet` (no rise) exit 0; core 1,712 + 34 + 23 doctests, umbrella lib 1,148, kit 1,059 + 160 doctests, `kit_tests:: kit_recipes::` 280 (determinism pin unchanged), template 184, 02's `guards_` 16, no pin rewritten; 01 `--test game` 478 passed, 1 ignored, `git diff --quiet tests/game/guards/` exit 0; `just api`: `api/tungsten-core.txt` (+9: `note_sprite_size`, `sprite_size`, `sprite_anchor`) and `api/tungsten.txt` (+1: `Harness::note_sprite_sizes`) alone. The frame size shared with `register_metadata` (`check::frame_size`) and the header read with `register_sprites` | `crates/tungsten-core/src/assets/registry.rs`, `crates/tungsten/src/testing.rs`, `crates/tungsten/src/asset_loader/check.rs`, `crates/tungsten-kit/src/motion/drive.rs`, their tests, `api/`, `DESIGN.md` |
 
 ## Follow-ups
 

@@ -186,8 +186,10 @@ pub fn centre_of(world: &World, entity: Entity) -> Option<Vec2> {
 /// `offset`; else, bodiless, the offset of its own shape, its `hurtbox`'s,
 /// `hitbox`'s, `pickup`'s or projectile `shape`'s, the first it has, art
 /// loaded or not (7.13c's foes); else its sprite's drawn centre at the
-/// prefab's `scale` with no turn or flip, as a spawn places it, else none;
-/// read from its registry entry.
+/// prefab's `scale` with no turn or flip, as a spawn places it, by its
+/// registered size and anchor or, headless, those noted for it
+/// ([`AssetRegistry::sprite_size`]), else none; read from its registry
+/// entry.
 pub(crate) fn prefab_centre(world: &World, id: &str) -> Vec2 {
     let Some(data) = world
         .get_resource::<PrefabRegistry>()
@@ -220,15 +222,15 @@ pub(crate) fn prefab_centre(world: &World, id: &str) -> Vec2 {
         .as_ref()
         .and_then(|sprite| {
             let assets = world.get_resource::<AssetRegistry>()?;
-            assets.sprite(assets.sprite_id(&sprite.asset_id)?)
+            let id = assets.sprite_id(&sprite.asset_id)?;
+            Some((assets.sprite_size(id)?, assets.sprite_anchor(id)))
         })
-        .map_or(Vec2::ZERO, |asset| {
-            // At the prefab's own scale, as its spawn draws it.
-            let scaled = Transform {
-                scale: Vec2::from(data.scale),
-                ..Transform::default()
-            };
-            sprite_centre(asset, &scaled, false)
+        .map_or(Vec2::ZERO, |((width, height), anchor)| {
+            // At the prefab's own scale, unturned and unflipped, as its
+            // spawn draws it: the anchor on the point, else the top-left.
+            let scale = Vec2::from(data.scale);
+            let size = Vec2::new(width as f32, height as f32) * scale;
+            size * 0.5 - anchor.map_or(Vec2::ZERO, |anchor| Vec2::from(anchor) * scale)
         })
 }
 

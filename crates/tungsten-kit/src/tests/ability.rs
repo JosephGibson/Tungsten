@@ -3400,6 +3400,56 @@ fn a_scaled_prefab_spawns_by_its_scaled_centre() {
     );
 }
 
+// 7.13d's toys and data: a bodiless sprite's centre by its noted size.
+
+#[test]
+fn a_centred_spawn_centres_a_bodiless_sprite_by_its_noted_size() {
+    let (mut world, mut schedule) = rig();
+    world.insert_resource(AssetRegistry::new());
+    for id in ["missile", "glow", "spark"] {
+        prefab(
+            &mut world,
+            id,
+            json!({ "tag": id, "sprite": { "asset_id": id }, "scale": [0.625, 0.625] }),
+        );
+    }
+    // Headless, the missile's 64 × 64 art noted, never registered.
+    let assets = world.resource_mut::<AssetRegistry>();
+    assets.note_sprite_size("missile", 64, 64, None);
+    // Noted at 64 but registered at 32: the registered size wins.
+    assets.note_sprite_size("glow", 64, 64, None);
+    sprite(&mut world, "glow", [32, 32], None);
+    // The spark is neither noted nor registered.
+    world.resource_mut::<AssetRegistry>().intern_sprite("spark");
+    let mut placed = Vec::new();
+    for id in ["missile", "glow", "spark"] {
+        let cast = insert(
+            &mut world,
+            id,
+            Ability::new().with_payload(spawn_of(id, true, 0.0)),
+        );
+        let caster = world.spawn_with((
+            Position(Vec2::new(100.0, 100.0)),
+            Abilities::new().with(cast),
+            Intent::default(),
+        ));
+        assert_eq!(use_ability(&mut world, caster, id), Used::Used);
+        steps(&mut world, &mut schedule, 1);
+        let spawned = tagged(&world, id)[0];
+        placed.push(world.get::<Transform>(spawned).unwrap().position);
+    }
+    assert_eq!(
+        placed,
+        [
+            Vec2::new(80.0, 80.0),
+            Vec2::new(90.0, 90.0),
+            Vec2::new(100.0, 100.0)
+        ],
+        "the noted 64 px at 0.625 puts its point 20, 20 short of the caster's \
+         centre; the registered 32 px wins at 10, 10; with neither, the caster's centre"
+    );
+}
+
 // 7.13c's foes: a bodiless prefab's centre from its own shapes.
 
 #[test]
