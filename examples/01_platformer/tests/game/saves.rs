@@ -364,10 +364,15 @@ const CARRIED: &str = "tungsten_kit::motion::carry::Carried";
 /// `cap_admitted` on an engine record.
 const CAP_ADMITTED: &str = "tungsten_kit::lifecycle::cap::Admitted";
 
+/// A scrap's or plank's tumble, a rotation tween (`toys::tumble`), whose
+/// rest a load drops: the piece rests at its saved angle.
+const TUMBLE: &str = "tungsten_core::tween::Tween";
+
 /// The components an engine record's load does not give back.
 fn lost(kind: &str) -> &'static [&'static str] {
     match kind {
         "missile" | "bullet" | "flask" => &[EMITTER],
+        "scrap" | "plank" => &[TUMBLE],
         _ => &[],
     }
 }
@@ -444,7 +449,7 @@ fn lists(kind: &str) -> Lists {
     use example_01_platformer::features::level::lava::CrustLook;
     use example_01_platformer::features::player::components::Moves;
     use example_01_platformer::features::toys::components::{
-        BallHue, BowlingBall, PreviousVelocity, Pull, ScrapTumble, SmallBall,
+        BallHue, BowlingBall, PreviousVelocity, Pull, SmallBall,
     };
     use tungsten::SceneEntity;
     use tungsten::core::{
@@ -581,7 +586,7 @@ fn lists(kind: &str) -> Lists {
                 ],
             ]
             .concat(),
-            presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
+            presentation: [&drawn[..], &[name::<ColdFace>()]].concat(),
         },
         "black hole" => Lists {
             recorded: Vec::new(),
@@ -703,7 +708,7 @@ fn lists(kind: &str) -> Lists {
                 ],
             ]
             .concat(),
-            presentation: [&drawn[..], &[name::<ScrapTumble>(), name::<ColdFace>()]].concat(),
+            presentation: [&drawn[..], &[name::<ColdFace>()]].concat(),
         },
         "snowball" => {
             use example_01_platformer::features::enemies::components::Snowball;
@@ -1140,7 +1145,9 @@ fn an_older_saves_hold_loads_held() {
 fn every_loaded_entity_holds_its_uninterrupted_twins_components() {
     // A load gives each saved entity back what it carried, saved, rebuilt
     // or drawn, but a projectile's emitter, which a record's spawn from its
-    // prefab cannot derive (the plan's §2.6).
+    // prefab cannot derive (the plan's §2.6), and what its kind's engine
+    // record loses (`lost`): a scrap's or plank's tumble, resting at its
+    // saved angle.
     let (mut harness, _) = grounded();
     busy(&mut harness);
     let types = |world: &World| -> BTreeMap<u64, (&'static str, BTreeSet<&'static str>)> {
@@ -1175,7 +1182,7 @@ fn every_loaded_entity_holds_its_uninterrupted_twins_components() {
             continue;
         };
         for ty in held.difference(back) {
-            if *ty != EMITTER {
+            if *ty != EMITTER && !lost(kind).contains(ty) {
                 lacking.entry(kind).or_default().insert(ty);
             }
         }

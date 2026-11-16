@@ -41,7 +41,7 @@ use crate::features::props::{
 };
 use crate::features::run::Run;
 use crate::features::toys::components::{
-    Ball, BowlingBall, IronBlock, IronScrap, PreviousVelocity, ScrapTumble, SmallBall,
+    Ball, BowlingBall, IronBlock, IronScrap, PreviousVelocity, SmallBall,
 };
 use crate::features::toys::systems::holes;
 use crate::features::toys::{
@@ -1447,9 +1447,6 @@ pub fn shatter_iron(world: &mut World, iron: Entity, blast: Option<Vec2>) {
     let whole = world.has::<IronBlock>(iron);
     let velocity = world.get::<Velocity>(iron).map_or(Vec2::ZERO, |v| v.0);
     let away = blast.map_or(Vec2::ZERO, |from| (at - from).normalize_or_zero());
-    let born_at = world
-        .get_resource::<crate::features::level::components::SceneTime>()
-        .map_or(0.0, |t| t.0);
     despawn_tree(world, iron);
     if whole {
         for index in 0..SCRAP_COUNT {
@@ -1460,12 +1457,9 @@ pub fn shatter_iron(world: &mut World, iron: Entity, blast: Option<Vec2>) {
             let kick = offset.normalize() * SCRAP_EJECT_SPEED * (0.8 + 0.4 * variation)
                 + away * SCRAP_BLAST_BIAS
                 - Vec2::Y * SCRAP_EJECT_LIFT;
-            let tumble = ScrapTumble {
-                born_at,
-                initial_angle: variation * TAU,
-                total_turn: (4.0 + 3.0 * variation) * if index % 2 == 0 { 1.0 } else { -1.0 },
-            };
-            toys::spawn_scrap(world, at + offset, velocity + kick, index + row, tumble);
+            let turn = (4.0 + 3.0 * variation) * if index % 2 == 0 { 1.0 } else { -1.0 };
+            let (angle, flight) = (variation * TAU, velocity + kick);
+            toys::spawn_scrap(world, at + offset, flight, index + row, angle, turn);
         }
     }
     spawn_key_burst(world, "ex10_ice_shatter", at);

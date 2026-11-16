@@ -17,8 +17,9 @@ pub mod wave;
 use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::{
-    BodyKind, CommandBuffer, Entity, EventCursor, PrefabRegistry, PreparedPrefab, RigidBody,
-    Schedule, Shape, Stage, Time, Transform, Velocity, World, system,
+    BodyKind, CommandBuffer, Easing, Entity, EventCursor, PrefabRegistry, PreparedPrefab,
+    RigidBody, Schedule, Shape, Stage, Time, Transform, Tween, TweenChannel, Velocity, World,
+    system,
 };
 use tungsten::kit::{
     Admission, COOLDOWN_TICK, ImpactDamage, LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase,
@@ -496,13 +497,14 @@ pub fn place_iron(world: &mut World, at: Vec2) -> Entity {
 }
 
 /// Spawns a scrap of `variant` with its centre at `at`, flying at
-/// `velocity`, tumbling from level time `born_at`.
+/// `velocity`, turned to `angle` and tumbling on by `turn` ([`tumble`]).
 pub fn spawn_scrap(
     world: &mut World,
     at: Vec2,
     velocity: Vec2,
     variant: usize,
-    tumble: components::ScrapTumble,
+    angle: f32,
+    turn: f32,
 ) -> Entity {
     let scrap = spawn_toy(
         world,
@@ -511,7 +513,8 @@ pub fn spawn_scrap(
         SCRAP_SCALE,
     );
     let variant = variant % 4;
-    world.insert_bundle(scrap, (IronScrap { variant }, tumble));
+    world.insert(scrap, IronScrap { variant });
+    tumble(world, scrap, angle, turn);
     if let Some(v) = world.get_mut::<Velocity>(scrap) {
         v.0 = velocity;
     }
@@ -530,27 +533,34 @@ pub fn restore_ball(world: &mut World, small: bool, at: Vec2) -> Entity {
 }
 
 /// A restored scrap's look, which its spawn gives beyond its prefab: its
-/// saved variant's sprite, at rest at its saved angle ([`rest`]).
+/// saved variant's sprite. It rests at the angle its saved transform holds,
+/// the rest of a tumble lost at the load.
 pub fn restored_scrap(world: &mut World, scrap: Entity) {
     let Some(&IronScrap { variant }) = world.get::<IronScrap>(scrap) else {
         return;
     };
-    rest(world, scrap);
     systems::show_scrap_variant(world, scrap, variant % 4);
 }
 
-/// Sets a restored scrap's or plank's tumble at rest at the angle its saved
-/// transform holds, which the tumble draws from then on.
-pub fn rest(world: &mut World, entity: Entity) {
-    let angle = world
-        .get::<Transform>(entity)
-        .map_or(0.0, |transform| transform.rotation);
-    let rest = components::ScrapTumble {
-        born_at: 0.0,
-        initial_angle: angle,
-        total_turn: 0.0,
-    };
-    world.insert(entity, rest);
+/// How long a scrap's or plank's tumble runs: `ExpoOut` over it turns by
+/// `1 − e^(−4·age)` of the turn, its last 2^−10 snapped at its end.
+pub const TUMBLE_SECS: f32 = 10.0 * std::f32::consts::LN_2 / 4.0;
+
+/// Turns `entity` to `angle` at once and tumbles it on by `turn` as it
+/// flies, a rotation tween over [`TUMBLE_SECS`] on the game's clock; a zero
+/// turn adds none.
+pub fn tumble(world: &mut World, entity: Entity, angle: f32, turn: f32) {
+    if let Some(transform) = world.get_mut::<Transform>(entity) {
+        transform.rotation = angle;
+    }
+    if turn != 0.0 {
+        let rotation = TweenChannel::Rotation {
+            from: angle,
+            to: angle + turn,
+        };
+        let tween = Tween::new(TUMBLE_SECS, Easing::ExpoOut).with_channel(rotation);
+        world.insert(entity, tween);
+    }
 }
 
 /// Opens a black hole at `at` for its prefab's cooldown, with its opening's

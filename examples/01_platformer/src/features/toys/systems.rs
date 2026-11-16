@@ -17,8 +17,8 @@ use tungsten::physics::{SpatialFilter, SpatialHit, cast_shape_where, wake};
 
 use super::components::{
     Ball, BallHue, BlackHole, Element, FireMissile, Flare, HoleHold, IronBlock, IronScrap,
-    OpenRing, OpeningOf, Oriented, PreviousVelocity, Pull, Ring, RingLook, ScrapTumble, ShockRing,
-    SmallBall, Spray, SprayEmitter,
+    OpenRing, OpeningOf, Oriented, PreviousVelocity, Pull, Ring, RingLook, ShockRing, SmallBall,
+    Spray, SprayEmitter,
 };
 use super::draw;
 use super::{
@@ -1627,11 +1627,10 @@ pub fn show_scrap_variant(world: &mut World, scrap: Entity, variant: usize) {
     }
 }
 
-/// `iron_look`, in the present phase: iron takes the frost's tint, and its
-/// frost art shows as deep as the frost, over the metal; a scrap tumbles
-/// as it flies, its frost turning with it.
+/// `iron_look`, in the present phase after the tween tick: iron takes the
+/// frost's tint, and its frost art shows as deep as the frost, over the
+/// metal; a scrap's frost turns with it as it tumbles ([`toys::tumble`]).
 pub fn iron_look(world: &mut World) {
-    let time = drawn_time(world);
     let blocks: Vec<(Entity, f32, Vec<Entity>)> = world
         .query::<(Entity, &IronBlock, &Children)>()
         .map(|(entity, _, children)| {
@@ -1649,9 +1648,9 @@ pub fn iron_look(world: &mut World) {
         }
     }
     let scraps: Vec<(Entity, f32, usize, f32, Vec<Entity>)> = world
-        .query::<(Entity, &IronScrap, Option<&ScrapTumble>, Option<&Children>)>()
-        .map(|(entity, scrap, tumble, children)| {
-            let turn = tumble.map_or(0.0, |tumble| tumble.rotation(time));
+        .query::<(Entity, &IronScrap, &Transform, Option<&Children>)>()
+        .map(|(entity, scrap, transform, children)| {
+            let turn = transform.rotation;
             let children = children.map(|c| c.iter().collect()).unwrap_or_default();
             (
                 entity,
@@ -1665,9 +1664,6 @@ pub fn iron_look(world: &mut World) {
     for (scrap, amount, variant, turn, children) in scraps {
         if let Some(sprite) = world.get_mut::<Sprite>(scrap) {
             sprite.color = frost_tint(amount);
-        }
-        if let Some(transform) = world.get_mut::<Transform>(scrap) {
-            transform.rotation = turn;
         }
         for child in children {
             let id = world

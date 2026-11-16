@@ -6,7 +6,10 @@
 //! its sound; holes pull iron slowly and scraps as balls; a fast drop
 //! plows through a pile; iron is set only where it fits, at no cost where it
 //! does not; a falling block knocks back what it does not kill and bursts
-//! in gore what it does; and a thrown block falls on the troll's arc.
+//! in gore what it does; a thrown block falls on the troll's arc; and a
+//! scrap tumbles by its tween, its frost with it, resting at a load.
+
+use std::collections::BTreeMap;
 
 use example_01_platformer::features::combat::{self, Kind};
 use example_01_platformer::features::elements::systems::crush;
@@ -17,23 +20,26 @@ use example_01_platformer::features::level::GRAVITY;
 use example_01_platformer::features::player::components::Lantern;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{
-    IronBlock, IronScrap, PreviousVelocity, ScrapTumble, SmallBall,
+    IronBlock, IronScrap, PreviousVelocity, SmallBall,
 };
 use example_01_platformer::features::toys::systems::pull;
 use example_01_platformer::features::toys::{
     self, BALL_RADIUS, IRON_HALF, IRON_MASS, SCRAP_HALF, SCRAP_MASS, SMALL_BALL_RADIUS,
 };
-use example_01_platformer::shell::Difficulty;
+use example_01_platformer::shared::Saved;
+use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
+use example_01_platformer::{game, save};
 use glam::Vec2;
 use tungsten::core::{
-    AudioCommand, Collider, Entity, Position, RigidBody, RigidBodyBundle, SoundRegistry, Velocity,
+    AudioCommand, Collider, Entity, Position, RigidBody, RigidBodyBundle, SoundRegistry, Time,
+    Transform, Tween, Velocity, World,
 };
-use tungsten::kit::{Abilities, Health, Knockback, StateMachine, Stats};
+use tungsten::kit::{Abilities, Children, Health, Knockback, StateMachine, Stats};
 use tungsten::testing::UiHarness;
 
 use super::{
     aim_at, ball, body, bursts, calm, choose, contact, floor, ground, kick, mana, pin_camera,
-    player_entity, run, teleport,
+    player_entity, run, settle, teleport, top,
 };
 use super::{kind_body, player_half};
 
@@ -330,13 +336,8 @@ fn black_holes_gather_warm_and_frozen_scraps_as_readily_as_balls() {
     let at = hole + Vec2::new(120.0, 0.0);
     let iron = block(&mut harness, at);
     let plain = mass(&mut harness, at, 1.0);
-    let tumble = ScrapTumble {
-        born_at: 0.0,
-        initial_angle: 0.0,
-        total_turn: 0.0,
-    };
     let pieces = [false, true].map(|frozen| {
-        let e = toys::spawn_scrap(harness.world_mut(), at, Vec2::ZERO, 0, tumble);
+        let e = toys::spawn_scrap(harness.world_mut(), at, Vec2::ZERO, 0, 0.0, 0.0);
         if frozen {
             elements::freeze_iron(harness.world_mut(), e);
         }
@@ -610,4 +611,98 @@ fn a_thrown_block_falls_on_the_trolls_arc() {
         }
     }
     assert!(checked >= 5, "it fell on its arc");
+}
+
+/// Each scrap's rotation and its frost children's, by save ID.
+fn scrap_turns(world: &World) -> BTreeMap<u64, (f32, Vec<f32>)> {
+    world
+        .query::<(&IronScrap, &Saved, &Transform, Option<&Children>)>()
+        .map(|(_, saved, transform, children)| {
+            let frost = children.map_or_else(Vec::new, |children| {
+                children
+                    .iter()
+                    .map(|child| world.get::<Transform>(child).unwrap().rotation)
+                    .collect()
+            });
+            (saved.id().0, (transform.rotation, frost))
+        })
+        .collect()
+}
+
+#[test]
+fn a_scrap_tumbles_by_its_tween() {
+    let mut harness = iron_arena();
+    // One scrap turned to 0.7 and tumbling on by 4: at its angle at once,
+    // on the old curve, and still once its tween ends.
+    let centre = Vec2::new(300.0, TOP - SCRAP_HALF.y - 0.5);
+    let scrap = toys::spawn_scrap(harness.world_mut(), centre, Vec2::ZERO, 0, 0.7, 4.0);
+    let turn = |h: &UiHarness| h.world().get::<Transform>(scrap).unwrap().rotation;
+    assert_eq!(turn(&harness), 0.7);
+    let mut frames = 0;
+    for (at, frame) in [(0.25, 15), (1.0, 60)] {
+        harness.step(frame - frames);
+        frames = frame;
+        let want = 0.7 + 4.0 * (1.0 - (-4.0_f32 * at).exp());
+        let off = (turn(&harness) - want).abs();
+        assert!(off < 0.001, "at {at} s: {} not {want}", turn(&harness));
+    }
+    harness.step(120 - frames);
+    assert!((turn(&harness) - 4.7).abs() < 1e-5, "{}", turn(&harness));
+    assert!(harness.world().get::<Tween>(scrap).is_none());
+
+    // A shattered block's sixteen scraps start at fifteen nonzero angles,
+    // their frost turning with them once it lands at the flush.
+    let at = Vec2::new(900.0, TOP - 200.0);
+    let iron = block(&mut harness, at);
+    elements::freeze_iron(harness.world_mut(), iron);
+    elements::systems::shatter_iron(harness.world_mut(), iron, None);
+    let started: Vec<f32> = scrap_turns(harness.world())
+        .into_values()
+        .map(|(angle, _)| angle)
+        .collect();
+    assert_eq!(started.len(), 17, "the first scrap and sixteen");
+    let nonzero = started.iter().filter(|angle| **angle != 0.0).count();
+    // The first scrap rests at 4.7; one of the sixteen starts at 0.
+    assert_eq!(nonzero, 16, "{started:?}");
+    harness.step(2);
+    let shards = scrap_turns(harness.world());
+    let mut turning = 0;
+    for (id, (angle, frost)) in &shards {
+        assert!(!frost.is_empty(), "scrap {id} has its frost");
+        for child in frost {
+            assert_eq!(child, angle, "scrap {id}'s frost turns with it");
+        }
+        turning += usize::from(
+            harness
+                .world()
+                .query::<(&Saved, &Tween)>()
+                .any(|(saved, _)| saved.id().0 == *id),
+        );
+    }
+    assert_eq!(turning, 16, "the shatter's sixteen tumble");
+
+    // Saved mid-tumble and loaded: each scrap and its rebuilt frost at its
+    // saved angle, with no tween.
+    let saved = save::capture(harness.world()).expect("a live run captures");
+    let mut loaded = super::harness();
+    loaded.world_mut().resource_mut::<Time>().pause();
+    game_shell::start_run(loaded.world_mut(), RunStart::from(saved), None);
+    settle(&mut loaded);
+    loaded.step(1);
+    assert_eq!(top(&loaded), Some(game::GAMEPLAY));
+    // The first step spawns the frost, which lands at its flush, after
+    // that frame's look; the next frame turns it.
+    loaded.world_mut().resource_mut::<Time>().resume();
+    loaded.step(2);
+    let back = scrap_turns(loaded.world());
+    assert_eq!(back.len(), shards.len());
+    for (id, (angle, _)) in &shards {
+        let (again, frost) = &back[id];
+        assert_eq!(again, angle, "scrap {id} rests at its saved angle");
+        assert!(!frost.is_empty(), "scrap {id}'s frost is rebuilt");
+        for child in frost {
+            assert_eq!(child, angle, "scrap {id}'s frost at its angle");
+        }
+    }
+    assert_eq!(loaded.world().query::<(&IronScrap, &Tween)>().count(), 0);
 }

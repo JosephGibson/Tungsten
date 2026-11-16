@@ -43,9 +43,7 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, DOUSED, has_status};
 use crate::features::elements::systems::status_left;
 use crate::features::elements::{DOUSE_SECS, JOLT, is_frozen};
-use crate::features::level::components::SceneTime;
 use crate::features::run::Run;
-use crate::features::toys::components::ScrapTumble;
 use crate::features::toys::{self, components::IronBlock};
 use crate::shared::{SaveId, Saved, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
 use components::{Bomb, Crate, Keg, MapProp, Plank, PropFire, PropKind, Rock, Stone};
@@ -346,7 +344,6 @@ pub fn restored(world: &mut World, prop: Entity) {
         systems::show_stone(world, prop, size, variant);
     }
     if let Some(&Plank { variant }) = world.get::<Plank>(prop) {
-        toys::rest(world, prop);
         systems::show_plank(world, prop, variant);
     }
 }
@@ -368,7 +365,6 @@ pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
     let velocity = world.get::<Velocity>(crate_).map_or(Vec2::ZERO, |v| v.0);
     let fire = fire(world, crate_);
     let lighter = source(world, crate_, PROP_BURN);
-    let born_at = world.get_resource::<SceneTime>().map_or(0.0, |time| time.0);
     spawn_key_burst(world, "ex10_plank_splinters", at);
     audio::play(world, Sound::CrateBroke, at);
     despawn_tree(world, crate_);
@@ -391,12 +387,8 @@ pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
         if let Some(own) = world.get_mut::<Velocity>(plank) {
             own.0 = velocity + kick + hitter * PLANK_CARRY;
         }
-        let tumble = ScrapTumble {
-            born_at,
-            initial_angle: 0.0,
-            total_turn: side * (1 + row % 2) as f32 * std::f32::consts::PI,
-        };
-        world.insert(plank, tumble);
+        let turn = side * (1 + row % 2) as f32 * std::f32::consts::PI;
+        toys::tumble(world, plank, 0.0, turn);
         if let Some(fire) = fire {
             let burn = PropFire {
                 left: fire.left.min(PLANK_BURN_SECS),

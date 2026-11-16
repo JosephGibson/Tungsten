@@ -22,7 +22,7 @@ use crate::features::elements::{COAT, KINDLE, is_burning, is_frozen};
 use crate::features::level::lava::Lava;
 use crate::features::level::systems::drawn_time;
 use crate::features::run::Run;
-use crate::features::toys::components::{ScrapTumble, SmallBall};
+use crate::features::toys::components::SmallBall;
 use crate::features::toys::systems::frost_tint;
 use crate::shared::{SaveId, Saved};
 
@@ -325,20 +325,11 @@ pub fn look(world: &mut World) {
         let (left, lit) = fire(stats, tags);
         sprite.color = wood_tint(left, lit, BURN_SECS, frost(tags, effects), time);
     }
-    for (_, stats, sprite, transform, tumble, tags, effects) in world.query_mut::<(
-        &Plank,
-        &Stats,
-        &mut Sprite,
-        &mut Transform,
-        Option<&ScrapTumble>,
-        Option<&Tags>,
-        Option<&Effects>,
-    )>() {
+    for (_, stats, sprite, tags, effects) in
+        world.query_mut::<(&Plank, &Stats, &mut Sprite, Option<&Tags>, Option<&Effects>)>()
+    {
         let (left, lit) = fire(stats, tags);
         sprite.color = wood_tint(left, lit, PLANK_BURN_SECS, frost(tags, effects), time);
-        if let Some(tumble) = tumble {
-            transform.rotation = tumble.rotation(time);
-        }
     }
     let kegs: Vec<(Entity, Option<f32>, f32)> = world
         .query::<(Entity, &Keg, Option<&Tags>, Option<&Effects>)>()

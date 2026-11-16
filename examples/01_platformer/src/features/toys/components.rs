@@ -52,23 +52,6 @@ pub struct IronScrap {
     pub variant: usize,
 }
 
-/// A scrap's tumble as it flies off, on the level's clock: presentation.
-#[derive(Debug, Clone, Copy)]
-pub struct ScrapTumble {
-    pub born_at: f32,
-    pub initial_angle: f32,
-    pub total_turn: f32,
-}
-
-impl ScrapTumble {
-    /// Its turn at level time `time`.
-    #[must_use]
-    pub fn rotation(self, time: f32) -> f32 {
-        let age = (time - self.born_at).max(0.0);
-        self.initial_angle + self.total_turn * (1.0 - (-4.0 * age).exp())
-    }
-}
-
 /// A black hole: it pulls bodies in reach, bends missiles and puts out
 /// burning balls until its prefab's kit `cooldown`, its life, elapses. Its
 /// prefab names it `black_hole`.

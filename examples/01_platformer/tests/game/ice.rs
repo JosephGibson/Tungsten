@@ -26,7 +26,6 @@ use example_01_platformer::features::elements::{
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
 use example_01_platformer::features::level::WORLD_MAX;
-use example_01_platformer::features::level::components::SceneTime;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{IronBlock, IronScrap, Spray};
 use example_01_platformer::features::toys::systems::{bounds, friction, iron_look};
@@ -145,8 +144,9 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
         drawn(&mut harness, false).is_empty(),
         "warm scraps show no frost"
     );
-    let turns = |harness: &mut UiHarness, time: f32| {
-        harness.world_mut().insert_resource(SceneTime(time));
+    // Each scrap tumbles by its tween, `frames` frames on.
+    let turns = |harness: &mut UiHarness, frames: u32| {
+        harness.step(frames);
         iron_look(harness.world_mut());
         let world = harness.world();
         world
@@ -154,8 +154,8 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
             .map(|(_, t)| t.rotation)
             .collect::<Vec<f32>>()
     };
-    let early = turns(&mut harness, 0.0);
-    let tumbling = turns(&mut harness, 0.25);
+    let early = turns(&mut harness, 0);
+    let tumbling = turns(&mut harness, 15);
     assert!(
         early
             .iter()
@@ -163,7 +163,7 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
             .all(|(a, b)| (a - b).abs() > 0.5)
     );
     assert_eq!(
-        turns(&mut harness, 0.25),
+        turns(&mut harness, 0),
         tumbling,
         "the same instant, the same turn"
     );

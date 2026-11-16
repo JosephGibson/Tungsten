@@ -53,7 +53,7 @@ use example_01_platformer::features::props::{self, CRATE_HALF};
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::{SUMMON_NEXT, SUMMONS, Summoned};
 use example_01_platformer::features::toys::IRON_HALF;
-use example_01_platformer::features::toys::components::{PreviousVelocity, ScrapTumble};
+use example_01_platformer::features::toys::components::PreviousVelocity;
 use example_01_platformer::features::{player as courier, toys};
 use example_01_platformer::game;
 use example_01_platformer::save;
@@ -449,17 +449,7 @@ fn crates_kegs_iron_scrap_dummies_and_the_frozen_hide_and_the_rest_do_not() {
         ("iron", toys::place_iron(world, row(2)), true),
         (
             "a scrap",
-            toys::spawn_scrap(
-                world,
-                row(3),
-                Vec2::ZERO,
-                0,
-                ScrapTumble {
-                    born_at: 0.0,
-                    initial_angle: 0.0,
-                    total_turn: 0.0,
-                },
-            ),
+            toys::spawn_scrap(world, row(3), Vec2::ZERO, 0, 0.0, 0.0),
             true,
         ),
         (
@@ -4718,13 +4708,8 @@ fn a_returning_troll_kicks_scrap_from_its_way_and_passes_it() {
     stand(&mut harness, player, 300.0, TOP);
     let (troll, scrap) = troll_before(&mut harness, 60.0, |h, near| {
         let half = toys::SCRAP_HALF;
-        let tumble = ScrapTumble {
-            born_at: 0.0,
-            initial_angle: 0.0,
-            total_turn: 0.0,
-        };
         let centre = Vec2::new(near - half.x, TOP - half.y - 0.5);
-        toys::spawn_scrap(h.world_mut(), centre, Vec2::ZERO, 0, tumble)
+        toys::spawn_scrap(h.world_mut(), centre, Vec2::ZERO, 0, 0.0, 0.0)
     });
     let start = body(&harness, scrap);
     // It goes home, past the scrap.
