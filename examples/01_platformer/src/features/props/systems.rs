@@ -11,8 +11,8 @@ use tungsten::physics::{SpatialFilter, overlap};
 
 use super::components::{Bomb, Crate, Keg, Plank, PropKind, Rock, StoneSize};
 use super::{
-    BURN_SECS, FUEL, FUSE_SECS, LIT, PLANK_BURN_SECS, PROP_BURN, SPREAD_AFTER, SPREAD_REACH,
-    TOUCH_REACH, alight, burning, fuel_left,
+    FUEL, FUSE_SECS, LIT, PROP_BURN, SPREAD_AFTER, SPREAD_REACH, TOUCH_REACH, alight, burning,
+    fuel_left,
 };
 use crate::features::combat::systems::{EMBER_TINTS, flicker};
 use crate::features::combat::{BURNING, DOUSED, FROZEN, has_status};
@@ -97,14 +97,15 @@ fn bodies(world: &World) -> Vec<Body> {
     bodies
 }
 
-/// The seconds of fire `prop` starts with: a plank's [`PLANK_BURN_SECS`],
-/// a crate's [`BURN_SECS`].
+/// The seconds of fire `prop` starts with, a plank's or a crate's whole
+/// fuel ([`super::whole_fuel`]).
 fn whole_burn(world: &World, prop: Entity) -> f32 {
-    if world.has::<Plank>(prop) {
-        PLANK_BURN_SECS
+    let kind = if world.has::<Plank>(prop) {
+        PropKind::Plank
     } else {
-        BURN_SECS
-    }
+        PropKind::Crate
+    };
+    super::whole_fuel(world, kind)
 }
 
 /// Whether two boxes overlap.
@@ -303,11 +304,13 @@ fn wood_tint(left: f32, lit: bool, whole: f32, frost: f32, time: f32) -> [u8; 4]
 /// `props_look`, in the present phase: a frozen or chilled prop takes the
 /// frost's tint; a burning crate its fire's flicker (burning's two ember
 /// tints) toward char by its burnt share to the 1.2, one put out its char
-/// alone, and a plank so over [`PLANK_BURN_SECS`], turned by its tumble; a
+/// alone, each over its whole fuel ([`super::whole_fuel`]), a plank too; a
 /// keg its lit fuse's frame by the quarter burnt, pulsing red over the
 /// fuse's last half; a bomb its spark's two frames in turn.
 pub fn look(world: &mut World) {
     let time = drawn_time(world);
+    let crates = super::whole_fuel(world, PropKind::Crate);
+    let planks = super::whole_fuel(world, PropKind::Plank);
     let fire = |stats: &Stats, tags: Option<&Tags>| {
         let left = stats.base(FUEL).unwrap_or(0.0);
         (left, tags.is_some_and(|tags| tags.has(BURNING)))
@@ -316,13 +319,13 @@ pub fn look(world: &mut World) {
         world.query_mut::<(&Crate, &Stats, &mut Sprite, Option<&Tags>, Option<&Effects>)>()
     {
         let (left, lit) = fire(stats, tags);
-        sprite.color = wood_tint(left, lit, BURN_SECS, frost(tags, effects), time);
+        sprite.color = wood_tint(left, lit, crates, frost(tags, effects), time);
     }
     for (_, stats, sprite, tags, effects) in
         world.query_mut::<(&Plank, &Stats, &mut Sprite, Option<&Tags>, Option<&Effects>)>()
     {
         let (left, lit) = fire(stats, tags);
-        sprite.color = wood_tint(left, lit, PLANK_BURN_SECS, frost(tags, effects), time);
+        sprite.color = wood_tint(left, lit, planks, frost(tags, effects), time);
     }
     let kegs: Vec<(Entity, Option<f32>, f32)> = world
         .query::<(Entity, &Keg, Option<&Tags>, Option<&Effects>)>()

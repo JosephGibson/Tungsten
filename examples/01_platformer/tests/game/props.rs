@@ -23,9 +23,7 @@ use example_01_platformer::features::gun;
 use example_01_platformer::features::level;
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::props::components::{MapProp, PropFire, PropKind, StoneSize};
-use example_01_platformer::features::props::{
-    self, BURN_SECS, KEG_BLAST, SPREAD_AFTER, STONE_PREFABS,
-};
+use example_01_platformer::features::props::{self, KEG_BLAST, SPREAD_AFTER, STONE_PREFABS};
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::{self, SMALL_BALL_RADIUS};
 use example_01_platformer::shell::Difficulty;
@@ -39,8 +37,8 @@ use tungsten::testing::UiHarness;
 
 use super::combat::{TOP, apply, dummy_at};
 use super::kind_body;
-use super::prefab_box;
 use super::{aim_at, ball, body, bursts, choose, floor, ground, pin_camera, run, stand};
+use super::{prefab_box, prefab_number};
 
 /// A run on the sky's ground at one step a frame, the courier at `x`, the
 /// camera held over it, with mana to spare.
@@ -146,7 +144,7 @@ fn a_crate_set_alight_burns_down_and_falls_in() {
     );
     assert!(!fuel(&harness, near).lit, "its neighbour not yet");
     let (mut caught, mut fell) = (None, None);
-    for frame in 1..=(BURN_SECS * 60.0) as u32 + 30 {
+    for frame in 1..=(prefab_number("crate", "/components/stats/fuel") * 60.0) as u32 + 30 {
         harness.step(1);
         if caught.is_none() && alive(&harness, near) && fuel(&harness, near).lit {
             caught = Some(frame);
@@ -160,7 +158,7 @@ fn a_crate_set_alight_burns_down_and_falls_in() {
     let caught = caught.expect("its neighbour caught");
     assert!(caught.abs_diff(spread) <= 1, "3 px away at 2 s: {caught}");
     let fell = fell.expect("it burned down");
-    let burn = (BURN_SECS * 60.0) as u32;
+    let burn = (prefab_number("crate", "/components/stats/fuel") * 60.0) as u32;
     assert!(fell.abs_diff(burn) <= 1, "8 s: {fell}");
 }
 
@@ -180,7 +178,7 @@ fn cold_and_a_hole_put_a_crate_out_with_its_fuel_kept() {
     assert!(bursts(&harness, "ex10_steam_burst") > steam, "with steam");
     let kept = fuel(&harness, wet).left;
     assert!(
-        (kept - (BURN_SECS - 1.0)).abs() < 0.1,
+        (kept - (prefab_number("crate", "/components/stats/fuel") - 1.0)).abs() < 0.1,
         "its fuel kept: {kept}"
     );
     // It cannot light for the douse's 4 s, then it burns its fuel out.
@@ -822,7 +820,6 @@ fn a_frozen_crate_shatters_into_no_planks() {
 
 #[test]
 fn a_burning_crate_s_planks_burn_and_fall_in_quietly() {
-    use example_01_platformer::features::props::PLANK_BURN_SECS;
     let (mut harness, _) = sky(200.0);
     let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);
     harness.step(1);
@@ -833,10 +830,14 @@ fn a_burning_crate_s_planks_burn_and_fall_in_quietly() {
     assert_eq!(lit.len(), 5);
     for &plank in &lit {
         let fuel = fuel(&harness, plank);
-        assert!(fuel.lit && fuel.left <= PLANK_BURN_SECS && fuel.lighter == Some(7));
+        assert!(
+            fuel.lit
+                && fuel.left <= prefab_number("plank", "/components/stats/fuel")
+                && fuel.lighter == Some(7)
+        );
     }
     let mut collapsed = 0;
-    for _ in 0..(PLANK_BURN_SECS * 60.0) as u32 + 4 {
+    for _ in 0..(prefab_number("plank", "/components/stats/fuel") * 60.0) as u32 + 4 {
         harness.step(1);
         collapsed += sounds(&harness, Sound::CrateCollapsed);
     }

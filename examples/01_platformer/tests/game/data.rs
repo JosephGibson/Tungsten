@@ -16,7 +16,6 @@ use example_01_platformer::features::gun::{
     BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
 };
 use example_01_platformer::features::player;
-use example_01_platformer::features::props::{BURN_SECS, PLANK_BURN_SECS};
 use example_01_platformer::features::spells::hud::ROUNDS;
 use example_01_platformer::features::toys::{
     BALL_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, SCRAP_HALF, SCRAP_MASS, SMALL_BALL_RADIUS,
@@ -176,15 +175,6 @@ fn every_restated_constant_matches_its_data() {
     let chill = json(&format!("data/effects/{CHILL_BUILD}.json"));
     assert_eq!(number(&chill, "/bands/0/at"), CHILL_NEEDS);
     assert_eq!(number(&chill, "/intensity/max"), CHILL_NEEDS);
-    // A crate's and a plank's fire, each prefab's `fuel` stat (7.13a).
-    let fuel = |prefab: &str| {
-        number(
-            &json(&format!("prefabs/{prefab}.json")),
-            "/components/stats/fuel",
-        )
-    };
-    assert_eq!(fuel("crate"), BURN_SECS);
-    assert_eq!(fuel("plank"), PLANK_BURN_SECS);
     // Each enemy's impact rule, inert until a troll throws it, at its
     // kind's mass, half of it under the light mass, as a body's hit counts.
     for kind in EnemyKind::ALL {

@@ -1,7 +1,7 @@
 //! The props (01 (g)): pine crates and red powder kegs, dynamic boxes the
 //! spells, the gun and the troll meet as they meet iron. Their fire and
 //! fuses are chemistry's statuses (7.13a). A crate catches fire, its
-//! [`PROP_BURN`] burning its `fuel` stat for [`BURN_SECS`], and falls in;
+//! [`PROP_BURN`] burning its `fuel` stat, its prefab's ([`whole_fuel`]), and falls in;
 //! once it has burned [`SPREAD_AFTER`] it sends `kindle` to the crates and
 //! kegs within [`SPREAD_REACH`] of its box, and lights at once the small
 //! balls within [`TOUCH_REACH`]. Cold, steam and a black hole put it out,
@@ -18,7 +18,7 @@
 //! goblin, and fizzles out at once when snuffed. A goblin's rock is a stone body that bounces and rolls and
 //! stays, 24 at most by its prefab's `cap`, the oldest crumbling. A crate hit hard
 //! enough breaks into five planks ([`break_crate`], e01sfx), which burn as
-//! it does for at most [`PLANK_BURN_SECS`] and fall in quietly,
+//! it does for at most their prefab's `fuel` and fall in quietly,
 //! 40 at most by their prefab's `cap`, the oldest crumbling. The hollow's rubble stones
 //! (e01hollow), three sizes the map sets down in heaps, are bodies as a
 //! rock is that slide as a crate does, never burning or freezing, with no
@@ -46,7 +46,8 @@ use crate::features::elements::{DOUSE_SECS, JOLT, is_frozen};
 use crate::features::run::Run;
 use crate::features::toys::{self, components::IronBlock};
 use crate::shared::{
-    SaveId, Saved, body_centre, despawn_tree, prefab_box, spawn_burst, spawn_key_burst,
+    SaveId, Saved, body_centre, despawn_tree, prefab_box, prefab_number, spawn_burst,
+    spawn_key_burst,
 };
 use components::{Bomb, Crate, Keg, MapProp, Plank, PropFire, PropKind, Rock, Stone};
 
@@ -57,8 +58,6 @@ pub const BOMB_PREFAB: &str = "goblin_bomb";
 pub const ROCK_PREFAB: &str = "goblin_rock";
 pub const PLANK_PREFAB: &str = "plank";
 pub const STONE_PREFABS: [&str; 3] = ["stone_small", "stone_medium", "stone_large"];
-/// A plank's fire at most, game seconds.
-pub const PLANK_BURN_SECS: f32 = 4.0;
 /// A broken crate's planks, one a row of its box from the top: each row's
 /// height from the crate's centre; the least and the most speed a row is
 /// kicked out at, away from the crate's centre; the lift each takes; and
@@ -68,10 +67,9 @@ pub const PLANK_KICK_LEAST: f32 = 260.0;
 pub const PLANK_KICK_MOST: f32 = 420.0;
 pub const PLANK_LIFT: f32 = 180.0;
 pub const PLANK_CARRY: f32 = 0.25;
-/// A crate's fire, game seconds; the seconds it burns before it lights the
-/// crates and kegs within [`SPREAD_REACH`] of its box; and how near its box
-/// a small ball lights from it, or a burning small ball lights it.
-pub const BURN_SECS: f32 = 8.0;
+/// The seconds a crate burns before it lights the crates and kegs within
+/// [`SPREAD_REACH`] of its box; and how near its box a small ball lights
+/// from it, or a burning small ball lights it.
 pub const SPREAD_AFTER: f32 = 2.0;
 pub const SPREAD_REACH: f32 = 4.0;
 pub const TOUCH_REACH: f32 = 2.0;
@@ -189,6 +187,13 @@ pub fn half(world: &World, kind: PropKind) -> Vec2 {
 #[must_use]
 pub fn centre(world: &World, kind: PropKind) -> Vec2 {
     prefab_box(world, prefab(kind)).1
+}
+
+/// A crate's or a plank's whole fire, game seconds: its prefab's `fuel`
+/// stat (`shared::prefab_number`), which its fire burns.
+#[must_use]
+pub fn whole_fuel(world: &World, kind: PropKind) -> f32 {
+    prefab_number(world, prefab(kind), &["stats", "fuel"])
 }
 
 /// A kind's prefab.
@@ -318,7 +323,7 @@ pub fn restored(world: &mut World, prop: Entity) {
 /// [`PLANK_KICK_MOST`] by row and to its side, less [`PLANK_LIFT`] up,
 /// plus [`PLANK_CARRY`] of `hitter`'s velocity, tumbling whole half-turns
 /// as it flies so it lies flat. A burning crate's planks burn with its fire
-/// left, at most [`PLANK_BURN_SECS`], crediting its lighter; a doused one's
+/// left, at most a plank's whole [`whole_fuel`], crediting its lighter; a doused one's
 /// keep the douse. Each plank is admitted under its prefab's kit `cap`,
 /// the oldest crumbling as each needs room ([`crumble_plank`]).
 pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
@@ -331,6 +336,7 @@ pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
     spawn_key_burst(world, "ex10_plank_splinters", at);
     audio::play(world, Sound::CrateBroke, at);
     despawn_tree(world, crate_);
+    let plank_fuel = whole_fuel(world, PropKind::Plank);
     let lowest = PLANK_ROWS[PLANK_ROWS.len() - 1];
     for (row, &height) in PLANK_ROWS.iter().enumerate() {
         let side = if row % 2 == 0 { -1.0 } else { 1.0 };
@@ -354,7 +360,7 @@ pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
         toys::tumble(world, plank, 0.0, turn);
         if let Some(fire) = fire {
             let burn = PropFire {
-                left: fire.left.min(PLANK_BURN_SECS),
+                left: fire.left.min(plank_fuel),
                 ..fire
             };
             set_fire(world, plank, &burn, lighter);

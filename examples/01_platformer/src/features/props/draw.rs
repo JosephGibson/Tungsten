@@ -9,7 +9,7 @@ use tungsten::core::{AssetRegistry, Transform, World};
 use tungsten::render::SpriteBatch;
 
 use super::components::{Crate, Keg, Plank, PropKind};
-use super::{BURN_SECS, FUEL};
+use super::{FUEL, whole_fuel};
 use crate::features::combat::{BURNING, FROZEN};
 use crate::features::elements::draw::FLAME_FRAMES;
 use crate::features::level::draw::{instance, material, push_quad, view};
@@ -56,12 +56,13 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
             && (origin - Vec2::splat(reach)).cmple(max).all()
     };
     // Each crate in view: its corner, its fire's fuel left and whether it
-    // burns.
+    // burns, of its prefab's whole.
+    let whole = whole_fuel(world, PropKind::Crate);
     let crates: Vec<(Vec2, f32, bool)> = world
         .query::<(&Crate, &Stats, Option<&Tags>, &Transform)>()
         .filter(|(.., at)| shown(at.position, FRAME))
         .map(|(_, stats, tags, at)| {
-            let left = stats.base(FUEL).unwrap_or(BURN_SECS);
+            let left = stats.base(FUEL).unwrap_or(whole);
             (
                 at.position,
                 left,
@@ -97,7 +98,7 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
         }
     }
     for &(origin, left, _) in &crates {
-        let burnt = 1.0 - left / BURN_SECS;
+        let burnt = 1.0 - left / whole;
         if burnt <= 0.0 {
             continue;
         }
@@ -109,7 +110,7 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
     }
     let time = drawn_time(world);
     for &(origin, left, _) in crates.iter().filter(|(.., lit)| *lit) {
-        let burnt = (1.0 - left / BURN_SECS).clamp(0.0, 1.0);
+        let burnt = (1.0 - left / whole).clamp(0.0, 1.0);
         let count = 3 + usize::from(burnt > 1.0 / 3.0) + usize::from(burnt > 2.0 / 3.0);
         let side = FRAME * (FLAME_SIDE + FLAME_GROWTH * (burnt * 2.0).min(1.0));
         for (i, spot) in FLAME_SPOTS.into_iter().take(count).enumerate() {
