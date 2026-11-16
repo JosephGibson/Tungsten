@@ -2810,6 +2810,89 @@ mod listening {
     }
 
     #[test]
+    fn the_listener_follows_its_entitys_body_centre() {
+        let (mut world, mut schedule) = rig();
+        let offset = Vec2::new(48.0, 65.0);
+        let hero = world.spawn_with((
+            Position(Vec2::new(400.0, 0.0)),
+            Collider::aabb(Vec2::new(12.0, 24.0)).with_offset(offset),
+        ));
+        world.insert_resource(CueListener::new(10.0, 100.0).following_body(hero));
+        let bell = at(
+            &mut world,
+            900.0,
+            Cues::new().on("rang", [CueAction::sound("blip")]),
+        );
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(448.0, 65.0)
+        );
+        // Moved before the step's occurrences, to the body's new centre: a
+        // cue there is heard whole, where one heard from the hero's
+        // `Position`, 80 px off, would play at a part of its volume.
+        world.get_mut::<Position>(hero).unwrap().0 = Vec2::new(900.0, 0.0) - offset;
+        ring(&mut world, bell);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(900.0, 0.0)
+        );
+        assert_eq!(
+            heard(&mut world),
+            [Heard::Play {
+                volume: 1.0,
+                looping: false,
+                fade: 0.0,
+                pan: 0.0
+            }]
+        );
+        // An entity without a collider is followed at its `Position`, and
+        // `set_following` keeps the listener's mode.
+        let bare = world.spawn_with((Position(Vec2::new(-200.0, 30.0)),));
+        world
+            .resource_mut::<CueListener>()
+            .set_following(Some(bare));
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(-200.0, 30.0)
+        );
+        world
+            .resource_mut::<CueListener>()
+            .set_following(Some(hero));
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(900.0, 0.0),
+            "the body's centre again: the mode it was built with"
+        );
+        world.despawn(hero);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(900.0, 0.0),
+            "a gone entity leaves it"
+        );
+        // `following` sets the point mode back.
+        let (mut world, mut schedule) = rig();
+        let hero = world.spawn_with((
+            Position(Vec2::new(400.0, 0.0)),
+            Collider::aabb(Vec2::new(12.0, 24.0)).with_offset(offset),
+        ));
+        world.insert_resource(
+            CueListener::new(10.0, 100.0)
+                .following_body(hero)
+                .following(hero),
+        );
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(400.0, 0.0)
+        );
+    }
+
+    #[test]
     fn a_panned_listener_pans_cue_sounds() {
         let (mut world, mut schedule) = rig();
         world.insert_resource(CueListener::new(1000.0, 2000.0).with_pan(200.0));

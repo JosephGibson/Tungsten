@@ -2135,7 +2135,8 @@ impl CueEvent {
 /// the listener's hearing without marking its `min_interval`, so a nearer
 /// one may still play; without one, every cue sound plays at its volume.
 /// The game moves it, to its player or its camera, each step before
-/// [`CUES`], or has it [follow](Self::following) an entity. With a
+/// [`CUES`], or has it [follow](Self::following) an entity, at its point or
+/// at its [body's centre](Self::following_body). With a
 /// [pan width](Self::with_pan), a cue sound plays panned toward its side;
 /// a `loop` plays by it, and a `shake` with a falloff falls off from it.
 ///
@@ -2160,6 +2161,8 @@ pub struct CueListener {
     silent: f32,
     /// The entity the cue system moves it to, each step.
     follows: Option<Entity>,
+    /// Whether it follows that entity's body centre, not its point.
+    body: bool,
     /// The distance along x at which a sound plays wholly to one side.
     pan: Option<f32>,
 }
@@ -2182,6 +2185,7 @@ impl CueListener {
             full,
             silent,
             follows: None,
+            body: false,
             pan: None,
         }
     }
@@ -2193,6 +2197,19 @@ impl CueListener {
     #[must_use]
     pub fn following(mut self, entity: Entity) -> Self {
         self.follows = Some(entity);
+        self.body = false;
+        self
+    }
+
+    /// The listener, following `entity`'s body centre: as
+    /// [`following`](Self::following), but moved to the entity's `Position`
+    /// plus its `Collider`'s offset, where a game hears from its hero's
+    /// middle, not its corner; an entity without both is followed at its
+    /// point, and one gone, or without a point, leaves it where it was.
+    #[must_use]
+    pub fn following_body(mut self, entity: Entity) -> Self {
+        self.follows = Some(entity);
+        self.body = true;
         self
     }
 
@@ -2220,7 +2237,9 @@ impl CueListener {
         self.follows
     }
 
-    /// Follows `entity`, or stops following with `None`.
+    /// Follows `entity`, or stops following with `None`, at the point the
+    /// listener was built to follow: [`following`](Self::following)'s, or
+    /// [`following_body`](Self::following_body)'s.
     pub fn set_following(&mut self, entity: Option<Entity>) {
         self.follows = entity;
     }
@@ -4904,11 +4923,12 @@ fn placed(world: &World, id: &str, position: Vec2, centred: bool) -> Vec2 {
 }
 
 /// Moves the World's [`CueListener`] to the entity it follows, when that
-/// entity is alive with a point.
+/// entity is alive with a point: to its point, or to its body's centre for
+/// a listener [following its body](CueListener::following_body).
 fn follow_listener(world: &mut World) {
-    let Some(entity) = world
+    let Some((entity, body)) = world
         .get_resource::<CueListener>()
-        .and_then(|listener| listener.follows)
+        .and_then(|listener| Some((listener.follows?, listener.body)))
     else {
         return;
     };
@@ -4916,7 +4936,11 @@ fn follow_listener(world: &mut World) {
     {
         return;
     }
-    let at = point_of(world, entity);
+    let at = if body {
+        body_point(world, entity)
+    } else {
+        point_of(world, entity)
+    };
     world.resource_mut::<CueListener>().position = at;
 }
 

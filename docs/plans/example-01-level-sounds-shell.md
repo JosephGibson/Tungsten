@@ -1,6 +1,6 @@
-# 01's sounds and geyser on the kit (example-01-level-sounds-shell) — draft
+# 01's sounds and geyser on the kit (example-01-level-sounds-shell) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13e, the first of its four plans (§2.8, split 2026-11-16): example 01's code-sent sounds registered once through `CuesOnEvent::with_names` (S-39), the data test's manifest half left to the kit's load check (S-164), its listener following the player by the kit, at the body's centre (S-154, with a kit builder); its jumps, bounds, refused bounds and landings played from the platformer controller's cue events in data (S-48); its looks at a point as named world cues where cue actions express them (S-79); the tome take a plain fixed-step system (S-185); the geyser's phases on a timed kit state machine (S-84), its touch on `ContactDamage`'s switch (S-156) and its plume placed by the hierarchy's propagation (S-180), older saves migrated at schema 40; every test's outcome unchanged but §3's Moves.
 - **non-goals:**
   - 7.13e's other three plans: its lift and map (S-19, S-31, S-83, S-85, S-106, S-132, S-144, S-160), its level parts (S-111, S-128, S-136, S-169, S-177) and its shell (the shell's fifteen rows), each written when the one before it closes (§2.8).
@@ -244,5 +244,6 @@ Round 2: the same reviewer at xhigh, 2026-11-16, the plan without this section a
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-16 | landed | `cargo test -p tungsten-kit --lib --locked -- react::cues::tests::` exit 0, `77 passed`, `listening::the_listener_follows_its_entity ... ok` (unchanged) and the new `listening::the_listener_follows_its_entitys_body_centre ... ok`; `cargo clippy -p tungsten-kit --all-targets --locked -- -D warnings` exit 0, right after the test; `cargo fmt --all -- --check` exit 0; `cargo test -p tungsten-kit --locked` exit 0 (`1060 passed`, `160 passed`); `cargo test -p tungsten --lib --locked -- kit_tests:: kit_recipes::` exit 0 (`280 passed`), the determinism pin unchanged; `cargo test -p tungsten-template-basic --locked` exit 0 (`184 passed`); `cargo test -p example-02-bench guards_` exit 0 (`16 passed`), no pin rewritten (`git status --short`: the step's four files alone); from `examples/01_platformer`, `cargo test --test game` exit 0, `487 passed; 0 failed; 1 ignored` (52.12 s), `git diff --quiet tests/game/guards/` exit 0; `just lint`, `just repo-check`, `just ctx`, `just docs-ratchet` (`no rise`) exit 0; `just api` exit 0, then `git diff --stat api/`: `api/tungsten-kit.txt | 2 ++` alone; `rg -c 'CueListener::following_body' api/tungsten-kit.txt` → `2`. The listener holds a `body` flag beside `follows` and stays `Copy`; the new test also reads `set_following` keeping the mode and `following` setting the point mode back (§2.3) | `crates/tungsten-kit/src/react/cues.rs`, `crates/tungsten-kit/src/tests/cues.rs`, `api/tungsten-kit.txt`, `DESIGN.md` |
 
 ## Follow-ups

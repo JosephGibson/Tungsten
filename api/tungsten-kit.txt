@@ -1266,6 +1266,7 @@ pub struct tungsten_kit::prelude::CueListener
 impl tungsten_kit::CueListener
 pub fn tungsten_kit::CueListener::at(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::CueListener::following(self, tungsten_core::ecs::entity::Entity) -> Self
+pub fn tungsten_kit::CueListener::following_body(self, tungsten_core::ecs::entity::Entity) -> Self
 pub fn tungsten_kit::CueListener::follows(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::CueListener::full(&self) -> f32
 pub fn tungsten_kit::CueListener::gain(&self, glam::f32::vec2::Vec2) -> f32
@@ -6040,6 +6041,7 @@ pub struct tungsten_kit::CueListener
 impl tungsten_kit::CueListener
 pub fn tungsten_kit::CueListener::at(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::CueListener::following(self, tungsten_core::ecs::entity::Entity) -> Self
+pub fn tungsten_kit::CueListener::following_body(self, tungsten_core::ecs::entity::Entity) -> Self
 pub fn tungsten_kit::CueListener::follows(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::CueListener::full(&self) -> f32
 pub fn tungsten_kit::CueListener::gain(&self, glam::f32::vec2::Vec2) -> f32
