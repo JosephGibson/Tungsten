@@ -45,7 +45,9 @@ use crate::features::elements::systems::status_left;
 use crate::features::elements::{DOUSE_SECS, JOLT, is_frozen};
 use crate::features::run::Run;
 use crate::features::toys::{self, components::IronBlock};
-use crate::shared::{SaveId, Saved, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
+use crate::shared::{
+    SaveId, Saved, body_centre, despawn_tree, prefab_box, spawn_burst, spawn_key_burst,
+};
 use components::{Bomb, Crate, Keg, MapProp, Plank, PropFire, PropKind, Rock, Stone};
 
 /// The props' prefabs, by their manifest IDs.
@@ -55,35 +57,6 @@ pub const BOMB_PREFAB: &str = "goblin_bomb";
 pub const ROCK_PREFAB: &str = "goblin_rock";
 pub const PLANK_PREFAB: &str = "plank";
 pub const STONE_PREFABS: [&str; 3] = ["stone_small", "stone_medium", "stone_large"];
-/// A crate's half size and its centre from its sprite's top-left, as its
-/// prefab sets them, and a keg's.
-pub const CRATE_HALF: Vec2 = Vec2::splat(28.0);
-pub const CRATE_CENTRE: Vec2 = Vec2::splat(32.0);
-pub const KEG_HALF: Vec2 = Vec2::new(19.0, 25.0);
-pub const KEG_CENTRE: Vec2 = Vec2::new(32.0, 35.0);
-/// A bomb's radius and its centre in its 16 px art, as its prefab sets
-/// them, and a rock's: each the art's middle, which its sprite turns about.
-pub const BOMB_RADIUS: f32 = 6.0;
-pub const BOMB_CENTRE: Vec2 = Vec2::splat(8.0);
-pub const ROCK_RADIUS: f32 = 5.0;
-pub const ROCK_CENTRE: Vec2 = Vec2::splat(8.0);
-/// A plank's half size and its centre from its 32 × 16 art's top-left, as
-/// its prefab sets them.
-pub const PLANK_HALF: Vec2 = Vec2::new(14.0, 4.0);
-pub const PLANK_CENTRE: Vec2 = Vec2::new(16.0, 8.0);
-/// Each stone size's half size and its centre from its art's top-left, as
-/// its prefab sets them: a small and a medium stone on 32 px art, a large
-/// one on 64, each box's bottom the art's lowest opaque row.
-pub const STONE_HALVES: [Vec2; 3] = [
-    Vec2::new(9.0, 7.0),
-    Vec2::new(13.0, 10.0),
-    Vec2::new(20.0, 15.0),
-];
-pub const STONE_CENTRES: [Vec2; 3] = [
-    Vec2::new(16.0, 25.0),
-    Vec2::new(16.0, 22.0),
-    Vec2::new(32.0, 49.0),
-];
 /// A plank's fire at most, game seconds.
 pub const PLANK_BURN_SECS: f32 = 4.0;
 /// A broken crate's planks, one a row of its box from the top: each row's
@@ -203,30 +176,19 @@ pub fn all(world: &World) -> Vec<Entity> {
         .collect()
 }
 
-/// A kind's half size: a bomb's or a rock's, its circle's.
+/// A kind's half size, as its prefab's rigid body sets it
+/// (`shared::prefab_box`): a bomb's or a rock's, its circle's radius.
 #[must_use]
-pub const fn half(kind: PropKind) -> Vec2 {
-    match kind {
-        PropKind::Crate => CRATE_HALF,
-        PropKind::Keg => KEG_HALF,
-        PropKind::Bomb => Vec2::splat(BOMB_RADIUS),
-        PropKind::Rock => Vec2::splat(ROCK_RADIUS),
-        PropKind::Plank => PLANK_HALF,
-        PropKind::Stone(size) => STONE_HALVES[size as usize],
-    }
+pub fn half(world: &World, kind: PropKind) -> Vec2 {
+    prefab_box(world, prefab(kind)).0
 }
 
-/// A kind's body centre from its sprite's top-left.
+/// A kind's body centre from its sprite's top-left, its prefab's rigid
+/// body's offset (`shared::prefab_box`): a bomb's or a rock's, its art's
+/// middle, which its sprite turns about.
 #[must_use]
-pub const fn centre(kind: PropKind) -> Vec2 {
-    match kind {
-        PropKind::Crate => CRATE_CENTRE,
-        PropKind::Keg => KEG_CENTRE,
-        PropKind::Bomb => BOMB_CENTRE,
-        PropKind::Rock => ROCK_CENTRE,
-        PropKind::Plank => PLANK_CENTRE,
-        PropKind::Stone(size) => STONE_CENTRES[size as usize],
-    }
+pub fn centre(world: &World, kind: PropKind) -> Vec2 {
+    prefab_box(world, prefab(kind)).1
 }
 
 /// A kind's prefab.
@@ -256,7 +218,7 @@ pub const fn rolls(kind: PropKind) -> bool {
 pub fn fits(world: &World, kind: PropKind, at: Vec2) -> bool {
     let mut met = Vec::new();
     let shape = Shape::Aabb {
-        half_extents: half(kind),
+        half_extents: half(world, kind),
     };
     overlap(world, shape, at, &SpatialFilter::new(), &mut met);
     met.iter().all(|hit| {
@@ -277,7 +239,8 @@ pub fn fits(world: &World, kind: PropKind, at: Vec2) -> bool {
 /// crate's fuel its prefab's whole; a plank its first art and its fuel
 /// whole, which a break sets.
 pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
-    let prop = toys::spawn_toy(world, prefab(kind), at - centre(kind), 1.0);
+    let corner = at - centre(world, kind);
+    let prop = toys::spawn_toy(world, prefab(kind), corner, 1.0);
     dress(world, kind, prop);
     prop
 }
@@ -294,7 +257,7 @@ fn spawn_capped(
 ) -> Entity {
     let Admission {
         prepared, culled, ..
-    } = toys::admit_toy(world, prefab(kind), at - centre(kind), 1.0, None)
+    } = toys::admit_toy(world, prefab(kind), at - centre(world, kind), 1.0, None)
         .expect("a prop's cap ends its oldest, refusing none: no kit route spawns a prop");
     for victim in culled {
         end(world, victim);
@@ -602,7 +565,8 @@ pub fn fires(world: &World) -> impl Iterator<Item = Entity> + '_ {
 /// and credited to the save ID `lighter`, at once, with the run's next save
 /// ID: a throw's, which sets its velocity.
 pub fn spawn_bomb(world: &mut World, at: Vec2, lighter: Option<u64>) -> Entity {
-    let bomb = toys::spawn_toy(world, BOMB_PREFAB, at - BOMB_CENTRE, 1.0);
+    let corner = at - centre(world, PropKind::Bomb);
+    let bomb = toys::spawn_toy(world, BOMB_PREFAB, corner, 1.0);
     let lighter = credit_of(world, lighter);
     light_fuse(world, bomb, FUSE_SECS, lighter);
     if let Some(at) = body_centre(world, bomb) {

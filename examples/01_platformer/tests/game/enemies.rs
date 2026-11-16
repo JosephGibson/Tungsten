@@ -48,8 +48,8 @@ use example_01_platformer::features::gun::{self, SHOT_DAMAGE};
 use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::Lantern;
+use example_01_platformer::features::props;
 use example_01_platformer::features::props::components::{Bomb, PropKind, Rock};
-use example_01_platformer::features::props::{self, CRATE_HALF};
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::{SUMMON_NEXT, SUMMONS, Summoned};
 use example_01_platformer::features::toys::IRON_HALF;
@@ -72,6 +72,7 @@ use tungsten::kit::{
 use tungsten::testing::UiHarness;
 
 use super::combat::{PLAIN_SEED, TOP, apply, dummy_at};
+use super::prefab_box;
 use super::{actor_body, kind_body, player_half};
 use super::{
     aim_at, body, bursts, calm, choose, ground, harness, kick as kick_at, mock_sprite, pin_camera,
@@ -1574,10 +1575,10 @@ fn a_snowball_bursts_at_its_first_touch_of_the_ground_a_wall_and_a_crate_hurting
     let crate_ = props::spawn(
         harness.world_mut(),
         PropKind::Crate,
-        Vec2::new(2000.0, TOP - CRATE_HALF.y - 0.5),
+        Vec2::new(2000.0, TOP - prefab_box("crate").0.y - 0.5),
     );
     harness.step(2);
-    let lid = body(&harness, crate_).y - CRATE_HALF.y;
+    let lid = body(&harness, crate_).y - prefab_box("crate").0.y;
     let (burst, hits) = burst_of(&mut harness, Vec2::new(2000.0, lid - 150.0), Vec2::ZERO);
     let at = burst.expect("it bursts on the crate");
     assert!(lid - at.y <= reach + 1.0, "at its first touch: {at}");
@@ -1846,8 +1847,8 @@ fn heard(harness: &UiHarness, sound: Sound) -> usize {
 fn a_charge_ploughs_crates_and_kegs_out_of_its_way_from_either_side() {
     for heading in [1.0, -1.0] {
         for (kind, half) in [
-            (PropKind::Crate, CRATE_HALF),
-            (PropKind::Keg, props::KEG_HALF),
+            (PropKind::Crate, prefab_box("crate").0),
+            (PropKind::Keg, prefab_box("keg").0),
         ] {
             let (mut harness, _) = arena();
             let (beetle, prop) = beetle_before(&mut harness, 1200.0, heading, |h, near| {
@@ -3966,10 +3967,13 @@ fn a_goblin_hops_a_crate_in_its_way() {
     harness.harness_mut().set_dt(1.0 / 60.0);
     let goblin = walker(&mut harness, EnemyKind::Goblin, 1000.0, TOP);
     // A crate just ahead of it, the way it patrols.
-    let crate_at = Vec2::new(1000.0 + 9.0 + 3.0 + CRATE_HALF.x, TOP - CRATE_HALF.y - 0.5);
+    let crate_at = Vec2::new(
+        1000.0 + 9.0 + 3.0 + prefab_box("crate").0.x,
+        TOP - prefab_box("crate").0.y - 0.5,
+    );
     props::spawn(harness.world_mut(), PropKind::Crate, crate_at);
     harness.step(2);
-    let past = crate_at.x + CRATE_HALF.x + 9.0;
+    let past = crate_at.x + prefab_box("crate").0.x + 9.0;
     let mut airborne = false;
     let over = until(&mut harness, 240, |h| {
         airborne |= !h
@@ -4205,7 +4209,7 @@ fn impacts_keep_their_amounts() {
     let crate_ = props::spawn(
         harness.world_mut(),
         PropKind::Crate,
-        Vec2::new(900.0, TOP - CRATE_HALF.y),
+        Vec2::new(900.0, TOP - prefab_box("crate").0.y),
     );
     harness.step(2);
     assert!(props::light(harness.world_mut(), crate_, None));
@@ -4601,7 +4605,7 @@ fn the_troll_swipes_what_is_close_and_slams_what_is_farther() {
     let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);
     still(&mut harness, troll);
     let heading = enemies::heading_of(harness.world(), troll).unwrap();
-    let crate_at = Vec2::new(900.0 + 70.0 * heading, TOP - CRATE_HALF.y);
+    let crate_at = Vec2::new(900.0 + 70.0 * heading, TOP - prefab_box("crate").0.y);
     let crate_ = props::spawn(harness.world_mut(), PropKind::Crate, crate_at);
     harness.step(2);
     let before = speed(&harness, crate_);
@@ -4638,7 +4642,7 @@ fn a_chasing_troll_lifts_an_unlit_keg_and_throws_it_but_leaves_a_lit_one() {
         let (mut harness, player) = arena();
         harness.harness_mut().set_dt(1.0 / 60.0);
         let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);
-        let half = props::KEG_HALF;
+        let half = prefab_box("keg").0;
         let keg = props::spawn(
             harness.world_mut(),
             PropKind::Keg,
@@ -4678,7 +4682,10 @@ fn a_searching_troll_lifts_the_crate_in_its_way_and_carries_it_past() {
     let (mut harness, player) = arena();
     stand(&mut harness, player, 300.0, TOP);
     let (troll, crate_) = troll_before(&mut harness, 60.0, |h, near| {
-        let centre = Vec2::new(near - CRATE_HALF.x, TOP - CRATE_HALF.y - 0.5);
+        let centre = Vec2::new(
+            near - prefab_box("crate").0.x,
+            TOP - prefab_box("crate").0.y - 0.5,
+        );
         props::spawn(h.world_mut(), PropKind::Crate, centre)
     });
     let start = body(&harness, crate_);
@@ -4738,7 +4745,7 @@ fn a_troll_sets_down_what_it_holds_back_on_patrol() {
     let (mut harness, player) = arena();
     stand(&mut harness, player, 300.0, TOP);
     let (troll, keg) = troll_before(&mut harness, 200.0, |h, near| {
-        let half = props::KEG_HALF;
+        let half = prefab_box("keg").0;
         let centre = Vec2::new(near - half.x, TOP - half.y - 0.5);
         props::spawn(h.world_mut(), PropKind::Keg, centre)
     });
@@ -4758,7 +4765,7 @@ fn a_troll_sets_down_what_it_holds_back_on_patrol() {
     }
     assert!(carrier_of(harness.world(), keg).is_none(), "set down");
     assert_eq!(blasts, 0, "a fall too short to set it off");
-    let half = props::KEG_HALF;
+    let half = prefab_box("keg").0;
     assert!(
         (body(&harness, keg).y - (TOP - half.y)).abs() < 2.0,
         "on the ground: {}",
@@ -4772,7 +4779,7 @@ fn a_keg_a_troll_threw_that_blows_credits_it() {
     harness.harness_mut().set_dt(1.0 / 60.0);
     let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);
     still(&mut harness, troll);
-    let half = props::KEG_HALF;
+    let half = prefab_box("keg").0;
     let keg = props::spawn(
         harness.world_mut(),
         PropKind::Keg,
@@ -4838,8 +4845,8 @@ fn a_walker_steps_over_balls_on_its_way() {
 #[test]
 fn a_walker_leaves_crates_and_kegs_where_they_stand() {
     for (kind, half) in [
-        (PropKind::Crate, CRATE_HALF),
-        (PropKind::Keg, props::KEG_HALF),
+        (PropKind::Crate, prefab_box("crate").0),
+        (PropKind::Keg, prefab_box("keg").0),
     ] {
         let (mut harness, _) = arena();
         harness.harness_mut().set_dt(1.0 / 60.0);

@@ -5,8 +5,8 @@ use example_01_platformer::features::audio::components::{Music, Sound};
 use example_01_platformer::features::audio::{self, FIRE_CRACKLE, LISTEN_FULL, LISTEN_SILENT};
 use example_01_platformer::features::dummy;
 use example_01_platformer::features::elements::systems::light;
+use example_01_platformer::features::props;
 use example_01_platformer::features::props::components::PropKind;
-use example_01_platformer::features::props::{self, CRATE_HALF};
 use example_01_platformer::save::{self, SaveGame};
 use example_01_platformer::shared::body_centre;
 use example_01_platformer::shell::{self as game_shell, RunStart};
@@ -16,6 +16,7 @@ use tungsten::kit::CueListener;
 use tungsten::testing::UiHarness;
 
 use super::combat::apply;
+use super::prefab_box;
 use super::{ball, centre, ground, harness, player_entity, run, settle, stand, teleport};
 
 const TOP: f32 = 1000.0;
@@ -86,7 +87,7 @@ fn the_crackle_follows_the_player_away_from_a_burning_crate() {
     let (mut harness, player) = run();
     ground(&mut harness, TOP);
     stand(&mut harness, player, 500.0, TOP);
-    let at = Vec2::new(200.0, TOP - CRATE_HALF.y - 0.5);
+    let at = Vec2::new(200.0, TOP - prefab_box("crate").0.y - 0.5);
     let crate_ = props::spawn(harness.world_mut(), PropKind::Crate, at);
     harness.step(1);
     assert!(props::light(harness.world_mut(), crate_, None));

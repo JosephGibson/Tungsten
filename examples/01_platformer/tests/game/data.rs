@@ -16,10 +16,7 @@ use example_01_platformer::features::gun::{
     BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
 };
 use example_01_platformer::features::player;
-use example_01_platformer::features::props::{
-    BOMB_CENTRE, BOMB_RADIUS, BURN_SECS, CRATE_CENTRE, CRATE_HALF, KEG_CENTRE, KEG_HALF,
-    PLANK_BURN_SECS, PLANK_CENTRE, PLANK_HALF, ROCK_CENTRE, ROCK_RADIUS,
-};
+use example_01_platformer::features::props::{BURN_SECS, PLANK_BURN_SECS};
 use example_01_platformer::features::spells::hud::ROUNDS;
 use example_01_platformer::features::toys::{
     BALL_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, SCRAP_HALF, SCRAP_MASS, SMALL_BALL_RADIUS,
@@ -30,42 +27,7 @@ use serde_json::Value;
 use tungsten::core::{Collider, DataRegistry, Shape};
 use tungsten::kit::Hurtbox;
 
-use super::actor_body;
-
-/// The file under `assets/` at `path`, as JSON.
-fn json(path: &str) -> Value {
-    let text = std::fs::read_to_string(format!("assets/{path}"))
-        .unwrap_or_else(|error| panic!("{path}: {error}"));
-    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{path}: {error}"))
-}
-
-/// The number at `pointer` in `value`.
-fn number(value: &Value, pointer: &str) -> f32 {
-    value
-        .pointer(pointer)
-        .and_then(Value::as_f64)
-        .unwrap_or_else(|| panic!("no number at {pointer}")) as f32
-}
-
-/// The pair at `pointer` in `value`.
-fn pair(value: &Value, pointer: &str) -> Vec2 {
-    Vec2::new(
-        number(value, &format!("{pointer}/0")),
-        number(value, &format!("{pointer}/1")),
-    )
-}
-
-/// A prefab's body: its half size, or its radius as a square's, and its
-/// offset.
-fn body(prefab: &str) -> (Vec2, Vec2) {
-    let value = json(&format!("prefabs/{prefab}.json"));
-    let shape = "/components/rigid_body/shape";
-    let half = match value.pointer(&format!("{shape}/radius")) {
-        Some(_) => Vec2::splat(number(&value, &format!("{shape}/radius"))),
-        None => pair(&value, &format!("{shape}/half_extents")),
-    };
-    (half, pair(&value, "/components/rigid_body/offset"))
-}
+use super::{actor_body, json, number, pair, prefab_box};
 
 #[test]
 fn every_restated_constant_matches_its_data() {
@@ -83,7 +45,7 @@ fn every_restated_constant_matches_its_data() {
     .chain(actors)
     {
         let file = actor_body(actor);
-        assert_eq!(body(prefab), (file.half, file.centre), "{prefab}");
+        assert_eq!(prefab_box(prefab), (file.half, file.centre), "{prefab}");
         let hurtbox = json(&format!("prefabs/{prefab}.json"))["components"]["hurtbox"].clone();
         let hurtbox: Hurtbox = serde_json::from_value(hurtbox).expect("a hurtbox");
         assert_eq!(hurtbox, file.hurtbox, "{prefab}");
@@ -123,7 +85,7 @@ fn every_restated_constant_matches_its_data() {
             assert_eq!(1 << 4, example_01_platformer::features::level::LAVA_LAYER);
         }
     }
-    assert_eq!(body("iron_block").0, IRON_HALF);
+    assert_eq!(prefab_box("iron_block").0, IRON_HALF);
     let iron = json("prefabs/iron_block.json");
     assert_eq!(number(&iron, "/components/rigid_body/mass"), IRON_MASS);
     let scrap = json("prefabs/iron_scrap.json");
@@ -168,9 +130,9 @@ fn every_restated_constant_matches_its_data() {
     ] {
         assert_eq!(number(&frost, pointer), crawler::MOVE_SPEED, "{pointer}");
     }
-    assert_eq!(body("iron_scrap").0, SCRAP_HALF);
-    assert_eq!(body("bowling_ball").0, Vec2::splat(BALL_RADIUS));
-    assert_eq!(body("small_ball").0, Vec2::splat(SMALL_BALL_RADIUS));
+    assert_eq!(prefab_box("iron_scrap").0, SCRAP_HALF);
+    assert_eq!(prefab_box("bowling_ball").0, Vec2::splat(BALL_RADIUS));
+    assert_eq!(prefab_box("small_ball").0, Vec2::splat(SMALL_BALL_RADIUS));
     // The missile's speed, the orbs' lifetime, the beetle's charge and the
     // bat's dive.
     let missile = json("data/abilities/fire_missile.json");
@@ -214,12 +176,6 @@ fn every_restated_constant_matches_its_data() {
     let chill = json(&format!("data/effects/{CHILL_BUILD}.json"));
     assert_eq!(number(&chill, "/bands/0/at"), CHILL_NEEDS);
     assert_eq!(number(&chill, "/intensity/max"), CHILL_NEEDS);
-    // The props' bodies and a goblin's rock and bomb.
-    assert_eq!(body("crate"), (CRATE_HALF, CRATE_CENTRE));
-    assert_eq!(body("keg"), (KEG_HALF, KEG_CENTRE));
-    assert_eq!(body("plank"), (PLANK_HALF, PLANK_CENTRE));
-    assert_eq!(body("goblin_bomb"), (Vec2::splat(BOMB_RADIUS), BOMB_CENTRE));
-    assert_eq!(body("goblin_rock"), (Vec2::splat(ROCK_RADIUS), ROCK_CENTRE));
     // A crate's and a plank's fire, each prefab's `fuel` stat (7.13a).
     let fuel = |prefab: &str| {
         number(
@@ -429,6 +385,40 @@ fn a_body_moved_in_its_data_file_moves_the_spawned_body() {
     let at = Vec2::new(900.0, 500.0);
     let summoned = enemies::summon(world, EnemyKind::Goblin, at).expect("its prefab");
     assert_eq!(body_centre(world, summoned), Some(at));
+}
+
+#[test]
+fn a_props_box_moved_in_its_prefab_moves_its_spawn() {
+    use example_01_platformer::features::props::{self, components::PropKind};
+    use tungsten::core::{Position, PrefabData, PrefabRegistry};
+    // The crate's prefab as a reload reads it, its box resized and moved:
+    // no Rust names either.
+    let mut file = json("prefabs/crate.json");
+    file["components"]["rigid_body"]["shape"]["half_extents"] = serde_json::json!([20, 24]);
+    file["components"]["rigid_body"]["offset"] = serde_json::json!([30, 40]);
+    let moved: PrefabData = serde_json::from_value(file).expect("a prefab");
+    let (mut harness, _) = super::run();
+    let world = harness.world_mut();
+    world
+        .resource_mut::<PrefabRegistry>()
+        .insert("crate".to_owned(), moved);
+    assert_eq!(props::half(world, PropKind::Crate), Vec2::new(20.0, 24.0));
+    assert_eq!(props::centre(world, PropKind::Crate), Vec2::new(30.0, 40.0));
+    // A crate spawned at a centre: its corner the offset short of it, its
+    // collider the moved box.
+    let at = Vec2::new(900.0, 500.0);
+    let crate_ = props::spawn(world, PropKind::Crate, at);
+    let corner = world.get::<Position>(crate_).expect("a body").0;
+    assert_eq!(corner, at - Vec2::new(30.0, 40.0));
+    let collider = world.get::<Collider>(crate_).expect("a collider");
+    assert_eq!(collider.offset, Vec2::new(30.0, 40.0));
+    assert_eq!(
+        collider.shape,
+        Shape::Aabb {
+            half_extents: Vec2::new(20.0, 24.0)
+        }
+    );
+    assert_eq!(body_centre(world, crate_), Some(at));
 }
 
 #[test]

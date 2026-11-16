@@ -8,8 +8,8 @@ use glam::Vec2;
 use tungsten::core::{AssetRegistry, Transform, World};
 use tungsten::render::SpriteBatch;
 
-use super::components::{Crate, Keg, Plank};
-use super::{BURN_SECS, FUEL, PLANK_CENTRE};
+use super::components::{Crate, Keg, Plank, PropKind};
+use super::{BURN_SECS, FUEL};
 use crate::features::combat::{BURNING, FROZEN};
 use crate::features::elements::draw::FLAME_FRAMES;
 use crate::features::level::draw::{instance, material, push_quad, view};
@@ -69,10 +69,12 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
             )
         })
         .collect();
+    // Each burning plank in view: its body's centre, its prefab's offset.
+    let plank = super::centre(world, PropKind::Plank);
     let planks: Vec<Vec2> = world
         .query::<(&Plank, &Tags, &Transform)>()
         .filter(|(_, tags, at)| tags.has(BURNING) && shown(at.position, PLANK_GLOW))
-        .map(|(_, _, at)| at.position + PLANK_CENTRE)
+        .map(|(_, _, at)| at.position + plank)
         .collect();
     let mut batches = Vec::new();
     if let Some(halo) = assets.get_sprite(HALO) {

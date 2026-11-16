@@ -1,5 +1,6 @@
 //! What two features share: the save IDs every saved entity carries, the
-//! actors' bodies as their data holds them, a body's centre and the
+//! actors' bodies as their data holds them, the parts of a loaded prefab
+//! that 01 reads where it places one, a body's centre and the
 //! distance to its surface, the short-lived particle bursts, cosmetic and
 //! key, and the actions read off the input the UI left to the game.
 
@@ -10,7 +11,7 @@ use serde::Deserialize;
 use tungsten::SceneEntity;
 use tungsten::core::{
     ActionMap, AnimationRegistry, AnimationState, AssetRegistry, Collider, DataRegistry, Entity,
-    InputState, Position, RoutedInput, Shape, SpriteAssetId, World,
+    InputState, Position, PrefabRegistry, RoutedInput, Shape, SpriteAssetId, World,
 };
 
 use tungsten::kit::{Aim, Children, Hurtbox};
@@ -182,6 +183,67 @@ pub fn fit_body(world: &mut World, entity: Entity, actor: &str) {
     if let Some(aim) = world.get_mut::<Aim>(entity) {
         *aim = aim.clone().with_offset(centre);
     }
+}
+
+/// The part of `prefab`'s loaded `components` at `path`, key by key
+/// (`&["rigid_body", "shape", "radius"]`), read as a `T` straight off the
+/// borrowed value: a number's or a pair's read allocates nothing. None
+/// when the prefab, the part or a `T` there is missing.
+#[must_use]
+pub fn prefab_part<'w, T: Deserialize<'w>>(
+    world: &'w World,
+    prefab: &str,
+    path: &[&str],
+) -> Option<T> {
+    let components = &world
+        .get_resource::<PrefabRegistry>()?
+        .get(prefab)?
+        .components;
+    let (first, rest) = path.split_first()?;
+    let part = rest
+        .iter()
+        .try_fold(components.get(*first)?, |part, key| part.get(*key))?;
+    T::deserialize(part).ok()
+}
+
+/// The number at `path` in `prefab`'s components ([`prefab_part`]).
+///
+/// # Panics
+///
+/// When it is missing: each prefab 01 places loads with the manifest.
+#[must_use]
+pub fn prefab_number(world: &World, prefab: &str, path: &[&str]) -> f32 {
+    prefab_part(world, prefab, path).unwrap_or_else(|| {
+        panic!(
+            "no number `{}` in the prefab `{prefab}`: each prefab 01 places loads with the manifest",
+            path.join(".")
+        )
+    })
+}
+
+/// `prefab`'s rigid body as its file sets it ([`prefab_part`]): its half
+/// size, a circle's radius as a square's, and its offset, the body's
+/// centre from the sprite's top-left, none when the file names none.
+///
+/// # Panics
+///
+/// When the prefab has no rigid body with a box or a circle: each prefab
+/// 01 places loads with the manifest.
+#[must_use]
+pub fn prefab_box(world: &World, prefab: &str) -> (Vec2, Vec2) {
+    let shape = ["rigid_body", "shape"];
+    let radius = prefab_part::<f32>(world, prefab, &[shape[0], shape[1], "radius"]);
+    let half = radius.map(Vec2::splat).or_else(|| {
+        prefab_part::<[f32; 2]>(world, prefab, &[shape[0], shape[1], "half_extents"])
+            .map(Vec2::from)
+    });
+    let offset = prefab_part::<[f32; 2]>(world, prefab, &["rigid_body", "offset"]);
+    let half = half.unwrap_or_else(|| {
+        panic!(
+            "no box or circle in the prefab `{prefab}`'s rigid body: each prefab 01 places loads with the manifest"
+        )
+    });
+    (half, offset.map_or(Vec2::ZERO, Vec2::from))
 }
 
 /// How far `at` lies from a body of `shape` about `centre`: 0 inside it.

@@ -24,6 +24,7 @@ use tungsten::physics::BodyKind;
 use tungsten::testing::UiHarness;
 
 use super::player_half;
+use super::prefab_box;
 use super::{ball, calm, harness, start};
 
 const DT: f32 = 1.0 / 60.0;
@@ -97,8 +98,11 @@ fn source() -> Source {
     serde_json::from_str(&text).expect("tools/level.json parses")
 }
 
-/// A moving deck's depth, in pixels: the lift deck's art.
-const DECK_DEPTH: f32 = 23.0;
+/// A moving deck's depth, in pixels: the lift deck's art, each platform
+/// prefab's rigid body's height.
+fn deck_depth() -> f32 {
+    2.0 * prefab_box("ex10_platform_0").0.y
+}
 /// The spikes' touch box's half extents.
 const SPIKES_HALF: Vec2 = Vec2::new(27.0, 14.0);
 
@@ -538,8 +542,8 @@ fn every_platform_sweep_clears_terrain_and_player_headroom() {
             let eased = 0.5 - 0.5 * (step as f32 / 200.0 * std::f32::consts::PI).cos();
             let pos = centre - travel + 2.0 * travel * eased;
             let half = placement.half_width * TILE;
-            let min = pos - Vec2::new(half, DECK_DEPTH * 0.5 + player_half().y * 2.0);
-            let max = pos + Vec2::new(half, DECK_DEPTH * 0.5);
+            let min = pos - Vec2::new(half, deck_depth() * 0.5 + player_half().y * 2.0);
+            let max = pos + Vec2::new(half, deck_depth() * 0.5);
             for row in (min.y / TILE).floor() as u32..(max.y / TILE).ceil() as u32 {
                 for col in (min.x / TILE).floor() as u32..(max.x / TILE).ceil() as u32 {
                     assert!(
@@ -593,7 +597,7 @@ fn the_elevator_sweep_clears_tiles_slabs_iron_and_a_riders_headroom() {
         let top = rest - rise * step as f32 / 400.0;
         // The cage's floor and a rider's head room over it.
         let min = Vec2::new(x - half, top - player_half().y * 2.0);
-        let max = Vec2::new(x + half, top + DECK_DEPTH);
+        let max = Vec2::new(x + half, top + deck_depth());
         for row in (min.y / TILE).floor() as u32..(max.y / TILE).ceil() as u32 {
             for col in (min.x / TILE).floor() as u32..(max.x / TILE).ceil() as u32 {
                 assert!(
@@ -764,8 +768,10 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
         held |= harness.world().get::<Elevator>(deck).unwrap().held;
         let at = centre(&harness, player);
         let (low, high) = (at - player_half(), at + player_half());
-        let inside =
-            low.x < right && high.x > left && low.y < top + DECK_DEPTH - 0.5 && high.y > top + 0.5;
+        let inside = low.x < right
+            && high.x > left
+            && low.y < top + deck_depth() - 0.5
+            && high.y > top + 0.5;
         assert!(
             !inside,
             "the rider at {at} is inside the upper level's deck"
@@ -984,7 +990,7 @@ fn thin_platform_underside_and_edges_match_visible_art() {
     harness.step(40);
     let head = centre(&harness, player).y - player_half().y;
     assert!(
-        (head - (deck.row * TILE + DECK_DEPTH)).abs() < 1.0,
+        (head - (deck.row * TILE + deck_depth())).abs() < 1.0,
         "head stopped at {head}"
     );
 }

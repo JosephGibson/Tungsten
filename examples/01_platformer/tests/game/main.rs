@@ -242,6 +242,46 @@ pub fn actor_body(actor: &str) -> Body {
     serde_json::from_str(&text).unwrap_or_else(|error| panic!("{path}: {error}"))
 }
 
+/// The file under `assets/` at `path`, as JSON.
+pub fn json(path: &str) -> serde_json::Value {
+    let text = std::fs::read_to_string(format!("assets/{path}"))
+        .unwrap_or_else(|error| panic!("{path}: {error}"));
+    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{path}: {error}"))
+}
+
+/// The number at `pointer` in `value`.
+pub fn number(value: &serde_json::Value, pointer: &str) -> f32 {
+    value
+        .pointer(pointer)
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or_else(|| panic!("no number at {pointer}")) as f32
+}
+
+/// The pair at `pointer` in `value`.
+pub fn pair(value: &serde_json::Value, pointer: &str) -> Vec2 {
+    Vec2::new(
+        number(value, &format!("{pointer}/0")),
+        number(value, &format!("{pointer}/1")),
+    )
+}
+
+/// A prefab's body as its file sets it, which the game loads: its half
+/// size, or its radius as a square's, and its offset.
+pub fn prefab_box(prefab: &str) -> (Vec2, Vec2) {
+    let value = json(&format!("prefabs/{prefab}.json"));
+    let shape = "/components/rigid_body/shape";
+    let half = match value.pointer(&format!("{shape}/radius")) {
+        Some(_) => Vec2::splat(number(&value, &format!("{shape}/radius"))),
+        None => pair(&value, &format!("{shape}/half_extents")),
+    };
+    (half, pair(&value, "/components/rigid_body/offset"))
+}
+
+/// The number at `pointer` in a prefab's file, which the game loads.
+pub fn prefab_number(prefab: &str, pointer: &str) -> f32 {
+    number(&json(&format!("prefabs/{prefab}.json")), pointer)
+}
+
 /// `kind`'s body ([`actor_body`]).
 pub fn kind_body(kind: EnemyKind) -> Body {
     actor_body(kind.name())

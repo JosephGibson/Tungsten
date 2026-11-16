@@ -9,10 +9,10 @@ use tungsten::core::{
 use tungsten::kit::{ContactDamage, Effects, Stats, Tags, stimulate};
 use tungsten::physics::{SpatialFilter, overlap};
 
-use super::components::{Bomb, Crate, Keg, Plank, Rock, StoneSize};
+use super::components::{Bomb, Crate, Keg, Plank, PropKind, Rock, StoneSize};
 use super::{
-    BOMB_CENTRE, BOMB_RADIUS, BURN_SECS, FUEL, FUSE_SECS, LIT, PLANK_BURN_SECS, PROP_BURN,
-    ROCK_RADIUS, SPREAD_AFTER, SPREAD_REACH, TOUCH_REACH, alight, burning, fuel_left,
+    BURN_SECS, FUEL, FUSE_SECS, LIT, PLANK_BURN_SECS, PROP_BURN, SPREAD_AFTER, SPREAD_REACH,
+    TOUCH_REACH, alight, burning, fuel_left,
 };
 use crate::features::combat::systems::{EMBER_TINTS, flicker};
 use crate::features::combat::{BURNING, DOUSED, FROZEN, has_status};
@@ -33,36 +33,29 @@ pub const CHAR_TINT: [u8; 4] = [112, 86, 72, 255];
 /// fast it beats, a second.
 pub const FUSE_PULSE: [u8; 4] = [255, 185, 165, 255];
 pub const PULSE_HZ: f32 = 6.0;
-/// Where a bomb's fuse burns, from its 16 px art's top-left as drawn
-/// upright, its frames' `fuse` point, which its look's sparks and smoke
-/// follow; and how fast its spark's two frames turn, a second.
-pub const BOMB_TIP: Vec2 = Vec2::new(10.5, 0.5);
+/// How fast a bomb's spark's two frames turn, a second.
 pub const BOMB_SPARK_HZ: f32 = 12.0;
 
 /// `props_roll`, in the tick phase: each bomb and rock turns by the way it
 /// travels over its radius, as a ball rolling without slipping does, in
 /// the air too, where the turn its throw gave it carries on. Its sprite
-/// turns about its art's middle, its body's centre.
+/// turns about its art's middle, its body's centre. Each radius is its
+/// prefab's circle's ([`super::half`]).
 pub fn roll(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     if dt <= 0.0 {
         return;
     }
+    let bomb = super::half(world, PropKind::Bomb).x;
+    let rock = super::half(world, PropKind::Rock).x;
     for (_, velocity, transform) in world.query_mut::<(&Bomb, &Velocity, &mut Transform)>() {
         transform.rotation =
-            (transform.rotation + velocity.0.x * dt / BOMB_RADIUS) % std::f32::consts::TAU;
+            (transform.rotation + velocity.0.x * dt / bomb) % std::f32::consts::TAU;
     }
     for (_, velocity, transform) in world.query_mut::<(&Rock, &Velocity, &mut Transform)>() {
         transform.rotation =
-            (transform.rotation + velocity.0.x * dt / ROCK_RADIUS) % std::f32::consts::TAU;
+            (transform.rotation + velocity.0.x * dt / rock) % std::f32::consts::TAU;
     }
-}
-
-/// Where a bomb's fuse burns now: its tip turned with the bomb about the
-/// art's middle, from the sprite's top-left at `corner`.
-#[must_use]
-pub fn bomb_tip(corner: Vec2, rotation: f32) -> Vec2 {
-    corner + BOMB_CENTRE + Vec2::from_angle(rotation).rotate(BOMB_TIP - BOMB_CENTRE)
 }
 
 /// A prop as the heat reads it: its save ID, entity, body centre and half

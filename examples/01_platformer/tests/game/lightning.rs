@@ -35,6 +35,7 @@ use tungsten::kit::{Conducted, Damaged, Health, Resist, StateMachine, conduction
 use tungsten::testing::UiHarness;
 
 use super::combat::{TOP, dummy_at, health};
+use super::prefab_box;
 use super::{
     aim_at, ball, body, bursts, centre, choose, floor, ground, mana, mock_sprite, pin_camera, run,
 };
@@ -728,7 +729,7 @@ fn a_chain_goes_on_past_a_keg_it_set_off() {
     // and the chain goes on from where the keg stood.
     let (mut harness, player) = sky();
     let near = toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y));
-    let half = props::half(PropKind::Keg);
+    let half = prefab_box("keg").0;
     let keg = props::spawn(
         harness.world_mut(),
         PropKind::Keg,

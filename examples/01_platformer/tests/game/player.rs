@@ -22,6 +22,7 @@ use tungsten::testing::UiHarness;
 
 use example_01_platformer::game::GAMEPLAY;
 
+use super::prefab_box;
 use super::{ball, body, calm, centre, fall_dead, ground, run, settle, stand, teleport, top};
 use super::{body_offset, player_half};
 
@@ -885,7 +886,7 @@ fn walk_into(
 
 #[test]
 fn the_wizard_walks_small_bodies_aside() {
-    use example_01_platformer::features::props::{self, CRATE_HALF, components::PropKind};
+    use example_01_platformer::features::props::{self, components::PropKind};
     use example_01_platformer::features::toys::{self, IRON_HALF};
     const FLOOR: f32 = 1000.0;
     // A small ball ahead rolls off before him.
@@ -896,7 +897,7 @@ fn the_wizard_walks_small_bodies_aside() {
     );
     assert!(xs[29] > 700.0, "he walked on: {}", xs[29]);
     // A crate ahead moves with him, at his run less its 12 of 60.
-    let crate_at = Vec2::new(700.0, FLOOR - CRATE_HALF.y - 0.5);
+    let crate_at = Vec2::new(700.0, FLOOR - prefab_box("crate").0.y - 0.5);
     let (xs, start, end) = walk_into(
         |h| props::spawn(h.world_mut(), PropKind::Crate, crate_at),
         50,
@@ -911,7 +912,7 @@ fn the_wizard_walks_small_bodies_aside() {
         "the crate went with him: {start} {end}"
     );
     assert!(
-        xs[49] + player_half().x <= end.x - CRATE_HALF.x + 0.5,
+        xs[49] + player_half().x <= end.x - prefab_box("crate").0.x + 0.5,
         "behind it: {} {end}",
         xs[49]
     );

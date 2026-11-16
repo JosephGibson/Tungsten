@@ -46,7 +46,7 @@ use example_01_platformer::features::player::components::{Player, StaffGlow};
 use example_01_platformer::features::props::components::{
     Bomb, Crate, Keg, PropKind, Rock, Stone, StoneSize,
 };
-use example_01_platformer::features::props::{self, CRATE_HALF, KEG_HALF, STONE_HALVES};
+use example_01_platformer::features::props::{self, STONE_PREFABS};
 use example_01_platformer::features::run::Run;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::tomes::{Tome, TomeKind, Tomes};
@@ -72,6 +72,7 @@ use tungsten::kit::{
 };
 use tungsten::testing::UiHarness;
 
+use super::prefab_box;
 use super::{actor_body, kind_body, player_half};
 use super::{
     aim_at, calm, centre, choose, floor, ground, harness, harness_with, mana, pin_camera,
@@ -213,13 +214,13 @@ fn busy(harness: &mut UiHarness) {
     let crate_ = props::spawn(
         world,
         PropKind::Crate,
-        Vec2::new(2150.0, TOP - CRATE_HALF.y - 0.5),
+        Vec2::new(2150.0, TOP - prefab_box("crate").0.y - 0.5),
     );
     assert!(props::light(world, crate_, me), "the crate catches");
     let keg = props::spawn(
         world,
         PropKind::Keg,
-        Vec2::new(2250.0, TOP - KEG_HALF.y - 0.5),
+        Vec2::new(2250.0, TOP - prefab_box("keg").0.y - 0.5),
     );
     assert!(props::light(world, keg, me), "the keg's fuse lights");
     let bomb = props::spawn_bomb(world, Vec2::new(2200.0, 600.0), Some(0));
@@ -245,14 +246,14 @@ fn busy(harness: &mut UiHarness) {
     let broken = props::spawn(
         world,
         PropKind::Crate,
-        Vec2::new(2050.0, TOP - CRATE_HALF.y - 0.5),
+        Vec2::new(2050.0, TOP - prefab_box("crate").0.y - 0.5),
     );
     props::break_crate(world, broken, Vec2::new(-200.0, 0.0));
     // A rubble stone (e01hollow) at the ground's east end.
     props::spawn(
         world,
         PropKind::Stone(StoneSize::Medium),
-        Vec2::new(2380.0, TOP - STONE_HALVES[1].y - 0.5),
+        Vec2::new(2380.0, TOP - prefab_box(STONE_PREFABS[1]).0.y - 0.5),
     );
     harness.step(1);
     // A toxic flask in flight, lobbed high over the sky's ground (e01flask).
@@ -2571,7 +2572,7 @@ fn a_keg_chain_saved_mid_chain_resumes_with_the_same_kegs_gone() {
     let world = harness.world_mut();
     let row: Vec<Entity> = (0..6)
         .map(|i| {
-            let at = Vec2::new(900.0 + 150.0 * i as f32, TOP - KEG_HALF.y - 0.5);
+            let at = Vec2::new(900.0 + 150.0 * i as f32, TOP - prefab_box("keg").0.y - 0.5);
             props::spawn(world, PropKind::Keg, at)
         })
         .collect();
@@ -3419,7 +3420,7 @@ fn an_older_saves_props_keep_their_caps() {
     // A crate and a keg summoned beside the busy run's own.
     let world = harness.world_mut();
     for (kind, x) in [(PropKind::Crate, 1850.0), (PropKind::Keg, 1950.0)] {
-        let at = Vec2::new(x, TOP - props::half(kind).y - 0.5);
+        let at = Vec2::new(x, TOP - prefab_box(props::prefab(kind)).0.y - 0.5);
         props::place(world, kind, at);
     }
     harness.step(1);
@@ -3887,7 +3888,7 @@ fn burning_planks_save_through_json_and_load_back() {
     let crate_ = props::spawn(
         world,
         PropKind::Crate,
-        Vec2::new(1500.0, TOP - CRATE_HALF.y - 0.5),
+        Vec2::new(1500.0, TOP - prefab_box("crate").0.y - 0.5),
     );
     assert!(props::light(world, crate_, Some(5)));
     props::break_crate(world, crate_, Vec2::ZERO);
@@ -3934,7 +3935,7 @@ fn three_stones_of_three_sizes_save_through_json_and_load_back() {
     calm(&mut harness);
     let world = harness.world_mut();
     for (size, x) in StoneSize::ALL.into_iter().zip([1500.0, 1600.0, 1700.0]) {
-        let half = STONE_HALVES[size as usize];
+        let half = prefab_box(STONE_PREFABS[size as usize]).0;
         props::spawn(
             world,
             PropKind::Stone(size),
@@ -4087,7 +4088,7 @@ fn a_fresh_run_sets_nine_stones_down() {
     let mut sizes: BTreeMap<&str, usize> = BTreeMap::new();
     for (stone, at, collider) in world.query::<(&Stone, &Position, &tungsten::core::Collider)>() {
         *sizes.entry(stone.size.name()).or_default() += 1;
-        let half = STONE_HALVES[stone.size as usize];
+        let half = prefab_box(STONE_PREFABS[stone.size as usize]).0;
         let foot = at.0.y + collider.offset.y + half.y;
         assert!(
             (foot - 63.0 * 64.0).abs() < 1.0,
@@ -4394,7 +4395,7 @@ fn older_bodies_still_hit() {
     let crate_ = props::spawn(
         harness.world_mut(),
         PropKind::Crate,
-        Vec2::new(800.0, TOP - CRATE_HALF.y - 0.5),
+        Vec2::new(800.0, TOP - prefab_box("crate").0.y - 0.5),
     );
     let rock = props::lob_rock(
         harness.world_mut(),

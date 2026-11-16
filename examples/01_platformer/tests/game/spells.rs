@@ -49,6 +49,7 @@ use example_01_platformer::features::spells::components::Spell;
 use tungsten::kit::Tags;
 
 use super::kind_body;
+use super::prefab_box;
 use super::{
     aim_at, ball, body, calm, centre, choose, floor, ground, mana, pin_camera, run, stand,
 };
@@ -252,7 +253,6 @@ fn level_blast(harness: &mut UiHarness, from: Vec2) -> Vec2 {
 
 #[test]
 fn a_missile_blasts_where_its_circle_first_meets_a_wall() {
-    use example_01_platformer::features::props::CRATE_HALF;
     use tungsten::core::assets::LayerKind;
     use tungsten::core::{TilemapData, TilemapInstance, TilemapRegistry};
     let radius = toys::MISSILE_RADIUS;
@@ -301,7 +301,7 @@ fn a_missile_blasts_where_its_circle_first_meets_a_wall() {
         Vec2::new(100.0, 20.0),
     );
     harness.step(1);
-    let at = Vec2::new(1200.0, rest - CRATE_HALF.y - 0.5);
+    let at = Vec2::new(1200.0, rest - prefab_box("crate").0.y - 0.5);
     let crate_ = props::spawn(harness.world_mut(), PropKind::Crate, at);
     harness.step(30);
     let half = harness
@@ -1022,24 +1022,24 @@ fn the_sprays_reach_further_and_burst_on_what_they_hit() {
 
 #[test]
 fn a_spray_bursts_its_surface_hit_on_a_crate() {
+    use example_01_platformer::features::props;
     use example_01_platformer::features::props::components::PropKind;
-    use example_01_platformer::features::props::{self, CRATE_HALF};
     for (slot, surface) in [
         (FLAMETHROWER, "ex10_flame_wall_hit"),
         (ICE_SPRAY, "ex10_frost_wall_hit"),
     ] {
         let (mut harness, player, _) = spray_range(None);
         let me = centre(&harness, player);
-        let at = Vec2::new(me.x + 180.0, SKY - CRATE_HALF.y - 0.5);
+        let at = Vec2::new(me.x + 180.0, SKY - prefab_box("crate").0.y - 0.5);
         let crate_ = props::spawn(harness.world_mut(), PropKind::Crate, at);
         harness.step(1);
         choose(&mut harness, slot);
         let middle = body(&harness, crate_);
         aim_at(&mut harness, middle);
         harness.harness_mut().press_action("cast");
-        let face = middle.x - CRATE_HALF.x;
+        let face = middle.x - prefab_box("crate").0.x;
         let burst = until(&mut harness, 18, |h| {
-            bursts_on_face(h, surface, face, middle.y, CRATE_HALF.y)
+            bursts_on_face(h, surface, face, middle.y, prefab_box("crate").0.y)
         });
         harness.harness_mut().release_action("cast");
         assert!(burst, "{slot:?}: {surface} at the crate within 0.3 s");
