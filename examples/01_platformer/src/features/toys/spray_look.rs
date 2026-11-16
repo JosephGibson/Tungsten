@@ -15,7 +15,7 @@ use tungsten::core::{
 
 use super::SPRAY_HALF_ANGLE;
 use super::components::{Element, Spray, SprayLook, SprayPuff};
-use super::systems::{SPRAY_MUZZLE, SPRAY_Z, SolidTiles, reach, trace_among, traced_near};
+use super::systems::{SPRAY_MUZZLE, SPRAY_Z, beam, reach};
 use crate::game::GAMEPLAY;
 
 /// The data kind of the sprays' looks ([`SprayStyle`]), `flame` and
@@ -331,15 +331,13 @@ pub fn sprites(world: &mut World) {
         if look.due >= every {
             let range = reach(spray.element) - SPRAY_MUZZLE;
             let lines: Vec<(Vec2, f32, f32)> = {
-                let bodies = traced_near(world, spray.caster, spray.start, range);
-                let tiles = SolidTiles::of(world);
                 let mut lines = Vec::new();
                 while look.due >= every {
                     look.due -= every;
                     look.puffs = look.puffs.wrapping_add(1);
                     let turn = (hash01(look.puffs) * 2.0 - 1.0) * SPRAY_HALF_ANGLE * PUFF_SPREAD;
                     let direction = Vec2::from_angle(turn).rotate(spray.aim);
-                    let (end, _) = trace_among(&bodies, &tiles, spray.start, direction, range);
+                    let (end, _) = beam(world, spray.caster, spray.start, direction, range);
                     let stop = (spray.start.distance(end) - PUFF_SHORT).max(0.0);
                     let jitter = 1.0 - PUFF_SPEED_SPREAD / 2.0
                         + PUFF_SPEED_SPREAD * hash01(look.puffs ^ 0x5bd1);

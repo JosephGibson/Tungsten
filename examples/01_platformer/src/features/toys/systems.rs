@@ -2,12 +2,11 @@
 
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
-use tungsten::core::assets::LayerKind;
 use tungsten::core::{
     AssetRegistry, AudioCommands, BodyKind, Collider, Entity, EventCursor, EventQueue, Light,
     LightKind, Particle, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
-    PrevPosition, RigidBody, Shape, SoundRegistry, Sprite, TilemapInstance, TilemapRegistry, Time,
-    Transform, Velocity, Visibility, With, World,
+    PrevPosition, RigidBody, Shape, SoundRegistry, Sprite, Time, Transform, Velocity, Visibility,
+    With, World,
 };
 use tungsten::kit::{
     Blast, Children, CooldownElapsed, EffectInstance, Effects, Health, LinearMotion, Modifier,
@@ -447,52 +446,6 @@ pub fn bend(world: &mut World) {
     }
 }
 
-/// The world's maps, looked up once for many point tests: a query and a
-/// registry lookup per sampled point cost more than the test itself.
-pub struct SolidTiles<'w> {
-    maps: Vec<(Vec2, &'w tungsten::core::TilemapData)>,
-}
-
-impl<'w> SolidTiles<'w> {
-    #[must_use]
-    pub fn of(world: &'w World) -> Self {
-        let Some(registry) = world.get_resource::<TilemapRegistry>() else {
-            return Self { maps: Vec::new() };
-        };
-        let maps = world
-            .query::<&TilemapInstance>()
-            .filter_map(|instance| Some((instance.origin, registry.get(&instance.id)?)))
-            .collect();
-        Self { maps }
-    }
-
-    /// Whether `point` lies in a solid collision tile of one of the maps.
-    #[must_use]
-    pub fn contains(&self, point: Vec2) -> bool {
-        self.maps.iter().any(|&(origin, map)| {
-            let tile = Vec2::new(map.tile_width as f32, map.tile_height as f32);
-            let cell = ((point - origin) / tile).floor();
-            if cell.x < 0.0
-                || cell.y < 0.0
-                || cell.x >= map.width as f32
-                || cell.y >= map.height as f32
-            {
-                return false;
-            }
-            let index = cell.y as usize * map.width as usize + cell.x as usize;
-            map.layers
-                .iter()
-                .any(|layer| layer.kind == LayerKind::Collision && layer.tiles[index] >= 0)
-        })
-    }
-}
-
-/// Whether `point` lies in a solid collision tile of a map in the world.
-#[must_use]
-pub fn solid_tile(world: &World, point: Vec2) -> bool {
-    SolidTiles::of(world).contains(point)
-}
-
 /// Where a missile's circle, its centre moving from `start` to `end`, first
 /// meets a solid tile or a body other than the player's or a sensor (balls,
 /// iron, decks, lifts): its centre then, by a core shape cast of the
@@ -889,88 +842,51 @@ fn ray_distance(start: Vec2, aim: Vec2, centre: Vec2, shape: Shape, range: f32) 
     }
 }
 
-/// A body a trace can stop on: its entity, centre, shape and save ID.
-#[derive(Debug, Clone, Copy)]
-pub struct Traced {
-    entity: Entity,
-    centre: Vec2,
-    shape: Shape,
-    id: Option<SaveId>,
-}
-
-/// The bodies, in query order, that a trace from within `radius` of
-/// `centre` could stop on, when its rays reach no farther than `radius`
-/// from `centre`: all but the caster's, the player's and sensors.
+/// Casts a spray's beam, a circle of [`BEAM_HALF_WIDTH`], from `start`
+/// along `aim` for `range`: where it stops on its centreline, and the body
+/// it stops on. A core shape cast of the last step's bodies (all but the
+/// caster's, the player's and sensors) and solid tiles: a body met stops it
+/// at the circle's centre where they meet; a tile met at its contact's
+/// place along the centreline, when that lies within the reach, else it
+/// runs its reach; nothing met, its reach. Ties go by the index's order.
 #[must_use]
-pub fn traced_near(world: &World, caster: Entity, centre: Vec2, radius: f32) -> Vec<Traced> {
-    let reach = Vec2::splat(radius + BEAM_HALF_WIDTH);
-    world
-        .query::<(Entity, &Collider, &Position, &RigidBody)>()
-        .filter(|(entity, _, _, body)| {
-            *entity != caster && body.kind != BodyKind::Sensor && !world.has::<Player>(*entity)
-        })
-        .filter_map(|(entity, collider, at, _)| {
-            let body = at.0 + collider.offset;
-            let half = collider.shape.half_extents();
-            ((body - centre).abs().cmple(reach + half).all()).then(|| Traced {
-                entity,
-                centre: body,
-                shape: collider.shape,
-                id: crate::shared::save_id(world, entity),
-            })
-        })
-        .collect()
-}
-
-/// Traces a ray from `start` along `aim` for `range`: where it stops, on a
-/// body or a solid tile, and the body, by exact intersections and tile
-/// samples four pixels apart. Ties go to the body with the lower save ID.
-#[must_use]
-pub fn trace(
+pub fn beam(
     world: &World,
     caster: Entity,
     start: Vec2,
     aim: Vec2,
     range: f32,
 ) -> (Vec2, Option<Entity>) {
-    let bodies = traced_near(world, caster, start, range);
-    trace_among(&bodies, &SolidTiles::of(world), start, aim, range)
-}
-
-/// [`trace`] over `bodies`, which hold every body the ray can meet.
-#[must_use]
-pub fn trace_among(
-    bodies: &[Traced],
-    tiles: &SolidTiles,
-    start: Vec2,
-    aim: Vec2,
-    range: f32,
-) -> (Vec2, Option<Entity>) {
-    let mut distance = range;
-    let mut hit: Option<(Entity, Option<SaveId>)> = None;
-    for body in bodies {
-        let Some(t) = ray_distance(start, aim, body.centre, body.shape, range) else {
-            continue;
-        };
-        let earlier = hit.is_none_or(|(_, old)| body.id < old);
-        if t < distance || (t == distance && earlier) {
-            distance = t;
-            hit = Some((body.entity, body.id));
+    let circle = Shape::Circle {
+        radius: BEAM_HALF_WIDTH,
+    };
+    let keep = |hit: &SpatialHit| {
+        hit.entity
+            .is_none_or(|body| body != caster && !world.has::<Player>(body))
+    };
+    let reached = (start + aim * range, None);
+    let Some(hit) = cast_shape_where(
+        world,
+        circle,
+        start,
+        aim,
+        range,
+        &SpatialFilter::new(),
+        keep,
+    ) else {
+        return reached;
+    };
+    match hit.entity {
+        Some(body) => (start + aim * hit.distance, Some(body)),
+        None => {
+            let along = (hit.point - start).dot(aim).max(0.0);
+            if along <= range {
+                (start + aim * along, None)
+            } else {
+                reached
+            }
         }
     }
-    let normal = Vec2::new(-aim.y, aim.x) * BEAM_HALF_WIDTH;
-    let steps = (distance / 4.0).ceil().max(1.0) as usize;
-    for i in 0..=steps {
-        let t = distance * i as f32 / steps as f32;
-        let at = start + aim * t;
-        if [at, at + normal, at - normal]
-            .into_iter()
-            .any(|p| tiles.contains(p))
-        {
-            return (at, None);
-        }
-    }
-    (start + aim * distance, hit.map(|(entity, _)| entity))
 }
 
 /// A spray's reach by its element.
@@ -1069,10 +985,8 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     let mut geysers: Vec<Entity> = Vec::new();
     // The nearest ray stop on a tile short of the reach.
     let mut wall: Option<Vec2> = None;
-    let bodies = traced_near(world, caster, centre, reach(element));
-    let tiles = SolidTiles::of(world);
     for direction in rays(aim) {
-        let (at, hit) = trace_among(&bodies, &tiles, centre, direction, reach(element));
+        let (at, hit) = beam(world, caster, centre, direction, reach(element));
         let short = centre.distance(at) < reach(element) - 0.01;
         if hit.is_none()
             && short
@@ -1204,7 +1118,7 @@ fn start_spray(
     aim: Vec2,
     element: Element,
 ) -> Entity {
-    let (end, _) = trace(world, caster, centre, aim, reach(element));
+    let (end, _) = beam(world, caster, centre, aim, reach(element));
     let start = centre + aim * SPRAY_MUZZLE.min(centre.distance(end));
     let names = match element {
         Element::Cold => COLD_EMITTERS,
@@ -1350,13 +1264,8 @@ pub fn spray_look(world: &mut World) {
             .map_or(Vec2::ZERO, |c| c.offset);
         let centre = at + offset;
         let range = reach(spray.element);
-        let (end, contact) = {
-            let bodies = traced_near(world, spray.caster, centre, range);
-            let tiles = SolidTiles::of(world);
-            let (end, _) = trace_among(&bodies, &tiles, centre, spray.aim, range);
-            let contact = contact_point(world, &bodies, &tiles, centre, spray.aim, range);
-            (end, contact)
-        };
+        let (end, _) = beam(world, spray.caster, centre, spray.aim, range);
+        let contact = contact_point(world, spray.caster, centre, spray.aim, range);
         spray.start = centre + spray.aim * SPRAY_MUZZLE.min(centre.distance(end));
         spray.end = end;
         spray.contact = contact;
@@ -1387,8 +1296,7 @@ pub fn spray_look(world: &mut World) {
 /// Where a spray's cone meets a surface, iron before anything else.
 fn contact_point(
     world: &World,
-    bodies: &[Traced],
-    tiles: &SolidTiles,
+    caster: Entity,
     centre: Vec2,
     aim: Vec2,
     range: f32,
@@ -1398,7 +1306,7 @@ fn contact_point(
         best.is_none_or(|p| centre.distance_squared(at) < centre.distance_squared(p))
     };
     for direction in rays(aim) {
-        let (at, hit) = trace_among(bodies, tiles, centre, direction, range);
+        let (at, hit) = beam(world, caster, centre, direction, range);
         if centre.distance(at) >= range - 0.01 {
             continue;
         }
@@ -1432,18 +1340,6 @@ fn orient_newborns(world: &mut World) {
     if emitters.is_empty() {
         return;
     }
-    let tiles = SolidTiles::of(world);
-    let near: Vec<(Entity, Vec<Traced>)> = world
-        .query::<&Spray>()
-        .map(|spray| {
-            let centre = body_centre(world, spray.caster).unwrap_or(spray.start);
-            let radius = SPRAY_RANGE + 2.0 * SPRAY_MUZZLE;
-            (
-                spray.caster,
-                traced_near(world, spray.caster, centre, radius),
-            )
-        })
-        .collect();
     let newborns: Vec<(Entity, Option<(Vec2, f32)>)> = world
         .query::<(Entity, &Particle, &Transform)>()
         .filter_map(|(entity, particle, at)| {
@@ -1465,17 +1361,9 @@ fn orient_newborns(world: &mut World) {
                 .map_or((entity, Element::Cold), |spray| {
                     (spray.caster, spray.element)
                 });
-            let fallback;
-            let bodies = match near.iter().find(|(c, _)| *c == caster) {
-                Some((_, bodies)) => bodies.as_slice(),
-                None => {
-                    fallback = traced_near(world, caster, at.position, SPRAY_RANGE);
-                    fallback.as_slice()
-                }
-            };
-            let (end, _) = trace_among(
-                bodies,
-                &tiles,
+            let (end, _) = beam(
+                world,
+                caster,
                 at.position,
                 direction,
                 reach(element) - SPRAY_MUZZLE,

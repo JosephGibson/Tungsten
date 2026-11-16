@@ -420,6 +420,8 @@ fn holding_f_gradually_freezes_iron_with_particles_and_a_single_audio_loop() {
     let (mut harness, player) = sprayer(300.0);
     let near = iron(&mut harness, 600.0);
     let behind = iron(&mut harness, 850.0);
+    // The iron enters the physics index the beam casts against at a step.
+    harness.step(1);
     let eye = centre(&harness, player);
     spray_at(&mut harness, Vec2::new(850.0, eye.y));
     harness.step(1);
@@ -547,12 +549,91 @@ fn beam_stops_on_colliders_and_tiles_and_has_a_finite_range() {
 }
 
 #[test]
+fn a_beam_meets_a_blocks_corner_rounded() {
+    use example_01_platformer::features::toys::systems::{FROST_WALL_HIT, beam};
+    use example_01_platformer::shared::Burst;
+    let (mut harness, player) = sprayer(300.0);
+    let block = iron(&mut harness, 700.0);
+    harness.step(1);
+    let middle = body(&harness, block);
+    let world = harness.world();
+    let half = world.get::<Collider>(block).unwrap().shape.half_extents();
+    let (side, top) = (middle.x - half.x, middle.y - half.y);
+    // Level, its centreline 3.9 px over the top: the beam's circle meets
+    // the block's rounded corner 0.89 px short of its side.
+    let from = Vec2::new(side - 200.0, top - 3.9);
+    let (stop, hit) = beam(world, player, from, Vec2::X, 400.0);
+    let short = (16.0_f32 - 3.9 * 3.9).sqrt();
+    assert!((short - 0.89).abs() < 0.01);
+    assert_eq!(hit, Some(block));
+    assert!(
+        stop.distance(Vec2::new(side - short, from.y)) < 0.1,
+        "the corner's stop: {stop}"
+    );
+    // At 45°, passing 4.5 px from the top corner outside it: no stop on it,
+    // where a square widening met it.
+    let corner = Vec2::new(side, top);
+    let out = Vec2::new(-1.0, -1.0).normalize();
+    let down_left = Vec2::new(-1.0, 1.0).normalize();
+    let start = corner + out * 4.5 - down_left * 40.0;
+    let (_, hit) = beam(world, player, start, down_left, 60.0);
+    assert_ne!(hit, Some(block), "past the corner");
+    // A level cold beam over a lone tile whose corner lies 3.9 px across
+    // its centreline: 0.5 px past its reach it runs its reach, as today; 0.5
+    // px short of it it stops there with its wall burst, where the last
+    // sample ran to the reach. The exposure's wall bursts and the look's
+    // end (its sprites' and particles' travel) read it.
+    for (past, beyond) in [(true, 0.5), (false, -0.5)] {
+        let (mut harness, player) = sprayer(300.0);
+        let eye = centre(&harness, player);
+        let mut wall = TilemapData::new(64, 64, 1, 1);
+        let tile = wall.add_tile("ex10_ground");
+        let layer = wall.add_layer("collision", LayerKind::Collision);
+        wall.set_tile(layer, 0, 0, tile);
+        let world = harness.world_mut();
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("lone".into(), wall);
+        let at = Vec2::new(eye.x + SPRAY_RANGE + beyond, eye.y + 3.9);
+        world.spawn_with((TilemapInstance::new("lone", at),));
+        harness.step(1);
+        spray_at(&mut harness, Vec2::new(eye.x + 1000.0, eye.y));
+        harness.step(30);
+        let reach = Vec2::new(eye.x + SPRAY_RANGE, eye.y);
+        let end = spray(&harness).unwrap().end;
+        let want = if past { reach } else { Vec2::new(at.x, eye.y) };
+        assert!(
+            end.distance(want) < 0.5,
+            "past {past}: the look ends at {end}, want {want}"
+        );
+        let world = harness.world();
+        let config = world
+            .resource::<ParticleConfigRegistry>()
+            .id_for_name(FROST_WALL_HIT);
+        let bursts = world
+            .query::<(&Burst, &ParticleEmitter, &Transform)>()
+            .filter(|(_, emitter, burst)| {
+                Some(emitter.config) == config && burst.position.distance(want) < 2.0
+            })
+            .count();
+        if past {
+            assert_eq!(bursts, 0, "no wall at the reach");
+        } else {
+            assert!(bursts > 0, "a wall burst where it stops");
+        }
+        release(&mut harness);
+    }
+}
+
+#[test]
 fn fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps() {
     let (mut harness, player) = sprayer(300.0);
     // The mine's loose iron, far off, which the shatter leaves be.
     let others = harness.world().query::<&IronBlock>().count();
     let at = Vec2::new(600.0, TOP - IRON_HALF.y);
     let brick = block(&mut harness, at);
+    // The iron enters the physics index the beam casts against at a step.
+    harness.step(1);
     let eye = centre(&harness, player);
     spray_at(&mut harness, Vec2::new(600.0, eye.y));
     // Its band's ice holds a step after its coat fills.
@@ -695,6 +776,8 @@ fn spray_aim_tracks_the_caster_and_partial_frost_thaws_when_aim_moves_away() {
     let (mut harness, player) = sprayer(600.0);
     let right = iron(&mut harness, 850.0);
     let left = iron(&mut harness, 350.0);
+    // The iron enters the physics index the beam casts against at a step.
+    harness.step(1);
     let eye = centre(&harness, player);
     spray_at(&mut harness, Vec2::new(1000.0, eye.y));
     harness.step(45);
@@ -763,6 +846,9 @@ fn freezing_uses_fixed_exposure_at_30_60_and_144_hz_and_stops_when_paused() {
     for fps in [30, 60, 144] {
         let (mut harness, player) = sprayer(300.0);
         let target = iron(&mut harness, 550.0);
+        // The iron enters the physics index the beam casts against at a
+        // step.
+        harness.step(1);
         let eye = centre(&harness, player);
         spray_at(&mut harness, Vec2::new(550.0, eye.y));
         harness.harness_mut().set_dt(1.0 / fps as f32);
@@ -788,6 +874,8 @@ fn freezing_uses_fixed_exposure_at_30_60_and_144_hz_and_stops_when_paused() {
 fn cone_frosts_iron_beside_the_centerline_and_spray_particles_follow_aim() {
     let (mut harness, player) = sprayer(300.0);
     let side = iron(&mut harness, 580.0);
+    // The iron enters the physics index the beam casts against at a step.
+    harness.step(1);
     let eye = centre(&harness, player);
     // The aim passes over the block; the cone's lower edge meets it.
     let up = 24f32.to_radians();
@@ -877,6 +965,8 @@ fn simultaneous_freezes_and_thermal_fractures_share_audio_but_keep_individual_cu
     let (mut harness, player) = sprayer(300.0);
     let lower = iron(&mut harness, 550.0);
     let upper = block(&mut harness, Vec2::new(550.0, TOP - 3.0 * IRON_HALF.y));
+    // The iron enters the physics index the beam casts against at a step.
+    harness.step(1);
     let eye = centre(&harness, player);
     let up = 20f32.to_radians();
     spray_at(&mut harness, eye + Vec2::new(up.cos(), -up.sin()) * 400.0);
