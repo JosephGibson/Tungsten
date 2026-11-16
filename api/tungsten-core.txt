@@ -14187,9 +14187,29 @@ impl core::marker::Unpin for tungsten_core::tween::Vec4Slot
 impl core::marker::UnsafeUnpin for tungsten_core::tween::Vec4Slot
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::tween::Vec4Slot
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::Vec4Slot
+pub struct tungsten_core::tween::EasedChannel
+pub tungsten_core::tween::EasedChannel::channel: tungsten_core::tween::TweenChannel
+pub tungsten_core::tween::EasedChannel::easing: core::option::Option<tungsten_core::tween::Easing>
+impl tungsten_core::tween::EasedChannel
+pub fn tungsten_core::tween::EasedChannel::easing_in(&self, tungsten_core::tween::Easing) -> tungsten_core::tween::Easing
+impl core::clone::Clone for tungsten_core::tween::EasedChannel
+pub fn tungsten_core::tween::EasedChannel::clone(&self) -> tungsten_core::tween::EasedChannel
+impl core::cmp::PartialEq for tungsten_core::tween::EasedChannel
+pub fn tungsten_core::tween::EasedChannel::eq(&self, &tungsten_core::tween::EasedChannel) -> bool
+impl core::fmt::Debug for tungsten_core::tween::EasedChannel
+pub fn tungsten_core::tween::EasedChannel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::tween::EasedChannel
+impl core::marker::StructuralPartialEq for tungsten_core::tween::EasedChannel
+impl core::marker::Freeze for tungsten_core::tween::EasedChannel
+impl core::marker::Send for tungsten_core::tween::EasedChannel
+impl core::marker::Sync for tungsten_core::tween::EasedChannel
+impl core::marker::Unpin for tungsten_core::tween::EasedChannel
+impl core::marker::UnsafeUnpin for tungsten_core::tween::EasedChannel
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::tween::EasedChannel
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::EasedChannel
 pub struct tungsten_core::tween::Tween
-pub tungsten_core::tween::Tween::channels: alloc::vec::Vec<tungsten_core::tween::TweenChannel>
 pub tungsten_core::tween::Tween::completed_cycles: u32
+pub tungsten_core::tween::Tween::despawn_at_end: bool
 pub tungsten_core::tween::Tween::direction: tungsten_core::tween::TweenDirection
 pub tungsten_core::tween::Tween::duration: f32
 pub tungsten_core::tween::Tween::easing: tungsten_core::tween::Easing
@@ -14198,8 +14218,11 @@ pub tungsten_core::tween::Tween::on_complete_tag: core::option::Option<alloc::st
 pub tungsten_core::tween::Tween::pending_remove: bool
 pub tungsten_core::tween::Tween::repeat: tungsten_core::tween::TweenRepeat
 impl tungsten_core::tween::Tween
+pub fn tungsten_core::tween::Tween::channels(&self) -> &[tungsten_core::tween::EasedChannel]
 pub fn tungsten_core::tween::Tween::new(f32, tungsten_core::tween::Easing) -> Self
 pub fn tungsten_core::tween::Tween::with_channel(self, tungsten_core::tween::TweenChannel) -> Self
+pub fn tungsten_core::tween::Tween::with_channel_eased(self, tungsten_core::tween::TweenChannel, tungsten_core::tween::Easing) -> Self
+pub fn tungsten_core::tween::Tween::with_despawn_at_end(self) -> Self
 pub fn tungsten_core::tween::Tween::with_repeat(self, tungsten_core::tween::TweenRepeat) -> Self
 pub fn tungsten_core::tween::Tween::with_tag(self, impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_core::tween::Tween
@@ -24912,8 +24935,8 @@ impl core::marker::UnsafeUnpin for tungsten_core::components::Transform
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Transform
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Transform
 pub struct tungsten_core::Tween
-pub tungsten_core::Tween::channels: alloc::vec::Vec<tungsten_core::tween::TweenChannel>
 pub tungsten_core::Tween::completed_cycles: u32
+pub tungsten_core::Tween::despawn_at_end: bool
 pub tungsten_core::Tween::direction: tungsten_core::tween::TweenDirection
 pub tungsten_core::Tween::duration: f32
 pub tungsten_core::Tween::easing: tungsten_core::tween::Easing
@@ -24922,8 +24945,11 @@ pub tungsten_core::Tween::on_complete_tag: core::option::Option<alloc::string::S
 pub tungsten_core::Tween::pending_remove: bool
 pub tungsten_core::Tween::repeat: tungsten_core::tween::TweenRepeat
 impl tungsten_core::tween::Tween
+pub fn tungsten_core::tween::Tween::channels(&self) -> &[tungsten_core::tween::EasedChannel]
 pub fn tungsten_core::tween::Tween::new(f32, tungsten_core::tween::Easing) -> Self
 pub fn tungsten_core::tween::Tween::with_channel(self, tungsten_core::tween::TweenChannel) -> Self
+pub fn tungsten_core::tween::Tween::with_channel_eased(self, tungsten_core::tween::TweenChannel, tungsten_core::tween::Easing) -> Self
+pub fn tungsten_core::tween::Tween::with_despawn_at_end(self) -> Self
 pub fn tungsten_core::tween::Tween::with_repeat(self, tungsten_core::tween::TweenRepeat) -> Self
 pub fn tungsten_core::tween::Tween::with_tag(self, impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_core::tween::Tween

@@ -382,3 +382,120 @@ fn a_light_intensity_tween_writes_the_light() {
     tween_tick_system(&mut world);
     assert!(world.get::<tungsten_core::Light>(lamp).unwrap().intensity >= 0.0);
 }
+
+#[test]
+fn each_channel_eases_on_its_own() {
+    // A 1 s tween, Linear, its scale eased `CubicOut` from 1 to 2 and its
+    // alpha from 255 to 0 on the tween's own.
+    let mut world = make_world(0.5);
+    let tween = Tween::new(1.0, Easing::Linear)
+        .with_channel_eased(
+            TweenChannel::ScaleX { from: 1.0, to: 2.0 },
+            Easing::CubicOut,
+        )
+        .with_channel(TweenChannel::ColorA { from: 255, to: 0 });
+    let entity = spawn_fading_sprite(&mut world, tween);
+    let read = |world: &World| {
+        (
+            world.get::<Transform>(entity).unwrap().scale.x,
+            world.get::<Sprite>(entity).unwrap().color[3],
+        )
+    };
+    tween_tick_system(&mut world);
+    assert_eq!(
+        read(&world),
+        (1.875, 128),
+        "at 0.5 s: 1 + 0.875, half of 255"
+    );
+    tween_tick_system(&mut world);
+    assert_eq!(read(&world), (2.0, 0), "at 1 s each at its end");
+    // A ping-pong's way back retraces each channel's own curve.
+    let mut world = make_world(0.5);
+    let tween = Tween::new(1.0, Easing::Linear)
+        .with_channel_eased(
+            TweenChannel::ScaleX { from: 1.0, to: 2.0 },
+            Easing::CubicOut,
+        )
+        .with_channel(TweenChannel::ColorA { from: 255, to: 0 })
+        .with_repeat(TweenRepeat::PingPong);
+    let entity = spawn_fading_sprite(&mut world, tween);
+    let read = |world: &World| {
+        (
+            world.get::<Transform>(entity).unwrap().scale.x,
+            world.get::<Sprite>(entity).unwrap().color[3],
+        )
+    };
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        tween_tick_system(&mut world);
+        seen.push(read(&world));
+    }
+    assert_eq!(seen, [(1.875, 128), (2.0, 0), (1.875, 128), (1.0, 255)]);
+    // No eased channel: every channel by the tween's easing, as before.
+    let mut world = make_world(0.5);
+    let tween = Tween::new(1.0, Easing::CubicOut)
+        .with_channel(TweenChannel::ScaleX { from: 1.0, to: 2.0 })
+        .with_channel(TweenChannel::ColorA { from: 0, to: 200 });
+    let entity = spawn_fading_sprite(&mut world, tween);
+    tween_tick_system(&mut world);
+    assert_eq!(world.get::<Transform>(entity).unwrap().scale.x, 1.875);
+    assert_eq!(world.get::<Sprite>(entity).unwrap().color[3], 175);
+}
+
+#[test]
+fn a_tween_despawns_its_entity_at_its_end() {
+    let completes = |world: &World, entity: Entity| {
+        world
+            .resource::<EventQueue<TweenComplete>>()
+            .iter()
+            .filter(|done| done.entity == entity)
+            .count()
+    };
+    let fade =
+        || Tween::new(0.1, Easing::Linear).with_channel(TweenChannel::ColorA { from: 255, to: 0 });
+    // Once: its end sends its `TweenComplete` and the flush ends the entity.
+    let mut world = make_world(0.05);
+    let entity = spawn_fading_sprite(&mut world, fade().with_despawn_at_end());
+    tween_tick_system(&mut world);
+    flush(&mut world);
+    assert!(world.is_alive(entity), "halfway");
+    tween_tick_system(&mut world);
+    assert_eq!(completes(&world, entity), 1);
+    assert!(world.is_alive(entity), "until the flush");
+    flush(&mut world);
+    assert!(!world.is_alive(entity), "gone at the flush");
+    // Times(2): at its second end.
+    let mut world = make_world(0.05);
+    let tween = fade()
+        .with_repeat(TweenRepeat::Times(2))
+        .with_despawn_at_end();
+    let entity = spawn_fading_sprite(&mut world, tween);
+    for _ in 0..2 {
+        tween_tick_system(&mut world);
+    }
+    flush(&mut world);
+    assert!(world.is_alive(entity), "after its first end");
+    for _ in 0..2 {
+        tween_tick_system(&mut world);
+    }
+    flush(&mut world);
+    assert_eq!(completes(&world, entity), 1);
+    assert!(!world.is_alive(entity), "at its second end");
+    // A replacement inserted earlier in the same flush keeps the entity.
+    let mut world = make_world(0.1);
+    let entity = spawn_fading_sprite(&mut world, fade().with_despawn_at_end());
+    world
+        .resource_mut::<CommandBuffer>()
+        .insert(entity, Tween::new(1.0, Easing::Linear));
+    tween_tick_system(&mut world);
+    flush(&mut world);
+    assert!(world.is_alive(entity), "the replacement keeps it");
+    assert_eq!(world.get::<Tween>(entity).unwrap().duration, 1.0);
+    // Without it, the tween alone goes, as before.
+    let mut world = make_world(0.1);
+    let entity = spawn_fading_sprite(&mut world, fade());
+    tween_tick_system(&mut world);
+    flush(&mut world);
+    assert!(world.is_alive(entity));
+    assert!(world.get::<Tween>(entity).is_none());
+}

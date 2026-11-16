@@ -5,8 +5,8 @@ use glam::Vec2;
 use std::hint::black_box;
 
 use tungsten_core::{
-    Easing, Sprite, SpriteAssetId, Transform, Tween, TweenChannel, TweenDirection, TweenRepeat,
-    Visibility, World, lerp_f32, lerp_u8,
+    Easing, Sprite, SpriteAssetId, Transform, Tween, TweenChannel, TweenRepeat, Visibility, World,
+    lerp_f32, lerp_u8,
 };
 
 fn build_world(n: usize) -> (World, Vec<tungsten_core::Entity>) {
@@ -21,23 +21,15 @@ fn build_world(n: usize) -> (World, Vec<tungsten_core::Entity>) {
         world.insert(e, Sprite::new(SpriteAssetId::new(0)));
         world.insert(e, Visibility::default());
         let duration = 1.0 + ((i % 64) as f32) * (1.0 / 64.0);
-        let tween = Tween {
-            channels: vec![
-                TweenChannel::PositionX {
-                    from: 0.0,
-                    to: 200.0,
-                },
-                TweenChannel::ColorA { from: 0, to: 255 },
-            ],
-            easing: Easing::CubicInOut,
-            duration,
-            elapsed: (i % 32) as f32 * (duration / 32.0),
-            repeat: TweenRepeat::Loop,
-            direction: TweenDirection::Forward,
-            completed_cycles: 0,
-            on_complete_tag: None,
-            pending_remove: false,
-        };
+        // Its channels through the builders, which alone write them.
+        let mut tween = Tween::new(duration, Easing::CubicInOut)
+            .with_channel(TweenChannel::PositionX {
+                from: 0.0,
+                to: 200.0,
+            })
+            .with_channel(TweenChannel::ColorA { from: 0, to: 255 })
+            .with_repeat(TweenRepeat::Loop);
+        tween.elapsed = (i % 32) as f32 * (duration / 32.0);
         world.insert(e, tween);
         entities.push(e);
     }
@@ -47,15 +39,15 @@ fn build_world(n: usize) -> (World, Vec<tungsten_core::Entity>) {
 fn tick_inline(world: &mut World, entities: &[tungsten_core::Entity], dt: f32) {
     for &entity in entities {
         let (duration, elapsed, easing, channels) = match world.get::<Tween>(entity) {
-            Some(t) => (t.duration, t.elapsed, t.easing, t.channels.clone()),
+            Some(t) => (t.duration, t.elapsed, t.easing, t.channels().to_vec()),
             None => continue,
         };
         let new_elapsed = (elapsed + dt).clamp(0.0, duration);
         let u = (new_elapsed / duration).clamp(0.0, 1.0);
         let k = easing.apply(u);
 
-        for ch in &channels {
-            match ch {
+        for eased in &channels {
+            match &eased.channel {
                 TweenChannel::PositionX { from, to } => {
                     if let Some(t) = world.get_mut::<Transform>(entity) {
                         t.position.x = lerp_f32(*from, *to, k);
