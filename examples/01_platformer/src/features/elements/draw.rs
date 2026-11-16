@@ -3,12 +3,12 @@
 //! the cold pulses' rings.
 
 use glam::Vec2;
-use tungsten::core::{AssetRegistry, Collider, Entity, Transform, World};
+use tungsten::core::{AssetRegistry, Collider, Entity, Sprite, Transform, World};
 use tungsten::kit::Tags;
 use tungsten::render::SpriteBatch;
 
 use super::FLAME_SIZE;
-use super::components::{Flame, IcePulse};
+use super::components::{Flame, IcePulse, PulseGlow};
 use super::systems::{burn_left, flame_look};
 use crate::features::combat::FROZEN;
 use crate::features::level::draw::{instance, material, push_quad, view};
@@ -118,41 +118,39 @@ fn flames(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     batches
 }
 
-/// Each cold pulse in view: a fading glow and its turning ring, which a
-/// freeze grows a little and a shatter flings out.
+/// Each cold pulse in view, from its tweened looks: its fading glow, then
+/// its turning ring, which a freeze grows a little and a shatter flings
+/// out, each its sprite's size times its scale at its top-left.
 fn pulses(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     let (min, max) = view(world);
-    let glow = material(world, CORE_MATERIAL);
     let mut batches = Vec::new();
-    for pulse in world.query::<&IcePulse>() {
-        let progress = (pulse.age / pulse.duration()).clamp(0.0, 1.0);
+    for (glow, PulseGlow(ring)) in world.query::<(Entity, &PulseGlow)>() {
+        let Some(pulse) = world.get::<IcePulse>(*ring) else {
+            continue;
+        };
         let reach = Vec2::splat(pulse.size * 1.3);
         if (pulse.at + reach).cmplt(min).any() || (pulse.at - reach).cmpgt(max).any() {
             continue;
         }
-        let left = 1.0 - progress;
-        if let Some(asset) = assets.get_sprite(CORE) {
-            let size = Vec2::splat(pulse.size * (1.5 + progress * 0.8));
-            let color = [160, 230, 255, (150.0 * left * left) as u8];
-            push_quad(
-                &mut batches,
-                asset,
-                instance(asset, pulse.at - size * 0.5, size, color),
-                glow,
-            );
-        }
-        if let Some(asset) = assets.get_sprite(ICE_RING) {
-            let growth = if pulse.shatter {
-                1.0 + progress * 1.5
-            } else {
-                1.3 + progress * 0.5
-            };
-            let size = Vec2::splat(pulse.size * growth);
-            let color = [190, 245, 255, (210.0 * left * left) as u8];
-            let mut ring = instance(asset, pulse.at - size * 0.5, size, color);
-            ring.rotation = pulse.age * if pulse.shatter { -1.5 } else { 0.5 };
-            push_quad(&mut batches, asset, ring, None);
+        for look in [glow, *ring] {
+            drawn(&mut batches, world, assets, look);
         }
     }
     batches
+}
+
+/// A pulse's look as its tween left it: its sprite's size times its scale
+/// at its top-left, turned, tinted and in its material.
+fn drawn(batches: &mut Vec<SpriteBatch>, world: &World, assets: &AssetRegistry, entity: Entity) {
+    let (Some(sprite), Some(at)) = (world.get::<Sprite>(entity), world.get::<Transform>(entity))
+    else {
+        return;
+    };
+    let Some(art) = assets.sprite(sprite.asset_id) else {
+        return;
+    };
+    let size = Vec2::new(art.width as f32, art.height as f32) * at.scale;
+    let mut quad = instance(art, at.position, size, sprite.color);
+    quad.rotation = at.rotation;
+    push_quad(batches, art, quad, sprite.material_id);
 }

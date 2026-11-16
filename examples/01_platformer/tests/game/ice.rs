@@ -279,6 +279,125 @@ fn scrap_friction_is_one_sixteenth_of_full_iron_with_the_same_frozen_reduction()
 }
 
 #[test]
+fn the_pulses_draw_their_curves_as_tweens() {
+    use example_01_platformer::features::combat::FROZEN;
+    use example_01_platformer::features::elements::components::PulseGlow;
+    let (mut harness, _) = run();
+    harness
+        .harness_mut()
+        .register_sprites(example_01_platformer::game::MANIFEST)
+        .expect("the sprites register");
+    let at = Vec2::new(900.0, 400.0);
+    pin_camera(&mut harness, at - Vec2::splat(300.0));
+    // A frozen ball's shell and a burning one's flame, which elements draw
+    // before the pulses.
+    let frozen = super::ball(&mut harness, at + Vec2::new(-200.0, 0.0), false);
+    let burning = super::ball(&mut harness, at + Vec2::new(200.0, 0.0), true);
+    harness.step(1);
+    let world = harness.world_mut();
+    let mut tags = world
+        .get::<tungsten::kit::Tags>(frozen)
+        .cloned()
+        .unwrap_or_default();
+    tags.insert(FROZEN);
+    world.insert(frozen, tags);
+    elements::ignite(world, burning);
+    let (freeze, shatter) = (at + Vec2::new(-60.0, 0.0), at + Vec2::new(60.0, 0.0));
+    elements::ice_pulse(world, freeze, 96.0, false);
+    elements::ice_pulse(world, shatter, 128.0, true);
+    assert_eq!(world.query::<&PulseGlow>().count(), 2);
+    // Each look at `age` by the hand draw's formulas: its centre, its size
+    // across, its turn and its colour, a glow then its ring.
+    let today = |age: f32| -> Vec<(Vec2, f32, f32, [u8; 4])> {
+        let mut looks = Vec::new();
+        for (centre, size, broken) in [(freeze, 96.0, false), (shatter, 128.0, true)] {
+            let duration = if broken { 0.32 } else { 0.24 };
+            if age >= duration {
+                continue;
+            }
+            let p = (age / duration).clamp(0.0, 1.0);
+            let left = 1.0 - p;
+            looks.push((
+                centre,
+                size * (1.5 + p * 0.8),
+                0.0,
+                [160, 230, 255, (150.0 * left * left) as u8],
+            ));
+            let growth = if broken { 1.0 + p * 1.5 } else { 1.3 + p * 0.5 };
+            let turn = age * if broken { -1.5 } else { 0.5 };
+            looks.push((
+                centre,
+                size * growth,
+                turn,
+                [190, 245, 255, (210.0 * left * left) as u8],
+            ));
+        }
+        looks
+    };
+    let mut frames = 0;
+    // 0.12 s falls between frames at 60 Hz: its nearest, 7/60 s.
+    for (age, steps) in [(0.05, 3), (7.0 / 60.0, 4), (0.2, 5)] {
+        harness.step(steps);
+        frames += steps;
+        assert!((frames as f32 / 60.0 - age).abs() < 1e-6);
+        let drawn: Vec<(Vec2, f32, f32, [u8; 4])> = effects(harness.world())
+            .iter()
+            .flat_map(|batch| &batch.instances)
+            .map(|quad| {
+                let size = Vec2::from(quad.size);
+                let centre = Vec2::from(quad.position) + size * 0.5;
+                (centre, size.x, quad.rotation, quad.color)
+            })
+            .collect();
+        let want = today(age);
+        assert!(
+            drawn.len() > want.len(),
+            "{age}: the flames and the shells first: {drawn:?}"
+        );
+        let pulses = &drawn[drawn.len() - want.len()..];
+        for (k, (look, (centre, size, turn, rgba))) in pulses.iter().zip(&want).enumerate() {
+            assert!(
+                look.0.distance(*centre) < 0.5 && (look.1 - size).abs() < 0.5,
+                "{age}, look {k}: {} at {}, want {size} at {centre}",
+                look.1,
+                look.0
+            );
+            assert!(
+                (look.2 - turn).abs() < 0.001,
+                "{age}, look {k}: turn {}",
+                look.2
+            );
+            assert_eq!(look.3[..3], rgba[..3], "{age}, look {k}");
+            assert!(
+                look.3[3].abs_diff(rgba[3]) <= 1,
+                "{age}, look {k}: alpha {} for {}",
+                look.3[3],
+                rgba[3]
+            );
+        }
+    }
+    // Each gone the frame its duration passes: the freeze's at 0.24 s, the
+    // shatter's at 0.32 s.
+    let alive = |harness: &UiHarness| {
+        harness
+            .world()
+            .query::<&IcePulse>()
+            .map(|pulse| pulse.shatter)
+            .collect::<Vec<bool>>()
+    };
+    harness.step(2);
+    assert_eq!(alive(&harness), [false, true], "0.233 s: both");
+    harness.step(1);
+    assert_eq!(alive(&harness), [true], "0.25 s: the freeze's gone");
+    assert_eq!(harness.world().query::<&PulseGlow>().count(), 1);
+    harness.step(4);
+    assert_eq!(alive(&harness), [true], "0.317 s: the shatter's still");
+    harness.step(1);
+    assert!(alive(&harness).is_empty(), "0.333 s: the shatter's gone");
+    assert_eq!(harness.world().query::<&PulseGlow>().count(), 0);
+}
+
+#[test]
 fn cold_pulses_draw_without_scene_lighting_stay_bounded_and_expire() {
     let (mut harness, _) = run();
     let at = Vec2::new(900.0, 400.0);

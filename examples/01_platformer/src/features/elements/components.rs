@@ -19,12 +19,13 @@ pub struct ColdFace(pub Vec2);
 #[derive(Debug, Clone, Copy)]
 pub struct FireEmitter;
 
-/// A brief icy ring where iron froze or shattered: presentation.
+/// A brief icy ring where iron froze or shattered, about `at`, `size` its
+/// base across: presentation, the ring's own entity, a tweened sprite its
+/// tween ends, with its glow beside it ([`PulseGlow`]).
 #[derive(Debug, Clone, Copy)]
 pub struct IcePulse {
     pub at: Vec2,
     pub size: f32,
-    pub age: f32,
     pub shatter: bool,
 }
 
@@ -34,4 +35,15 @@ impl IcePulse {
     pub fn duration(self) -> f32 {
         if self.shatter { 0.32 } else { 0.24 }
     }
+
+    /// How fast its ring turns, radians a second: a shatter's back fast.
+    #[must_use]
+    pub fn turn_rate(self) -> f32 {
+        if self.shatter { -1.5 } else { 0.5 }
+    }
 }
+
+/// A cold pulse's glow, a tweened sprite of its own beside its ring, the
+/// pulse it lights: drawn just before it, both ended by their tweens.
+#[derive(Debug, Clone, Copy)]
+pub struct PulseGlow(pub tungsten::core::Entity);

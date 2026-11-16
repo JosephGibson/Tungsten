@@ -6,9 +6,10 @@ use std::f32::consts::TAU;
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
 use tungsten::core::{
-    BodyKind, Collider, CollisionEvent, DataRef, Entity, EventQueue, Particle,
-    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position, PrevPosition,
-    RigidBody, Shape, Sprite, Time, Transform, Velocity, With, World,
+    AssetRegistry, BodyKind, Bundle, Collider, CollisionEvent, DataRef, Easing, Entity, EventQueue,
+    Particle, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
+    PrevPosition, RigidBody, Shape, Sprite, Time, Transform, Tween, TweenChannel, Velocity, With,
+    World,
 };
 use tungsten::kit::{
     Children, ContactDamage, EffectRequest, Effects, Health, Hit, ImpactDamage, Impacted, Reaction,
@@ -17,7 +18,8 @@ use tungsten::kit::{
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::cascade;
-use super::components::{ColdFace, FireEmitter, Flame, IcePulse};
+use super::components::{ColdFace, FireEmitter, Flame, IcePulse, PulseGlow};
+use super::draw;
 use super::{
     BALL_BURN, BASE_SMASH, BREAK_FLOOR, BREAK_SLACK, BURN_SECS, COAT, COLD, CRATE_BREAK, CRUSH_HIT,
     CRUSH_SPEED, DOUSE_BURSTS_PER_STEP, DOUSE_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP,
@@ -31,7 +33,7 @@ use crate::features::dummy::components::Dummy;
 use crate::features::enemies::components::{Enemy, Throw, Throws};
 use crate::features::enemies::{beetle, goblin};
 use crate::features::level::components::{Glow, Hazard};
-use crate::features::level::systems::drawn_time;
+use crate::features::level::systems::{CORE, CORE_MATERIAL, drawn_time};
 use crate::features::player::components::Player;
 use crate::features::props::{
     self,
@@ -1485,30 +1487,117 @@ pub fn ice_pulse(world: &mut World, at: Vec2, size: f32, shatter: bool) {
         },
         at,
     );
-    world.spawn_with((
-        IcePulse {
-            at,
-            size,
-            age: 0.0,
-            shatter,
-        },
-        SceneEntity { state_id: GAMEPLAY },
-    ));
+    let pulse = IcePulse { at, size, shatter };
+    let secs = pulse.duration();
+    // Its ring: a freeze's grows a little, a shatter's flings out, turning.
+    let (from, to) = if shatter { (1.0, 2.5) } else { (1.3, 1.8) };
+    let ring = pulse_look(
+        world,
+        draw::ICE_RING,
+        at,
+        (size * from, size * to),
+        [190, 245, 255, 210],
+        secs,
+    )
+    .turning(secs * pulse.turn_rate());
+    let ring = world.spawn_with(ring.into_bundle(None).with((pulse,)));
+    // Its glow, growing and fading in the soft flame's material.
+    let glow = pulse_look(
+        world,
+        CORE,
+        at,
+        (size * 1.5, size * 2.3),
+        [160, 230, 255, 150],
+        secs,
+    );
+    let material = crate::features::level::draw::material(world, CORE_MATERIAL);
+    world.spawn_with(glow.into_bundle(material).with((PulseGlow(ring),)));
 }
 
-/// `ice_pulses`, in the present phase: each pulse ages by the frame and
-/// goes after its duration.
-pub fn age_pulses(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    let mut done = Vec::new();
-    for (entity, pulse) in world.query_mut::<(Entity, &mut IcePulse)>() {
-        pulse.age += dt;
-        if pulse.age >= pulse.duration() {
-            done.push(entity);
-        }
+/// A cold pulse's look to spawn: `art` centred on `at`, from `across.0` to
+/// `across.1` pixels across, Linear over `secs`, its alpha falling from its
+/// colour's by the square of what is left (`QuadOut`), its `Transform` its
+/// top-left; no `Visibility`, so elements' pulses draw it.
+fn pulse_look(
+    world: &mut World,
+    art: &str,
+    at: Vec2,
+    (from, to): (f32, f32),
+    color: [u8; 4],
+    secs: f32,
+) -> PulseLook {
+    let size = crate::shared::sprite_size(world, art);
+    let id = world.resource_mut::<AssetRegistry>().intern_sprite(art);
+    let corner = |across: f32| at - Vec2::splat(across * 0.5);
+    let scale = |across: f32| Vec2::splat(across) / size;
+    let tween = Tween::new(secs, Easing::Linear)
+        .with_channel(TweenChannel::PositionX {
+            from: corner(from).x,
+            to: corner(to).x,
+        })
+        .with_channel(TweenChannel::PositionY {
+            from: corner(from).y,
+            to: corner(to).y,
+        })
+        .with_channel(TweenChannel::ScaleX {
+            from: scale(from).x,
+            to: scale(to).x,
+        })
+        .with_channel(TweenChannel::ScaleY {
+            from: scale(from).y,
+            to: scale(to).y,
+        })
+        .with_channel_eased(
+            TweenChannel::ColorA {
+                from: color[3],
+                to: 0,
+            },
+            Easing::QuadOut,
+        )
+        .with_despawn_at_end();
+    let transform = Transform {
+        position: corner(from),
+        rotation: 0.0,
+        scale: scale(from),
+    };
+    let mut sprite = Sprite::new(id);
+    sprite.color = color;
+    PulseLook {
+        transform,
+        sprite,
+        tween,
     }
-    for entity in done {
-        world.despawn(entity);
+}
+
+/// A cold pulse's look before its spawn.
+struct PulseLook {
+    transform: Transform,
+    sprite: Sprite,
+    tween: Tween,
+}
+
+impl PulseLook {
+    /// Turns it Linear from upright to `turn` radians over its life.
+    fn turning(mut self, turn: f32) -> Self {
+        self.tween = self.tween.with_channel(TweenChannel::Rotation {
+            from: 0.0,
+            to: turn,
+        });
+        self
+    }
+
+    /// Its bundle, drawn in `material`, owned by gameplay.
+    fn into_bundle(
+        mut self,
+        material: Option<tungsten::core::MaterialAssetId>,
+    ) -> (Transform, Sprite, Tween, SceneEntity) {
+        self.sprite.material_id = material;
+        (
+            self.transform,
+            self.sprite,
+            self.tween,
+            SceneEntity { state_id: GAMEPLAY },
+        )
     }
 }
 

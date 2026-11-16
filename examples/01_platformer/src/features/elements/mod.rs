@@ -246,10 +246,6 @@ impl Plugin for ElementsPlugin {
             run = run.after(name);
         }
         schedule.add(Stage::FixedUpdate, Phase::Overlap.join(run));
-        schedule.add(
-            Stage::PostUpdate,
-            Phase::Present.join(system("ice_pulses", systems::age_pulses)),
-        );
         // Before the frame's emission, which they place and colour.
         for desc in [
             system("fire_particles", systems::fire_particles),
