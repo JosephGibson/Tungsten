@@ -6,8 +6,8 @@
 //! the nearest burning thing; each area's ambience loop, raised in its
 //! area; and the game's one-shot sounds as cue events about the player,
 //! which the `cue_rules/sounds.json` data plays through the kit. The kit's
-//! `CueListener`, at the player, quiets the one-shots and the three placed
-//! loops by their distance from it.
+//! `CueListener`, following the player's body, quiets the one-shots and the
+//! three placed loops by their distance from it.
 
 pub mod components;
 pub mod systems;
@@ -15,7 +15,7 @@ pub mod systems;
 use glam::Vec2;
 use tungsten::Plugin;
 use tungsten::core::{AudioCommands, EventQueue, Schedule, SoundRegistry, Stage, World, system};
-use tungsten::kit::{CUES, CueEvent, CueListener, CuesOnEvent, Phase, ensure_phases};
+use tungsten::kit::{CueEvent, CueListener, CuesOnEvent};
 
 use crate::features::enemies;
 use crate::features::level::components::Area;
@@ -51,22 +51,17 @@ pub const FIRE_CRACKLE: &str = "ex10_fire_crackle_sfx";
 /// the others fall over.
 pub const AMBIENCE_FADE: f32 = 1.5;
 
-/// The audio as a plugin: each [`Sound`] a cue event the kit's cues read,
-/// before the manifest's `cue_rules` load and name them; in the fixed
-/// step's react phase `audio_listen` before the cues; and in `Update`
-/// `audio_duck`, then `audio_hum`, `audio_holes`, `audio_crackle`,
-/// `audio_combat` and `audio_ambience`.
+/// The audio as a plugin: every [`Sound`] a cue event the kit's cues read,
+/// brought in by one registration under their names before the manifest's
+/// `cue_rules` load and name them; and in `Update` `audio_duck`, then
+/// `audio_hum`, `audio_holes`, `audio_crackle`, `audio_combat` and
+/// `audio_ambience`. The kit's cues move the listener, from [`start`].
 pub struct AudioPlugin;
 
 impl Plugin for AudioPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
-        for sound in Sound::ALL {
-            CuesOnEvent::<Sounded>::new(sound.event(), cue_of(sound)).build(schedule, world);
-        }
-        ensure_phases(schedule);
-        // Before the kit's cues, which place the step's sounds by it.
-        let listen = system("audio_listen", systems::listen).before(CUES);
-        schedule.add(Stage::FixedUpdate, Phase::React.join(listen));
+        CuesOnEvent::<Sounded>::with_names(&Sound::ALL.map(Sound::event), cue_of)
+            .build(schedule, world);
         schedule.add(Stage::Update, system("audio_duck", systems::duck));
         let hum = system("audio_hum", systems::hum).after("audio_duck");
         schedule.add(Stage::Update, hum);
@@ -81,93 +76,9 @@ impl Plugin for AudioPlugin {
     }
 }
 
-/// The occurrence of `S`, the sound's place in [`Sound::ALL`].
-fn occurrence<const S: usize>(sounded: &Sounded) -> Option<CueEvent> {
-    (sounded.sound == Sound::ALL[S]).then(|| CueEvent::new(sounded.subject, sounded.at))
-}
-
-/// The map of `sound`'s cue event.
-fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
-    match sound {
-        Sound::Blasted => occurrence::<0>,
-        Sound::Crushed => occurrence::<1>,
-        Sound::Doused => occurrence::<2>,
-        Sound::Froze => occurrence::<3>,
-        Sound::Shattered => occurrence::<4>,
-        Sound::HoleOpened => occurrence::<5>,
-        Sound::ColdStarted => occurrence::<6>,
-        Sound::ColdEnded => occurrence::<7>,
-        Sound::FireStarted => occurrence::<8>,
-        Sound::Placed => occurrence::<9>,
-        Sound::Steamed => occurrence::<10>,
-        Sound::FrostBlasted => occurrence::<11>,
-        Sound::Thundered => occurrence::<12>,
-        Sound::Crackled => occurrence::<13>,
-        Sound::Shot => occurrence::<14>,
-        Sound::Reloaded => occurrence::<15>,
-        Sound::Ricocheted => occurrence::<16>,
-        Sound::WispFlare => occurrence::<17>,
-        Sound::CrawlerHiss => occurrence::<18>,
-        Sound::CrawlerLunge => occurrence::<19>,
-        Sound::BeetlePaw => occurrence::<20>,
-        Sound::BeetleCharge => occurrence::<21>,
-        Sound::BatScreech => occurrence::<22>,
-        Sound::BatDive => occurrence::<23>,
-        Sound::TrollStep => occurrence::<24>,
-        Sound::TrollRoar => occurrence::<25>,
-        Sound::TrollSlam => occurrence::<26>,
-        Sound::TrollThrow => occurrence::<27>,
-        Sound::Splintered => occurrence::<28>,
-        Sound::StaffGuttered => occurrence::<29>,
-        Sound::LavaSet => occurrence::<30>,
-        Sound::LiftStarted => occurrence::<31>,
-        Sound::LiftStopped => occurrence::<32>,
-        Sound::HoleCollapsed => occurrence::<33>,
-        Sound::IronLanded => occurrence::<34>,
-        Sound::Fizzled => occurrence::<35>,
-        Sound::Snapped => occurrence::<36>,
-        Sound::BallThudded => occurrence::<37>,
-        Sound::DryFired => occurrence::<38>,
-        Sound::Racked => occurrence::<39>,
-        Sound::FireEnded => occurrence::<40>,
-        Sound::AirJumped => occurrence::<41>,
-        Sound::NoMana => occurrence::<42>,
-        Sound::Switched => occurrence::<43>,
-        Sound::OrbDropped => occurrence::<44>,
-        Sound::CrateIgnited => occurrence::<45>,
-        Sound::CrateCollapsed => occurrence::<46>,
-        Sound::FuseLit => occurrence::<47>,
-        Sound::KegBlasted => occurrence::<48>,
-        Sound::RockThrown => occurrence::<49>,
-        Sound::RockHit => occurrence::<50>,
-        Sound::GoblinCackled => occurrence::<51>,
-        Sound::TrollSwiped => occurrence::<52>,
-        Sound::TrollGrunted => occurrence::<53>,
-        Sound::Alerted => occurrence::<54>,
-        Sound::GoblinStabbed => occurrence::<55>,
-        Sound::LavaTook => occurrence::<56>,
-        Sound::LavaChilled => occurrence::<57>,
-        Sound::LavaCracked => occurrence::<58>,
-        Sound::LavaMelted => occurrence::<59>,
-        Sound::TomePactTaken => occurrence::<60>,
-        Sound::TomeBoundingTaken => occurrence::<61>,
-        Sound::TomeArcaneTaken => occurrence::<62>,
-        Sound::Bounded => occurrence::<63>,
-        Sound::BeetlePloughed => occurrence::<64>,
-        Sound::CrawlerHopped => occurrence::<65>,
-        Sound::SnowballThrown => occurrence::<66>,
-        Sound::SnowballBurst => occurrence::<67>,
-        Sound::GoblinCrouched => occurrence::<68>,
-        Sound::GoblinDashed => occurrence::<69>,
-        Sound::GoblinYelped => occurrence::<70>,
-        Sound::GroundStruck => occurrence::<71>,
-        Sound::CrateBroke => occurrence::<72>,
-        Sound::GeyserSputter => occurrence::<73>,
-        Sound::GeyserErupt => occurrence::<74>,
-        Sound::StoneKnock => occurrence::<75>,
-        Sound::FlaskBurst => occurrence::<76>,
-        Sound::Corroded => occurrence::<77>,
-    }
+/// A sound's occurrence, under its cue event's name.
+fn cue_of(sounded: &Sounded) -> Option<CueEvent> {
+    Some(CueEvent::new(sounded.subject, sounded.at).named(sounded.sound.event()))
 }
 
 /// Plays `sound`, heard at `at`, through its cue: at the next cue step,
@@ -183,10 +94,16 @@ pub fn play(world: &mut World, sound: Sound, at: Vec2) {
 
 /// Starts a run's music: the exploration loop fades in, and the wisps' hum,
 /// the holes' hum, the fires' crackle, the combat layer and each area's
-/// ambience loop start silent; and the listener, at the player.
+/// ambience loop start silent; and the listener, at the player, whose body
+/// centre the kit's cues move it to each fixed step, through a death too.
 pub fn start(world: &mut World) {
     let at = enemies::systems::player(world).map_or(Vec2::ZERO, |(_, at)| at);
-    world.insert_resource(CueListener::new(LISTEN_FULL, LISTEN_SILENT).at(at));
+    let listener = CueListener::new(LISTEN_FULL, LISTEN_SILENT).at(at);
+    let listener = match world.get_resource::<Run>() {
+        Some(run) => listener.following_body(run.player),
+        None => listener,
+    };
+    world.insert_resource(listener);
     let explore = shell::play(world, MUSIC_EXPLORE, MUSIC_FADE);
     let silent = |world: &mut World, id: &str| {
         let handle = world.resource::<SoundRegistry>().get_by_id(id)?;

@@ -69,18 +69,6 @@ pub fn duck(world: &mut World) {
     });
 }
 
-/// `audio_listen`, in the react phase before the kit's cues: the listener
-/// follows the live player's centre, so the step's sounds are placed by
-/// it; a dead player's stays where it fell.
-pub fn listen(world: &mut World) {
-    let Some((_, at)) = enemies::systems::player(world) else {
-        return;
-    };
-    if let Some(listener) = world.get_resource_mut::<CueListener>() {
-        listener.set_position(at);
-    }
-}
-
 /// The listener's gain at the nearest of `sources`, the one it hears
 /// loudest: 0 with no listener or no source.
 fn nearest_gain(world: &World, sources: impl IntoIterator<Item = Vec2>) -> f32 {

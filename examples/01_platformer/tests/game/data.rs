@@ -266,28 +266,18 @@ fn a_spray_look_or_a_kind_out_of_range_is_refused() {
     }
 }
 
+/// Each rule's sound being in the manifest is the kit's check, as the
+/// `cue_rules` load: it refuses a sound action whose ID the registry lacks.
 #[test]
-fn every_sound_event_has_a_rule_and_its_sound_is_in_the_manifest() {
+fn every_sound_event_has_a_rule() {
     let rules = json("data/cue_rules/sounds.json");
     let rules = rules.as_array().expect("a list of rules");
-    let manifest = json("manifest.json");
     for sound in Sound::ALL {
         assert!(
             rules.iter().any(|rule| rule["on"] == sound.event()),
             "{sound:?}: no rule on `{}`",
             sound.event()
         );
-    }
-    for rule in rules {
-        for action in rule["do"].as_array().expect("its actions") {
-            if let Some(id) = action.pointer("/sound/id").and_then(Value::as_str) {
-                assert!(
-                    manifest["sounds"].get(id).is_some(),
-                    "{}: `{id}` is not in the manifest",
-                    rule["on"]
-                );
-            }
-        }
     }
 }
 
