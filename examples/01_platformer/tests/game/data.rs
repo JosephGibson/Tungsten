@@ -412,6 +412,59 @@ fn a_props_box_moved_in_its_prefab_moves_its_spawn() {
 }
 
 #[test]
+fn a_toys_body_moved_in_its_prefab_moves_its_spawn() {
+    use example_01_platformer::features::toys;
+    use tungsten::core::{Position, PrefabData, PrefabRegistry};
+    const TOP: f32 = 1000.0;
+    let (mut harness, player) = super::run();
+    super::ground(&mut harness, TOP);
+    super::stand(&mut harness, player, 100.0, TOP);
+    harness.step(1);
+    // 55 px over the ground's top, a block as its prefab loads (half 60)
+    // meets the ground, a static body, and does not fit.
+    let over = Vec2::new(1400.0, TOP - 55.0);
+    assert!(
+        !toys::iron_fits(harness.world(), over),
+        "the loaded block meets the ground"
+    );
+    // The iron block's and the small ball's prefabs as a reload reads them,
+    // the block's box shrunk and both offsets moved: no Rust names them.
+    let mut iron = json("prefabs/iron_block.json");
+    iron["components"]["rigid_body"]["shape"]["half_extents"] = serde_json::json!([50, 50]);
+    iron["components"]["rigid_body"]["offset"] = serde_json::json!([54, 54]);
+    let mut small = json("prefabs/small_ball.json");
+    small["components"]["rigid_body"]["offset"] = serde_json::json!([9, 9]);
+    let world = harness.world_mut();
+    for (id, file) in [("iron_block", iron), ("small_ball", small)] {
+        let moved: PrefabData = serde_json::from_value(file).expect("a prefab");
+        world
+            .resource_mut::<PrefabRegistry>()
+            .insert(id.to_owned(), moved);
+    }
+    assert!(toys::iron_fits(world, over), "the moved block clears it");
+    // A block placed at a centre: its corner the offset short of it, its
+    // collider the moved box.
+    let at = Vec2::new(1400.0, TOP - 400.0);
+    let block = toys::place_iron(world, at);
+    let corner = world.get::<Position>(block).expect("a body").0;
+    assert_eq!(corner, at - Vec2::splat(54.0));
+    let collider = world.get::<Collider>(block).expect("a collider");
+    assert_eq!(
+        collider.shape,
+        Shape::Aabb {
+            half_extents: Vec2::splat(50.0)
+        }
+    );
+    assert_eq!(body_centre(world, block), Some(at));
+    // A small ball spawned at a centre: its corner 9, 9 short of it.
+    let at = Vec2::new(700.0, TOP - 300.0);
+    let ball = toys::spawn_ball(world, at, true);
+    let corner = world.get::<Position>(ball).expect("a body").0;
+    assert_eq!(corner, at - Vec2::splat(9.0));
+    assert_eq!(body_centre(world, ball), Some(at));
+}
+
+#[test]
 fn the_harness_knows_each_sprites_size() {
     use example_01_platformer::shared::sprite_size;
     use tungsten::core::AssetRegistry;

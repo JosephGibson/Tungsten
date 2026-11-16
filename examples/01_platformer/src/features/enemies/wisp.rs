@@ -38,18 +38,20 @@ fn nearest_fire(world: &World, at: Vec2) -> Option<Vec2> {
         .min_by(|a, b| a.distance(at).total_cmp(&b.distance(at)))
 }
 
-/// The burning balls' centres.
+/// The burning balls' centres, each its corner and its prefab's offset.
 fn burning(world: &World) -> impl Iterator<Item = Vec2> + '_ {
+    use crate::features::toys::{BOWLING_BALL, SMALL_BALL};
+    let offset = |prefab| crate::shared::prefab_box(world, prefab).1;
+    let (small_centre, centre) = (offset(SMALL_BALL), offset(BOWLING_BALL));
     world
         .query::<(&Ball, &Flame, &Tags, &Position, Option<&SmallBall>)>()
         .filter(|(_, _, tags, ..)| tags.has(BURNING))
-        .map(|(_, _, _, at, small)| {
-            let centre = if small.is_some() {
-                crate::features::toys::SMALL_BALL_CENTRE
+        .map(move |(_, _, _, at, small)| {
+            at.0 + if small.is_some() {
+                small_centre
             } else {
-                crate::features::toys::BALL_CENTRE
-            };
-            at.0 + centre
+                centre
+            }
         })
 }
 

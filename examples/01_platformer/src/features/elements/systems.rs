@@ -45,19 +45,19 @@ use crate::features::toys::components::{
 };
 use crate::features::toys::systems::holes;
 use crate::features::toys::{
-    self, BALL_RADIUS, HOLE_RADIUS, IRON_HALF, IRON_LAND_SPEED, SCRAP_COUNT, SCRAP_HALF,
-    SMALL_BALL_RADIUS,
+    self, BOWLING_BALL, HOLE_RADIUS, IRON_LAND_SPEED, IRON_SCRAP_PREFAB, SCRAP_COUNT, SMALL_BALL,
 };
 use crate::game::GAMEPLAY;
 use crate::shared::{
-    BURST_CAP, SaveId, Saved, body_centre, despawn_tree, spawn_burst, spawn_key_burst,
+    BURST_CAP, SaveId, Saved, body_centre, despawn_tree, prefab_box, spawn_burst, spawn_key_burst,
 };
 
-/// Two touching small balls' centres, with the solver's resting slack.
-const CONTACT_DISTANCE: f32 = 2.0 * SMALL_BALL_RADIUS + 0.5;
-/// How far above a burning ball another's centre may sit and still rest on
-/// it: a bowling ball on a small one, with slack.
-const COVER_REACH: f32 = BALL_RADIUS + SMALL_BALL_RADIUS + 1.0;
+/// The balls' radii, their prefabs' circles: a bowling ball's and a small
+/// one's.
+fn ball_radii(world: &World) -> (f32, f32) {
+    let radius = |prefab| prefab_box(world, prefab).0.x;
+    (radius(BOWLING_BALL), radius(SMALL_BALL))
+}
 /// A new fire grows over these seconds from this part of its flame, and a
 /// burn fades over its last seconds to char.
 const KINDLE_SECS: f32 = 0.2;
@@ -146,6 +146,8 @@ pub fn spread_fire(world: &mut World) {
     if sources.is_empty() {
         return;
     }
+    // Two touching small balls' centres, with the solver's resting slack.
+    let contact = 2.0 * ball_radii(world).1 + 0.5;
     let mut targets = HashSet::new();
     if let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() {
         for event in events.iter_current() {
@@ -170,10 +172,7 @@ pub fn spread_fire(world: &mut World) {
         .reduce(|(a, b), (c, d)| (a.min(c), b.max(d)));
     let mut cells: HashMap<(i32, i32), Vec<(Entity, Vec2)>> = HashMap::new();
     if let Some((min, max)) = bounds {
-        let (min, max) = (
-            min - Vec2::splat(CONTACT_DISTANCE),
-            max + Vec2::splat(CONTACT_DISTANCE),
-        );
+        let (min, max) = (min - Vec2::splat(contact), max + Vec2::splat(contact));
         for (entity, _, at, collider, flame) in
             world.query::<(Entity, &SmallBall, &Position, &Collider, Option<&Flame>)>()
         {
@@ -181,18 +180,15 @@ pub fn spread_fire(world: &mut World) {
             if flame.is_some() || p.cmplt(min).any() || p.cmpgt(max).any() {
                 continue;
             }
-            cells
-                .entry(cell(p, CONTACT_DISTANCE))
-                .or_default()
-                .push((entity, p));
+            cells.entry(cell(p, contact)).or_default().push((entity, p));
         }
     }
     for &p in &lit {
-        let (x, y) = cell(p, CONTACT_DISTANCE);
+        let (x, y) = cell(p, contact);
         for dy in -1..=1 {
             for dx in -1..=1 {
                 for &(entity, q) in cells.get(&(x + dx, y + dy)).into_iter().flatten() {
-                    if q.distance_squared(p) <= CONTACT_DISTANCE * CONTACT_DISTANCE {
+                    if q.distance_squared(p) <= contact * contact {
                         targets.insert(entity);
                     }
                 }
@@ -226,19 +222,20 @@ pub fn flame_exposure(world: &mut World) {
     else {
         return;
     };
-    let (min, max) = (
-        min - Vec2::splat(COVER_REACH),
-        max + Vec2::splat(COVER_REACH),
-    );
+    // How far above a burning ball another's centre may sit and still rest
+    // on it: a bowling ball on a small one, with slack.
+    let (bowling, small) = ball_radii(world);
+    let cover = bowling + small + 1.0;
+    let (min, max) = (min - Vec2::splat(cover), max + Vec2::splat(cover));
     let mut cells: HashMap<(i32, i32), Vec<Vec2>> = HashMap::new();
     for (_, at, collider) in world.query::<(&Ball, &Position, &Collider)>() {
         let p = at.0 + collider.offset;
         if p.cmpge(min).all() && p.cmple(max).all() {
-            cells.entry(cell(p, COVER_REACH)).or_default().push(p);
+            cells.entry(cell(p, cover)).or_default().push(p);
         }
     }
     for (entity, p) in burning {
-        let (x, y) = cell(p, COVER_REACH);
+        let (x, y) = cell(p, cover);
         let (mut left, mut right, mut over) = (false, false, false);
         for q in (y - 1..=y)
             .flat_map(|cy| (x - 1..=x + 1).map(move |cx| (cx, cy)))
@@ -247,12 +244,10 @@ pub fn flame_exposure(world: &mut World) {
         {
             let rise = p.y - q.y;
             let dx = q.x - p.x;
-            if !(0.5 * SMALL_BALL_RADIUS..=COVER_REACH).contains(&rise)
-                || dx.abs() > 1.3 * SMALL_BALL_RADIUS
-            {
+            if !(0.5 * small..=cover).contains(&rise) || dx.abs() > 1.3 * small {
                 continue;
             }
-            over |= dx.abs() < 0.5 * SMALL_BALL_RADIUS;
+            over |= dx.abs() < 0.5 * small;
             left |= dx < 0.0;
             right |= dx > 0.0;
         }
@@ -583,9 +578,11 @@ pub fn ball_impacts(world: &mut World) {
                 };
                 if !dusted.iter().any(|&(_, ball, _)| ball == this)
                     && let Some(centre) = body_centre(world, this)
+                    && let Some(collider) = world.get::<Collider>(this)
                 {
                     let id = crate::shared::save_id(world, this);
-                    dusted.push((id, this, centre - pushed * BALL_RADIUS));
+                    let radius = collider.shape.half_extents().x;
+                    dusted.push((id, this, centre - pushed * radius));
                 }
             }
         }
@@ -651,12 +648,12 @@ pub fn impact_sparks(world: &mut World) {
     }
 }
 
-/// How fast iron at `centre` moving at `velocity` drives into a body at
-/// `target` of half size `half`: its speed along the face they meet on,
-/// when they touch and it is at least [`CRUSH_SPEED`].
-fn impact(centre: Vec2, velocity: Vec2, target: Vec2, half: Vec2) -> Option<f32> {
+/// How fast iron at `centre` of half size `own` moving at `velocity`
+/// drives into a body at `target` of half size `half`: its speed along the
+/// face they meet on, when they touch and it is at least [`CRUSH_SPEED`].
+fn impact(centre: Vec2, own: Vec2, velocity: Vec2, target: Vec2, half: Vec2) -> Option<f32> {
     let offset = target - centre;
-    let gap = offset.abs() - (IRON_HALF + half);
+    let gap = offset.abs() - (own + half);
     if gap.max_element() > CONTACT_MARGIN {
         return None;
     }
@@ -742,22 +739,25 @@ pub fn crush(world: &mut World) {
             }
         }
     }
-    let small_half = Vec2::splat(SMALL_BALL_RADIUS);
     let mut smashed: Vec<Entity> = Vec::new();
     let mut shattered: HashSet<Entity> = HashSet::new();
     let mut hurt = false;
     for &(_, block, at, velocity) in &blocks {
+        // Each body's half size, its own collider's.
+        let Some(own) = world.get::<Collider>(block).map(|c| c.shape.half_extents()) else {
+            continue;
+        };
         let speed_into = |entity: Entity, target: Vec2, half: Vec2| {
             contacts
                 .get(&(block, entity))
                 .copied()
-                .or_else(|| impact(at, velocity, target, half))
+                .or_else(|| impact(at, own, velocity, target, half))
         };
         // The impact first, then whether an earlier block smashed it (P6).
         let mut struck: Vec<(Entity, f32, Option<SaveId>)> = world
             .query::<(Entity, &SmallBall, &Position, &Collider)>()
             .filter_map(|(entity, _, p, c)| {
-                let speed = speed_into(entity, p.0 + c.offset, small_half)?;
+                let speed = speed_into(entity, p.0 + c.offset, c.shape.half_extents())?;
                 (!smashed.contains(&entity)).then_some(())?;
                 Some((entity, speed, crate::shared::save_id(world, entity)))
             })
@@ -777,18 +777,15 @@ pub fn crush(world: &mut World) {
                 tags.has(FROZEN) && *entity != block && is_iron(world, *entity)
             })
             .filter_map(|(entity, _, p, c)| {
-                let half = if world.has::<IronBlock>(entity) {
-                    IRON_HALF
-                } else {
-                    SCRAP_HALF
-                };
+                let half = c.shape.half_extents();
                 let target = p.0 + c.offset;
                 let speed = contacts.get(&(block, entity)).copied().or_else(|| {
                     let other = world
                         .get::<PreviousVelocity>(entity)
                         .map_or(Vec2::ZERO, |v| v.0);
-                    Some(impact(at, velocity, target, half)?.min(impact(
+                    Some(impact(at, own, velocity, target, half)?.min(impact(
                         at,
+                        own,
                         velocity - other,
                         target,
                         half,
@@ -1217,7 +1214,10 @@ pub fn body_impacts(world: &mut World) {
             if still && closing >= IRON_LAND_SPEED && world.has::<IronBlock>(this) {
                 let id = crate::shared::save_id(world, this);
                 if let (false, Some(centre)) = (hard.contains_key(&id), body_centre(world, this)) {
-                    hard.insert(id, (this, centre - pushed * IRON_HALF.y));
+                    let half = world
+                        .get::<Collider>(this)
+                        .map_or(Vec2::ZERO, |c| c.shape.half_extents());
+                    hard.insert(id, (this, centre - pushed * half.y));
                 }
             }
             let heavy = other
@@ -1449,9 +1449,11 @@ pub fn shatter_iron(world: &mut World, iron: Entity, blast: Option<Vec2>) {
     let away = blast.map_or(Vec2::ZERO, |from| (at - from).normalize_or_zero());
     despawn_tree(world, iron);
     if whole {
+        // A scrap's side, its prefab's box's.
+        let side = prefab_box(world, IRON_SCRAP_PREFAB).0 * 2.0;
         for index in 0..SCRAP_COUNT {
             let (col, row) = (index % 4, index / 4);
-            let offset = Vec2::new(col as f32 - 1.5, row as f32 - 1.5) * (SCRAP_HALF * 2.0);
+            let offset = Vec2::new(col as f32 - 1.5, row as f32 - 1.5) * side;
             // Permutes the sixteen launch speeds without the game's stream.
             let variation = (index * 7 % SCRAP_COUNT) as f32 / (SCRAP_COUNT - 1) as f32;
             let kick = offset.normalize() * SCRAP_EJECT_SPEED * (0.8 + 0.4 * variation)

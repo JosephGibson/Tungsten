@@ -33,7 +33,7 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::level::{self, TILE};
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::{Joined, Saved, body_centre, despawn_tree, spawn_burst};
+use crate::shared::{Joined, Saved, body_centre, despawn_tree, prefab_box, spawn_burst};
 use components::{
     Ball, BallHue, BallSpawner, BlackHole, BowlingBall, Element, FireMissile, HoleHold, IronBlock,
     IronScrap, OpeningOf, PreviousVelocity, Ring, ShockRing, SmallBall, Spray,
@@ -369,11 +369,17 @@ pub fn place_small_balls(world: &mut World, at: Vec2, dt: f32) -> u32 {
     let rule = (count > 0)
         .then(|| credited_rule(world, SMALL_BALL))
         .flatten();
+    // Its body's centre from its corner, its prefab's offset.
+    let offset = if count > 0 {
+        prefab_box(world, SMALL_BALL).1
+    } else {
+        Vec2::ZERO
+    };
     for i in 0..count {
         let phase = first.wrapping_add(i);
         let angle = phase as f32 * GOLDEN_ANGLE;
         let centre = at + Vec2::new(angle.cos(), angle.sin()) * BALL_JITTER;
-        let point = centre - SMALL_BALL_CENTRE;
+        let point = centre - offset;
         let id = crate::shared::take_id(world);
         let transform = Transform {
             position: point,
@@ -420,13 +426,16 @@ pub fn stop_small_balls_loop(world: &mut World) {
 }
 
 /// Spawns a small ball or a bowling ball with its centre at `at`, at once:
-/// what a test or a load sets down where it wants it.
+/// what a test or a load sets down where it wants it, its corner its
+/// prefab's offset short of it.
 pub fn spawn_ball(world: &mut World, at: Vec2, small: bool) -> Entity {
-    let ball = if small {
-        spawn_ball_toy(world, SMALL_BALL, at - SMALL_BALL_CENTRE, SMALL_BALL_SCALE)
+    let (prefab, scale) = if small {
+        (SMALL_BALL, SMALL_BALL_SCALE)
     } else {
-        spawn_ball_toy(world, BOWLING_BALL, at - BALL_CENTRE, BALL_SCALE)
+        (BOWLING_BALL, BALL_SCALE)
     };
+    let corner = at - prefab_box(world, prefab).1;
+    let ball = spawn_ball_toy(world, prefab, corner, scale);
     if small {
         let phase = crate::shared::save_id(world, ball).map_or(0, |id| id.0 as u32);
         world.insert(ball, BallHue::from_seed(phase));
@@ -447,7 +456,8 @@ pub fn toss_bowling_ball(world: &mut World, from: Vec2, aim: Vec2) -> Option<Ent
     let angle = (-aim.y).atan2(aim.x.abs()).min(TOSS_STEEPEST);
     let launch = Vec2::new(side * angle.cos(), -angle.sin());
     let centre = from + aim * TOSS_OFFSET;
-    let ball = spawn_ball_toy(world, BOWLING_BALL, centre - BALL_CENTRE, BALL_SCALE);
+    let corner = centre - prefab_box(world, BOWLING_BALL).1;
+    let ball = spawn_ball_toy(world, BOWLING_BALL, corner, BALL_SCALE);
     if let Some(velocity) = world.get_mut::<Velocity>(ball) {
         velocity.0 = launch * TOSS_SPEED;
     }
@@ -463,7 +473,7 @@ pub fn toss_bowling_ball(world: &mut World, from: Vec2, aim: Vec2) -> Option<Ent
 pub fn iron_fits(world: &World, at: Vec2) -> bool {
     let mut met = Vec::new();
     let shape = Shape::Aabb {
-        half_extents: IRON_HALF,
+        half_extents: prefab_box(world, IRON_BLOCK_PREFAB).0,
     };
     overlap(world, shape, at, &SpatialFilter::new(), &mut met);
     met.iter().all(|hit| {
@@ -480,7 +490,7 @@ pub fn iron_fits(world: &World, at: Vec2) -> bool {
 /// prefab's kit `cap`, the map's own among them: past it the oldest, the
 /// lowest save ID, goes in a poof first, as a summon's oldest does.
 pub fn place_iron(world: &mut World, at: Vec2) -> Entity {
-    let corner = at - IRON_HALF - Vec2::splat(4.0);
+    let corner = at - prefab_box(world, IRON_BLOCK_PREFAB).1;
     let Admission {
         prepared, culled, ..
     } = admit_toy(world, IRON_BLOCK_PREFAB, corner, 1.0, None)
@@ -506,12 +516,8 @@ pub fn spawn_scrap(
     angle: f32,
     turn: f32,
 ) -> Entity {
-    let scrap = spawn_toy(
-        world,
-        IRON_SCRAP_PREFAB,
-        at - SCRAP_HALF - Vec2::splat(1.0),
-        SCRAP_SCALE,
-    );
+    let corner = at - prefab_box(world, IRON_SCRAP_PREFAB).1;
+    let scrap = spawn_toy(world, IRON_SCRAP_PREFAB, corner, SCRAP_SCALE);
     let variant = variant % 4;
     world.insert(scrap, IronScrap { variant });
     tumble(world, scrap, angle, turn);
