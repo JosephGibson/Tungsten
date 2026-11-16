@@ -12,7 +12,7 @@ use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::hud::Hud;
 use example_01_platformer::features::spells::{self, hud as spell_hud};
 use example_01_platformer::features::tomes::{BOOK_CENTRE, INTERACT, Tome, TomeKind, Tomes};
-use example_01_platformer::features::toys::{self, IRON_HALF};
+use example_01_platformer::features::toys;
 use example_01_platformer::features::{gun, lightning};
 use example_01_platformer::game::GAMEPLAY;
 use glam::Vec2;
@@ -25,6 +25,7 @@ use tungsten::kit::{
 use tungsten::testing::UiHarness;
 
 use super::combat::{PLAIN_SEED, TOP as ARENA, with_dummy};
+use super::prefab_box;
 use super::{
     aim_at, ball, body, bursts, centre, choose, ground, kick, pin_camera, run, stand, teleport,
 };
@@ -485,7 +486,10 @@ fn arcane_power_doubles_a_spells_own_hits_and_leaves_the_gun_and_a_ball_alone() 
     let jump = arcane_and_plain(|harness, player, _| {
         // An iron block 200 px from the dummy, struck: the chain's first
         // jump is the dummy's.
-        let iron = toys::place_iron(harness.world_mut(), Vec2::new(700.0, ARENA - IRON_HALF.y));
+        let iron = toys::place_iron(
+            harness.world_mut(),
+            Vec2::new(700.0, ARENA - prefab_box("iron_block").0.y),
+        );
         harness.step(2);
         let at = body(harness, iron);
         lightning::strike(harness.world_mut(), player, at);

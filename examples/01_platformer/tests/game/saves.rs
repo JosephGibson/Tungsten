@@ -53,7 +53,7 @@ use example_01_platformer::features::tomes::{Tome, TomeKind, Tomes};
 use example_01_platformer::features::toys::components::{
     Ball, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall,
 };
-use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
+use example_01_platformer::features::toys::{self, BALL_CAP};
 use example_01_platformer::game;
 use example_01_platformer::save::{self, MAP_ENEMIES, SaveGame};
 use example_01_platformer::shared::{Joined, SaveId, Saved};
@@ -162,7 +162,7 @@ fn rich(harness: &mut UiHarness) {
 /// flight, beside the map's enemies of every kind and its crates and kegs.
 fn busy(harness: &mut UiHarness) {
     rich(harness);
-    let iron = TOP - IRON_HALF.y - 10.0;
+    let iron = TOP - prefab_box("iron_block").0.y - 10.0;
     cast(harness, Spell::IronBlock, Vec2::new(850.0, iron), 1);
     harness.step(30);
     cast(harness, Spell::IronBlock, Vec2::new(1150.0, iron), 1);
@@ -994,7 +994,7 @@ fn held_bodies_are_saved_rebuilt_or_presentation() {
     let iron = iron_at(&mut harness, 1460.0);
     let ball = toys::spawn_ball(
         harness.world_mut(),
-        Vec2::new(2060.0, TOP - toys::BALL_RADIUS - 0.5),
+        Vec2::new(2060.0, TOP - prefab_box("bowling_ball").0.x - 0.5),
         false,
     );
     harness.step(2);
@@ -1137,7 +1137,7 @@ fn an_older_saves_hold_loads_held() {
     );
     let hands = world.get::<Position>(troll).unwrap().0
         + actor_body("troll").point("hands", 1.0).unwrap()
-        - Vec2::new(0.0, IRON_HALF.y);
+        - Vec2::new(0.0, prefab_box("iron_block").0.y);
     let off = centre(&loaded, iron).distance(hands);
     assert!(off < 1e-3, "at the hands: {off} px off");
 }
@@ -1380,7 +1380,7 @@ fn divergence(churned: bool) {
     cast(
         &mut uninterrupted,
         Spell::IronBlock,
-        Vec2::new(950.0, TOP - IRON_HALF.y - 10.0),
+        Vec2::new(950.0, TOP - prefab_box("iron_block").0.y - 10.0),
         1,
     );
     cast(
@@ -2202,11 +2202,11 @@ fn conduction(harness: &UiHarness) -> Vec<Waiting> {
 fn a_save_mid_conduction_resumes_the_chain() {
     let (mut harness, player) = grounded();
     for i in 0..4 {
-        let at = Vec2::new(800.0 + 200.0 * i as f32, TOP - IRON_HALF.y);
+        let at = Vec2::new(800.0 + 200.0 * i as f32, TOP - prefab_box("iron_block").0.y);
         toys::place_iron(harness.world_mut(), at);
     }
     harness.step(2);
-    let first = Vec2::new(800.0, TOP - IRON_HALF.y);
+    let first = Vec2::new(800.0, TOP - prefab_box("iron_block").0.y);
     lightning::strike(harness.world_mut(), player, first);
     harness.step(2);
     let saved = capture(&harness);
@@ -2241,7 +2241,7 @@ fn an_older_saves_jumps_are_dropped_and_its_metal_conducts() {
     harness.step(1);
     let line: Vec<u64> = (0..4)
         .map(|i| {
-            let at = Vec2::new(800.0 + 200.0 * i as f32, TOP - IRON_HALF.y);
+            let at = Vec2::new(800.0 + 200.0 * i as f32, TOP - prefab_box("iron_block").0.y);
             let iron = toys::place_iron(harness.world_mut(), at);
             id_of(&harness, iron)
         })
@@ -2286,8 +2286,8 @@ fn an_older_saves_jumps_are_dropped_and_its_metal_conducts() {
         .unwrap()
         .remove("conductions");
     world["resources"]["cascades"]["entries"] = serde_json::json!([{
-        "kind": "jump", "target": line[1], "at": [1000.0, TOP - IRON_HALF.y],
-        "origin": [800.0, TOP - IRON_HALF.y], "source": id_of(&harness, player),
+        "kind": "jump", "target": line[1], "at": [1000.0, TOP - prefab_box("iron_block").0.y],
+        "origin": [800.0, TOP - prefab_box("iron_block").0.y], "source": id_of(&harness, player),
         "strength": 28.0, "due": 1, "strike": 1, "jumps": 1, "chain": [line[0]]
     }]);
     let stamp = tungsten::core::SaveStamp::new(33, "0.117.0", 1_760_400_000_000);
@@ -2648,7 +2648,10 @@ fn scrap_throws(harness: &UiHarness) -> BTreeMap<u64, Vec2> {
 
 /// An iron block of the run's on the sky's ground at `x`, settled.
 fn iron_at(harness: &mut UiHarness, x: f32) -> Entity {
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(x, TOP - IRON_HALF.y - 0.5));
+    let iron = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(x, TOP - prefab_box("iron_block").0.y - 0.5),
+    );
     harness.step(10);
     iron
 }
@@ -2661,7 +2664,7 @@ fn a_frozen_blocks_waiting_thermal_shock_throws_its_scraps_as_the_uninterrupted_
     harness.step(2);
     // Heat from the block's left: its shock waits for the next run, and
     // `Cascades` keeps the point its scraps fly away from.
-    let heat = super::body(&harness, iron) - Vec2::new(IRON_HALF.x + 20.0, 0.0);
+    let heat = super::body(&harness, iron) - Vec2::new(prefab_box("iron_block").0.x + 20.0, 0.0);
     elements::thermal_shatter(harness.world_mut(), heat, 72.0);
     assert!(queue_counts(&harness).0 > 0, "the shock waits");
     assert_eq!(harness.world().resource::<Cascades>().heat_from.len(), 1);
@@ -2701,7 +2704,7 @@ fn a_frozen_blocks_waiting_thermal_shock_throws_its_scraps_as_the_uninterrupted_
 fn a_kept_block_saved_at_its_freeze_band_loads_with_one_freeze_waiting() {
     let (mut harness, _) = grounded();
     let iron = iron_at(&mut harness, 950.0);
-    let face = super::body(&harness, iron) - Vec2::new(IRON_HALF.x, 0.0);
+    let face = super::body(&harness, iron) - Vec2::new(prefab_box("iron_block").0.x, 0.0);
     elements::chill(harness.world_mut(), iron, 1.0, face);
     // The run builds the coat to its band, whose freeze waits for the next.
     harness.step(1);
@@ -3533,7 +3536,7 @@ fn an_older_saves_iron_and_holes_keep_their_caps() {
         let (column, row) = ((i % 12) as f32, (i / 12) as f32);
         let at = Vec2::new(
             700.0 + 125.0 * column,
-            TOP - IRON_HALF.y - 1.0 - 130.0 * row,
+            TOP - prefab_box("iron_block").0.y - 1.0 - 130.0 * row,
         );
         toys::place_iron(world, at);
     }
@@ -3606,7 +3609,7 @@ fn an_older_saves_iron_and_holes_keep_their_caps() {
     assert_eq!(before.len(), 24);
     toys::place_iron(
         loaded.world_mut(),
-        Vec2::new(2300.0, TOP - IRON_HALF.y - 1.0),
+        Vec2::new(2300.0, TOP - prefab_box("iron_block").0.y - 1.0),
     );
     let after = blocks(&loaded);
     assert_eq!(after.len(), 24);
@@ -4407,7 +4410,7 @@ fn older_bodies_still_hit() {
         .apply(harness.world_mut());
     let block = toys::place_iron(
         harness.world_mut(),
-        Vec2::new(950.0, TOP - IRON_HALF.y - 0.5),
+        Vec2::new(950.0, TOP - prefab_box("iron_block").0.y - 0.5),
     );
     harness.step(2);
     // Each mid-flight at its mark: the crate and the bat thrown by the

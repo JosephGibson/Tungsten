@@ -8,7 +8,7 @@ use example_01_platformer::features::player::systems::escaped;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{BallHue, BlackHole, SmallBall};
 use example_01_platformer::features::toys::systems::{ball_look, bounds, pull, rainbow_rgba, tick};
-use example_01_platformer::features::toys::{self, BALL_RADIUS, HOLE_RADIUS};
+use example_01_platformer::features::toys::{self, HOLE_RADIUS};
 use glam::Vec2;
 use tungsten::core::{
     AnimationRegistry, AssetRegistry, AudioCommand, Collider, Entity, Position, RigidBodyBundle,
@@ -18,13 +18,14 @@ use tungsten::extract_sprites_default;
 use tungsten::kit::{Children, Cooldown};
 use tungsten::testing::UiHarness;
 
+use super::prefab_box;
 use super::{aim_at, ball, choose, mock_sprite, pin_camera, run, teleport};
 
 /// A plain dynamic body of unit mass about `centre`.
 fn body(harness: &mut UiHarness, centre: Vec2) -> Entity {
     harness.world_mut().spawn_with(RigidBodyBundle::dynamic(
         Position(centre),
-        Collider::circle(BALL_RADIUS),
+        Collider::circle(prefab_box("bowling_ball").0.x),
     ))
 }
 
@@ -95,12 +96,12 @@ fn despawn_out_of_bounds_culls_escaped_balls_and_keeps_in_bounds_balls() {
     let inside = ball(&mut harness, Vec2::new(1000.0, 1000.0), false);
     let partly = ball(
         &mut harness,
-        Vec2::new(100.0, WORLD_MAX.y + BALL_RADIUS - 1.0),
+        Vec2::new(100.0, WORLD_MAX.y + prefab_box("bowling_ball").0.x - 1.0),
         false,
     );
     let outside = ball(
         &mut harness,
-        Vec2::new(100.0, WORLD_MAX.y + BALL_RADIUS + 1.0),
+        Vec2::new(100.0, WORLD_MAX.y + prefab_box("bowling_ball").0.x + 1.0),
         false,
     );
     let world = harness.world_mut();

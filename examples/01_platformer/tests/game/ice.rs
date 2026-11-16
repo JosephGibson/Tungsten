@@ -30,8 +30,7 @@ use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{IronBlock, IronScrap, Spray};
 use example_01_platformer::features::toys::systems::{bounds, friction, iron_look};
 use example_01_platformer::features::toys::{
-    self, BLAST_RADIUS, FROZEN_FRICTION, IRON_FRICTION, IRON_HALF, IRON_MASS, MISSILE_SPEED,
-    SCRAP_COUNT, SCRAP_HALF, SPRAY_RANGE,
+    self, BLAST_RADIUS, FROZEN_FRICTION, IRON_FRICTION, MISSILE_SPEED, SCRAP_COUNT, SPRAY_RANGE,
 };
 use example_01_platformer::shared::BURST_CAP;
 use example_01_platformer::shell::Difficulty;
@@ -53,6 +52,7 @@ use super::{
     aim_at, body, centre, choose, contact, floor, ground, kick, mock_sprite, pin_camera, run,
     stand, steps_this_frame, teleport,
 };
+use super::{prefab_box, prefab_number};
 
 fn block(harness: &mut UiHarness, at: Vec2) -> Entity {
     toys::place_iron(harness.world_mut(), at)
@@ -192,10 +192,13 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
 fn thermal_contact_uses_surface_distance_and_leaves_warm_and_distant_iron_intact() {
     let (mut harness, _) = run();
     let o = Vec2::new(1200.0, 400.0);
-    let edge = block(&mut harness, o + Vec2::new(IRON_HALF.x + BLAST_RADIUS, 0.0));
+    let edge = block(
+        &mut harness,
+        o + Vec2::new(prefab_box("iron_block").0.x + BLAST_RADIUS, 0.0),
+    );
     let distant = block(
         &mut harness,
-        o - Vec2::new(IRON_HALF.x + BLAST_RADIUS + 1.0, 0.0),
+        o - Vec2::new(prefab_box("iron_block").0.x + BLAST_RADIUS + 1.0, 0.0),
     );
     let warm = block(&mut harness, o);
     elements::freeze_iron(harness.world_mut(), edge);
@@ -448,7 +451,7 @@ fn sprayer(x: f32) -> (UiHarness, Entity) {
 
 /// Iron set down on the sky's ground, its centre at `x`.
 fn iron(harness: &mut UiHarness, x: f32) -> Entity {
-    block(harness, Vec2::new(x, TOP - IRON_HALF.y))
+    block(harness, Vec2::new(x, TOP - prefab_box("iron_block").0.y))
 }
 
 /// Aims at `at` and holds `cast`.
@@ -549,7 +552,7 @@ fn holding_f_gradually_freezes_iron_with_particles_and_a_single_audio_loop() {
     assert_eq!(freeze_amount(harness.world(), behind), 0.0);
     let beam = spray(&harness).unwrap();
     assert!(
-        (beam.end.x - (600.0 - IRON_HALF.x - 4.0)).abs() < 0.001,
+        (beam.end.x - (600.0 - prefab_box("iron_block").0.x - 4.0)).abs() < 0.001,
         "the beam ends on the near face: {}",
         beam.end.x
     );
@@ -563,7 +566,7 @@ fn holding_f_gradually_freezes_iron_with_particles_and_a_single_audio_loop() {
     assert!(!frozen(&harness, near));
     elements::thermal_shatter(
         harness.world_mut(),
-        Vec2::new(600.0, TOP - IRON_HALF.y),
+        Vec2::new(600.0, TOP - prefab_box("iron_block").0.y),
         BLAST_RADIUS,
     );
     assert!(
@@ -634,9 +637,9 @@ fn beam_stops_on_colliders_and_tiles_and_has_a_finite_range() {
                 world.spawn_with((TilemapInstance::new("wall", Vec2::new(448.0, TOP - 64.0)),));
             }
             _ => {
-                let x = eye.x + SPRAY_RANGE + IRON_HALF.x + 10.0;
+                let x = eye.x + SPRAY_RANGE + prefab_box("iron_block").0.x + 10.0;
                 let world = harness.world_mut();
-                world.get_mut::<Position>(target).unwrap().0.x = x - IRON_HALF.x;
+                world.get_mut::<Position>(target).unwrap().0.x = x - prefab_box("iron_block").0.x;
             }
         }
         spray_at(&mut harness, Vec2::new(1600.0, eye.y));
@@ -657,7 +660,10 @@ fn beam_stops_on_colliders_and_tiles_and_has_a_finite_range() {
         Vec2::new(600.0, low + 50.0),
         Vec2::new(200.0, 50.0),
     );
-    let brick = block(&mut harness, Vec2::new(eye.x + 300.0, low - IRON_HALF.y));
+    let brick = block(
+        &mut harness,
+        Vec2::new(eye.x + 300.0, low - prefab_box("iron_block").0.y),
+    );
     let ball = floor(&mut harness, eye + Vec2::splat(150.0), Vec2::ZERO);
     harness.world_mut().insert(ball, Collider::circle(80.0));
     spray_at(&mut harness, eye + Vec2::splat(300.0));
@@ -749,7 +755,7 @@ fn fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps() {
     let (mut harness, player) = sprayer(300.0);
     // The mine's loose iron, far off, which the shatter leaves be.
     let others = harness.world().query::<&IronBlock>().count();
-    let at = Vec2::new(600.0, TOP - IRON_HALF.y);
+    let at = Vec2::new(600.0, TOP - prefab_box("iron_block").0.y);
     let brick = block(&mut harness, at);
     // The iron enters the physics index the beam casts against at a step.
     harness.step(1);
@@ -784,15 +790,18 @@ fn fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps() {
         .collect();
     assert_eq!(pieces.len(), SCRAP_COUNT);
     let mass: f32 = pieces.iter().map(|piece| piece.3).sum();
-    assert!((mass - IRON_MASS).abs() < 0.001);
+    assert!((mass - prefab_number("iron_block", "/components/rigid_body/mass")).abs() < 0.001);
     for &(e, scrap, p, mass) in &pieces {
-        assert!((mass - IRON_MASS / 16.0).abs() < 0.001);
+        assert!(
+            (mass - prefab_number("iron_block", "/components/rigid_body/mass") / 16.0).abs()
+                < 0.001
+        );
         assert!(scrap.variant < 4);
         let collider = world.get::<Collider>(e).unwrap();
         assert_eq!(
             collider.shape,
             Shape::Aabb {
-                half_extents: SCRAP_HALF
+                half_extents: prefab_box("iron_scrap").0
             }
         );
         let v = world.get::<Velocity>(e).unwrap().0;
@@ -801,7 +810,7 @@ fn fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps() {
         assert!(
             (piece - rested)
                 .abs()
-                .cmple(IRON_HALF - SCRAP_HALF + 0.01)
+                .cmple(prefab_box("iron_block").0 - prefab_box("iron_scrap").0 + 0.01)
                 .all()
         );
         assert!(!is_frozen(world, e));
@@ -1083,7 +1092,10 @@ fn high_refresh_press_starts_the_spray_before_the_next_physics_step() {
 fn simultaneous_freezes_and_thermal_fractures_share_audio_but_keep_individual_cues() {
     let (mut harness, player) = sprayer(300.0);
     let lower = iron(&mut harness, 550.0);
-    let upper = block(&mut harness, Vec2::new(550.0, TOP - 3.0 * IRON_HALF.y));
+    let upper = block(
+        &mut harness,
+        Vec2::new(550.0, TOP - 3.0 * prefab_box("iron_block").0.y),
+    );
     // The iron enters the physics index the beam casts against at a step.
     harness.step(1);
     let eye = centre(&harness, player);
@@ -1108,7 +1120,7 @@ fn simultaneous_freezes_and_thermal_fractures_share_audio_but_keep_individual_cu
     assert_eq!(pulses(&harness, false), 2);
     elements::thermal_shatter(
         harness.world_mut(),
-        Vec2::new(550.0, TOP - 2.0 * IRON_HALF.y),
+        Vec2::new(550.0, TOP - 2.0 * prefab_box("iron_block").0.y),
         BLAST_RADIUS,
     );
     // The endings are chemistry's, which runs with the step, their crack's

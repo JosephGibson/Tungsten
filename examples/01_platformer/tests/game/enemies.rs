@@ -52,7 +52,7 @@ use example_01_platformer::features::props;
 use example_01_platformer::features::props::components::{Bomb, PropKind, Rock};
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::{SUMMON_NEXT, SUMMONS, Summoned};
-use example_01_platformer::features::toys::IRON_HALF;
+
 use example_01_platformer::features::toys::components::PreviousVelocity;
 use example_01_platformer::features::{player as courier, toys};
 use example_01_platformer::game;
@@ -268,7 +268,10 @@ fn still(harness: &mut UiHarness, enemy: Entity) {
 
 /// An iron block resting on the sky's ground with its centre at `x`.
 fn iron_at(harness: &mut UiHarness, x: f32) -> Entity {
-    toys::place_iron(harness.world_mut(), Vec2::new(x, TOP - IRON_HALF.y))
+    toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(x, TOP - prefab_box("iron_block").0.y),
+    )
 }
 
 /// Every hit `target` takes over `frames` frames: its amount and source,
@@ -1916,7 +1919,10 @@ fn a_charge_throws_a_standing_player_back_and_up() {
 fn a_charge_stops_at_iron_and_presses_it_until_it_ends() {
     let (mut harness, _) = arena();
     let (beetle, iron) = beetle_before(&mut harness, 1200.0, 1.0, |h, near| {
-        let centre = Vec2::new(near + IRON_HALF.x, TOP - IRON_HALF.y - 0.5);
+        let centre = Vec2::new(
+            near + prefab_box("iron_block").0.x,
+            TOP - prefab_box("iron_block").0.y - 0.5,
+        );
         toys::place_iron(h.world_mut(), centre)
     });
     harness.step(30);
@@ -1932,7 +1938,10 @@ fn a_charge_stops_at_iron_and_presses_it_until_it_ends() {
     let end = body(&harness, iron);
     assert!(start.distance(end) < 4.0, "iron from {start} to {end}");
     let face = at(&harness, beetle).x + kind_body(EnemyKind::Beetle).half.x;
-    assert!(face <= end.x - IRON_HALF.x + 0.5, "behind it: {face}");
+    assert!(
+        face <= end.x - prefab_box("iron_block").0.x + 0.5,
+        "behind it: {face}"
+    );
     // Its first visit enters the attack at step 1.
     let charged = (recovered.expect("its recovery") - 1) as f32 / 60.0;
     assert!(
@@ -2123,7 +2132,10 @@ fn a_fast_iron_block_crushes_the_beetle() {
     harness.step(2);
     let centre = body(&harness, beetle);
     let top = centre.y - kind_body(EnemyKind::Beetle).half.y;
-    let block = toys::place_iron(harness.world_mut(), Vec2::new(centre.x, top - IRON_HALF.y));
+    let block = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(centre.x, top - prefab_box("iron_block").0.y),
+    );
     let drive = |harness: &mut UiHarness, speed: f32| {
         harness
             .world_mut()
@@ -2353,7 +2365,7 @@ fn the_troll_slams_after_its_wind_up_hurting_kicking_and_shattering() {
     let troll = troll_at(&mut harness, 380.0, Difficulty::Normal);
     let ball = toys::spawn_ball(
         harness.world_mut(),
-        Vec2::new(440.0, TOP - toys::BALL_RADIUS),
+        Vec2::new(440.0, TOP - prefab_box("bowling_ball").0.x),
         false,
     );
     harness.step(2);
@@ -2435,7 +2447,7 @@ fn a_thrown_bowling_ball_hurts_by_its_speed_and_mass() {
     still(&mut harness, troll);
     let ball = toys::spawn_ball(
         harness.world_mut(),
-        Vec2::new(1000.0, TOP - toys::BALL_RADIUS),
+        Vec2::new(1000.0, TOP - prefab_box("bowling_ball").0.x),
         false,
     );
     harness.step(2);
@@ -2469,9 +2481,9 @@ fn a_light_body_needs_more_speed_to_hurt() {
         still(&mut harness, crawler);
         harness.step(2);
         let radius = if small {
-            toys::SMALL_BALL_RADIUS
+            prefab_box("small_ball").0.x
         } else {
-            toys::BALL_RADIUS
+            prefab_box("bowling_ball").0.x
         };
         let x = at(&harness, crawler).x - kind_body(EnemyKind::Crawler).half.x - radius - 8.0;
         let ball = toys::spawn_ball(harness.world_mut(), Vec2::new(x, TOP - radius - 0.5), small);
@@ -2609,7 +2621,7 @@ fn a_save_while_the_troll_holds_iron_loads_with_the_hold() {
         at + actor_body("troll")
             .point("hands", 1.0)
             .expect("the troll's hands")
-            - Vec2::new(0.0, IRON_HALF.y)
+            - Vec2::new(0.0, prefab_box("iron_block").0.y)
     };
     let kind = |h: &UiHarness| {
         h.world()
@@ -2687,7 +2699,7 @@ fn the_trolls_load_rides_over_its_centre_facing_either_way() {
         at + actor_body("troll")
             .point("hands", heading)
             .expect("the troll's hands")
-            - Vec2::new(0.0, IRON_HALF.y)
+            - Vec2::new(0.0, prefab_box("iron_block").0.y)
     };
     assert!(body(&harness, block).distance(hands(&harness, 1.0)) < 1e-3);
     for heading in [1.0, -1.0] {
@@ -4195,7 +4207,7 @@ fn impacts_keep_their_amounts() {
     let over = body(&harness, goblin)
         - Vec2::new(
             0.0,
-            kind_body(EnemyKind::Goblin).half.y + IRON_HALF.y + 80.0,
+            kind_body(EnemyKind::Goblin).half.y + prefab_box("iron_block").0.y + 80.0,
         );
     toys::place_iron(harness.world_mut(), over);
     golden(&first_parts(&mut harness, goblin, 90), &IRON, "iron");
@@ -4714,7 +4726,7 @@ fn a_returning_troll_kicks_scrap_from_its_way_and_passes_it() {
     let (mut harness, player) = arena();
     stand(&mut harness, player, 300.0, TOP);
     let (troll, scrap) = troll_before(&mut harness, 60.0, |h, near| {
-        let half = toys::SCRAP_HALF;
+        let half = prefab_box("iron_scrap").0;
         let centre = Vec2::new(near - half.x, TOP - half.y - 0.5);
         toys::spawn_scrap(h.world_mut(), centre, Vec2::ZERO, 0, 0.0, 0.0)
     });

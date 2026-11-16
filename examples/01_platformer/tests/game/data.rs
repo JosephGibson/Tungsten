@@ -17,9 +17,7 @@ use example_01_platformer::features::gun::{
 };
 use example_01_platformer::features::player;
 use example_01_platformer::features::spells::hud::ROUNDS;
-use example_01_platformer::features::toys::{
-    BALL_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, SCRAP_HALF, SCRAP_MASS, SMALL_BALL_RADIUS,
-};
+use example_01_platformer::features::toys::MISSILE_SPEED;
 use example_01_platformer::shared::{Body, body_centre};
 use glam::Vec2;
 use serde_json::Value;
@@ -49,7 +47,6 @@ fn every_restated_constant_matches_its_data() {
         let hurtbox: Hurtbox = serde_json::from_value(hurtbox).expect("a hurtbox");
         assert_eq!(hurtbox, file.hurtbox, "{prefab}");
     }
-    // The toys' sizes and the iron's and its scraps' masses.
     // The walkers' controllers: their step, which the ledge check reads, and
     // their shove by their kind's mass up to the heaviest a walker moves,
     // which the troll's kick reads; lava's layer left out (S-99).
@@ -84,11 +81,6 @@ fn every_restated_constant_matches_its_data() {
             assert_eq!(1 << 4, example_01_platformer::features::level::LAVA_LAYER);
         }
     }
-    assert_eq!(prefab_box("iron_block").0, IRON_HALF);
-    let iron = json("prefabs/iron_block.json");
-    assert_eq!(number(&iron, "/components/rigid_body/mass"), IRON_MASS);
-    let scrap = json("prefabs/iron_scrap.json");
-    assert_eq!(number(&scrap, "/components/rigid_body/mass"), SCRAP_MASS);
     // The courier's jump, which its shove's retry restates, and its health,
     // the same at every difficulty, which a save's migration restates.
     let courier = json("prefabs/player.json");
@@ -129,9 +121,6 @@ fn every_restated_constant_matches_its_data() {
     ] {
         assert_eq!(number(&frost, pointer), crawler::MOVE_SPEED, "{pointer}");
     }
-    assert_eq!(prefab_box("iron_scrap").0, SCRAP_HALF);
-    assert_eq!(prefab_box("bowling_ball").0, Vec2::splat(BALL_RADIUS));
-    assert_eq!(prefab_box("small_ball").0, Vec2::splat(SMALL_BALL_RADIUS));
     // The missile's speed, the orbs' lifetime, the beetle's charge and the
     // bat's dive.
     let missile = json("data/abilities/fire_missile.json");

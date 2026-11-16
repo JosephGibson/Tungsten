@@ -887,7 +887,7 @@ fn walk_into(
 #[test]
 fn the_wizard_walks_small_bodies_aside() {
     use example_01_platformer::features::props::{self, components::PropKind};
-    use example_01_platformer::features::toys::{self, IRON_HALF};
+    use example_01_platformer::features::toys;
     const FLOOR: f32 = 1000.0;
     // A small ball ahead rolls off before him.
     let (xs, start, end) = walk_into(|h| ball(h, Vec2::new(680.0, FLOOR - 7.5), true), 30);
@@ -917,7 +917,10 @@ fn the_wizard_walks_small_bodies_aside() {
         xs[49]
     );
     // Iron, 400, stops him.
-    let iron_at = Vec2::new(700.0 + IRON_HALF.x, FLOOR - IRON_HALF.y);
+    let iron_at = Vec2::new(
+        700.0 + prefab_box("iron_block").0.x,
+        FLOOR - prefab_box("iron_block").0.y,
+    );
     let (xs, start, end) = walk_into(|h| toys::place_iron(h.world_mut(), iron_at), 40);
     assert!(start.distance(end) < 1.0, "the iron held: {start} {end}");
     assert!(

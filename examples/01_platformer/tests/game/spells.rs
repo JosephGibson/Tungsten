@@ -28,8 +28,7 @@ use example_01_platformer::features::toys::components::{
 };
 use example_01_platformer::features::toys::flask;
 use example_01_platformer::features::toys::{
-    self, BALL_RADIUS, BROOM_MOST, HOLE_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS,
-    PUSH_SPEED, RING_CAP,
+    self, BROOM_MOST, HOLE_RADIUS, MISSILE_SPEED, PUSH_RADIUS, PUSH_SPEED, RING_CAP,
 };
 use example_01_platformer::shared::{BURST_CAP, Burst};
 use example_01_platformer::shell::Difficulty;
@@ -50,6 +49,7 @@ use tungsten::kit::Tags;
 
 use super::kind_body;
 use super::prefab_box;
+use super::prefab_number;
 use super::{
     aim_at, ball, body, calm, centre, choose, floor, ground, mana, pin_camera, run, stand,
 };
@@ -123,20 +123,32 @@ fn a_blast_pushes_dynamic_bodies_away_by_distance_and_mass() {
     let o = Vec2::new(1200.0, 600.0);
     let spawn = |harness: &mut UiHarness, at: Vec2, mass: f32| -> Entity {
         harness.world_mut().spawn_with(
-            RigidBodyBundle::dynamic(Position(o + at), Collider::circle(BALL_RADIUS))
-                .with_body(RigidBody::dynamic().with_mass(mass)),
+            RigidBodyBundle::dynamic(
+                Position(o + at),
+                Collider::circle(prefab_box("bowling_ball").0.x),
+            )
+            .with_body(RigidBody::dynamic().with_mass(mass)),
         )
     };
     let near = spawn(&mut harness, Vec2::new(40.0, 0.0), 1.0);
     let far = spawn(&mut harness, Vec2::new(120.0, 0.0), 1.0);
-    let heavy = spawn(&mut harness, Vec2::new(-40.0, 0.0), IRON_MASS);
+    let heavy = spawn(
+        &mut harness,
+        Vec2::new(-40.0, 0.0),
+        prefab_number("iron_block", "/components/rigid_body/mass"),
+    );
     let beyond = spawn(&mut harness, Vec2::new(0.0, PUSH_RADIUS + 1.0), 1.0);
     toys::explode(harness.world_mut(), o);
     let v = |harness: &UiHarness, e| harness.world().get::<Velocity>(e).unwrap().0;
     let falloff = 1.0 - 40.0 / PUSH_RADIUS;
     assert!((v(&harness, near) - Vec2::new(PUSH_SPEED * falloff, 0.0)).length() < 1e-3);
     assert!(v(&harness, far).x > 0.0 && v(&harness, far).x < v(&harness, near).x);
-    assert!((v(&harness, heavy).x + v(&harness, near).x / IRON_MASS).abs() < 1e-3);
+    assert!(
+        (v(&harness, heavy).x
+            + v(&harness, near).x / prefab_number("iron_block", "/components/rigid_body/mass"))
+        .abs()
+            < 1e-3
+    );
     assert_eq!(v(&harness, beyond), Vec2::ZERO);
     // The step carries the push into the body's place.
     harness.step(1);
@@ -499,7 +511,7 @@ fn iron_past_its_cap_ends_the_oldest_the_maps_first() {
         let (column, row) = ((i % 18) as f32, (i / 18) as f32);
         Vec2::new(
             150.0 + 125.0 * column,
-            SKY - IRON_HALF.y - 1.0 - 130.0 * row,
+            SKY - prefab_box("iron_block").0.y - 1.0 - 130.0 * row,
         )
     };
     for i in map.len()..cap {
@@ -847,7 +859,10 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
     assert!(body(&harness, kegs[0]).distance(at) < 2.0, "at the cursor");
     harness.step(61);
     // In a wall, and on iron, it fizzles and spends nothing.
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1400.0, 1000.0 - IRON_HALF.y));
+    let iron = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(1400.0, 1000.0 - prefab_box("iron_block").0.y),
+    );
     harness.step(2);
     for at in [Vec2::new(1150.0, 1040.0), super::body(&harness, iron)] {
         let before = mana(&harness);
@@ -1183,9 +1198,20 @@ fn a_hole_lifts_bowling_balls_within_200_px_and_leaves_iron() {
     harness.step(1);
     // Three holes 800 px apart, out of each other's reach: one 180 px over a
     // bowling ball, one 230 px over another and one 120 px over iron.
-    let near = ball(&mut harness, Vec2::new(600.0, FLOOR - BALL_RADIUS), false);
-    let far = ball(&mut harness, Vec2::new(1400.0, FLOOR - BALL_RADIUS), false);
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(2200.0, FLOOR - IRON_HALF.y));
+    let near = ball(
+        &mut harness,
+        Vec2::new(600.0, FLOOR - prefab_box("bowling_ball").0.x),
+        false,
+    );
+    let far = ball(
+        &mut harness,
+        Vec2::new(1400.0, FLOOR - prefab_box("bowling_ball").0.x),
+        false,
+    );
+    let iron = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(2200.0, FLOOR - prefab_box("iron_block").0.y),
+    );
     harness.step(2);
     let starts = [near, far, iron].map(|entity| body(&harness, entity));
     for (thing, over) in [(starts[0], 180.0), (starts[1], 230.0), (starts[2], 120.0)] {

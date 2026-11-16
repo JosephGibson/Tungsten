@@ -23,7 +23,7 @@ use example_01_platformer::features::lightning::{
 };
 use example_01_platformer::features::props::{self, components::PropKind};
 use example_01_platformer::features::spells::components::Spell;
-use example_01_platformer::features::toys::{self, IRON_HALF};
+use example_01_platformer::features::toys;
 use example_01_platformer::game::GAMEPLAY;
 use glam::Vec2;
 use tungsten::SceneEntity;
@@ -43,7 +43,9 @@ use super::{kind_body, kind_info, player_half};
 use super::{stand, steps_this_frame};
 
 /// An iron block's centre on the sky's ground.
-const IRON_Y: f32 = TOP - IRON_HALF.y;
+fn iron_y() -> f32 {
+    TOP - prefab_box("iron_block").0.y
+}
 /// The camera's corner over the sky's ground.
 const CORNER: Vec2 = Vec2::new(0.0, 400.0);
 
@@ -63,7 +65,7 @@ fn sky() -> (UiHarness, Entity) {
 fn irons(harness: &mut UiHarness, count: usize) -> Vec<Entity> {
     (0..count)
         .map(|i| {
-            let at = Vec2::new(600.0 + 200.0 * i as f32, IRON_Y);
+            let at = Vec2::new(600.0 + 200.0 * i as f32, iron_y());
             toys::place_iron(harness.world_mut(), at)
         })
         .collect()
@@ -191,13 +193,13 @@ fn a_strike_under_a_ceiling_hits_the_ceiling() {
 #[test]
 fn a_bolt_falls_to_the_first_body_under_the_cursor() {
     let (mut harness, player) = sky();
-    let near = toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y));
-    let far = toys::place_iron(harness.world_mut(), Vec2::new(1150.0, IRON_Y));
+    let near = toys::place_iron(harness.world_mut(), Vec2::new(900.0, iron_y()));
+    let far = toys::place_iron(harness.world_mut(), Vec2::new(1150.0, iron_y()));
     harness.step(2);
     // Aimed over the near block, the bolt keeps the cursor's x and falls
     // past the cursor onto the block, the first body under it, and the
     // chain starts there.
-    let aim = Vec2::new(body(&harness, near).x, IRON_Y - 300.0);
+    let aim = Vec2::new(body(&harness, near).x, iron_y() - 300.0);
     cast_lightning(&mut harness, aim);
     assert_eq!(mana(&harness), 85.0, "a strike costs 15");
     let landing = bolt(&harness).landing;
@@ -290,7 +292,7 @@ fn two_struck_conductors_start_one_chain_of_at_most_six_jumps() {
     let second = dummy_at(&mut harness, 1040.0);
     let line: Vec<Entity> = (0..7)
         .map(|i| {
-            let at = Vec2::new(1200.0 + 180.0 * i as f32, IRON_Y);
+            let at = Vec2::new(1200.0 + 180.0 * i as f32, iron_y());
             toys::place_iron(harness.world_mut(), at)
         })
         .collect();
@@ -495,7 +497,7 @@ fn a_strike_on_an_enemy_or_iron_meets_a_body_and_snaps() {
     for case in ["a goblin", "iron"] {
         let (mut harness, player) = sky();
         let target = if case == "iron" {
-            toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y))
+            toys::place_iron(harness.world_mut(), Vec2::new(900.0, iron_y()))
         } else {
             let half = kind_body(EnemyKind::Goblin).half.y;
             still_enemy(
@@ -638,7 +640,7 @@ fn every_enemy_conducts_and_one_that_takes_no_shock_ends_the_chain() {
     // Q48: iron, then a goblin, a crawler, a wisp that takes no shock and a
     // goblin past it, each within a jump of the next.
     let (mut harness, player) = sky();
-    let rod = toys::place_iron(harness.world_mut(), Vec2::new(600.0, IRON_Y));
+    let rod = toys::place_iron(harness.world_mut(), Vec2::new(600.0, iron_y()));
     let goblin = kind_body(EnemyKind::Goblin).half.y;
     let crawler = kind_body(EnemyKind::Crawler).half.y;
     let first = still_enemy(
@@ -688,7 +690,7 @@ fn a_frozen_enemy_takes_its_jump_and_ends_the_chain() {
         EnemyKind::Goblin,
         Vec2::new(1000.0, TOP - half - 0.5),
     );
-    let past = toys::place_iron(harness.world_mut(), Vec2::new(1200.0, IRON_Y));
+    let past = toys::place_iron(harness.world_mut(), Vec2::new(1200.0, iron_y()));
     harness.step(2);
     super::combat::apply(&mut harness, goblin, "frozen", None);
     let before = health(&harness, goblin);
@@ -728,14 +730,14 @@ fn a_chain_goes_on_past_a_keg_it_set_off() {
     // out of the first's reach: the jump that reaches the keg sets it off,
     // and the chain goes on from where the keg stood.
     let (mut harness, player) = sky();
-    let near = toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y));
+    let near = toys::place_iron(harness.world_mut(), Vec2::new(900.0, iron_y()));
     let half = prefab_box("keg").0;
     let keg = props::spawn(
         harness.world_mut(),
         PropKind::Keg,
         Vec2::new(1100.0, TOP - half.y),
     );
-    let far = toys::place_iron(harness.world_mut(), Vec2::new(1300.0, IRON_Y));
+    let far = toys::place_iron(harness.world_mut(), Vec2::new(1300.0, iron_y()));
     harness.step(2);
     strike_on(&mut harness, player, near);
     let (chain, _) = conduction(&mut harness, 10);
@@ -757,14 +759,14 @@ fn a_receiver_dead_before_its_jump_is_passed_over() {
     // nearer, dies after the strike and before the first jump, which
     // strikes the iron instead (Q13).
     let (mut harness, player) = sky();
-    let rod = toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y));
+    let rod = toys::place_iron(harness.world_mut(), Vec2::new(900.0, iron_y()));
     let half = kind_body(EnemyKind::Goblin).half.y;
     let goblin = still_enemy(
         &mut harness,
         EnemyKind::Goblin,
         Vec2::new(1000.0, TOP - half - 0.5),
     );
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1150.0, IRON_Y));
+    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1150.0, iron_y()));
     harness.step(2);
     strike_on(&mut harness, player, rod);
     tungsten::kit::kill(harness.world_mut(), goblin);

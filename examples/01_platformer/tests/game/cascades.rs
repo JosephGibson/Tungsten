@@ -14,7 +14,7 @@ use example_01_platformer::features::elements::{
 use example_01_platformer::features::level::components::Hazard;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::IronScrap;
-use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
+use example_01_platformer::features::toys::{self, BALL_CAP};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{BURST_CAP, surface_distance};
 use glam::Vec2;
@@ -30,6 +30,7 @@ use tungsten::kit::{
 use tungsten::testing::UiHarness;
 
 use super::combat::{CRIT_SEED, PLAIN_SEED, TOP, apply, dummy_at, has, health, with_dummy};
+use super::prefab_box;
 use super::{aim_at, ball, body, bursts, ground, kick, pin_camera, run, stand};
 
 /// A pile of `columns` × `rows` small balls on the sky's ground, 16 px
@@ -235,12 +236,22 @@ fn a_full_pits_chain_stays_under_the_bound() {
 fn a_hard_impact_or_a_fall_shatters_a_frozen_body() {
     let (mut harness, _) = sky();
     // A bowling ball's mass into frozen iron at 900 px/s.
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1200.0, TOP - IRON_HALF.y));
+    let iron = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(1200.0, TOP - prefab_box("iron_block").0.y),
+    );
     elements::freeze_iron(harness.world_mut(), iron);
-    let bowling = ball(&mut harness, Vec2::new(1080.0, TOP - IRON_HALF.y), false);
+    let bowling = ball(
+        &mut harness,
+        Vec2::new(1080.0, TOP - prefab_box("iron_block").0.y),
+        false,
+    );
     kick(&mut harness, bowling, Vec2::new(900.0, 0.0));
     // Small balls as fast into other frozen iron break no ice.
-    let other = toys::place_iron(harness.world_mut(), Vec2::new(1700.0, TOP - IRON_HALF.y));
+    let other = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(1700.0, TOP - prefab_box("iron_block").0.y),
+    );
     elements::freeze_iron(harness.world_mut(), other);
     for row in 0..3 {
         let small = ball(
@@ -268,7 +279,10 @@ fn a_hard_impact_or_a_fall_shatters_a_frozen_body() {
 #[test]
 fn frozen_things_thaw_after_five_seconds() {
     let (mut harness, _) = sky();
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1200.0, TOP - IRON_HALF.y));
+    let iron = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(1200.0, TOP - prefab_box("iron_block").0.y),
+    );
     let small = ball(&mut harness, Vec2::new(1500.0, TOP - 8.0), true);
     for body in [iron, small] {
         elements::freeze_iron(harness.world_mut(), body);
@@ -382,7 +396,7 @@ fn moving_bodies_hurt_the_dummy_by_speed_and_mass() {
     let at = body(&harness, dummy);
     let iron = toys::place_iron(
         harness.world_mut(),
-        at - Vec2::new(IRON_HALF.x + 30.0, 30.0),
+        at - Vec2::new(prefab_box("iron_block").0.x + 30.0, 30.0),
     );
     kick(&mut harness, iron, Vec2::new(800.0, 0.0));
     let mut landed = Vec::new();
@@ -402,7 +416,7 @@ fn thermal_shock_hurts_the_player_at_half() {
     let eye = super::centre(&harness, player);
     let iron = toys::place_iron(
         harness.world_mut(),
-        Vec2::new(eye.x + 120.0, TOP - IRON_HALF.y),
+        Vec2::new(eye.x + 120.0, TOP - prefab_box("iron_block").0.y),
     );
     harness.step(1);
     elements::freeze_iron(harness.world_mut(), iron);

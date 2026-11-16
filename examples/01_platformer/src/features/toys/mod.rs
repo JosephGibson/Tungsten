@@ -39,15 +39,10 @@ use components::{
     IronScrap, OpeningOf, PreviousVelocity, Ring, ShockRing, SmallBall, Spray,
 };
 
-/// A bowling ball's radius, and a small ball's, each half its drawn size.
-pub const BALL_RADIUS: f32 = 15.0;
-pub const SMALL_BALL_RADIUS: f32 = 7.5;
 /// The balls' art is 64 px, drawn at these scales: 32 and 16 px, the body
-/// centred in it, this far from the entity's point.
+/// centred in it, its prefab's circle and offset.
 pub const BALL_SCALE: f32 = 0.5;
 pub const SMALL_BALL_SCALE: f32 = 0.25;
-pub const BALL_CENTRE: Vec2 = Vec2::splat(16.0);
-pub const SMALL_BALL_CENTRE: Vec2 = Vec2::splat(8.0);
 /// Most balls alive at once; placing stops at the count (`D-094`).
 pub const BALL_CAP: usize = 12_000;
 /// Seconds between two small balls while their spell holds: five times
@@ -62,11 +57,6 @@ pub const TOSS_SPEED: f32 = 700.0;
 pub const TOSS_STEEPEST: f32 = 25.0 * std::f32::consts::PI / 180.0;
 /// Where a tossed ball leaves the caster's centre, along the aim.
 pub const TOSS_OFFSET: f32 = 28.0;
-/// An iron block's half size, its mass, and its art's offset: 128 px of
-/// art about the 120 px block. Its prefab's `cap` holds 24: a new one
-/// replaces the oldest, which poofs.
-pub const IRON_HALF: Vec2 = Vec2::splat(4.0 * BALL_RADIUS);
-pub const IRON_MASS: f32 = 400.0;
 /// Iron's weight: a block falling faster than [`IRON_FALL_FROM`] falls
 /// harder by [`IRON_WEIGHT`] px/s², half the world's gravity again, unless
 /// a troll holds or throws it.
@@ -76,11 +66,9 @@ pub const IRON_FALL_FROM: f32 = 30.0;
 /// closing speed or more raises dust, and its thud's rule shakes the
 /// camera.
 pub const IRON_LAND_SPEED: f32 = 900.0;
-/// A scrap: a quarter of a block's side, a sixteenth of its mass, its art
-/// drawn at half size.
-pub const SCRAP_HALF: Vec2 = Vec2::splat(IRON_HALF.x / 4.0);
+/// A block's scraps, each a quarter of its side and a sixteenth of its
+/// mass by their prefabs, their art drawn at half size.
 pub const SCRAP_COUNT: usize = 16;
-pub const SCRAP_MASS: f32 = IRON_MASS / 16.0;
 pub const SCRAP_SCALE: f32 = 0.5;
 /// Sliding friction while iron rests on something, px/s², and on ice; a
 /// scrap's is a sixteenth.
@@ -136,7 +124,9 @@ pub const RING_CAP: usize = 16;
 /// spray's loop and theirs fade over when they stop.
 pub const SMALL_BALLS_LOOP: &str = "ex10_small_balls_sfx";
 pub const LOOP_FADE: f32 = 0.08;
-/// The toys' prefabs, by their manifest IDs.
+/// The toys' prefabs, by their manifest IDs, each body's box, offset and
+/// mass its file's: an iron block 120 px in 128 px of art, its `cap`
+/// holding 24, a new one replacing the oldest, which poofs.
 pub const SMALL_BALL: &str = "small_ball";
 pub const BOWLING_BALL: &str = "bowling_ball";
 pub const IRON_BLOCK_PREFAB: &str = "iron_block";

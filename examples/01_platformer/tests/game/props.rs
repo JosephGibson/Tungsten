@@ -25,7 +25,7 @@ use example_01_platformer::features::lightning;
 use example_01_platformer::features::props::components::{MapProp, PropFire, PropKind, StoneSize};
 use example_01_platformer::features::props::{self, KEG_BLAST, SPREAD_AFTER, STONE_PREFABS};
 use example_01_platformer::features::spells::components::Spell;
-use example_01_platformer::features::toys::{self, SMALL_BALL_RADIUS};
+use example_01_platformer::features::toys;
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::{
@@ -124,8 +124,12 @@ fn a_crate_set_alight_burns_down_and_falls_in() {
         600.0 - 2.0 * prefab_box("crate").0.x - 3.0,
     );
     // A small ball resting 1 px off its right face, under the flames' aim.
-    let edge = 600.0 + prefab_box("crate").0.x + 1.0 + SMALL_BALL_RADIUS;
-    let small = ball(&mut harness, Vec2::new(edge, TOP - SMALL_BALL_RADIUS), true);
+    let edge = 600.0 + prefab_box("crate").0.x + 1.0 + prefab_box("small_ball").0.x;
+    let small = ball(
+        &mut harness,
+        Vec2::new(edge, TOP - prefab_box("small_ball").0.x),
+        true,
+    );
     harness.step(2);
     let face = Vec2::new(600.0 + prefab_box("crate").0.x, TOP - 50.0);
     assert!(
@@ -416,7 +420,7 @@ fn a_detonations_credit_passes_through_the_endings_it_sets_off() {
     // fire); the dummy's explosion reaches the second keg, past the first's.
     let small = ball(
         &mut harness,
-        Vec2::new(1060.0, TOP - SMALL_BALL_RADIUS),
+        Vec2::new(1060.0, TOP - prefab_box("small_ball").0.x),
         true,
     );
     let frozen = dummy_at(&mut harness, 880.0);
@@ -661,8 +665,8 @@ fn a_tossed_bowling_ball_breaks_a_crate_into_five_planks() {
             harness.step(1);
             // From `gap` px off the crate's side, level with its centre.
             let centre = body(&harness, crate_);
-            let start =
-                centre + Vec2::X * side * (prefab_box("crate").0.x + toys::BALL_RADIUS + gap);
+            let start = centre
+                + Vec2::X * side * (prefab_box("crate").0.x + prefab_box("bowling_ball").0.x + gap);
             let aim = Vec2::X * -side;
             let world = harness.world_mut();
             toys::toss_bowling_ball(world, start - aim * toys::TOSS_OFFSET, aim).expect("a ball");
@@ -680,7 +684,6 @@ fn a_tossed_bowling_ball_breaks_a_crate_into_five_planks() {
 
 #[test]
 fn heavy_blows_break_a_crate_and_light_or_resting_ones_do_not() {
-    use example_01_platformer::features::toys::IRON_HALF;
     use example_01_platformer::features::toys::components::PreviousVelocity;
     let top = TOP - 2.0 * prefab_box("crate").0.y;
     // Iron dropped 16 px onto a crate, its speed the step before the touch
@@ -689,7 +692,7 @@ fn heavy_blows_break_a_crate_and_light_or_resting_ones_do_not() {
     let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);
     let iron = toys::place_iron(
         harness.world_mut(),
-        Vec2::new(1000.0, top - 16.0 - IRON_HALF.y),
+        Vec2::new(1000.0, top - 16.0 - prefab_box("iron_block").0.y),
     );
     let mut speed = 0.0;
     let (left, _) = until_broken(&mut harness, crate_, 30, |h| {
@@ -727,7 +730,7 @@ fn heavy_blows_break_a_crate_and_light_or_resting_ones_do_not() {
     let ball = toys::spawn_ball(
         world,
         Vec2::new(
-            1000.0 - prefab_box("crate").0.x - toys::BALL_RADIUS - 4.0,
+            1000.0 - prefab_box("crate").0.x - prefab_box("bowling_ball").0.x - 4.0,
             TOP - prefab_box("crate").0.y,
         ),
         false,
@@ -736,15 +739,15 @@ fn heavy_blows_break_a_crate_and_light_or_resting_ones_do_not() {
     toys::place_iron(
         world,
         Vec2::new(
-            1400.0 + prefab_box("crate").0.x + IRON_HALF.x + 0.5,
-            TOP - IRON_HALF.y,
+            1400.0 + prefab_box("crate").0.x + prefab_box("iron_block").0.x + 0.5,
+            TOP - prefab_box("iron_block").0.y,
         ),
     );
     let rider = toys::place_iron(
         world,
         Vec2::new(
             1800.0,
-            TOP - 600.0 - prefab_box("crate").0.y - IRON_HALF.y - 0.5,
+            TOP - 600.0 - prefab_box("crate").0.y - prefab_box("iron_block").0.y - 0.5,
         ),
     );
     for body in [carried, rider] {
@@ -807,7 +810,7 @@ fn a_frozen_crate_shatters_into_no_planks() {
     let ball = toys::spawn_ball(
         world,
         Vec2::new(
-            1000.0 - prefab_box("crate").0.x - toys::BALL_RADIUS - 40.0,
+            1000.0 - prefab_box("crate").0.x - prefab_box("bowling_ball").0.x - 40.0,
             TOP - prefab_box("crate").0.y,
         ),
         false,

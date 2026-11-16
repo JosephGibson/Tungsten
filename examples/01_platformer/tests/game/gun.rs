@@ -12,7 +12,7 @@ use example_01_platformer::features::gun::{
     self, BALL_KICK, MAX_RICOCHETS, RELOAD, SHOOT, SHOT_DAMAGE,
 };
 use example_01_platformer::features::spells::hud::Hud;
-use example_01_platformer::features::toys::{self, IRON_HALF};
+use example_01_platformer::features::toys;
 use example_01_platformer::shared::{SaveId, Saved};
 use glam::Vec2;
 use tungsten::core::{Entity, EventQueue, RigidBody, Velocity};
@@ -22,6 +22,7 @@ use tungsten::kit::{
 use tungsten::testing::UiHarness;
 
 use super::combat::{CRIT_SEED, PLAIN_SEED, TOP, dummy_at, health};
+use super::prefab_box;
 use example_01_platformer::features::level::TILE;
 
 use super::{
@@ -32,7 +33,9 @@ use super::{stand, steps_this_frame};
 /// A bullet's speed, as the gun's payload fires it.
 const SPEED: f32 = 2400.0;
 /// An iron block's centre on the sky's ground.
-const IRON_Y: f32 = TOP - IRON_HALF.y;
+fn iron_y() -> f32 {
+    TOP - prefab_box("iron_block").0.y
+}
 /// The camera's corner over the sky's ground.
 const CORNER: Vec2 = Vec2::new(0.0, 400.0);
 
@@ -196,9 +199,9 @@ fn a_shot_pushes_a_ball() {
 #[test]
 fn a_shot_bounces_off_iron() {
     let (mut harness, _) = sky();
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1000.0, IRON_Y));
+    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1000.0, iron_y()));
     harness.step(10);
-    let id = shot(&mut harness, Vec2::new(700.0, IRON_Y), Vec2::X * SPEED);
+    let id = shot(&mut harness, Vec2::new(700.0, iron_y()), Vec2::X * SPEED);
     let mut turned = None;
     for _ in 0..12 {
         harness.step(1);
@@ -226,10 +229,10 @@ fn a_shot_bounces_off_iron() {
     // Between two blocks it turns twice, then the third face ends it.
     let (mut harness, _) = sky();
     for x in [600.0, 1200.0] {
-        toys::place_iron(harness.world_mut(), Vec2::new(x, IRON_Y));
+        toys::place_iron(harness.world_mut(), Vec2::new(x, iron_y()));
     }
     harness.step(10);
-    let id = shot(&mut harness, Vec2::new(900.0, IRON_Y), Vec2::X * SPEED);
+    let id = shot(&mut harness, Vec2::new(900.0, iron_y()), Vec2::X * SPEED);
     let mut most = 0;
     for _ in 0..60 {
         harness.step(1);
@@ -251,10 +254,10 @@ fn a_ball_or_iron_behind_a_nearer_dummy_or_wall_is_untouched() {
     // A thin wall, then iron against it.
     floor(
         &mut harness,
-        Vec2::new(1500.0, IRON_Y),
+        Vec2::new(1500.0, iron_y()),
         Vec2::new(4.0, 60.0),
     );
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1565.0, IRON_Y));
+    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1565.0, iron_y()));
     harness.step(10);
     let id = shot(&mut harness, Vec2::new(880.0, TOP - 7.5), Vec2::X * SPEED);
     harness.step(1);
@@ -264,7 +267,7 @@ fn a_ball_or_iron_behind_a_nearer_dummy_or_wall_is_untouched() {
         velocity(&harness, behind).length() < 1.0,
         "the ball behind it did not"
     );
-    let id = shot(&mut harness, Vec2::new(1480.0, IRON_Y), Vec2::X * SPEED);
+    let id = shot(&mut harness, Vec2::new(1480.0, iron_y()), Vec2::X * SPEED);
     harness.step(1);
     assert!(bullet(&harness, id).is_none(), "the wall ends it");
     // Its end puffs dust and sparks; a turn would ring.
@@ -279,7 +282,7 @@ fn a_ball_or_iron_behind_a_nearer_dummy_or_wall_is_untouched() {
 #[test]
 fn iron_in_front_of_a_dummy_ends_the_shot_at_the_iron() {
     let (mut harness, _) = sky();
-    toys::place_iron(harness.world_mut(), Vec2::new(1000.0, IRON_Y));
+    toys::place_iron(harness.world_mut(), Vec2::new(1000.0, iron_y()));
     let dummy = dummy_at(&mut harness, 1090.0);
     harness.step(10);
     let y = body(&harness, dummy).y;
@@ -305,7 +308,7 @@ fn a_moving_ball_crossing_before_a_wall_stop_is_pushed_and_after_it_is_not() {
     // A thin wall whose face the shot's step meets at 0.6 of the step.
     floor(
         &mut harness,
-        Vec2::new(1500.0, IRON_Y),
+        Vec2::new(1500.0, iron_y()),
         Vec2::new(4.0, 60.0),
     );
     harness.step(1);
@@ -549,9 +552,9 @@ fn a_tracer_turns_with_its_shot() {
     };
     // Off an iron block, 01's own turn.
     let (mut harness, _) = sky();
-    toys::place_iron(harness.world_mut(), Vec2::new(1000.0, IRON_Y));
+    toys::place_iron(harness.world_mut(), Vec2::new(1000.0, iron_y()));
     harness.step(10);
-    let id = shot(&mut harness, Vec2::new(700.0, IRON_Y), Vec2::X * SPEED);
+    let id = shot(&mut harness, Vec2::new(700.0, iron_y()), Vec2::X * SPEED);
     assert!(follow(&mut harness, id) >= 1, "it turned off the block");
     // Off the mine's iron riser, the kit's.
     let (mut harness, _) = run();

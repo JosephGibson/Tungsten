@@ -9,7 +9,7 @@ use example_01_platformer::features::elements::systems::{ball_impacts, impact_sp
 use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::toys::components::{Ball, BallSpawner, BlackHole, SmallBall};
 use example_01_platformer::features::toys::systems::{hole_particles, remember_velocities};
-use example_01_platformer::features::toys::{self, BALL_CAP, SMALL_BALL_RADIUS, SMALL_BALL_SCALE};
+use example_01_platformer::features::toys::{self, BALL_CAP, SMALL_BALL_SCALE};
 use example_01_platformer::shared::{BURST_CAP, Burst, spawn_burst};
 use glam::Vec2;
 use tungsten::core::{AnimationState, Collider, Entity, Particle, Shape, Transform};
@@ -18,6 +18,7 @@ use tungsten::testing::UiHarness;
 use example_01_platformer::features::player::components::Lantern;
 use example_01_platformer::features::spells::components::Spell;
 
+use super::prefab_box;
 use super::{
     aim_at, ball, body, bursts, calm, choose, contact, kick, mana, pin_camera, player_entity, run,
 };
@@ -346,7 +347,7 @@ fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
             assert_eq!(
                 world.get::<Collider>(*ball).unwrap().shape,
                 Shape::Circle {
-                    radius: SMALL_BALL_RADIUS
+                    radius: prefab_box("small_ball").0.x
                 }
             );
             let clip = &world.get::<AnimationState>(*ball).unwrap().animation_id;
