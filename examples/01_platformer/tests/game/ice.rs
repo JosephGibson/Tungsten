@@ -30,7 +30,7 @@ use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{IronBlock, IronScrap, Spray};
 use example_01_platformer::features::toys::systems::{bounds, friction, iron_look};
 use example_01_platformer::features::toys::{
-    self, BLAST_RADIUS, FROZEN_FRICTION, IRON_FRICTION, MISSILE_SPEED, SCRAP_COUNT, SPRAY_RANGE,
+    self, BLAST_RADIUS, FROZEN_FRICTION, IRON_FRICTION, SCRAP_COUNT, SPRAY_RANGE,
 };
 use example_01_platformer::shared::BURST_CAP;
 use example_01_platformer::shell::Difficulty;
@@ -771,7 +771,11 @@ fn fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps() {
     let missile = toys::fire_missile(
         harness.world_mut(),
         Vec2::new(450.0, eye.y),
-        Vec2::X * MISSILE_SPEED,
+        Vec2::X
+            * super::number(
+                &super::json("data/abilities/fire_missile.json"),
+                "/payload/1/spawn/speed",
+            ),
     )
     .unwrap();
     for _ in 0..10 {

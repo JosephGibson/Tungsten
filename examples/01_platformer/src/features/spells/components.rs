@@ -84,35 +84,6 @@ impl Spell {
     }
 }
 
-/// An element and its colour, as the bar's borders showed them before the
-/// icon family drew each element into its tile (01 (h)); the damage
-/// numbers' tests read the colours.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum School {
-    Fire,
-    Cold,
-    Mana,
-    Physical,
-    Shock,
-    Poison,
-}
-
-impl School {
-    /// Its border colour, from the palette: ember orange, ice cyan, indigo,
-    /// bone white, violet and poison green.
-    #[must_use]
-    pub const fn color(self) -> [u8; 4] {
-        match self {
-            School::Fire => [246, 124, 40, 255],
-            School::Cold => [176, 236, 244, 255],
-            School::Mana => [132, 128, 236, 255],
-            School::Physical => [242, 234, 200, 255],
-            School::Shock => [184, 140, 255, 255],
-            School::Poison => [132, 214, 64, 255],
-        }
-    }
-}
-
 /// The type the summon slot places, by its place in [`SUMMONS`]: a World
 /// resource a run's start inserts, saved.
 ///

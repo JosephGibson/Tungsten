@@ -24,8 +24,8 @@ use super::draw;
 use super::{
     BLAST_RADIUS, BROOM_MOST, BROOM_REACH, COLLAPSE_RING, FIRE_SPRAY_RANGE, FROZEN_FRICTION,
     HOLD_EASE, HOLD_RING, HOLD_SWIRL, HOLE_FORCE, HOLE_RADIUS, IRON_FALL_FROM, IRON_FRICTION,
-    IRON_WEIGHT, LOOP_FADE, MISSILE_RADIUS, MISSILE_SIZE, OPEN_INWARD, OPEN_REACH, PUSH_RADIUS,
-    PUSH_SPEED, RING_SECS, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
+    IRON_WEIGHT, LOOP_FADE, MISSILE_RADIUS, OPEN_INWARD, OPEN_REACH, PUSH_RADIUS, PUSH_SPEED,
+    RING_SECS, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{
@@ -440,7 +440,7 @@ pub fn bend(world: &mut World) {
     if dt <= 0.0 || holes.is_empty() {
         return;
     }
-    let centre = Vec2::splat(MISSILE_SIZE * 0.5);
+    let centre = super::missile_size(world).0 * 0.5;
     for (_, at, motion) in world.query_mut::<(&FireMissile, &Position, &mut LinearMotion)>() {
         let velocity = motion.velocity() + hole_pull(&holes, at.0 + centre) * dt;
         motion.set_velocity(velocity);
@@ -486,10 +486,12 @@ pub fn show(world: &mut World, entity: Entity) {
 /// step: a missile whose circle met a tile or a body in its step
 /// ([`sweep`]) blasts where it met it and goes, its drips with it.
 pub fn missile_contacts(world: &mut World) {
-    let centre = Vec2::splat(MISSILE_SIZE * 0.5);
     let missiles: Vec<(Entity, Vec2, Vec2)> = world
         .query::<(Entity, &FireMissile, &Position, &PrevPosition)>()
-        .map(|(entity, _, at, prev)| (entity, prev.0 + centre, at.0 + centre))
+        .map(|(entity, _, at, prev)| {
+            let centre = super::missile_size(world).0 * 0.5;
+            (entity, prev.0 + centre, at.0 + centre)
+        })
         .collect();
     for (missile, start, end) in missiles {
         if let Some(hit) = sweep(world, start, end) {
@@ -508,11 +510,11 @@ pub fn missile_ends(world: &mut World, cursor: &mut EventCursor<ProjectileExpire
     let Some(events) = world.get_resource::<EventQueue<ProjectileExpired>>() else {
         return;
     };
-    let centre = Vec2::splat(MISSILE_SIZE * 0.5);
     let ended: Vec<(Vec2, bool)> = cursor
         .read(events)
         .filter(|end| world.has::<FireMissile>(end.entity))
         .map(|end| {
+            let centre = super::missile_size(world).0 * 0.5;
             let spent = world
                 .get::<Projectile>(end.entity)
                 .is_some_and(|p| p.range().is_some_and(|range| p.travelled() >= range - 1.0));

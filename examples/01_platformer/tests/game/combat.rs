@@ -8,7 +8,6 @@
 use example_01_platformer::features::combat::{CRIT_CHANCE, Hit, Kind};
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
-use example_01_platformer::features::spells::components::School;
 use example_01_platformer::features::{dummy, toys};
 use example_01_platformer::shared::Burst;
 use example_01_platformer::shell::Difficulty;
@@ -382,8 +381,38 @@ fn near(rgb: [u8; 3], color: [u8; 4]) -> bool {
     rgb.iter().zip(color).all(|(&a, b)| a.abs_diff(b) <= 3)
 }
 
-/// The palette's crit yellow.
-const YELLOW: [u8; 4] = [255, 214, 10, 255];
+/// A linear channel in `[0, 1]` as an sRGB byte, as the frame encodes a
+/// label's colour: the test's own encoding, beside the kit's.
+fn srgb(linear: f32) -> u8 {
+    let c = linear.clamp(0.0, 1.0);
+    let encoded = if c <= 0.003_130_8 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    };
+    (encoded * 255.0).round() as u8
+}
+
+/// The linear colour at `pointer` in the data file at `path`, which the
+/// game loads, as sRGB bytes.
+fn colour_in(path: &str, pointer: &str) -> [u8; 4] {
+    let value = super::json(path);
+    let channel = |i: usize| srgb(super::number(&value, &format!("{pointer}/{i}")));
+    [channel(0), channel(1), channel(2), 255]
+}
+
+/// A damage type's label colour, its `label_style`'s (`damage.fire`).
+fn type_colour(id: &str) -> [u8; 4] {
+    colour_in(
+        "data/damage_types/game.json",
+        &format!("/{id}/label_style/color"),
+    )
+}
+
+/// The crit's label colour, its number rule's.
+fn crit_colour() -> [u8; 4] {
+    colour_in("data/cue_rules/numbers.json", "/0/do/0/label/crit/color")
+}
 
 /// A run with the dummy and the camera held over both.
 fn watched() -> (UiHarness, Entity, Entity) {
@@ -413,8 +442,13 @@ fn numbers_float_in_their_types_colour_and_a_crit_larger_in_yellow() {
             .map(|(_, label)| label.2)
             .expect(text)
     };
-    assert!(near(colour("6"), School::Fire.color()), "{:?}", colour("6"));
-    assert!(near(colour("8"), School::Cold.color()), "{:?}", colour("8"));
+    let fire = type_colour("damage.fire");
+    assert!(near(colour("6"), fire), "{:?}", colour("6"));
+    assert!(
+        near(colour("8"), type_colour("damage.cold")),
+        "{:?}",
+        colour("8")
+    );
     // A crit from the player floats at once, larger, in the crit yellow.
     harness
         .world_mut()
@@ -425,7 +459,7 @@ fn numbers_float_in_their_types_colour_and_a_crit_larger_in_yellow() {
     assert_eq!(floated_crit.len(), 1, "{floated_crit:?}");
     let (frame, (text, size, rgb)) = &floated_crit[0];
     assert_eq!((*frame, text.as_str(), *size), (0, "10", crit_size()));
-    assert!(near(*rgb, YELLOW), "{rgb:?}");
+    assert!(near(*rgb, crit_colour()), "{rgb:?}");
 }
 
 #[test]
@@ -446,11 +480,12 @@ fn two_hits_in_a_step_float_apart_and_only_the_crits_in_yellow() {
         "one sum, at once"
     );
     assert_eq!(*crit_size, self::crit_size());
-    assert!(near(*crit_rgb, YELLOW));
+    assert!(near(*crit_rgb, crit_colour()));
     let (cold_frame, (cold_text, cold_size, cold_rgb)) = &floated[1];
     assert!(*cold_frame <= 1, "apart, and at once too");
     assert_eq!((cold_text.as_str(), *cold_size), ("5", 16.0));
-    assert!(near(*cold_rgb, School::Cold.color()) && !near(*cold_rgb, YELLOW));
+    let cold = type_colour("damage.cold");
+    assert!(near(*cold_rgb, cold) && !near(*cold_rgb, crit_colour()));
 }
 
 #[test]

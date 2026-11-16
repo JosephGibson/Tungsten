@@ -35,9 +35,7 @@ use example_01_platformer::features::enemies::components::{
     Brain, Enemy, EnemyKind, EnemyState, Holding, Sight, Strike, Throws, Variant,
 };
 use example_01_platformer::features::enemies::crawler::{self, FROST_BREATH, LUNGE_SPEED};
-use example_01_platformer::features::enemies::drops::{
-    self, ORB_CENTRE, ORB_HALF, ORB_SECS, Orb, OrbKind, PlacedOrbs,
-};
+use example_01_platformer::features::enemies::drops::{self, Orb, OrbKind, PlacedOrbs};
 use example_01_platformer::features::enemies::goblin::{
     BOMB_CHANCE, DASH_CHANCE, DASH_SPEED, KEEP_OFF, LEAP_BACK, ROCK_DAMAGE, STAB_DAMAGE,
 };
@@ -66,7 +64,7 @@ use tungsten::core::{
     Position, PrevPosition, RigidBodyBundle, Sprite, Time, Velocity, Visibility,
 };
 use tungsten::kit::{
-    ContactDamage, Cooldown, Damaged, Effects, Health, Hitbox, KitRng, Knockback,
+    ContactDamage, Cooldown, Damaged, Effects, Health, Hitbox, KitRng, Knockback, Lifetime, Pickup,
     PlatformerController, StateMachine, Stats, TopDownMover, carrier_of,
 };
 use tungsten::testing::UiHarness;
@@ -3196,8 +3194,16 @@ fn adopted(harness: &mut UiHarness, kind: OrbKind, frames: u32) -> Option<Entity
     found
 }
 
+/// An orb's centre, its pickup's offset from its point.
 fn orb_centre(harness: &UiHarness, orb: Entity) -> Vec2 {
-    harness.world().get::<Position>(orb).unwrap().0 + ORB_CENTRE
+    let world = harness.world();
+    world.get::<Position>(orb).unwrap().0 + world.get::<Pickup>(orb).unwrap().offset()
+}
+
+/// An orb's pickup's half size.
+fn orb_half(harness: &UiHarness, orb: Entity) -> Vec2 {
+    let pickup = harness.world().get::<Pickup>(orb).unwrap();
+    pickup.shape().shape().half_extents()
 }
 
 #[test]
@@ -3230,7 +3236,7 @@ fn a_drop_lands_clear_of_rock_falls_and_is_drawn_in() {
     let fell = orb_centre(&harness, orb).y - first.y;
     assert!((fell - 60.0).abs() <= 2.0, "it falls 120 px/s: {fell}");
     harness.step(120);
-    let bottom = orb_centre(&harness, orb).y + ORB_HALF.y;
+    let bottom = orb_centre(&harness, orb).y + orb_half(&harness, orb).y;
     assert!(
         (bottom - TOP).abs() <= 1.0,
         "it rests on the stone: {bottom}"
@@ -3243,7 +3249,7 @@ fn a_drop_lands_clear_of_rock_falls_and_is_drawn_in() {
     harness.world_mut().insert_resource(KitRng::seeded(seed));
     land(&mut harness, crawler, Kind::Physical, 1000.0);
     let orb = adopted(&mut harness, OrbKind::Mana, 5).expect("the crawler's roll dropped one");
-    let bottom = orb_centre(&harness, orb).y + ORB_HALF.y;
+    let bottom = orb_centre(&harness, orb).y + orb_half(&harness, orb).y;
     assert!(bottom <= TOP + 1e-3, "clear of the stone: {bottom}");
     // The player stood 180 px off draws it in.
     let x = orb_centre(&harness, orb).x;
@@ -3261,6 +3267,13 @@ fn an_orb_passes_enemies_and_fades_after_its_lifetime() {
     let corner = at(&harness, crawler) - Vec2::splat(12.0);
     let world = harness.world_mut();
     let orb = drops::spawn(world, OrbKind::Health, corner).expect("an orb");
+    // Its seconds before it fades, its lifetime's.
+    let seconds = harness
+        .world()
+        .get::<Lifetime>(orb)
+        .unwrap()
+        .timer()
+        .duration();
     harness.step(60);
     assert!(harness.world().is_alive(orb), "the crawler passes it by");
     let mut frames = 60;
@@ -3271,7 +3284,7 @@ fn an_orb_passes_enemies_and_fades_after_its_lifetime() {
     assert!(faded, "it fades");
     let lived = frames as f32 / 60.0;
     assert!(
-        (lived - ORB_SECS).abs() <= 2.0 / 60.0,
+        (lived - seconds).abs() <= 2.0 / 60.0,
         "after its lifetime: {lived} s"
     );
 }

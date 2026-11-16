@@ -1,7 +1,7 @@
 //! The enemies' drops: health and mana orbs, which each enemy's `killed`
 //! cue rolls from `enemy_drops` (the troll's from `troll_drops`, three
 //! rolls). An orb is a bodiless pickup filtered to `team.player`, drawn by
-//! the player's `pickup_radius` magnet, and fades after [`ORB_SECS`]; its
+//! the player's `pickup_radius` magnet, and fades after its prefab's `lifetime`; its
 //! foe's `killed` roll centres it on the foe's body (`at: centre`,
 //! `centred`), and [`adopt`] gives each its save ID before the shell's
 //! save, moved clear of the rock there. Its `picked_up` cue lands its
@@ -33,12 +33,6 @@ use crate::shared::{Joined, Saved, spawn_burst};
 #[derive(Debug, Clone, Default)]
 pub struct PlacedOrbs(pub Vec<u64>);
 
-/// An orb's seconds before it fades: its prefab's lifetime.
-pub const ORB_SECS: f32 = 20.0;
-/// An orb's centre from its point, its sprite's top-left: the 24 px orb's
-/// middle, and its box's half size.
-pub const ORB_CENTRE: Vec2 = Vec2::new(12.0, 12.0);
-pub const ORB_HALF: Vec2 = Vec2::new(12.0, 12.0);
 /// A dropped orb's way out of the rock it landed in: so far at a time, up
 /// to a tile up, then down.
 const CLEAR_STEP: f32 = 4.0;
@@ -129,12 +123,10 @@ fn rock() -> [SpatialFilter; 2] {
     ]
 }
 
-/// Whether an orb's box about `centre` meets a tile, a wall or lava's
-/// surface.
-fn in_rock(world: &World, centre: Vec2) -> bool {
-    let shape = Shape::Aabb {
-        half_extents: ORB_HALF,
-    };
+/// Whether an orb's box of `half` about `centre` meets a tile, a wall or
+/// lava's surface.
+fn in_rock(world: &World, centre: Vec2, half: Vec2) -> bool {
+    let shape = Shape::Aabb { half_extents: half };
     let mut met = Vec::new();
     rock().iter().any(|filter| {
         overlap(world, shape, centre, filter, &mut met);
@@ -142,10 +134,11 @@ fn in_rock(world: &World, centre: Vec2) -> bool {
     })
 }
 
-/// Where a dropped orb about `centre` lands clear of rock: there, else
-/// [`CLEAR_STEP`] at a time up to a tile up, else as far down, else there.
-fn clear(world: &World, centre: Vec2) -> Vec2 {
-    if !in_rock(world, centre) {
+/// Where a dropped orb of `half` about `centre` lands clear of rock:
+/// there, else [`CLEAR_STEP`] at a time up to a tile up, else as far down,
+/// else there.
+fn clear(world: &World, centre: Vec2, half: Vec2) -> Vec2 {
+    if !in_rock(world, centre, half) {
         return centre;
     }
     let steps = (TILE / CLEAR_STEP) as u32;
@@ -153,14 +146,15 @@ fn clear(world: &World, centre: Vec2) -> Vec2 {
         .into_iter()
         .flat_map(|way| (1..=steps).map(move |k| Vec2::new(0.0, way * CLEAR_STEP * k as f32)))
         .map(|shift| centre + shift)
-        .find(|&at| !in_rock(world, at))
+        .find(|&at| !in_rock(world, at, half))
         .unwrap_or(centre)
 }
 
 /// `orb_adopt`, in `PreUpdate` before the shell's save: each orb a roll
 /// landed at the last flush, centred on the body of the enemy that dropped
 /// it, joins the run ([`Joined`]), its save ID the flush's, and is moved
-/// clear of the rock there ([`clear`]); it pops out with its sound and its
+/// clear of the rock there ([`clear`]) by its pickup's box, its centre its
+/// pickup's offset from its point; it pops out with its sound and its
 /// kind's sparks. Placed and loaded orbs never pass here.
 pub fn adopt(world: &mut World) {
     let fresh: Vec<Entity> = world
@@ -168,15 +162,17 @@ pub fn adopt(world: &mut World) {
         .collect();
     for orb in fresh {
         world.insert_bundle(orb, (Joined, SceneEntity { state_id: GAMEPLAY }));
-        let (Some(kind), Some(centre)) = (
+        let (Some(kind), Some(point), Some(pickup)) = (
             world.get::<Orb>(orb).map(|orb| orb.kind),
-            world.get::<Position>(orb).map(|at| at.0 + ORB_CENTRE),
+            world.get::<Position>(orb).map(|at| at.0),
+            world.get::<Pickup>(orb),
         ) else {
             continue;
         };
-        let at = clear(world, centre);
+        let (offset, half) = (pickup.offset(), pickup.shape().shape().half_extents());
+        let at = clear(world, point + offset, half);
         if let Some(position) = world.get_mut::<Position>(orb) {
-            position.0 = at - ORB_CENTRE;
+            position.0 = at - offset;
         }
         spawn_burst(world, kind.burst(), at);
         audio::play(world, Sound::OrbDropped, at);

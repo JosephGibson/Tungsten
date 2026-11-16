@@ -10,10 +10,8 @@ use example_01_platformer::features::combat::{
 };
 use example_01_platformer::features::elements;
 use example_01_platformer::features::enemies::components::{EnemyKind, Variant};
-use example_01_platformer::features::enemies::drops::ORB_SECS;
 use example_01_platformer::features::enemies::{self, crawler, goblin, snowball, troll};
 use example_01_platformer::features::player;
-use example_01_platformer::features::toys::MISSILE_SPEED;
 use example_01_platformer::shared::{Body, body_centre};
 use glam::Vec2;
 use serde_json::Value;
@@ -117,18 +115,7 @@ fn every_restated_constant_matches_its_data() {
     ] {
         assert_eq!(number(&frost, pointer), crawler::MOVE_SPEED, "{pointer}");
     }
-    // The missile's speed, the orbs' lifetime, the beetle's charge and the
-    // bat's dive.
-    let missile = json("data/abilities/fire_missile.json");
-    assert_eq!(number(&missile, "/payload/1/spawn/speed"), MISSILE_SPEED);
-    for orb in ["health_orb", "mana_orb"] {
-        let value = json(&format!("prefabs/{orb}.json"));
-        assert_eq!(
-            number(&value, "/components/lifetime/seconds"),
-            ORB_SECS,
-            "{orb}"
-        );
-    }
+    // The beetle's charge and the bat's dive.
     // The charge's and the dive's windows, which end them (S-189).
     let charge = json("data/abilities/beetle_charge.json");
     assert_eq!(number(&charge, "/payload/0/hitbox"), 0.8);

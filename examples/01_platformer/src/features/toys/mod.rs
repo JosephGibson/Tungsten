@@ -99,14 +99,11 @@ pub const HOLD_SWIRL: f32 = 0.55;
 /// hole's centre go, at most this many a hole a step.
 pub const BROOM_REACH: f32 = 24.0;
 pub const BROOM_MOST: usize = 12;
-/// The fire missile: its speed, its reach, its body's radius and its drawn
-/// size (its prefab's `scale`, 40 / 64); its fall is its prefab's
-/// `linear_motion`, which its spell's payload keeps, and its cap of six in
-/// flight its prefab's `cap`.
-pub const MISSILE_SPEED: f32 = 900.0;
-pub const MISSILE_RANGE: f32 = MISSILE_SPEED * 2.1;
+/// The fire missile's body's radius; its speed is its spell's payload's,
+/// its drawn size its prefab's `scale` of its sprite ([`missile_size`]),
+/// its fall its prefab's `linear_motion`, which its spell's payload keeps,
+/// and its cap of six in flight its prefab's `cap`.
 pub const MISSILE_RADIUS: f32 = 10.0;
-pub const MISSILE_SIZE: f32 = 40.0;
 /// A blast: its heat's reach, which lights small balls and shatters frozen
 /// iron, and its push's reach and speed at its centre.
 pub const BLAST_RADIUS: f32 = 72.0;
@@ -585,6 +582,29 @@ pub fn missile_count(world: &World) -> usize {
     world.query::<&FireMissile>().count()
 }
 
+/// A fire missile's drawn size and its scale: its prefab's `scale` of its
+/// sprite's size, its body's centre half of it from its corner.
+///
+/// # Panics
+///
+/// When its prefab has no sprite: it loads with the manifest.
+#[must_use]
+pub fn missile_size(world: &World) -> (Vec2, f32) {
+    let prefab = world
+        .get_resource::<PrefabRegistry>()
+        .and_then(|prefabs| prefabs.get(FIRE_MISSILE_PREFAB))
+        .filter(|prefab| prefab.sprite.is_some())
+        .unwrap_or_else(|| {
+            panic!("no `{FIRE_MISSILE_PREFAB}` prefab with a sprite: it loads with the manifest")
+        });
+    let sprite = prefab
+        .sprite
+        .as_ref()
+        .map_or("", |sprite| sprite.asset_id.as_str());
+    let scale = Vec2::from(prefab.scale);
+    (crate::shared::sprite_size(world, sprite) * scale, scale.x)
+}
+
 /// Fires a missile from `centre` at `velocity`, at once: the prefab the
 /// fire missile's spell spawns, set at its centre, admitted under its
 /// prefab's `cap`. None at that cap, which refuses it.
@@ -592,8 +612,9 @@ pub fn fire_missile(world: &mut World, centre: Vec2, velocity: Vec2) -> Option<E
     if cap_refuses(world, FIRE_MISSILE_PREFAB) {
         return None;
     }
-    let at = centre - Vec2::splat(MISSILE_SIZE * 0.5);
-    let missile = admit_toy(world, FIRE_MISSILE_PREFAB, at, MISSILE_SIZE / 64.0, None)?
+    let (size, scale) = missile_size(world);
+    let at = centre - size * 0.5;
+    let missile = admit_toy(world, FIRE_MISSILE_PREFAB, at, scale, None)?
         .prepared
         .spawn(world);
     world.insert(missile, Joined);

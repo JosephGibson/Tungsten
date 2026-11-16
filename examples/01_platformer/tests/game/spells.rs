@@ -28,7 +28,7 @@ use example_01_platformer::features::toys::components::{
 };
 use example_01_platformer::features::toys::flask;
 use example_01_platformer::features::toys::{
-    self, BROOM_MOST, HOLE_RADIUS, MISSILE_SPEED, PUSH_RADIUS, PUSH_SPEED, RING_CAP,
+    self, BROOM_MOST, HOLE_RADIUS, PUSH_RADIUS, PUSH_SPEED, RING_CAP,
 };
 use example_01_platformer::shared::{BURST_CAP, Burst};
 use example_01_platformer::shell::Difficulty;
@@ -73,6 +73,20 @@ fn rings(harness: &UiHarness, kind: Ring) -> usize {
         .count()
 }
 
+/// The fire missile's speed, its spell's spawn payload's.
+fn missile_speed() -> f32 {
+    let ability = super::json("data/abilities/fire_missile.json");
+    super::number(&ability, "/payload/1/spawn/speed")
+}
+
+/// The fire missile's drawn size, its prefab's `scale` of its sprite's.
+fn missile_size(harness: &UiHarness) -> Vec2 {
+    let prefab = super::json("prefabs/fire_missile.json");
+    let sprite = prefab["sprite"]["asset_id"].as_str().expect("its sprite");
+    let size = example_01_platformer::shared::sprite_size(harness.world(), sprite);
+    size * super::pair(&prefab, "/scale")
+}
+
 #[test]
 fn fireball_contact_explodes_and_ignites_small_balls() {
     let (mut harness, _) = run();
@@ -84,7 +98,7 @@ fn fireball_contact_explodes_and_ignites_small_balls() {
         Vec2::new(12.0, 5.0),
     );
     let target = ball(&mut harness, o + Vec2::new(200.0, 0.0), true);
-    let missile = toys::fire_missile(harness.world_mut(), o, Vec2::X * MISSILE_SPEED).unwrap();
+    let missile = toys::fire_missile(harness.world_mut(), o, Vec2::X * missile_speed()).unwrap();
     for _ in 0..30 {
         harness.step(1);
     }
@@ -219,8 +233,8 @@ fn mouse4_casts_a_fireball_toward_the_cursor() {
     let (missile, at, velocity) = missiles[0];
     let aim = (target - from).normalize();
     assert!(velocity.normalize().dot(aim) > 0.999);
-    assert!((velocity.length() - MISSILE_SPEED).abs() < 1.0);
-    let start = at + Vec2::splat(toys::MISSILE_SIZE * 0.5);
+    assert!((velocity.length() - missile_speed()).abs() < 1.0);
+    let start = at + missile_size(&harness) * 0.5;
     assert!(
         (start - (from + aim * 24.0)).length() < 1.0,
         "it leaves the courier's centre at the payload's offset: {start}"
@@ -245,7 +259,7 @@ fn level_blast(harness: &mut UiHarness, from: Vec2) -> Vec2 {
     use example_01_platformer::features::toys::components::Flare;
     use tungsten::core::Transform;
     let world = harness.world_mut();
-    let velocity = Vec2::X * MISSILE_SPEED;
+    let velocity = Vec2::X * missile_speed();
     let missile = toys::fire_missile(world, from, velocity).unwrap();
     world.insert(missile, LinearMotion::new(velocity));
     let blasts = |harness: &UiHarness| -> Vec<Vec2> {
