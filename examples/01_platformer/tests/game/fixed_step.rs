@@ -5,7 +5,6 @@
 
 use example_01_platformer::features::level::systems::drawn_time;
 use example_01_platformer::features::player::components::Moves;
-use example_01_platformer::features::player::systems::AIR_JUMP_BURST;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::Ball;
 use example_01_platformer::features::toys::{self, BALL_CAP};
@@ -96,7 +95,7 @@ fn at_30_hz_a_double_jump_in_a_frames_first_step_plays_its_effect() {
     assert!(world.get::<Moves>(player).unwrap().tuck);
     let config = world
         .resource::<ParticleConfigRegistry>()
-        .id_for_name(AIR_JUMP_BURST)
+        .id_for_name("ex10_double_jump")
         .unwrap();
     assert!(
         world

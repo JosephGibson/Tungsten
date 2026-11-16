@@ -128,8 +128,6 @@ pub enum Sound {
     Racked,
     /// The flamethrower let go.
     FireEnded,
-    /// The courier's free air jump, the double jump.
-    AirJumped,
     /// A cast refused for want of mana.
     NoMana,
     /// A spell or a summon's type chosen.
@@ -170,8 +168,6 @@ pub enum Sound {
     TomePactTaken,
     TomeBoundingTaken,
     TomeArcaneTaken,
-    /// An air jump paid for in mana under the tome of bounding.
-    Bounded,
     /// A beetle's charge setting a body moving out of its way (e01foes).
     BeetlePloughed,
     /// A crawler's hop or leap (e01foes).
@@ -202,7 +198,7 @@ pub enum Sound {
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 78] = [
+    pub const ALL: [Sound; 76] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -244,7 +240,6 @@ impl Sound {
         Sound::DryFired,
         Sound::Racked,
         Sound::FireEnded,
-        Sound::AirJumped,
         Sound::NoMana,
         Sound::Switched,
         Sound::OrbDropped,
@@ -266,7 +261,6 @@ impl Sound {
         Sound::TomePactTaken,
         Sound::TomeBoundingTaken,
         Sound::TomeArcaneTaken,
-        Sound::Bounded,
         Sound::BeetlePloughed,
         Sound::CrawlerHopped,
         Sound::SnowballThrown,
@@ -328,7 +322,6 @@ impl Sound {
             Sound::DryFired => "dry_fired",
             Sound::Racked => "racked",
             Sound::FireEnded => "fire_ended",
-            Sound::AirJumped => "double_jumped",
             Sound::NoMana => "no_mana",
             Sound::Switched => "switched",
             Sound::OrbDropped => "orb_dropped",
@@ -350,7 +343,6 @@ impl Sound {
             Sound::TomePactTaken => "tome_pact_taken",
             Sound::TomeBoundingTaken => "tome_bounding_taken",
             Sound::TomeArcaneTaken => "tome_arcane_taken",
-            Sound::Bounded => "bounded",
             Sound::BeetlePloughed => "beetle_ploughed",
             Sound::CrawlerHopped => "crawler_hopped",
             Sound::SnowballThrown => "snowball_thrown",

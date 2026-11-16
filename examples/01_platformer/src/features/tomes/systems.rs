@@ -9,18 +9,17 @@ use tungsten::kit::{
 
 use super::components::{TomeKind, Tomes};
 use super::{
-    ARCANE_FACTOR, ARCANE_SOURCE, BOUND_CENTRE, BOUND_CLIP, BOUND_COST, BOUND_SECS, BOUND_SPARKS,
-    BOUND_TRAIL, BOUND_Z, INTERACT, PACT_DELAY, PACT_RECHARGE, PACT_SHIELD, PACT_SOURCE,
-    TAKE_CENTRE, TAKE_SECS, TAKE_Z, nearest,
+    ARCANE_FACTOR, ARCANE_SOURCE, BOUND_CENTRE, BOUND_CLIP, BOUND_COST, BOUND_SECS, BOUND_Z,
+    INTERACT, PACT_DELAY, PACT_RECHARGE, PACT_SHIELD, PACT_SOURCE, TAKE_CENTRE, TAKE_SECS, TAKE_Z,
+    nearest,
 };
 use crate::features::audio;
-use crate::features::audio::components::Sound;
 use crate::features::combat::{SPELL, STATUS_THRESHOLD};
 use crate::features::run::Run;
 use crate::features::spells::SPELL_COST;
 use crate::features::spells::hud;
 use crate::game::GAMEPLAY;
-use crate::shared::{despawn_tree, just_pressed, spawn_burst, spawn_key_burst};
+use crate::shared::{despawn_tree, just_pressed, spawn_key_burst};
 use crate::shell;
 
 /// The pact's factor on the player's [`STATUS_THRESHOLD`]: 50 to 40, as
@@ -113,13 +112,10 @@ fn apply(world: &mut World, player: Entity, kind: TomeKind) {
     }
 }
 
-/// A bound from `feet`, in place of the double jump's burst and whoosh:
-/// its ring opening under them, its sparks and its trail, and its sound.
+/// A bound's ring, opening under `feet`: its sparks, its trail and its
+/// sound are the paid `air_jumped` rule's, in `cue_rules/sounds.json`.
 pub fn bound(world: &mut World, feet: Vec2) {
     one_shot(world, BOUND_CLIP, feet - BOUND_CENTRE, BOUND_SECS, BOUND_Z);
-    spawn_burst(world, BOUND_SPARKS, feet);
-    spawn_burst(world, BOUND_TRAIL, feet);
-    audio::play(world, Sound::Bounded, feet);
 }
 
 /// The clip `clip` once, its sprite's top-left at `corner` at `z`, shown

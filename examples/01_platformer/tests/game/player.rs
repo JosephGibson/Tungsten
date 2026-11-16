@@ -5,17 +5,15 @@
 
 use example_01_platformer::features::level::{self, KILL_Y, MAP, TILE, WORLD_MAX, WORLD_MIN};
 use example_01_platformer::features::player::components::Moves;
-use example_01_platformer::features::player::systems::{
-    AIR_JUMP_BURST, DEATH_CLIP, HURT_CLIP, escaped,
-};
+use example_01_platformer::features::player::systems::{DEATH_CLIP, HURT_CLIP, escaped};
 use example_01_platformer::features::run::DEATH_SECS;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::shared::Burst;
 use example_01_platformer::shell::game_over::GAME_OVER;
 use glam::Vec2;
 use tungsten::core::{
-    AnimationState, Collider, Entity, ParticleConfigRegistry, ParticleEmitter, Position,
-    TilemapRegistry, Time, Transform, Velocity,
+    AnimationState, AudioCommand, Collider, Entity, ParticleConfigRegistry, ParticleEmitter,
+    Position, SoundRegistry, TilemapRegistry, Time, Transform, Velocity,
 };
 use tungsten::kit::{Health, PlatformerController, damage};
 use tungsten::testing::UiHarness;
@@ -61,6 +59,21 @@ fn bursts(harness: &UiHarness, name: &str) -> Vec<Entity> {
         .filter(|(_, _, emitter)| emitter.config == config)
         .map(|(entity, ..)| entity)
         .collect()
+}
+
+/// Plays of the manifest sound `id` in the last frame, by the audio log:
+/// how a test hears a sound a cue plays with no `Sounded` of 01's.
+pub(super) fn plays(harness: &UiHarness, id: &str) -> usize {
+    let sound = harness.world().resource::<SoundRegistry>().get_by_id(id);
+    assert!(sound.is_some(), "`{id}` is no manifest sound");
+    harness
+        .harness()
+        .audio()
+        .iter()
+        .filter(
+            |command| matches!(command, AudioCommand::Play { handle, .. } if Some(*handle) == sound),
+        )
+        .count()
 }
 
 /// A fresh press: up, then down again, read by the next frame.
@@ -290,7 +303,7 @@ fn double_jump_needs_a_fresh_press_emits_once_and_refills_on_landing() {
     let rise = harness.world().get::<Velocity>(player).unwrap().0.y;
     let expected = -1280.0 + level::GRAVITY * DT * 0.5;
     assert!((rise - expected).abs() < 1e-2, "{rise} vs {expected}");
-    let burst = bursts(&harness, AIR_JUMP_BURST);
+    let burst = bursts(&harness, "ex10_double_jump");
     assert_eq!(burst.len(), 1);
     let at = harness.world().get::<Transform>(burst[0]).unwrap().position;
     assert!((at - takeoff).length() < 1e-3, "{at} vs {takeoff}");
@@ -298,7 +311,7 @@ fn double_jump_needs_a_fresh_press_emits_once_and_refills_on_landing() {
     press_again(&mut harness, "jump");
     harness.step(1);
     assert!(!controller(&harness, player).jumped());
-    assert_eq!(bursts(&harness, AIR_JUMP_BURST).len(), 1);
+    assert_eq!(bursts(&harness, "ex10_double_jump").len(), 1);
     harness.harness_mut().release_action("jump");
     harness.step(150);
     assert!(controller(&harness, player).grounded());
@@ -484,7 +497,6 @@ fn a_blow_tints_the_courier_red_for_a_moment() {
 fn edge(harness: &UiHarness, player: Entity) -> (f32, Option<u8>, usize, usize) {
     use example_01_platformer::features::combat::draw;
     use example_01_platformer::features::level::draw::view;
-    use tungsten::core::{AudioCommand, SoundRegistry};
     let world = harness.world();
     let (min, max) = view(world);
     let drawn: Vec<u8> = draw::edge(world)
@@ -840,11 +852,11 @@ fn an_air_jump_and_a_spell_switch_each_sound_once() {
         let mut sounds = 0;
         for _ in 0..frames {
             h.step(1);
-            sounds += heard(h, Sound::AirJumped);
+            sounds += plays(h, "ex10_air_jump_sfx");
         }
         h.harness_mut().release_action("jump");
         h.step(1);
-        sounds + heard(h, Sound::AirJumped)
+        sounds + plays(h, "ex10_air_jump_sfx")
     };
     assert_eq!(jump(&mut harness, 3), 0, "a ground jump is silent");
     harness.step(4);
@@ -855,6 +867,170 @@ fn an_air_jump_and_a_spell_switch_each_sound_once() {
     assert_eq!(heard(&harness, Sound::Switched), 1);
     super::choose(&mut harness, Spell::Lightning);
     assert_eq!(heard(&harness, Sound::Switched), 0);
+}
+
+/// S-48: the jumps', the bound's, its refusal's and the landing's bursts
+/// and sounds play from the controller's cue events, the player's prefab
+/// `cues` and the two `air_jumped` rules, with the bound's ring 01's own
+/// one-shot; a foe's controller, naming none of them, lands in silence.
+#[test]
+fn the_jumps_bound_refusal_and_landing_play_from_the_players_cues() {
+    use example_01_platformer::features::enemies;
+    use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
+    use example_01_platformer::features::tomes::{BOUND_CENTRE, TomeKind};
+    use example_01_platformer::shared::Saved;
+    use tungsten::kit::{StateMachine, Stats, Tags};
+
+    const TOP: f32 = 900.0;
+    const DUST: &str = "ex10_landing_dust";
+    let (mut harness, player) = run();
+    // The geysers' bursts and the foes aside.
+    calm(&mut harness);
+    // A fresh run's spawn, half a pixel over the turf, lands nowhere.
+    for frame in 0..30 {
+        harness.step(1);
+        assert!(bursts(&harness, DUST).is_empty(), "frame {frame}");
+    }
+    assert!(controller(&harness, player).grounded());
+    // The sky's floor, indexed a step before the player is set on it, so
+    // he stands from his first step there.
+    ground(&mut harness, TOP);
+    harness.step(1);
+    stand(&mut harness, player, 400.0, TOP);
+    harness.step(2);
+    super::tomes::take(&mut harness, player, TomeKind::Bounding);
+    // The mana's regeneration held, so its mana is the jumps' alone.
+    let world = harness.world_mut();
+    world.get_mut::<Tags>(player).unwrap().insert("casting");
+    let set_mana = |harness: &mut UiHarness, mana: f32| {
+        let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+        stats.set_base("mana", mana);
+    };
+    let feet = |harness: &UiHarness| centre(harness, player) + Vec2::Y * player_half().y;
+    let at = |harness: &UiHarness, entity: Entity| {
+        harness.world().get::<Transform>(entity).unwrap().position
+    };
+    let one_shots = |harness: &UiHarness| {
+        harness
+            .harness()
+            .audio()
+            .iter()
+            .filter(|command| matches!(command, AudioCommand::Play { looping: false, .. }))
+            .count()
+    };
+    let rings = |harness: &UiHarness| -> Vec<Entity> {
+        harness
+            .world()
+            .query::<(Entity, &AnimationState)>()
+            .filter(|(_, state)| state.animation_id == "ex10_bound_ring")
+            .map(|(entity, _)| entity)
+            .collect()
+    };
+    harness.step(20);
+    assert!(bursts(&harness, DUST).is_empty(), "set down, not landed");
+
+    // A ground jump: its puff at the feet it left, and no sound.
+    let takeoff = feet(&harness);
+    harness.harness_mut().press_action("jump");
+    harness.step(1);
+    assert!(controller(&harness, player).jumped());
+    let puff = bursts(&harness, "ex10_jump_puff");
+    assert_eq!(puff.len(), 1);
+    let off = at(&harness, puff[0]) - takeoff;
+    assert!(off.length() < 1e-3, "the puff, {off} off the takeoff");
+    assert_eq!(one_shots(&harness), 0, "a ground jump is silent");
+    assert!(bursts(&harness, "ex10_double_jump").is_empty());
+
+    // The free air jump: its burst there, and its whoosh.
+    harness.step(4);
+    press_again(&mut harness, "jump");
+    let takeoff = feet(&harness);
+    harness.step(1);
+    let step = controller(&harness, player);
+    assert!(step.air_jumped() && !step.paid_air_jumped());
+    let doubled = bursts(&harness, "ex10_double_jump");
+    assert_eq!(doubled.len(), 1);
+    let off = at(&harness, doubled[0]) - takeoff;
+    assert!(off.length() < 1e-3, "the burst, {off} off the takeoff");
+    assert_eq!(plays(&harness, "ex10_air_jump_sfx"), 1);
+    assert_eq!(one_shots(&harness), 1, "the whoosh alone");
+    assert_eq!(bursts(&harness, "ex10_jump_puff"), puff, "no second puff");
+    assert!(rings(&harness).is_empty());
+
+    // A bound, the third jump, at exactly its 25 mana: the ring at once,
+    // unsaved, its sparks and trail, and its sound in the whoosh's place.
+    set_mana(&mut harness, 25.0);
+    harness.step(4);
+    press_again(&mut harness, "jump");
+    let takeoff = feet(&harness);
+    harness.step(1);
+    assert!(controller(&harness, player).paid_air_jumped());
+    let ring = rings(&harness);
+    assert_eq!(ring.len(), 1, "its ring, in the bound's own step");
+    let off = at(&harness, ring[0]) - (takeoff - BOUND_CENTRE);
+    assert!(off.length() < 1e-3, "the ring's corner, {off} off");
+    assert!(!harness.world().has::<Saved>(ring[0]), "a look, not saved");
+    assert_eq!(bursts(&harness, "ex10_bound_sparks").len(), 1);
+    assert_eq!(bursts(&harness, "ex10_bound_trail").len(), 1);
+    for burst in ["ex10_bound_sparks", "ex10_bound_trail"] {
+        let off = at(&harness, bursts(&harness, burst)[0]) - takeoff;
+        assert!(off.length() < 1e-3, "{burst}, {off} off the takeoff");
+    }
+    assert_eq!(plays(&harness, "ex10_bound_sfx"), 1);
+    assert_eq!(plays(&harness, "ex10_air_jump_sfx"), 0);
+    assert_eq!(one_shots(&harness), 1, "the bound's sound alone");
+    assert_eq!(bursts(&harness, "ex10_double_jump"), doubled);
+    assert_eq!(super::mana(&harness), 0.0);
+
+    // At 24 mana the next is refused: its sound once a press, and no ring.
+    set_mana(&mut harness, 24.0);
+    harness.step(4);
+    press_again(&mut harness, "jump");
+    let mut refusals = 0;
+    for _ in 0..4 {
+        harness.step(1);
+        assert!(!controller(&harness, player).jumped());
+        refusals += plays(&harness, "ex10_no_mana_sfx");
+        assert_eq!(one_shots(&harness), plays(&harness, "ex10_no_mana_sfx"));
+    }
+    assert_eq!(refusals, 1, "one refusal a press");
+    assert_eq!(rings(&harness), ring, "no second ring");
+    assert_eq!(bursts(&harness, "ex10_bound_sparks").len(), 1);
+    assert_eq!(super::mana(&harness), 24.0);
+
+    // The landing: one dust, at the feet that landed.
+    harness.harness_mut().release_action("jump");
+    let mut dusts = std::collections::HashSet::new();
+    for _ in 0..200 {
+        harness.step(1);
+        for dust in bursts(&harness, DUST) {
+            if dusts.insert(dust) {
+                assert!(controller(&harness, player).landed());
+                let off = at(&harness, dust) - feet(&harness);
+                assert!(off.length() < 1e-3, "the dust, {off} off the feet");
+            }
+        }
+    }
+    assert!(controller(&harness, player).grounded());
+    assert_eq!(dusts.len(), 1, "one landing's dust");
+    assert!(bursts(&harness, DUST).is_empty(), "gone with its particles");
+
+    // A crawler dropped beside the player lands with no dust: the cues
+    // are the player's, and a foe's controller names none.
+    let body = super::kind_body(EnemyKind::Crawler);
+    let beside = centre(&harness, player) + Vec2::new(64.0, -64.0);
+    let world = harness.world_mut();
+    let crawler =
+        enemies::spawn(world, EnemyKind::Crawler, beside - body.centre).expect("its prefab");
+    // Its mind away, so it only falls.
+    world.remove_component::<StateMachine<EnemyState>>(crawler);
+    let mut landed = false;
+    for _ in 0..60 {
+        harness.step(1);
+        landed |= controller(&harness, crawler).landed();
+        assert!(bursts(&harness, DUST).is_empty(), "a foe's landing");
+    }
+    assert!(landed && controller(&harness, crawler).grounded());
 }
 
 /// The wizard at x 600 on the sky's ground, walking right for `frames`

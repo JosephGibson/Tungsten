@@ -48,10 +48,6 @@ pub struct LanternAnchors(pub BTreeMap<String, [f32; 2]>);
 /// presentation, beside the kit's controller and animator.
 #[derive(Debug, Clone, Default)]
 pub struct Moves {
-    /// It ended its last step on the ground.
-    pub grounded: bool,
-    /// It has stood once: a spawn settles onto the ground silently.
-    pub settled: bool,
     /// Its air jump's tuck plays until the rise ends.
     pub tuck: bool,
     /// Game seconds the land clip still holds.

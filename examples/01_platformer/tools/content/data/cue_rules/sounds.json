@@ -799,13 +799,19 @@
     ]
   },
   {
-    "on": "double_jumped",
+    "on": "air_jumped",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "amount": {
+      "max": 0
+    },
     "do": [
+      {
+        "burst": "ex10_double_jump"
+      },
       {
         "sound": {
           "id": "ex10_air_jump_sfx"
@@ -1249,13 +1255,22 @@
     ]
   },
   {
-    "on": "bounded",
+    "on": "air_jumped",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "amount": {
+      "min": 1
+    },
     "do": [
+      {
+        "burst": "ex10_bound_sparks"
+      },
+      {
+        "burst": "ex10_bound_trail"
+      },
       {
         "sound": {
           "id": "ex10_bound_sfx",

@@ -14,7 +14,6 @@ use example_01_platformer::features::level::components::{AmbientEmitter, Glow, G
 use example_01_platformer::features::level::draw;
 use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
-use example_01_platformer::features::player::systems::{JUMP_PUFF, LANDING_DUST};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{BURST_CAP, Burst, Saved, spawn_burst};
 use example_01_platformer::shell::options::GameOptions;
@@ -144,7 +143,7 @@ fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
     let puff = puff[0];
     let config = world
         .resource::<ParticleConfigRegistry>()
-        .id_for_name(JUMP_PUFF);
+        .id_for_name("ex10_jump_puff");
     assert_eq!(
         Some(world.get::<ParticleEmitter>(puff).unwrap().config),
         config
@@ -175,7 +174,7 @@ fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
     let dust = harness
         .world()
         .resource::<ParticleConfigRegistry>()
-        .id_for_name(LANDING_DUST);
+        .id_for_name("ex10_landing_dust");
     assert!(dust.is_some());
     assert!(
         bursts(&harness).is_empty(),
@@ -229,7 +228,7 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
     }
     let world = harness.world_mut();
     for _ in 0..30 {
-        spawn_burst(world, LANDING_DUST, Vec2::new(500.0, 500.0));
+        spawn_burst(world, "ex10_landing_dust", Vec2::new(500.0, 500.0));
     }
     assert_eq!(world.query::<&Burst>().count(), BURST_CAP);
     let hole = world

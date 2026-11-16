@@ -5,6 +5,11 @@
     "tags": ["team.player"],
     "rigid_body": { "kind": "kinematic", "shape": { "kind": "aabb", "half_extents": [20, 28] }, "offset": [48, 65] },
     "platformer_controller": { "run_speed": 560, "jump_speed": 1280, "air_jumps": 1, "shove_mass": 60, "shove_share": 0.5 },
+    "cues": {
+      "jumped": [{ "burst": "ex10_jump_puff" }],
+      "landed": [{ "burst": "ex10_landing_dust" }],
+      "jump_refused": [{ "sound": { "id": "ex10_no_mana_sfx" } }]
+    },
     "action_input": { "move": ["move_left", "move_right"], "slots": { "jump": "jump" } },
     "aim": { "from": "cursor", "offset": [48, 65] },
     "health": { "max": 100, "invulnerability": 1.1, "disarm": true },

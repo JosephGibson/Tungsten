@@ -65,14 +65,13 @@ pub const PACT_DELAY: f32 = 3.0;
 pub const BOUND_COST: f32 = 25.0;
 /// The bound's ring under the feet: its clip, its centre from its
 /// top-left, which stands on the feet, its game seconds, six frames at
-/// 0.05 s, and its draw order, over the wizard's; and the sparks ringing
-/// out from it and the motes it leaves as he rises.
+/// 0.05 s, and its draw order, over the wizard's. The sparks ringing out
+/// from it and the motes it leaves as he rises are the paid `air_jumped`
+/// rule's bursts.
 pub const BOUND_CLIP: &str = "ex10_bound_ring";
 pub const BOUND_CENTRE: Vec2 = Vec2::new(32.0, 16.0);
 pub const BOUND_SECS: f32 = 0.3;
 pub const BOUND_Z: i32 = 11;
-pub const BOUND_SPARKS: &str = "ex10_bound_sparks";
-pub const BOUND_TRAIL: &str = "ex10_bound_trail";
 /// Arcane power's modifier source on the player's stats, and what it
 /// multiplies `spell_cost` and its spells' `damage_dealt` by.
 pub const ARCANE_SOURCE: &str = "tome.arcane";

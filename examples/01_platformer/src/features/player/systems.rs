@@ -1,7 +1,9 @@
 //! The player's systems and queries: the staff light and zoom actions,
-//! the jump's shove, the kill row, the hurt a blow plays, the bursts and
-//! one-shot clips its moves start, a cast's gesture, and the staff light's
-//! glow with its flare.
+//! the jump's shove, the kill row, the hurt a blow plays, the one-shot
+//! clips its moves start, a cast's gesture, and the staff light's glow
+//! with its flare. Its jumps', bounds' and landings' bursts and sounds are
+//! the controller's cue events, played by the prefab's `cues` and the
+//! `air_jumped` rules.
 
 use glam::Vec2;
 use tungsten::core::{
@@ -34,10 +36,6 @@ pub const LAND_CLIP: &str = "ex10_player_land";
 pub const AIR_JUMP_CLIP: &str = "ex10_player_double_jump";
 pub const HURT_CLIP: &str = "ex10_player_hurt";
 pub const DEATH_CLIP: &str = "ex10_player_death";
-/// The bursts a jump, an air jump and a landing play.
-pub const JUMP_PUFF: &str = "ex10_jump_puff";
-pub const AIR_JUMP_BURST: &str = "ex10_double_jump";
-pub const LANDING_DUST: &str = "ex10_landing_dust";
 /// The lantern's anchors, by their data entry.
 pub const ANCHORS: &str = "player";
 /// Game seconds the wizard shows red after a blow, fading, and holds the
@@ -330,13 +328,14 @@ pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     }
 }
 
-/// `player_moves`, in the react phase: a jump puffs at the feet it left
-/// from and an air jump bursts there with its whoosh and tucks, a bound
-/// with its ring and its sound, and a bound refused for mana sounds its
-/// refusal; a landing after the first raises dust and holds the land clip.
-/// A dead player's body drops where it died and falls as its controller
-/// falls, its input locked for good (F13), as its health's death policy
-/// (`disarm`) stopped it at the kill, and its clips and bursts end.
+/// `player_moves`, in the react phase: an air jump tucks, a bound opens
+/// its ring under the feet it left from, and a landing holds the land
+/// clip. The puff, the bursts, the dust and the sounds are the cues' (the
+/// prefab's `jumped`, `landed` and `jump_refused`, and the two
+/// `air_jumped` rules, a free one's and a paid one's). A dead player's
+/// body drops where it died and falls as its controller falls, its input
+/// locked for good (F13), as its health's death policy (`disarm`) stopped
+/// it at the kill, and its clips end.
 pub fn moves(world: &mut World) {
     let Some(player) = player(world) else {
         return;
@@ -366,16 +365,11 @@ pub fn moves(world: &mut World) {
         controller.air_jumped(),
         controller.grounded(),
     );
-    let (bound, refused) = (controller.paid_air_jumped(), controller.air_jump_refused());
-    let body = super::body(world);
-    let feet = body.centre + Vec2::new(0.0, body.half.y);
-    let at = world.get::<Position>(player).map_or(Vec2::ZERO, |p| p.0);
-    let from = world.get::<PrevPosition>(player).map_or(at, |p| p.0);
+    let (bound, landed) = (controller.paid_air_jumped(), controller.landed());
     let rising = world.get::<Velocity>(player).is_some_and(|v| v.0.y < 0.0);
     let Some(moves) = world.get_mut::<Moves>(player) else {
         return;
     };
-    let landed = grounded && !moves.grounded && moves.settled;
     if jumped {
         moves.landing = 0.0;
         moves.tuck = air;
@@ -383,28 +377,17 @@ pub fn moves(world: &mut World) {
     if landed {
         moves.landing = LAND_SECS;
     }
-    if grounded {
-        moves.settled = true;
-    }
     if grounded || !rising {
         moves.tuck = false;
     }
-    moves.grounded = grounded;
     if jumped && bound {
+        // The ring stays a one-shot of 01's: a cue's prefab, spawned from
+        // the saved player, would be saved with the run.
+        let body = super::body(world);
+        let feet = body.centre + Vec2::new(0.0, body.half.y);
+        let at = world.get::<Position>(player).map_or(Vec2::ZERO, |p| p.0);
+        let from = world.get::<PrevPosition>(player).map_or(at, |p| p.0);
         tomes::systems::bound(world, from + feet);
-    } else if jumped {
-        let burst = if air { AIR_JUMP_BURST } else { JUMP_PUFF };
-        spawn_burst(world, burst, from + feet);
-        if air {
-            audio::play(world, Sound::AirJumped, from + feet);
-        }
-    }
-    // A bound the mana could not pay for, once a press.
-    if refused {
-        audio::play(world, Sound::NoMana, at + feet);
-    }
-    if landed {
-        spawn_burst(world, LANDING_DUST, at + feet);
     }
 }
 

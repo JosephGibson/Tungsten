@@ -25,6 +25,7 @@ use tungsten::kit::{
 use tungsten::testing::UiHarness;
 
 use super::combat::{PLAIN_SEED, TOP as ARENA, with_dummy};
+use super::player::plays;
 use super::prefab_box;
 use super::{
     aim_at, ball, body, bursts, centre, choose, ground, kick, pin_camera, run, stand, teleport,
@@ -306,9 +307,9 @@ fn bounder() -> (UiHarness, Entity) {
 }
 
 /// Presses jump for a frame and releases it the next, then lets the rise
-/// run on for two more: whether it jumped, and the sounds of each kind it
-/// made meanwhile.
-fn jump(harness: &mut UiHarness, player: Entity, sounds: &[Sound]) -> (bool, Vec<usize>) {
+/// run on for two more: whether it jumped, and the plays of each manifest
+/// sound it made meanwhile.
+fn jump(harness: &mut UiHarness, player: Entity, sounds: &[&str]) -> (bool, Vec<usize>) {
     let mut heard = vec![0; sounds.len()];
     let mut jumped = false;
     harness.harness_mut().press_action("jump");
@@ -320,11 +321,7 @@ fn jump(harness: &mut UiHarness, player: Entity, sounds: &[Sound]) -> (bool, Vec
         let world = harness.world();
         jumped |= world.get::<PlatformerController>(player).unwrap().jumped();
         for (count, sound) in heard.iter_mut().zip(sounds) {
-            *count += harness
-                .harness()
-                .events::<Sounded>()
-                .filter(|sounded| sounded.sound == *sound)
-                .count();
+            *count += plays(harness, sound);
         }
     }
     (jumped, heard)
@@ -346,7 +343,7 @@ fn bounding_pays_25_for_each_air_jump_past_the_second_and_refuses_24() {
     assert!(jump(&mut harness, player, &[]).0, "exactly 25 pays");
     assert_eq!(mana(&harness, player), 0.0);
     set_mana(&mut harness, player, 24.0);
-    let (jumped, heard) = jump(&mut harness, player, &[Sound::NoMana]);
+    let (jumped, heard) = jump(&mut harness, player, &["ex10_no_mana_sfx"]);
     assert!(!jumped, "24 is refused");
     assert_eq!(heard, [1], "one refusal a press");
     assert_eq!(mana(&harness, player), 24.0);
@@ -355,7 +352,7 @@ fn bounding_pays_25_for_each_air_jump_past_the_second_and_refuses_24() {
 #[test]
 fn a_bound_sounds_bounded_and_bursts_its_sparks_never_the_air_jump() {
     let (mut harness, player) = bounder();
-    let sounds = [Sound::AirJumped, Sound::Bounded];
+    let sounds = ["ex10_air_jump_sfx", "ex10_bound_sfx"];
     assert_eq!(
         jump(&mut harness, player, &sounds).1,
         [0, 0],
