@@ -15,9 +15,9 @@ use tungsten::physics::wake;
 
 use super::components::{Bullet, Muzzle, Reload};
 use super::{
-    BALL_KICK, BULLET_CENTRE, BULLET_RADIUS, GUN, MAX_RICOCHETS, MUZZLE_FRAME_SECS, MUZZLE_FRAMES,
-    MUZZLE_LIGHT, MUZZLE_LIGHT_COLOR, MUZZLE_LIGHT_REACH, MUZZLE_OFFSET, RELOAD, RELOAD_SECS,
-    SHOOT, SHOT_DAMAGE, SHOT_DUSTED, SHOT_PUSH, SHOT_SPARKED, SHOT_SPLINTERED, heading, rounds,
+    BALL_KICK, GUN, MUZZLE_FRAME_SECS, MUZZLE_FRAMES, MUZZLE_LIGHT, MUZZLE_LIGHT_COLOR,
+    MUZZLE_LIGHT_REACH, RELOAD, RELOAD_SECS, SHOOT, SHOT_DAMAGE, SHOT_DUSTED, SHOT_PUSH,
+    SHOT_SPARKED, SHOT_SPLINTERED, heading, rounds,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{CORRODED, FROZEN, Hit, Kind, has_status};
@@ -78,7 +78,7 @@ pub fn shoot(world: &mut World) {
             .get::<Aim>(player)
             .and_then(Aim::direction)
             .unwrap_or(Vec2::X);
-        let muzzle = centre + aim * MUZZLE_OFFSET;
+        let muzzle = centre + aim * super::muzzle_offset(world);
         flash(world, muzzle, aim);
         spawn_burst(world, "ex10_muzzle_flash", muzzle);
         audio::play(world, Sound::Shot, muzzle);
@@ -164,10 +164,12 @@ pub fn adopt(world: &mut World) {
 
 /// `bullet_paths`, in the move phase after the movers: each bullet's
 /// centre's path this step, from the step's start to where its motion
-/// took it, before the kit's pass moves it back.
+/// took it, before the kit's pass moves it back: its hitbox's
+/// ([`super::hitbox`]).
 pub fn paths(world: &mut World) {
+    let centre = super::hitbox(world).0;
     for (bullet, at, prev) in world.query_mut::<(&mut Bullet, &Position, &PrevPosition)>() {
-        bullet.segment = Some((prev.0 + BULLET_CENTRE, at.0 + BULLET_CENTRE));
+        bullet.segment = Some((prev.0 + centre, at.0 + centre));
     }
 }
 
@@ -345,27 +347,27 @@ fn box_contact(start: Vec2, motion: Vec2, half: Vec2) -> Option<(f32, Vec2)> {
 /// The first body that stops a shot the bullet's path `from` to `to` meets,
 /// each swept with its own step's motion: the earliest, then the lower
 /// save ID.
-fn first_body(swept: &[Swept], from: Vec2, to: Vec2) -> Option<Contact> {
-    contacts(swept, from, to, true).into_iter().next()
+fn first_body(swept: &[Swept], from: Vec2, to: Vec2, radius: f32) -> Option<Contact> {
+    contacts(swept, from, to, radius, true).into_iter().next()
 }
 
 /// The crates the path `from` to `to` enters, each once: those it starts
 /// inside it entered on an earlier step. Earliest first.
-fn passed_crates(swept: &[Swept], from: Vec2, to: Vec2) -> Vec<Contact> {
-    contacts(swept, from, to, false)
+fn passed_crates(swept: &[Swept], from: Vec2, to: Vec2, radius: f32) -> Vec<Contact> {
+    contacts(swept, from, to, radius, false)
         .into_iter()
         .filter(|contact| !contact.inside)
         .collect()
 }
 
 /// The bodies the path `from` to `to` meets that stop a shot, or else the
-/// ones that do not, each swept with its own step's motion: earliest
-/// first, then the lower save ID.
-fn contacts(swept: &[Swept], from: Vec2, to: Vec2, stopping: bool) -> Vec<Contact> {
+/// ones that do not, each swept with its own step's motion, for a bullet
+/// of radius `bullet`: earliest first, then the lower save ID.
+fn contacts(swept: &[Swept], from: Vec2, to: Vec2, bullet: f32, stopping: bool) -> Vec<Contact> {
     let path = to - from;
     let (low, high) = (
-        from.min(to) - Vec2::splat(BULLET_RADIUS),
-        from.max(to) + Vec2::splat(BULLET_RADIUS),
+        from.min(to) - Vec2::splat(bullet),
+        from.max(to) + Vec2::splat(bullet),
     );
     let mut met: Vec<Contact> = Vec::new();
     for body in swept.iter().filter(|body| body.stops == stopping) {
@@ -381,11 +383,11 @@ fn contacts(swept: &[Swept], from: Vec2, to: Vec2, stopping: bool) -> Vec<Contac
         let motion = path - (body.end - body.start);
         let (hit, inside) = match body.shape {
             Shape::Circle { radius } => (
-                circle_contact(start, motion, radius + BULLET_RADIUS),
-                start.length() <= radius + BULLET_RADIUS,
+                circle_contact(start, motion, radius + bullet),
+                start.length() <= radius + bullet,
             ),
             other => {
-                let half = other.half_extents() + Vec2::splat(BULLET_RADIUS);
+                let half = other.half_extents() + Vec2::splat(bullet);
                 (
                     box_contact(start, motion, half),
                     start.abs().cmple(half).all(),
@@ -450,7 +452,7 @@ fn bullet_walls<E: 'static>(
 /// from the shooter, so it can crit; a ball takes [`BALL_KICK`] over its
 /// mass, a frozen one shatters, and the shot ends; an iron block, and a
 /// live armoured front, turn the shot about the face it met, at most
-/// [`MAX_RICOCHETS`] times, when the pass left it alive, else end it there;
+/// its projectile's `bounces` times, when the pass left it alive, else end it there;
 /// armour's rear, or frozen or corroded armour anywhere, takes the shot as
 /// a hit, which its rear takes whole. A `Struck` the decision passes over deals
 /// nothing. The walls' answers, named world cues the cue system plays after
@@ -460,6 +462,7 @@ fn bullet_walls<E: 'static>(
 /// splinters ([`SHOT_SPLINTERED`]) with theirs, and a shot ending at a wall
 /// puffs dust ([`SHOT_DUSTED`]).
 pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
+    let (centre, radius) = super::hitbox(world);
     let mut met: Vec<(Entity, Entity, Vec2)> = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<Struck>>() {
         met.extend(
@@ -472,13 +475,13 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
     }
     let ended = bullet_walls(world, &mut cursors.expired, |end: &ProjectileExpired| {
         let normal = end.wall.map_or(Vec2::ZERO, |wall| wall.normal);
-        Some((end.entity, end.position + BULLET_CENTRE, normal))
+        Some((end.entity, end.position + centre, normal))
     });
     let bounced = bullet_walls(world, &mut cursors.bounced, |turn: &ProjectileBounced| {
-        Some((turn.entity, turn.position + BULLET_CENTRE, turn.wall.normal))
+        Some((turn.entity, turn.position + centre, turn.wall.normal))
     });
     let passed = bullet_walls(world, &mut cursors.passed, |pass: &ProjectilePassed| {
-        Some((pass.entity, pass.position + BULLET_CENTRE, pass.wall.normal))
+        Some((pass.entity, pass.position + centre, pass.wall.normal))
     });
     let mut bullets: Vec<(u64, Entity, Vec2, Vec2)> = world
         .query::<(Entity, &Bullet, &Saved)>()
@@ -497,7 +500,7 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
         .fold((Vec2::INFINITY, Vec2::NEG_INFINITY), |(a, b), (c, d)| {
             (a.min(c), b.max(d))
         });
-    let reach = Vec2::splat(BULLET_RADIUS);
+    let reach = Vec2::splat(radius);
     let swept = bodies(world, (low - reach, high + reach));
     for (_, bullet, from, to) in bullets {
         if let Some(state) = world.get_mut::<Bullet>(bullet) {
@@ -529,7 +532,8 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
         .into_iter()
         .flatten()
         .min_by(f32::total_cmp);
-        let body = first_body(&swept, from, to).filter(|body| stop.is_none_or(|t| body.t < t));
+        let body =
+            first_body(&swept, from, to, radius).filter(|body| stop.is_none_or(|t| body.t < t));
         let reach = body.map_or(1.0, |body| body.t);
         for &(_, at, _) in passed.iter().filter(|&&(entity, ..)| entity == bullet) {
             if along(at) <= reach {
@@ -537,7 +541,7 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
                 audio::play(world, Sound::Splintered, at);
             }
         }
-        let crates = passed_crates(&swept, from, to);
+        let crates = passed_crates(&swept, from, to, radius);
         for contact in crates
             .into_iter()
             .filter(|contact| contact.t <= reach && stop.is_none_or(|t| contact.t < t))
@@ -569,7 +573,7 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
                 } else if let Some((_, at, normal)) =
                     end.filter(|&(.., normal)| normal != Vec2::ZERO)
                 {
-                    let at = at + normal * BULLET_RADIUS;
+                    let at = at + normal * radius;
                     WorldCue::new(SHOT_DUSTED, at).play(world);
                 }
             }
@@ -616,7 +620,7 @@ fn shell(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent
 
 /// Puts the bullet's centre at `point`, its history too.
 fn place(world: &mut World, bullet: Entity, point: Vec2) {
-    let at = point - BULLET_CENTRE;
+    let at = point - super::hitbox(world).0;
     if let Some(position) = world.get_mut::<Position>(bullet) {
         position.0 = at;
     }
@@ -686,7 +690,7 @@ fn kick(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent:
 }
 
 /// A shot's iron or armour's front: while the kit's pass left it alive and
-/// it has turned fewer than [`MAX_RICOCHETS`] times, it turns about the
+/// it has turned fewer than its projectile's `bounces` times, it turns about the
 /// face it met from where it met it, flying in `along`, at its speed (the
 /// kit's turn off a wall later in the step undone), with sparks and their
 /// sound; else it ends there.
@@ -694,7 +698,10 @@ fn ricochet(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, sp
     let turns = world
         .get::<Bullet>(bullet)
         .map_or(0, |state| state.ricochets);
-    if spent || turns >= MAX_RICOCHETS {
+    let most = world
+        .get::<Projectile>(bullet)
+        .map_or(0, Projectile::bounces);
+    if spent || turns >= most {
         return end_at(world, bullet, contact.point, spent);
     }
     let Some(velocity) = world

@@ -322,3 +322,62 @@ fn the_flask_takes_key_5_the_summon_minus_and_the_wheel_zooms() {
     assert_eq!(zoom(&harness), before, "up zooms back in");
     assert_eq!(selected(&harness), Some(Spell::Summon), "no spell turned");
 }
+
+#[test]
+fn a_magazine_shows_its_guns_charges() {
+    use example_01_platformer::features::gun::{self, GUN, SHOOT};
+    use tungsten::core::DataRegistry;
+    use tungsten::kit::Ability;
+    // The gun's ability with `charges.max` at `most`, as a reload stages
+    // it: no Rust names the magazine's size.
+    let charges = |harness: &mut UiHarness, most: u32| {
+        let mut file = super::json("data/abilities/gun.json");
+        file["charges"]["max"] = serde_json::json!(most);
+        let gun: Ability = serde_json::from_value(file).expect("an ability");
+        harness
+            .world_mut()
+            .resource_mut::<DataRegistry>()
+            .insert(GUN, gun);
+    };
+    let mut harness = super::harness();
+    charges(&mut harness, 5);
+    super::start(&mut harness);
+    harness.step(1);
+    let hud = *harness.world().resource::<Hud>();
+    let rounds = |harness: &UiHarness| harness.tree().children(hud.magazine.row).to_vec();
+    let shown = |harness: &UiHarness, art: Option<_>| {
+        let tree = harness.tree();
+        rounds(harness)
+            .into_iter()
+            .filter(|&round| tree.visibility(round) == Some(Visibility::Visible))
+            .filter(|&round| art.is_none() || tree.image_sprite(round) == art)
+            .count()
+    };
+    assert_eq!(rounds(&harness).len(), 5, "a round a charge");
+    assert_eq!(shown(&harness, Some(hud.art.live)), 5, "all live");
+    // One shot, aimed ahead of the courier, spends one.
+    let player = super::player_entity(&harness);
+    let ahead = super::centre(&harness, player) + Vec2::new(200.0, 0.0);
+    super::aim_at(&mut harness, ahead);
+    harness.step(1);
+    harness.harness_mut().press_action(SHOOT);
+    for _ in 0..60 {
+        harness.step(1);
+        if gun::rounds(harness.world(), player).is_some_and(|(left, _)| left < 5) {
+            break;
+        }
+    }
+    harness.harness_mut().release_action(SHOOT);
+    harness.step(1);
+    assert_eq!(
+        gun::rounds(harness.world(), player).map(|(left, _)| left),
+        Some(4)
+    );
+    assert_eq!(shown(&harness, Some(hud.art.live)), 4);
+    assert_eq!(shown(&harness, Some(hud.art.spent)), 1);
+    // Raised to seven mid-run: the row grows to seven, all shown.
+    charges(&mut harness, 7);
+    harness.step(1);
+    assert_eq!(rounds(&harness).len(), 7);
+    assert_eq!(shown(&harness, None), 7);
+}

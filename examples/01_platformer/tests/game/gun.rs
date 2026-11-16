@@ -8,9 +8,7 @@
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::gun::components::Bullet;
-use example_01_platformer::features::gun::{
-    self, BALL_KICK, MAX_RICOCHETS, RELOAD, SHOOT, SHOT_DAMAGE,
-};
+use example_01_platformer::features::gun::{self, BALL_KICK, RELOAD, SHOOT, SHOT_DAMAGE};
 use example_01_platformer::features::spells::hud::Hud;
 use example_01_platformer::features::toys;
 use example_01_platformer::shared::{SaveId, Saved};
@@ -22,7 +20,7 @@ use tungsten::kit::{
 use tungsten::testing::UiHarness;
 
 use super::combat::{CRIT_SEED, PLAIN_SEED, TOP, dummy_at, health};
-use super::prefab_box;
+use super::{prefab_box, prefab_number};
 use example_01_platformer::features::level::TILE;
 
 use super::{
@@ -241,7 +239,10 @@ fn a_shot_bounces_off_iron() {
         };
         most = most.max(harness.world().get::<Bullet>(entity).unwrap().ricochets);
     }
-    assert_eq!(most, MAX_RICOCHETS);
+    assert_eq!(
+        most as f32,
+        prefab_number("bullet", "/components/projectile/bounces")
+    );
     assert!(bullet(&harness, id).is_none(), "the third face ends it");
 }
 
@@ -351,12 +352,12 @@ fn the_magazine_shows_its_rounds_and_reloading() {
     aim_at(&mut harness, Vec2::new(700.0, 500.0));
     harness.step(1);
     let hud = *harness.world().resource::<Hud>();
-    // The live cartridges: a round each.
+    // The live cartridges: a round each, the magazine's row's children.
     let live = |harness: &UiHarness| {
-        hud.magazine
-            .rounds
+        let tree = harness.tree();
+        tree.children(hud.magazine.row)
             .iter()
-            .filter(|&&round| harness.tree().image_sprite(round) == Some(hud.art.live))
+            .filter(|&&round| tree.image_sprite(round) == Some(hud.art.live))
             .count()
     };
     assert_eq!(harness.tree().plain_text(hud.magazine.text), "9 / 9");

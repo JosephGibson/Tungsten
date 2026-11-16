@@ -12,11 +12,7 @@ use example_01_platformer::features::elements;
 use example_01_platformer::features::enemies::components::{EnemyKind, Variant};
 use example_01_platformer::features::enemies::drops::ORB_SECS;
 use example_01_platformer::features::enemies::{self, crawler, goblin, snowball, troll};
-use example_01_platformer::features::gun::{
-    BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
-};
 use example_01_platformer::features::player;
-use example_01_platformer::features::spells::hud::ROUNDS;
 use example_01_platformer::features::toys::MISSILE_SPEED;
 use example_01_platformer::shared::{Body, body_centre};
 use glam::Vec2;
@@ -138,21 +134,6 @@ fn every_restated_constant_matches_its_data() {
     assert_eq!(number(&charge, "/payload/0/hitbox"), 0.8);
     let dive = json("data/abilities/bat_dive.json");
     assert_eq!(number(&dive, "/payload/1/hitbox"), 0.6);
-    // The gun's bullet and muzzle.
-    let bullet = json("prefabs/bullet.json");
-    assert_eq!(pair(&bullet, "/components/hitbox/offset"), BULLET_CENTRE);
-    assert_eq!(
-        number(&bullet, "/components/hitbox/shape/circle"),
-        BULLET_RADIUS
-    );
-    assert_eq!(
-        number(&bullet, "/components/projectile/bounces"),
-        MAX_RICOCHETS as f32
-    );
-    let gun = json("data/abilities/gun.json");
-    assert_eq!(number(&gun, "/payload/0/spawn/offset"), MUZZLE_OFFSET);
-    // The magazine the HUD shows, the gun's charges.
-    assert_eq!(number(&gun, "/charges/max"), ROUNDS as f32);
     // The cold's freeze builds, the freezable's and the troll's, whose band
     // the chill's grade climbs to, each at its intensity's max.
     for id in FREEZE_BUILDS {

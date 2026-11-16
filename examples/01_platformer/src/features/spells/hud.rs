@@ -38,7 +38,7 @@ use tungsten::kit::{Abilities, Ability, AbilityReady, Health, Shield, Stats};
 use super::components::{Spell, Spellbook};
 use super::{SLOT_ACTIONS, SLOT_COUNT, SLOTS, mana, slot_of, summon_type};
 use crate::features::gun::components::Reload;
-use crate::features::gun::{self, MAGAZINE, RELOAD_SECS};
+use crate::features::gun::{self, RELOAD_SECS};
 use crate::features::level::systems::drawn_time;
 use crate::features::run::Run;
 use crate::features::tomes::{self, BOOK_CENTRE, TomeKind};
@@ -85,12 +85,11 @@ pub struct Magazine {
     pub tile: WidgetId,
     pub icon: WidgetId,
     pub sweep: WidgetId,
-    /// The cartridges' row.
+    /// The cartridges' row: a cartridge a round, live or spent, its
+    /// children, as many as the gun's most rounds have reached.
     pub row: WidgetId,
     /// "left / most", or "reloading" while a reload runs.
     pub text: WidgetId,
-    /// A cartridge a round, live or spent.
-    pub rounds: [WidgetId; ROUNDS],
 }
 
 /// The pact's shield on the health bar: a layer in its well from the left,
@@ -249,10 +248,9 @@ const NAME_ALPHA: u8 = 200;
 /// alpha in the theme's border.
 const APART: f32 = 26.0;
 const DIVIDER_ALPHA: u8 = 120;
-/// The most rounds the magazine shows, the gun's icon, the cartridges'
-/// art and the texels between them, and the room their count takes in
-/// mono, so "reloading" never shifts the bar, with its size and line.
-pub const ROUNDS: usize = MAGAZINE as usize;
+/// The gun's icon, the cartridges' art and the texels between them, and
+/// the room their count takes in mono, so "reloading" never shifts the
+/// bar, with its size and line.
 const GUN_ICON: &str = "ex10_icon_gun";
 const LIVE_ROUND: &str = "ex10_hud_bullet";
 const SPENT_ROUND: &str = "ex10_hud_bullet_spent";
@@ -313,8 +311,9 @@ pub fn start(world: &mut World) {
         sizes,
     };
     let scale = ui_scale(world);
+    let rounds = gun::most_rounds(world).unwrap_or(0);
     let tree = world.resource_mut::<UiTree>();
-    let hud = build(tree, icons, art, scale);
+    let hud = build(tree, icons, art, scale, rounds);
     theme::slide_in(tree, hud.meters);
     theme::slide_in(tree, hud.bar);
     let stack = shell::stack(world);
@@ -517,6 +516,7 @@ fn build(
     icons: [Option<(SpriteAssetId, Option<u32>)>; SLOT_COUNT],
     art: Art,
     scale: f32,
+    rounds: u32,
 ) -> Hud {
     let (colors, spacing) = (tree.theme().tokens.colors, tree.theme().tokens.spacing);
     let meters = tree.add_root(UiLayer::Game, meters_style(spacing, scale));
@@ -543,7 +543,7 @@ fn build(
     let summon = slot_of(Spell::Summon).unwrap_or(SLOT_COUNT - 1);
     let (name_plate, name) = name_plate(tree, slots[summon].ring);
     divider(tree, bar);
-    let magazine = magazine(tree, bar, art);
+    let magazine = magazine(tree, bar, art, rounds);
     let panel = book_panel(tree);
     let hud = Hud {
         meters,
@@ -603,7 +603,8 @@ fn size(tree: &mut UiTree, hud: &Hud, scale: f32) {
         resize(tree, tile, liquid.x * texel, liquid.y * texel);
     }
     resize(tree, hud.shield.edge, texel, height * texel);
-    for round in hud.magazine.rounds {
+    for i in 0..tree.children(hud.magazine.row).len() {
+        let round = tree.children(hud.magazine.row)[i];
         resize(tree, round, sizes.live.x * texel, sizes.live.y * texel);
     }
     let row = LayoutStyle::row().with_gap(BULLET_GAP * texel);
@@ -907,8 +908,9 @@ fn divider(tree: &mut UiTree, bar: WidgetId) {
 }
 
 /// The gun's block: its tile with the reload's sweep, no key and never
-/// ringed, then its cartridges in a row with their count under them.
-fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art) -> Magazine {
+/// ringed, then its `rounds` cartridges in a row with their count under
+/// them.
+fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art, rounds: u32) -> Magazine {
     let ring = tree.panel(bar, LayoutStyle::row().with_padding(BORDER));
     widgets::fill(tree, ring, CLEAR);
     let tile = tree.panel(ring, LayoutStyle::column());
@@ -924,8 +926,9 @@ fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art) -> Magazine {
     widgets::fill(tree, column, CLEAR);
     let row = tree.panel(column, LayoutStyle::row());
     widgets::fill(tree, row, CLEAR);
-    let rounds =
-        [(); ROUNDS].map(|()| tree.image(row, art.live, art.sizes.live, LayoutStyle::default()));
+    for _ in 0..rounds {
+        tree.image(row, art.live, art.sizes.live, LayoutStyle::default());
+    }
     let text = readout(tree, column, COUNT_TEXT, MAGAZINE_READOUT);
     widgets::restyle(tree, text, |text| {
         text.align = Some(TextAlign::Center);
@@ -936,7 +939,6 @@ fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art) -> Magazine {
         sweep,
         row,
         text,
-        rounds,
     }
 }
 
@@ -1179,7 +1181,15 @@ pub fn update(world: &mut World) {
         tree.set_image_tint(hud.magazine.icon, tint);
         let sweep = reload.map_or(0.0, |left| left / RELOAD_SECS);
         tree.set_mesh(hud.magazine.sweep, &veil(sweep));
-        for (i, round) in hud.magazine.rounds.into_iter().enumerate() {
+        // A reload of the gun's data that raises its most adds its rounds.
+        let row = hud.magazine.row;
+        let live = hud.art.sizes.live;
+        for _ in tree.children(row).len()..most as usize {
+            let round = tree.image(row, hud.art.live, live, LayoutStyle::default());
+            resize(tree, round, live.x * texel, live.y * texel);
+        }
+        for i in 0..tree.children(row).len() {
+            let round = tree.children(row)[i];
             widgets::show(tree, round, i < most as usize);
             let (art, drawn) = if i < left as usize && reload.is_none() {
                 (hud.art.live, hud.art.sizes.live)
