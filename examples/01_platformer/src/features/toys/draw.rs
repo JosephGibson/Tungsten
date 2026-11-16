@@ -1,21 +1,22 @@
-//! What the toys draw: the shock rings and the sprays' wisps over the
-//! sprites, and each black hole's vortex with its infalling streaks under
+//! What the toys draw: the shock rings, from their tweened looks, and the
+//! sprays' wisps over the sprites, and each black hole's vortex with its infalling streaks under
 //! them, at the tiles' far plane (`level::draw::base`), so actors, balls,
 //! iron, particles and props draw over it. Quads no entity holds, which the
 //! frame's extract builds from the toys' state.
 
 use glam::Vec2;
-use tungsten::core::{AssetRegistry, Transform, World};
+use tungsten::core::assets::SpriteAsset;
+use tungsten::core::{AssetRegistry, Entity, Sprite, Transform, World};
 use tungsten::kit::Cooldown;
 use tungsten::render::SpriteBatch;
 
-use super::components::{BlackHole, Element, Ring, ShockRing, Spray};
-use super::{HOLE_DIAMETER, HOLE_OPEN_SECS, HOLE_SHRINK_SECS, RING_SECS};
+use super::components::{BlackHole, Element, OpenRing, RingLook, ShockRing, Spray};
+use super::{HOLE_DIAMETER, HOLE_OPEN_SECS, HOLE_SHRINK_SECS};
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{CORE, CORE_MATERIAL, HALO, HALO_MATERIAL, drawn_time};
 
 /// The rings', the streaks' and the vortex's art.
-const SHOCK_RING: &str = "ex10_shock_ring";
+pub(super) const SHOCK_RING: &str = "ex10_shock_ring";
 const STREAK: &str = "ex10_infall_streak";
 const PHOTON_RING: &str = "ex10_photon_ring";
 
@@ -30,80 +31,88 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
     batches
 }
 
-/// Each shock ring, growing and fading: a fireball's eases out with a hot
-/// front and a flash, a hole's collapse is the gravity's pink, and a hole's
-/// opening is its own photon ring closing on it over [`HOLE_OPEN_SECS`].
+/// Each shock ring: a tweened look drawn from its state, a fireball's
+/// front and flash after it ([`look`]); a hole's opening, its own photon
+/// ring closing on it over [`HOLE_OPEN_SECS`], drawn by hand from its age.
+/// None while the rings' art is not loaded, a headless run's.
 fn rings(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     let mut batches = Vec::new();
-    let Some(asset) = assets.get_sprite(SHOCK_RING) else {
+    let Some(shock) = assets.get_sprite(SHOCK_RING) else {
         return batches;
     };
-    let flash = material(world, CORE_MATERIAL);
-    for (ring, at) in world.query::<(&ShockRing, &Transform)>() {
-        let at = at.position;
-        let progress = (ring.age / RING_SECS).clamp(0.0, 1.0);
-        let fireball = ring.kind == Ring::Fireball;
-        let spread = if fireball {
-            1.0 - (1.0 - progress).powi(3)
-        } else {
-            progress
-        };
-        let (size, fade) = if ring.kind == Ring::Open {
-            let open = (ring.age / HOLE_OPEN_SECS).clamp(0.0, 1.0);
-            (
-                24.0 + (ring.size - 24.0) * (1.0 - open).powf(1.6),
-                ((open / 0.25).min(1.0) * (1.0 - open) * 255.0) as u8,
-            )
-        } else {
-            (
-                32.0 + spread * (ring.size - 32.0),
-                ((1.0 - progress) * 220.0) as u8,
-            )
-        };
-        let color = match ring.kind {
-            Ring::Collapse => [244, 166, 250, fade],
-            Ring::Open => [236, 180, 255, fade],
-            _ => [255, 210, 140, fade],
-        };
-        let art = if ring.kind == Ring::Open {
-            assets.get_sprite(PHOTON_RING).unwrap_or(asset)
-        } else {
-            asset
-        };
-        push_quad(
-            &mut batches,
-            art,
-            instance(art, at - Vec2::splat(size / 2.0), Vec2::splat(size), color),
-            None,
-        );
-        if fireball {
-            let front = size * 0.72;
-            let color = [255, 95, 28, ((1.0 - progress).powi(2) * 240.0) as u8];
-            push_quad(
+    for (entity, ring, at, opening, parts) in world.query::<(
+        Entity,
+        &ShockRing,
+        &Transform,
+        Option<&OpenRing>,
+        Option<&RingLook>,
+    )>() {
+        if let Some(opening) = opening {
+            opened(
                 &mut batches,
-                asset,
-                instance(
-                    asset,
-                    at - Vec2::splat(front * 0.5),
-                    Vec2::splat(front),
-                    color,
-                ),
-                None,
+                assets,
+                shock,
+                ring.size,
+                at.position,
+                opening.age,
             );
-            if let Some(core) = assets.get_sprite(CORE) {
-                let left = (1.0 - ring.age / 0.18).max(0.0);
-                let size = 100.0 + 180.0 * (1.0 - left);
-                let color = [255, 245, 200, (left * 255.0) as u8];
-                push_quad(
-                    &mut batches,
-                    core,
-                    instance(core, at - Vec2::splat(size * 0.5), Vec2::splat(size), color),
-                    flash,
-                );
+        } else if let Some(parts) = parts {
+            for part in [Some(entity), parts.front, parts.flash]
+                .into_iter()
+                .flatten()
+            {
+                look(&mut batches, world, assets, part);
             }
         }
     }
     batches
+}
+
+/// A ring look as its tween left it: its sprite's size times its scale at
+/// its top-left, its tint and its material; nothing for one gone or an
+/// unregistered sprite.
+fn look(batches: &mut Vec<SpriteBatch>, world: &World, assets: &AssetRegistry, entity: Entity) {
+    let (Some(sprite), Some(at)) = (world.get::<Sprite>(entity), world.get::<Transform>(entity))
+    else {
+        return;
+    };
+    let Some(art) = assets.sprite(sprite.asset_id) else {
+        return;
+    };
+    let size = Vec2::new(art.width as f32, art.height as f32) * at.scale;
+    push_quad(
+        batches,
+        art,
+        instance(art, at.position, size, sprite.color),
+        sprite.material_id,
+    );
+}
+
+/// A hole's opening ring `size` across at its start, `age` seconds in:
+/// closing on the hole by `(1 − o)^1.6` and fading in, then out.
+fn opened(
+    batches: &mut Vec<SpriteBatch>,
+    assets: &AssetRegistry,
+    shock: &SpriteAsset,
+    size: f32,
+    at: Vec2,
+    age: f32,
+) {
+    let open = (age / HOLE_OPEN_SECS).clamp(0.0, 1.0);
+    let across = 24.0 + (size - 24.0) * (1.0 - open).powf(1.6);
+    let fade = ((open / 0.25).min(1.0) * (1.0 - open) * 255.0) as u8;
+    let art = assets.get_sprite(PHOTON_RING).unwrap_or(shock);
+    push_quad(
+        batches,
+        art,
+        instance(
+            art,
+            at - Vec2::splat(across / 2.0),
+            Vec2::splat(across),
+            [236, 180, 255, fade],
+        ),
+        None,
+    );
 }
 
 /// Each black hole, for the sprite base to draw between the tiles and the

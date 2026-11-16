@@ -90,12 +90,31 @@ pub struct ToxicFlask;
 
 /// A blast's shock ring growing to `size` pixels across over its life: a
 /// fireball's, hot, a burst ball's, a force push's in the gravity purple,
-/// or a black hole's collapse, a small pale one that pushes nothing.
+/// or a black hole's collapse, a small pale one that pushes nothing; each
+/// a tweened sprite its tween ends ([`RingLook`]). A hole's opening, its
+/// photon ring closing on it, is drawn by hand from its [`OpenRing`].
 #[derive(Debug, Clone, Copy)]
 pub struct ShockRing {
-    pub age: f32,
     pub size: f32,
     pub kind: Ring,
+}
+
+/// A ring's look, which toys' contribution draws from its tweened state:
+/// its sprite's size times its `Transform`'s scale at its top-left, its
+/// tint and material. With no `Visibility`, the sprite base leaves it. A
+/// shock ring's own names its fireball's front and flash, two more looks
+/// with no [`ShockRing`], drawn after it in its place.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RingLook {
+    pub front: Option<Entity>,
+    pub flash: Option<Entity>,
+}
+
+/// A hole's opening ring's age, seconds: `toys_tick` ages it by the step
+/// and ends it at [`RING_SECS`](super::RING_SECS).
+#[derive(Debug, Clone, Copy)]
+pub struct OpenRing {
+    pub age: f32,
 }
 
 /// What a shock ring belongs to.

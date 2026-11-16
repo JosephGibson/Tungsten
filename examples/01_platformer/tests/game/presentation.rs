@@ -1588,3 +1588,124 @@ fn a_marks_glyph_is_never_mirrored() {
         assert_eq!(parts, [(at, false)], "at its mirrored offset, unflipped");
     }
 }
+
+#[test]
+fn the_rings_draw_their_curves_as_tweens() {
+    use example_01_platformer::features::level::systems::CORE_MATERIAL;
+    use example_01_platformer::features::toys::components::RingLook;
+    use example_01_platformer::features::toys::draw::effects;
+    use example_01_platformer::features::toys::systems::ring;
+    use example_01_platformer::features::toys::{
+        COLLAPSE_RING, HOLE_OPEN_SECS, OPEN_RING, PUSH_RADIUS, RING_SECS,
+    };
+    use tungsten::core::Visibility;
+    let (mut harness, _) = run();
+    harness
+        .harness_mut()
+        .register_sprites(example_01_platformer::game::MANIFEST)
+        .expect("the sprites register");
+    let (ball, collapse) = (Vec2::new(500.0, 500.0), Vec2::new(900.0, 500.0));
+    let (fireball, opening) = (Vec2::new(1300.0, 500.0), Vec2::new(1700.0, 500.0));
+    let fire = 2.0 * PUSH_RADIUS;
+    let world = harness.world_mut();
+    ring(world, ball, 140.0, Ring::Ball);
+    ring(world, collapse, COLLAPSE_RING, Ring::Collapse);
+    ring(world, fireball, fire, Ring::Fireball);
+    ring(world, opening, OPEN_RING, Ring::Open);
+    // Each look at `age` by the hand draw's formulas, in its draw order:
+    // its centre, its size across and its colour.
+    let today = |age: f32| -> Vec<(Vec2, f32, [u8; 4])> {
+        let p = (age / RING_SECS).clamp(0.0, 1.0);
+        let fade = ((1.0 - p) * 220.0) as u8;
+        let spread = 1.0 - (1.0 - p).powi(3);
+        let blast = 32.0 + spread * (fire - 32.0);
+        let front = ((1.0 - p).powi(2) * 240.0) as u8;
+        let mut looks = vec![
+            (ball, 32.0 + p * (140.0 - 32.0), [255, 210, 140, fade]),
+            (
+                collapse,
+                32.0 + p * (COLLAPSE_RING - 32.0),
+                [244, 166, 250, fade],
+            ),
+            (fireball, blast, [255, 210, 140, fade]),
+            (fireball, blast * 0.72, [255, 95, 28, front]),
+        ];
+        let left = (1.0 - age / 0.18).max(0.0);
+        if left > 0.0 {
+            let flash = [255, 245, 200, (left * 255.0) as u8];
+            looks.push((fireball, 100.0 + 180.0 * (1.0 - left), flash));
+        }
+        let open = (age / HOLE_OPEN_SECS).clamp(0.0, 1.0);
+        let shown = ((open / 0.25).min(1.0) * (1.0 - open) * 255.0) as u8;
+        let across = 24.0 + (OPEN_RING - 24.0) * (1.0 - open).powf(1.6);
+        looks.push((opening, across, [236, 180, 255, shown]));
+        looks
+    };
+    let flash_material = draw::material(harness.world(), CORE_MATERIAL);
+    let mut frames = 0;
+    for (age, steps) in [(0.05, 3), (0.15, 6), (0.25, 6), (0.4, 9)] {
+        harness.step(steps);
+        frames += steps;
+        assert!((frames as f32 / 60.0 - age).abs() < 1e-6);
+        let world = harness.world();
+        let batches = effects(world);
+        let drawn: Vec<(Vec2, f32, [u8; 4], bool)> = batches
+            .iter()
+            .flat_map(|batch| {
+                let flash = batch.material_id.is_some() && batch.material_id == flash_material;
+                batch.instances.iter().map(move |quad| {
+                    let size = Vec2::from(quad.size);
+                    let centre = Vec2::from(quad.position) + size * 0.5;
+                    assert!((size.x - size.y).abs() < 0.5, "{age}: square: {size}");
+                    (centre, size.x, quad.color, flash)
+                })
+            })
+            .collect();
+        let want = today(age);
+        assert_eq!(drawn.len(), want.len(), "{age}: {drawn:?}");
+        for (k, ((centre, across, color, flash), (at, size, rgba))) in
+            drawn.iter().zip(&want).enumerate()
+        {
+            assert!(
+                centre.distance(*at) < 0.5 && (across - size).abs() < 0.5,
+                "{age}, look {k}: {across} at {centre}, want {size} at {at}"
+            );
+            assert_eq!(color[..3], rgba[..3], "{age}, look {k}");
+            assert!(
+                color[3].abs_diff(rgba[3]) <= 1,
+                "{age}, look {k}: alpha {} for {}",
+                color[3],
+                rgba[3]
+            );
+            assert_eq!(
+                *flash,
+                k == 4 && age < 0.18,
+                "{age}, look {k}: its material"
+            );
+        }
+        // None is the sprite base's: no look holds a `Visibility`, and no
+        // base quad is one of them.
+        assert_eq!(world.query::<(&RingLook, &Visibility)>().count(), 0);
+        let base = extract_sprites_default(world);
+        assert!(
+            !base.iter().flat_map(|batch| &batch.instances).any(|quad| {
+                batches
+                    .iter()
+                    .flat_map(|batch| &batch.instances)
+                    .any(|look| look.position == quad.position && look.size == quad.size)
+            }),
+            "{age}: drawn by the sprite base"
+        );
+    }
+    assert_eq!(
+        harness.world().query::<&RingLook>().count(),
+        4,
+        "the flash gone"
+    );
+    // Past their 0.45 s, every ring and its front gone.
+    harness.step(4);
+    let world = harness.world();
+    assert_eq!(world.query::<&ShockRing>().count(), 0);
+    assert_eq!(world.query::<&RingLook>().count(), 0);
+    assert!(effects(world).is_empty());
+}

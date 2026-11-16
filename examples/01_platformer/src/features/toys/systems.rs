@@ -3,10 +3,10 @@
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AssetRegistry, AudioCommands, BodyKind, Collider, Entity, EventCursor, EventQueue, Light,
-    LightKind, Particle, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
-    PrevPosition, RigidBody, Shape, SoundRegistry, Sprite, Time, Transform, Velocity, Visibility,
-    With, World,
+    AssetRegistry, AudioCommands, BodyKind, Bundle, Collider, Easing, Entity, EventCursor,
+    EventQueue, Light, LightKind, Particle, ParticleConfigRegistry, ParticleEmitter,
+    ParticleEmitterState, Position, PrevPosition, RigidBody, Shape, SoundRegistry, Sprite, Time,
+    Transform, Tween, TweenChannel, Velocity, Visibility, With, World,
 };
 use tungsten::kit::{
     Blast, Children, CooldownElapsed, EffectInstance, Effects, Health, LinearMotion, Modifier,
@@ -17,9 +17,10 @@ use tungsten::physics::{SpatialFilter, SpatialHit, cast_shape_where, wake};
 
 use super::components::{
     Ball, BallHue, BlackHole, Element, FireMissile, Flare, HoleHold, IronBlock, IronScrap,
-    OpeningOf, Oriented, PreviousVelocity, Pull, Ring, ScrapTumble, ShockRing, SmallBall, Spray,
-    SprayEmitter,
+    OpenRing, OpeningOf, Oriented, PreviousVelocity, Pull, Ring, RingLook, ScrapTumble, ShockRing,
+    SmallBall, Spray, SprayEmitter,
 };
+use super::draw;
 use super::{
     BLAST_RADIUS, BROOM_MOST, BROOM_REACH, COLLAPSE_RING, FIRE_SPRAY_RANGE, FROZEN_FRICTION,
     HOLD_EASE, HOLD_RING, HOLD_SWIRL, HOLE_FORCE, HOLE_RADIUS, IRON_FALL_FROM, IRON_FRICTION,
@@ -40,7 +41,7 @@ use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, Throws};
 use crate::features::level::components::Hazard;
 use crate::features::level::geyser::{self, Geyser};
-use crate::features::level::systems::drawn_time;
+use crate::features::level::systems::{CORE, CORE_MATERIAL, drawn_time};
 use crate::features::player::components::Player;
 use crate::features::player::systems::escaped;
 use crate::features::props::{self, components::Crate};
@@ -99,9 +100,9 @@ pub fn tick(world: &mut World, cursor: &mut EventCursor<CooldownElapsed>) {
     for hue in world.query_mut::<&mut BallHue>() {
         hue.hue = (hue.hue + hue.speed * dt).rem_euclid(1.0);
     }
-    for (entity, ring) in world.query_mut::<(Entity, &mut ShockRing)>() {
-        ring.age += dt;
-        if ring.age >= RING_SECS {
+    for (entity, opening) in world.query_mut::<(Entity, &mut OpenRing)>() {
+        opening.age += dt;
+        if opening.age >= RING_SECS {
             closed.push(entity);
         }
     }
@@ -642,20 +643,158 @@ fn heat_props(world: &mut World, at: Vec2) {
     }
 }
 
-/// A shock ring at `at`, growing to `size`, unless [`RING_CAP`] live.
+/// A shock ring at `at`, growing to `size` from [`RING_FROM`] across over
+/// [`RING_SECS`], unless [`RING_CAP`] live: a tweened sprite fading from
+/// [`RING_ALPHA`], ended by its tween, linear but a fireball's, which eases
+/// out with a hot front and a flash; a hole's opening a ring drawn by hand
+/// from its age (`toys::draw`).
 pub fn ring(world: &mut World, at: Vec2, size: f32, kind: Ring) {
     if rings_full(world) {
         return;
     }
-    world.spawn_with((
-        ShockRing {
-            age: 0.0,
-            size,
-            kind,
+    let ring = ShockRing { size, kind };
+    if kind == Ring::Open {
+        world.spawn_with((
+            ring,
+            OpenRing { age: 0.0 },
+            Transform::from_position(at),
+            SceneEntity { state_id: GAMEPLAY },
+        ));
+        return;
+    }
+    let fireball = kind == Ring::Fireball;
+    let grow = if fireball {
+        Easing::CubicOut
+    } else {
+        Easing::Linear
+    };
+    let shock = RingCurve {
+        art: draw::SHOCK_RING,
+        across: (RING_FROM, size),
+        grow,
+        color: if kind == Ring::Collapse {
+            [244, 166, 250, RING_ALPHA]
+        } else {
+            [255, 210, 140, RING_ALPHA]
         },
-        Transform::from_position(at),
+        fade: Easing::Linear,
+        secs: RING_SECS,
+        material: None,
+    };
+    let look = ring_look(world, at, &shock);
+    let main = world.spawn_with(look.with((ring,)));
+    if !fireball {
+        return;
+    }
+    // Its front, at a share of its size, fading by the square of what is
+    // left; its flash, growing and fading as one over its first seconds.
+    let front = RingCurve {
+        across: (RING_FROM * FRONT, size * FRONT),
+        color: [255, 95, 28, 240],
+        fade: Easing::QuadOut,
+        ..shock
+    };
+    let flash = RingCurve {
+        art: CORE,
+        across: (100.0, 280.0),
+        grow: Easing::Linear,
+        color: [255, 245, 200, 255],
+        fade: Easing::Linear,
+        secs: FLASH_SECS,
+        material: Some(CORE_MATERIAL),
+    };
+    let front = ring_look(world, at, &front);
+    let front = world.spawn_with(front);
+    let flash = ring_look(world, at, &flash);
+    let flash = world.spawn_with(flash);
+    if let Some(look) = world.get_mut::<RingLook>(main) {
+        *look = RingLook {
+            front: Some(front),
+            flash: Some(flash),
+        };
+    }
+}
+
+/// A shock ring's size at its birth, its alpha then, its fireball's front's
+/// share of its size and its flash's seconds.
+pub const RING_FROM: f32 = 32.0;
+pub const RING_ALPHA: u8 = 220;
+pub const FRONT: f32 = 0.72;
+pub const FLASH_SECS: f32 = 0.18;
+
+/// A ring look's curve: its art, its pixels across at its start and end in
+/// `grow`, its tint and alpha, its alpha falling to none in `fade`, its
+/// seconds and its material.
+#[derive(Clone, Copy)]
+struct RingCurve {
+    art: &'static str,
+    across: (f32, f32),
+    grow: Easing,
+    color: [u8; 4],
+    fade: Easing,
+    secs: f32,
+    material: Option<&'static str>,
+}
+
+/// A ring look of `curve` centred on `at`, to spawn: a sprite with no
+/// `Visibility` ([`RingLook`]), its `Transform` its top-left, its scale and
+/// top-left tweened in its curve's `grow` so its centre holds, its alpha
+/// in its `fade`, and its tween ending it.
+fn ring_look(
+    world: &mut World,
+    at: Vec2,
+    curve: &RingCurve,
+) -> (Transform, Sprite, Tween, RingLook, SceneEntity) {
+    let art = crate::shared::sprite_size(world, curve.art);
+    let material = curve
+        .material
+        .and_then(|name| crate::features::level::draw::material(world, name));
+    let id = world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprite(curve.art);
+    let mut sprite = Sprite::new(id);
+    sprite.color = curve.color;
+    sprite.material_id = material;
+    let (from, to) = curve.across;
+    let corner = |across: f32| at - Vec2::splat(across * 0.5);
+    let scale = |across: f32| Vec2::splat(across) / art;
+    let tween = Tween::new(curve.secs, curve.grow)
+        .with_channel(TweenChannel::PositionX {
+            from: corner(from).x,
+            to: corner(to).x,
+        })
+        .with_channel(TweenChannel::PositionY {
+            from: corner(from).y,
+            to: corner(to).y,
+        })
+        .with_channel(TweenChannel::ScaleX {
+            from: scale(from).x,
+            to: scale(to).x,
+        })
+        .with_channel(TweenChannel::ScaleY {
+            from: scale(from).y,
+            to: scale(to).y,
+        })
+        .with_channel_eased(
+            TweenChannel::ColorA {
+                from: curve.color[3],
+                to: 0,
+            },
+            curve.fade,
+        )
+        .with_despawn_at_end();
+    let transform = Transform {
+        position: corner(from),
+        rotation: 0.0,
+        scale: scale(from),
+    };
+    (
+        transform,
+        sprite,
+        tween,
+        RingLook::default(),
         SceneEntity { state_id: GAMEPLAY },
-    ));
+    )
 }
 
 /// Pushes what stands within `radius` of `at` straight away from it, up at
