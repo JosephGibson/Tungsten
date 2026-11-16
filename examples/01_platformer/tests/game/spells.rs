@@ -225,6 +225,100 @@ fn mouse4_casts_a_fireball_toward_the_cursor() {
     assert!(distance(&harness) < before);
 }
 
+/// A missile fired level from `from`, its centre, at its speed with its
+/// fall taken off, and where its one blast is, its blast flare's point,
+/// within half a second.
+fn level_blast(harness: &mut UiHarness, from: Vec2) -> Vec2 {
+    use example_01_platformer::features::toys::components::Flare;
+    use tungsten::core::Transform;
+    let world = harness.world_mut();
+    let velocity = Vec2::X * MISSILE_SPEED;
+    let missile = toys::fire_missile(world, from, velocity).unwrap();
+    world.insert(missile, LinearMotion::new(velocity));
+    let blasts = |harness: &UiHarness| -> Vec<Vec2> {
+        harness
+            .world()
+            .query::<(&Flare, &Transform)>()
+            .filter(|(flare, _)| flare.blast)
+            .map(|(_, at)| at.position)
+            .collect()
+    };
+    assert!(until(harness, 30, |h| !blasts(h).is_empty()), "it blasts");
+    let found = blasts(harness);
+    assert_eq!(found.len(), 1, "one blast: {found:?}");
+    assert!(!harness.world().is_alive(missile));
+    found[0]
+}
+
+#[test]
+fn a_missile_blasts_where_its_circle_first_meets_a_wall() {
+    use example_01_platformer::features::props::CRATE_HALF;
+    use tungsten::core::assets::LayerKind;
+    use tungsten::core::{TilemapData, TilemapInstance, TilemapRegistry};
+    let radius = toys::MISSILE_RADIUS;
+    let near = |at: Vec2, want: Vec2, what: &str| {
+        assert!(
+            at.distance(want) <= 0.5,
+            "{what}: blast at {at}, want {want}"
+        );
+    };
+    // A wall's face: the circle's centre a radius short of it.
+    let (mut harness, _) = run();
+    let face = 900.0;
+    floor(
+        &mut harness,
+        Vec2::new(face + 10.0, 500.0),
+        Vec2::new(10.0, 100.0),
+    );
+    harness.step(1);
+    let at = level_blast(&mut harness, Vec2::new(face - 80.0, 500.0));
+    near(at, Vec2::new(face - radius, 500.0), "the wall");
+    // A lone tile whose top lies 6 px under the centre's path: the circle
+    // meets its corner 8 px short of its side, where samples of the centre
+    // and the leading point flew over it.
+    let (mut harness, _) = run();
+    let (side, top) = (1000.0, 506.0);
+    let mut map = TilemapData::new(64, 64, 1, 1);
+    let tile = map.add_tile("ex10_ground");
+    let layer = map.add_layer("collision", LayerKind::Collision);
+    map.set_tile(layer, 0, 0, tile);
+    let world = harness.world_mut();
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("lone".into(), map);
+    world.spawn_with((TilemapInstance::new("lone", Vec2::new(side, top)),));
+    harness.step(1);
+    let path = top - 6.0;
+    let at = level_blast(&mut harness, Vec2::new(side - 40.0, path));
+    near(at, Vec2::new(side - 8.0, path), "the tile's corner");
+    // A crate under a path 9 px over its top: the circle meets its rounded
+    // corner 4.36 px short of its side.
+    let (mut harness, _) = run();
+    let rest = 520.0;
+    floor(
+        &mut harness,
+        Vec2::new(1200.0, rest + 20.0),
+        Vec2::new(100.0, 20.0),
+    );
+    harness.step(1);
+    let at = Vec2::new(1200.0, rest - CRATE_HALF.y - 0.5);
+    let crate_ = props::spawn(harness.world_mut(), PropKind::Crate, at);
+    harness.step(30);
+    let half = harness
+        .world()
+        .get::<Collider>(crate_)
+        .unwrap()
+        .shape
+        .half_extents();
+    let middle = body(&harness, crate_);
+    let (side, top) = (middle.x - half.x, middle.y - half.y);
+    let path = top - 9.0;
+    let at = level_blast(&mut harness, Vec2::new(side - 60.0, path));
+    let short = (radius * radius - 81.0).sqrt();
+    assert!((short - 4.36).abs() < 0.01);
+    near(at, Vec2::new(side - short, path), "the crate's corner");
+}
+
 #[test]
 fn the_staff_light_burns_mana_and_gutters_out() {
     let (mut harness, player) = run();

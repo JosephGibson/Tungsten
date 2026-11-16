@@ -14,7 +14,7 @@ use tungsten::kit::{
     PlatformerController, Projectile, ProjectileExpired, Stats, Steering, Tags, TopDownMover,
     blast, carrier_of, knock_back, steered_direction, stimulate,
 };
-use tungsten::physics::wake;
+use tungsten::physics::{SpatialFilter, SpatialHit, cast_shape_where, wake};
 
 use super::components::{
     Ball, BallHue, BlackHole, Element, FireMissile, Flare, HoleHold, IronBlock, IronScrap,
@@ -55,8 +55,6 @@ const FLARE_RADIUS: f32 = 192.0;
 const FLARE_INTENSITY: f32 = 2.4;
 const FLARE_SECS: f32 = 0.3;
 const BLAST_FLARE_SECS: f32 = 0.5;
-/// Longest gap between a missile's contact samples along its step.
-const SAMPLE_STEP: f32 = 6.0;
 /// A spray's beam half width, its start from the caster's centre, and how
 /// fast iron frosts and thaws under it.
 const BEAM_HALF_WIDTH: f32 = 4.0;
@@ -495,41 +493,32 @@ pub fn solid_tile(world: &World, point: Vec2) -> bool {
     SolidTiles::of(world).contains(point)
 }
 
-/// Whether a point meets a body of `shape` about `centre`, the missile's
-/// radius included.
-fn touches(centre: Vec2, shape: Shape, point: Vec2, margin: f32) -> bool {
-    match shape {
-        Shape::Circle { radius } => point.distance_squared(centre) <= (radius + margin).powi(2),
-        other => ((point - centre).abs() - other.half_extents())
-            .cmple(Vec2::splat(margin))
-            .all(),
-    }
-}
-
-/// The first sampled point on `start..end` that meets a solid tile or a
-/// body other than the player's or a sensor, for a flyer of `radius`:
-/// balls, iron, decks, lifts.
-pub(crate) fn first_contact(world: &World, start: Vec2, end: Vec2, radius: f32) -> Option<Vec2> {
+/// Where a missile's circle, its centre moving from `start` to `end`, first
+/// meets a solid tile or a body other than the player's or a sensor (balls,
+/// iron, decks, lifts): its centre then, by a core shape cast of the
+/// step's own bodies, so its blast is where it met. A start overlapping
+/// something passes it unless the missile moves into it.
+fn sweep(world: &World, start: Vec2, end: Vec2) -> Option<Vec2> {
     let travel = end - start;
-    let lead = travel.normalize_or_zero() * radius;
-    let steps = (travel.length() / SAMPLE_STEP).ceil().max(1.0) as usize;
-    let solids: Vec<(Vec2, Shape)> = world
-        .query::<(Entity, &Collider, &Position, &RigidBody)>()
-        .filter(|(entity, _, _, body)| {
-            body.kind != BodyKind::Sensor && !world.has::<Player>(*entity)
-        })
-        .map(|(_, collider, at, _)| (at.0 + collider.offset, collider.shape))
-        .collect();
-    let tiles = SolidTiles::of(world);
-    (0..=steps)
-        .map(|i| start + travel * (i as f32 / steps as f32))
-        .find(|&point| {
-            tiles.contains(point)
-                || tiles.contains(point + lead)
-                || solids
-                    .iter()
-                    .any(|&(centre, shape)| touches(centre, shape, point, radius))
-        })
+    let length = travel.length();
+    if length <= 0.0 {
+        return None;
+    }
+    let direction = travel / length;
+    let circle = Shape::Circle {
+        radius: MISSILE_RADIUS,
+    };
+    let spare_player = |hit: &SpatialHit| hit.entity.is_none_or(|body| !world.has::<Player>(body));
+    cast_shape_where(
+        world,
+        circle,
+        start,
+        direction,
+        length,
+        &SpatialFilter::new(),
+        spare_player,
+    )
+    .map(|hit| start + direction * hit.distance)
 }
 
 /// Shows `entity`, a prefab spawned hidden.
@@ -539,23 +528,9 @@ pub fn show(world: &mut World, entity: Entity) {
     }
 }
 
-/// Moves `entity` by `by`: its point, its last step's and its drawn one,
-/// so nothing draws it sliding.
-pub fn shift(world: &mut World, entity: Entity, by: Vec2) {
-    if let Some(at) = world.get_mut::<Position>(entity) {
-        at.0 += by;
-    }
-    if let Some(prev) = world.get_mut::<PrevPosition>(entity) {
-        prev.0 += by;
-    }
-    if let Some(transform) = world.get_mut::<Transform>(entity) {
-        transform.position += by;
-    }
-}
-
 /// `missile_contacts`, in the overlap phase before the kit's projectile
-/// step: a missile whose step met a tile or a body blasts where it met it
-/// and goes, its drips with it.
+/// step: a missile whose circle met a tile or a body in its step
+/// ([`sweep`]) blasts where it met it and goes, its drips with it.
 pub fn missile_contacts(world: &mut World) {
     let centre = Vec2::splat(MISSILE_SIZE * 0.5);
     let missiles: Vec<(Entity, Vec2, Vec2)> = world
@@ -563,7 +538,7 @@ pub fn missile_contacts(world: &mut World) {
         .map(|(entity, _, at, prev)| (entity, prev.0 + centre, at.0 + centre))
         .collect();
     for (missile, start, end) in missiles {
-        if let Some(hit) = first_contact(world, start, end, MISSILE_RADIUS) {
+        if let Some(hit) = sweep(world, start, end) {
             flare(world, hit, true);
             despawn_tree(world, missile);
             explode(world, hit);
