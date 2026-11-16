@@ -17,6 +17,7 @@ use super::SPRAY_HALF_ANGLE;
 use super::components::{Element, Spray, SprayLook, SprayPuff};
 use super::systems::{SPRAY_MUZZLE, SPRAY_Z, beam, reach};
 use crate::game::GAMEPLAY;
+use crate::shared::unit;
 
 /// The data kind of the sprays' looks ([`SprayStyle`]), `flame` and
 /// `frost` (`data/spray_looks/<look>.json`).
@@ -264,15 +265,6 @@ fn show(world: &mut World, entity: Entity, visible: bool) {
     }
 }
 
-/// A value in [0, 1) hashed from `n`: a puff's spread and speed.
-fn hash01(n: u32) -> f32 {
-    let x = n
-        .wrapping_mul(0x9e37_79b1)
-        .rotate_left(13)
-        .wrapping_mul(0x85eb_ca6b);
-    (x >> 8) as f32 / (1u32 << 24) as f32
-}
-
 /// `spray_sprites`, after `spray_look`: each spray's muzzle and light at
 /// its start, its impact at its contact while it has one, the ice's core
 /// tiles laid to its end and stepped by its age, and the stream's puffs
@@ -335,12 +327,13 @@ pub fn sprites(world: &mut World) {
                 while look.due >= every {
                     look.due -= every;
                     look.puffs = look.puffs.wrapping_add(1);
-                    let turn = (hash01(look.puffs) * 2.0 - 1.0) * SPRAY_HALF_ANGLE * PUFF_SPREAD;
+                    let drawn = u64::from(look.puffs);
+                    let turn = (unit(drawn) * 2.0 - 1.0) * SPRAY_HALF_ANGLE * PUFF_SPREAD;
                     let direction = Vec2::from_angle(turn).rotate(spray.aim);
                     let (end, _) = beam(world, spray.caster, spray.start, direction, range);
                     let stop = (spray.start.distance(end) - PUFF_SHORT).max(0.0);
-                    let jitter = 1.0 - PUFF_SPEED_SPREAD / 2.0
-                        + PUFF_SPEED_SPREAD * hash01(look.puffs ^ 0x5bd1);
+                    let jitter =
+                        1.0 - PUFF_SPEED_SPREAD / 2.0 + PUFF_SPEED_SPREAD * unit(drawn ^ (1 << 56));
                     lines.push((direction, stop, speed * jitter));
                 }
                 lines

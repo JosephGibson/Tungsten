@@ -266,6 +266,16 @@ pub fn sprite_size(world: &World, name: &str) -> Vec2 {
         })
 }
 
+/// A value in `[0, 1)` drawn from `seed`: the top 24 bits of core's
+/// `splitmix64` of it, over 2^24. Every hashed look and spread draws from
+/// it: a site with two numbers folds them as `(a << 32) | b`, one with
+/// several draws from one number takes the draw's index in the top byte
+/// (`seed ^ (k << 56)`).
+#[must_use]
+pub fn unit(seed: u64) -> f32 {
+    (tungsten::core::splitmix64(seed) >> 40) as f32 / (1u64 << 24) as f32
+}
+
 /// A burst's gameplay ownership, spawned with it in one archetype move.
 const OWNED: (SceneEntity,) = (SceneEntity { state_id: GAMEPLAY },);
 

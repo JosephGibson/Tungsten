@@ -260,17 +260,10 @@ pub fn flame_exposure(world: &mut World) {
     }
 }
 
-/// Four values in `[0, 1]` hashed from a ball's save ID: its phase, rate,
+/// Four values in `[0, 1)` drawn from a ball's save ID: its phase, rate,
 /// mirror and tint.
 fn variation(id: SaveId) -> [f32; 4] {
-    let id = id.0 as u32 ^ (id.0 >> 32) as u32;
-    let hash = toys::components::hash_unit;
-    [
-        hash(id),
-        hash(id ^ 0x68e3_1da4),
-        hash(id.wrapping_mul(0x9e37_79b9)),
-        hash(id ^ 0x2c1b_3c6d),
-    ]
+    std::array::from_fn(|k| crate::shared::unit(id.0 ^ ((k as u64) << 56)))
 }
 
 /// How strongly a fire with `left` seconds burns, 0 to 1: it grows over its

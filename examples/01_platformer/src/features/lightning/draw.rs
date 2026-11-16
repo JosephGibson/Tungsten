@@ -153,10 +153,7 @@ fn filled(asset: &SpriteAsset, corner: Vec2, size: Vec2, color: [u8; 4]) -> Spri
     quad
 }
 
-/// A number in `[0, 1)` from `seed` and `k`.
+/// A number in `[0, 1)` from the arc's `seed` and its corner `k`.
 fn unit(seed: u64, k: usize) -> f32 {
-    let mut x =
-        seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ (k as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    x ^= x >> 31;
-    (x % 1000) as f32 / 1000.0
+    crate::shared::unit(tungsten::core::splitmix64(seed) ^ k as u64)
 }

@@ -29,25 +29,14 @@ impl BallHue {
     /// A hue and a speed from `seed`, the ball's place in its spawn order.
     #[must_use]
     pub fn from_seed(seed: u32) -> Self {
-        let a = hash_unit(seed);
-        let b = hash_unit(seed ^ 0xa511_e9b3);
+        let a = crate::shared::unit(u64::from(seed));
+        let b = crate::shared::unit(u64::from(seed) ^ (1 << 56));
         let direction = if seed & 1 == 0 { 1.0 } else { -1.0 };
         Self {
             hue: a,
             speed: direction * (0.16 + b * 0.24),
         }
     }
-}
-
-/// A well-mixed value in `[0, 1]` from `x`.
-#[must_use]
-pub fn hash_unit(mut x: u32) -> f32 {
-    x ^= x >> 16;
-    x = x.wrapping_mul(0x7feb_352d);
-    x ^= x >> 15;
-    x = x.wrapping_mul(0x846c_a68b);
-    x ^= x >> 16;
-    (x as f32) / (u32::MAX as f32)
 }
 
 /// An iron block: a heavy box that shoves balls aside, crushes what it

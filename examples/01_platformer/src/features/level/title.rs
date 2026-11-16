@@ -76,13 +76,9 @@ pub fn sky_view(world: &World) -> (Vec2, Vec2) {
     (corner, Vec2::new(width, height))
 }
 
-/// A value in [0, 1) hashed from `a` and `b`: a star's place.
+/// A value in [0, 1) drawn from `a` and `b`: a star's place.
 fn unit(a: u32, b: u32) -> f32 {
-    let mut h = a.wrapping_mul(0x9e37_79b9) ^ b.wrapping_mul(0x85eb_ca6b);
-    h ^= h >> 15;
-    h = h.wrapping_mul(0x2c1b_3c6d);
-    h ^= h >> 12;
-    (h % 10_000) as f32 / 10_000.0
+    crate::shared::unit(u64::from(a) << 32 | u64::from(b))
 }
 
 /// An emitter of the config `name` at `at`, seeded, owned by the title,
