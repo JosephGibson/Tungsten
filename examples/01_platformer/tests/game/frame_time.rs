@@ -6,11 +6,9 @@
 //! (`perf-runs/<UTC>-e01d-frame/README.md`). The scene is the game's own
 //! full pit ([`pit`]), which the `e01-pit` benchmark row scripts.
 
-use example_01_platformer::features::level::{PIT, PIT_DECK, PIT_SHELVES, TileSpan};
 use example_01_platformer::features::run::pit::{self, PitCounts};
 use example_01_platformer::features::toys::BALL_CAP;
 use example_01_platformer::game::GAMEPLAY;
-use serde::Deserialize;
 use tungsten::FrameTimings;
 use tungsten::kit::Health;
 
@@ -25,61 +23,6 @@ const WINDOW: usize = 300;
 const WINDOWS: usize = 5;
 /// The deck the player stands on, its middle: over the pit.
 const DECK: &str = "bridge_b";
-
-#[derive(Deserialize)]
-struct Source {
-    pit: Pit,
-    platforms: Vec<Platform>,
-}
-
-#[derive(Deserialize)]
-struct Pit {
-    left: f32,
-    right: f32,
-    floor: f32,
-}
-
-#[derive(Deserialize)]
-struct Platform {
-    name: String,
-    left: f32,
-    right: f32,
-    row: f32,
-}
-
-impl Platform {
-    fn span(&self) -> TileSpan {
-        TileSpan {
-            left: self.left,
-            right: self.right,
-            row: self.row,
-        }
-    }
-}
-
-#[test]
-fn the_pit_constants_restate_level_json() {
-    let text = std::fs::read_to_string("tools/level.json").expect("tools/level.json reads");
-    let level: Source = serde_json::from_str(&text).expect("tools/level.json parses");
-    let pit = &level.pit;
-    assert_eq!(
-        PIT,
-        TileSpan {
-            left: pit.left,
-            right: pit.right,
-            row: pit.floor,
-        }
-    );
-    let shelves: Vec<TileSpan> = level
-        .platforms
-        .iter()
-        .filter(|p| p.name.starts_with("pit_shelf"))
-        .map(Platform::span)
-        .collect();
-    assert_eq!(shelves, PIT_SHELVES);
-    let deck = level.platforms.iter().find(|p| p.name == DECK);
-    assert_eq!(deck.map(Platform::span), Some(PIT_DECK));
-}
 
 /// A window's p50, p95, p99 and max of `samples`.
 fn quantiles(samples: &mut [f32]) -> [f32; 4] {

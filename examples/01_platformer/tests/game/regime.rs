@@ -3,6 +3,7 @@
 //! collider over its tiles' slabs, and every collision event reaching a
 //! fixed reader before and after `physics_step` exactly once.
 
+use example_01_platformer::features::level;
 use example_01_platformer::game;
 use glam::Vec2;
 use tungsten::core::{CollisionEvent, Entity, EventQueue, UserFolder, World};
@@ -20,13 +21,13 @@ const REGIMES: [(&str, f32); 4] = [
     ("1/144 s", 1.0 / 144.0),
     ("1/1000 s", 1.0 / 1000.0),
 ];
-/// The top of the deck the walk crosses, from x 2304, where its tiles'
-/// slabs meet at 2368, 2432, 2496, 2560 and 2624.
-const ROW_TOP: f32 = 2304.0;
-const START_X: f32 = 2328.0;
-/// Past the last join it crosses: the player's right edge, x + 20, beyond
-/// 2624 + 4.
-const PAST_LAST_JOIN: f32 = 2608.0;
+/// The map's place the walk starts from (`tools/level.py`'s `places`
+/// layer): the player's feet on the top of the deck it crosses, 24 px into
+/// its first tile, whose slabs meet every tile from there.
+const WALK_START: &str = "walk_start";
+/// How far the walk must carry the player: past the fifth join it crosses,
+/// its right edge, x + 20, beyond that join by 4 px.
+const WALK: f32 = 280.0;
 const SETTLE_SECS: f32 = 0.1;
 const WALK_SECS: f32 = 0.6;
 
@@ -109,8 +110,10 @@ fn run(name: &str, dt: f32) -> (String, Vec<String>) {
     start(&mut harness);
     harness.harness_mut().set_dt(dt);
     let player = player_entity(&harness);
-    let rest_y = ROW_TOP - player_half().y;
-    teleport(&mut harness, player, Vec2::new(START_X, rest_y - 0.5));
+    let from = level::marker(harness.world(), WALK_START).expect("the map's `walk_start` place");
+    let past_last_join = from.x + WALK;
+    let rest_y = from.y - player_half().y;
+    teleport(&mut harness, player, Vec2::new(from.x, rest_y - 0.5));
     let frames = |secs: f32| (secs / dt).round() as u32;
     harness.step(frames(SETTLE_SECS));
     harness.harness_mut().press_action("move_right");
@@ -125,10 +128,10 @@ fn run(name: &str, dt: f32) -> (String, Vec<String>) {
 
     let probe = harness.world().resource::<Probe>();
     let mut failures = Vec::new();
-    let seams = far_x >= PAST_LAST_JOIN;
+    let seams = far_x >= past_last_join;
     if !seams {
         failures.push(format!(
-            "{name}: seams: the player stopped at x = {far_x} on the row, short of {PAST_LAST_JOIN}"
+            "{name}: seams: the player stopped at x = {far_x} on the row, short of {past_last_join}"
         ));
     }
     let after = probe.after == probe.sent;

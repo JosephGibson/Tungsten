@@ -84,6 +84,53 @@
     "rim": 36,
     "floor": 68
   },
+  "places": [
+    {
+      "name": "shot_iron_face",
+      "x": 306,
+      "y": 54.5
+    },
+    {
+      "name": "shot_bridge_deck",
+      "x": 56,
+      "y": 34
+    },
+    {
+      "name": "walk_start",
+      "x": 36.375,
+      "y": 36
+    },
+    {
+      "name": "pit_crawler",
+      "x": 63.15625,
+      "y": 36
+    },
+    {
+      "name": "pit_beetle",
+      "x": 74,
+      "y": 36
+    },
+    {
+      "name": "pit_troll",
+      "x": 76.4375,
+      "y": 36
+    },
+    {
+      "name": "pit_bat",
+      "x": 67.375,
+      "y": 31.4921875
+    },
+    {
+      "name": "pit_wisp",
+      "x": 62.0625,
+      "y": 32.4296875
+    },
+    {
+      "name": "pit_wisp",
+      "x": 69.5625,
+      "y": 32.7421875
+    }
+  ],
   "platforms": [
     {
       "bottom": 72,

@@ -21,7 +21,7 @@ use tungsten::testing::UiHarness;
 
 use super::combat::{CRIT_SEED, PLAIN_SEED, TOP, dummy_at, health};
 use super::{prefab_box, prefab_number};
-use example_01_platformer::features::level::TILE;
+use example_01_platformer::features::level;
 
 use super::{
     aim_at, ball, body, bursts, calm, floor, ground, kick, pin_camera, player_entity, run,
@@ -94,6 +94,16 @@ fn parts(harness: &UiHarness, target: Entity) -> Vec<(f32, bool)> {
         .filter(|part| part.kinds.has(world, "damage.physical"))
         .map(|part| (part.amount, part.crit))
         .collect()
+}
+/// The map's places a shot starts from (`tools/level.py`'s `places`
+/// layer): at the mine's cut's second floor's riser, its west face clad in
+/// iron, and over the rope bridge's west deck.
+const IRON_FACE: &str = "shot_iron_face";
+const BRIDGE_DECK: &str = "shot_bridge_deck";
+
+/// The map's place `name`, a point.
+fn place(harness: &UiHarness, name: &str) -> Vec2 {
+    level::marker(harness.world(), name).unwrap_or_else(|| panic!("the map has no `{name}` place"))
 }
 
 #[test]
@@ -428,7 +438,7 @@ fn a_shot_turns_off_the_mines_iron_and_passes_the_bridges_wood_to_end_at_stone()
     let (mut harness, _) = run();
     calm(&mut harness);
     // At the cut's second floor's riser, its west face clad in iron.
-    let face = Vec2::new(306.0 * TILE, 54.5 * TILE);
+    let face = place(&harness, IRON_FACE);
     let id = shot(&mut harness, face - Vec2::new(300.0, 0.0), Vec2::X * SPEED);
     let iron = bullet(&harness, id).expect("it flies");
     let met = wall_meetings(&mut harness, iron);
@@ -447,11 +457,8 @@ fn a_shot_turns_off_the_mines_iron_and_passes_the_bridges_wood_to_end_at_stone()
     );
     // Down through the rope bridge's west deck over the pit to the stone
     // shelf under it.
-    let id = shot(
-        &mut harness,
-        Vec2::new(56.0 * TILE, 34.0 * TILE),
-        Vec2::Y * SPEED,
-    );
+    let deck = place(&harness, BRIDGE_DECK);
+    let id = shot(&mut harness, deck, Vec2::Y * SPEED);
     let down = bullet(&harness, id).expect("it flies");
     let met = wall_meetings(&mut harness, down);
     assert_eq!(
@@ -560,7 +567,7 @@ fn a_tracer_turns_with_its_shot() {
     // Off the mine's iron riser, the kit's.
     let (mut harness, _) = run();
     calm(&mut harness);
-    let face = Vec2::new(306.0 * TILE, 54.5 * TILE);
+    let face = place(&harness, IRON_FACE);
     let id = shot(&mut harness, face - Vec2::new(300.0, 0.0), Vec2::X * SPEED);
     assert!(
         follow(&mut harness, id) >= 1,
@@ -602,7 +609,7 @@ fn a_shots_wall_answers_burst_and_sound_as_before() {
     let (mut harness, _) = run();
     calm(&mut harness);
     let mut seen = std::collections::HashSet::new();
-    let face = Vec2::new(306.0 * TILE, 54.5 * TILE);
+    let face = place(&harness, IRON_FACE);
     let id = shot(&mut harness, face - Vec2::new(300.0, 0.0), Vec2::X * SPEED);
     let _ = answers(&harness, &mut seen);
     let riser = bullet(&harness, id).expect("it flies");
@@ -624,11 +631,8 @@ fn a_shots_wall_answers_burst_and_sound_as_before() {
         Some((vec!["ex10_ricochet".to_owned()], vec![Sound::Ricocheted])),
         "sparks and the ricochet's sound off the iron"
     );
-    let id = shot(
-        &mut harness,
-        Vec2::new(56.0 * TILE, 34.0 * TILE),
-        Vec2::Y * SPEED,
-    );
+    let deck = place(&harness, BRIDGE_DECK);
+    let id = shot(&mut harness, deck, Vec2::Y * SPEED);
     let _ = answers(&harness, &mut seen);
     let down = bullet(&harness, id).expect("it flies");
     let (mut passed, mut ended) = (None, None);

@@ -85,6 +85,9 @@ FIRE_DRIPS = 'ex10_fire_drips'
 # for good: a sprite the map newly uses takes `next`, so a sprite added or
 # changed outside the map moves no cell.
 TILESET = TOOLS / 'tileset.json'
+# The full pit's deck (7.13e): the platform the player and the walkers of
+# the pit's cast stand on, whose middle is the `pit_player` place.
+PIT_DECK = 'bridge_b'
 # The object layers a save names (P7-9): 01 derives each object's save ID
 # from its name, so each needs one, unique, and none the player's.
 SAVED_LAYERS = ('hazards', 'platforms', 'dummies', 'enemies', 'pickups', 'geysers')
@@ -141,6 +144,11 @@ def build_objects(source, images, lit):
     def obj(cls, x, y, name='', properties=()):
         return dict(id=0, name=name, type=cls, x=x, y=y, width=0, height=0, rotation=0,
             visible=True, point=True, properties=list(properties))
+
+    def rect(name, left, top, right, bottom):
+        """A classless rectangle, in tiles: a place the game reads by name."""
+        return dict(id=0, name=name, type='', x=left * tile, y=top * tile, width=(right - left) * tile,
+            height=(bottom - top) * tile, rotation=0, visible=True, properties=[])
 
     props = []
     for p in source['props']:
@@ -345,6 +353,29 @@ def build_objects(source, images, lit):
     layer('geysers', [obj('geyser', g['x'] * tile + GEYSER_POINT[0], rows[g['support']] * tile + GEYSER_POINT[1],
         name=g.get('name', ''), properties=[dict(name='geyser.offset', type='float', value=g['offset'])])
         for g in source.get('geysers', [])])
+    # The places (7.13e), the map's last object layer, after every other so
+    # no object's ID moves: classless points and rectangles the game and its
+    # tests read by name. `kill`, the row a fallen player dies at; the
+    # tests' places, `level.json`'s `places` not named `pit_...`; `pit`, the
+    # ball pit's interior, and a `pit_shelf` a climbing shelf, a row tall,
+    # which the pit's fill pours around; `pit_player`, the feet of the
+    # full pit's player on its deck's middle; then its cast, `places`'
+    # `pit_...`: the walkers' feet on that deck's surface and the flyers'
+    # centres. A place's `x` and `y` are tiles.
+    def place(p):
+        return obj('', p['x'] * tile, p['y'] * tile, name=p['name'])
+    named = source.get('places', [])
+    places = [obj('', 0, source['kill_row'] * tile, name='kill')]
+    places += [place(p) for p in named if not p['name'].startswith('pit_')]
+    pit = source.get('pit')
+    if pit:
+        deck = next(p for p in source['platforms'] if p['name'] == PIT_DECK)
+        places.append(rect('pit', pit['left'], pit['rim'], pit['right'], pit['floor']))
+        places += [rect('pit_shelf', p['left'], p['row'], p['right'], p['row'] + 1)
+                   for p in source['platforms'] if p['name'].startswith('pit_shelf')]
+        places.append(obj('', (deck['left'] + deck['right']) / 2 * tile, deck['row'] * tile, name='pit_player'))
+        places += [place(p) for p in named if p['name'].startswith('pit_')]
+    layer('places', places)
     return layers, prefabs
 
 
