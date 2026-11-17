@@ -344,10 +344,11 @@ fn plume(phase: GeyserPhase, elapsed: f32) -> Option<(String, f32)> {
     }
 }
 
-/// `geyser_look`, after the physics sync and before the frame's particles:
-/// each geyser's vent, choked or not; its plume's frame, its bottom on the
-/// floor, or hidden; its embers emitting while it sputters or erupts and
-/// drained else.
+/// `geyser_look`, after the physics sync and before the frame's transform
+/// propagation and its particles: each geyser's vent, choked or not; its
+/// plume's frame and its offset from the vent, by which the propagation
+/// stands its bottom on the floor in the same frame, or hidden; its embers
+/// emitting while it sputters or erupts and drained else.
 pub fn look(world: &mut World) {
     let geysers: Vec<(Entity, GeyserPhase, f32, Vec<Entity>)> = world
         .query::<(Entity, &Geyser, Option<&Children>)>()
@@ -358,9 +359,6 @@ pub fn look(world: &mut World) {
         })
         .collect();
     for (geyser, phase, elapsed, children) in geysers {
-        let at = world
-            .get::<Transform>(geyser)
-            .map_or(Vec2::ZERO, |t| t.position);
         let vent = if phase == GeyserPhase::Choked {
             "ex10_geyser_vent_choked"
         } else {
@@ -381,13 +379,9 @@ pub fn look(world: &mut World) {
             }
             if let Some((name, height)) = &shown {
                 show(world, child, name);
-                // Its place too, since the frame's propagation may have run.
-                let offset = Vec2::new(0.0, VENT_HEIGHT - height);
+                // Its place is the hierarchy's, from this offset.
                 if let Some(local) = world.get_mut::<LocalOffset>(child) {
-                    local.0 = offset;
-                }
-                if let Some(transform) = world.get_mut::<Transform>(child) {
-                    transform.position = at + offset;
+                    local.0 = Vec2::new(0.0, VENT_HEIGHT - height);
                 }
             }
         }

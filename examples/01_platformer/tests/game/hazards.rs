@@ -961,6 +961,73 @@ fn a_geysers_touch_is_off_through_its_idle_and_sputter_and_on_for_its_eruption()
     );
 }
 
+/// S-180: the look sets the plume's offset and the kit's propagation
+/// places it, so each frame it draws its bottom row on the floor's top,
+/// through the sputter's 64 px frames and the eruption's 176 px ones.
+#[test]
+fn a_geysers_plume_stands_on_its_vent_each_frame() {
+    use tungsten::kit::{Children, LocalOffset};
+    for (dt, frames) in [(DT, 250), (1.0 / 144.0, 600)] {
+        let (mut harness, _) = run();
+        calm(&mut harness);
+        harness.harness_mut().set_dt(dt);
+        ground(&mut harness, GEYSER_TOP);
+        let geyser = geyser_at(&mut harness, GEYSER_X, GEYSER_TOP, 0.0);
+        // The frames its plume showed in its sputter and in its eruption.
+        let (mut sputtered, mut erupted) = (0, 0);
+        for frame in 0..frames {
+            harness.step(1);
+            let world = harness.world();
+            let Some(children) = world.get::<Children>(geyser) else {
+                continue;
+            };
+            let plume = children
+                .iter()
+                .find(|&child| world.has::<Sprite>(child))
+                .expect("its plume");
+            if !world.get::<Visibility>(plume).unwrap().visible {
+                continue;
+            }
+            let height = match state(&harness, geyser).0 {
+                GeyserPhase::Sputter => {
+                    sputtered += 1;
+                    64.0
+                }
+                GeyserPhase::Erupt => {
+                    erupted += 1;
+                    176.0
+                }
+                phase @ (GeyserPhase::Idle | GeyserPhase::Choked) => {
+                    panic!("dt {dt}, frame {frame}: a plume at {phase:?}")
+                }
+            };
+            let vent = world.get::<Transform>(geyser).unwrap().position;
+            let offset = world.get::<LocalOffset>(plume).unwrap().0;
+            assert_eq!(
+                offset,
+                Vec2::new(0.0, VENT_HEIGHT - height),
+                "dt {dt}, frame {frame}: its offset"
+            );
+            assert_eq!(
+                world.get::<Transform>(plume).unwrap().position,
+                vent + offset,
+                "dt {dt}, frame {frame}: on its vent"
+            );
+            assert_eq!(vent.y + offset.y + height, GEYSER_TOP, "its bottom row");
+        }
+        // 0.6 s of sputter and 0.8 s of eruption, each drawn through.
+        let per = 1.0 / dt;
+        assert!(
+            (sputtered as f32 - 0.6 * per).abs() <= 2.0,
+            "dt {dt}: {sputtered} frames of sputter"
+        );
+        assert!(
+            (erupted as f32 - 0.8 * per).abs() <= 2.0,
+            "dt {dt}: {erupted} frames of eruption"
+        );
+    }
+}
+
 /// S-84, S-156: a cycle that starts part-way starts quietly, as the shelf
 /// geyser's does 2.6 s in: in its sputter from its first step with no
 /// gurgle, then its eruption 0.5 s and a step later with its one burst and

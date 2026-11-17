@@ -25,7 +25,7 @@ use tungsten::core::{
     PhysicsConfig, Position, RigidBodyBundle, Schedule, Stage, TilemapInstance, TilemapRegistry,
     Transform, World, system,
 };
-use tungsten::kit::{PathFollower, Phase, StateMachine, ensure_phases};
+use tungsten::kit::{PathFollower, Phase, StateMachine, TRANSFORM_PROPAGATE, ensure_phases};
 use tungsten::plugins::{CAMERA_UPDATE, PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
@@ -178,7 +178,7 @@ pub const PARTICLE_CAP: u32 = 2048;
 /// pair candidates, the particle budget, the camera's shake, the
 /// level's clock, the geysers' chill and their cycles, the kit's timed machine, on the
 /// step, `level_zoom` before the camera's update, the glows in the present
-/// phase, the geysers' look before the frame's particles, the bursts' cleanup and the title's sky in `Update`, the title's
+/// phase, the geysers' look before the frame's transform propagation and its particles, the bursts' cleanup and the title's sky in `Update`, the title's
 /// view before the camera's update, and the backdrop under the engine's
 /// default drawing.
 pub struct LevelPlugin;
@@ -258,9 +258,12 @@ impl Plugin for LevelPlugin {
             Stage::PostUpdate,
             Phase::Present.join(system("level_light", systems::light)),
         );
-        // Before the frame's emission, whose embers it starts and stops.
+        // Before the frame's propagation, which places each plume by the
+        // offset the look sets, and its emission, whose embers the look
+        // starts and stops.
         let geysers = system("geyser_look", geyser::look)
             .after(PHYSICS_SYNC)
+            .before(TRANSFORM_PROPAGATE)
             .before(PARTICLE_COUNT_REFRESH);
         schedule.add(Stage::PostUpdate, geysers);
     }
