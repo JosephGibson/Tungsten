@@ -159,6 +159,25 @@ impl core::marker::Unpin for tungsten_kit::Past
 impl core::marker::UnsafeUnpin for tungsten_kit::Past
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Past
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Past
+pub enum tungsten_kit::prelude::PathEnd
+pub tungsten_kit::prelude::PathEnd::First
+pub tungsten_kit::prelude::PathEnd::Last
+impl core::clone::Clone for tungsten_kit::PathEnd
+pub fn tungsten_kit::PathEnd::clone(&self) -> tungsten_kit::PathEnd
+impl core::cmp::Eq for tungsten_kit::PathEnd
+impl core::cmp::PartialEq for tungsten_kit::PathEnd
+pub fn tungsten_kit::PathEnd::eq(&self, &tungsten_kit::PathEnd) -> bool
+impl core::fmt::Debug for tungsten_kit::PathEnd
+pub fn tungsten_kit::PathEnd::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::PathEnd
+impl core::marker::StructuralPartialEq for tungsten_kit::PathEnd
+impl core::marker::Freeze for tungsten_kit::PathEnd
+impl core::marker::Send for tungsten_kit::PathEnd
+impl core::marker::Sync for tungsten_kit::PathEnd
+impl core::marker::Unpin for tungsten_kit::PathEnd
+impl core::marker::UnsafeUnpin for tungsten_kit::PathEnd
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PathEnd
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PathEnd
 #[non_exhaustive] pub enum tungsten_kit::prelude::Payload
 pub tungsten_kit::prelude::Payload::Conduct(alloc::boxed::Box<tungsten_kit::Conduct>)
 pub tungsten_kit::prelude::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
@@ -3023,10 +3042,17 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ParticleBurst
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ParticleBurst
 pub struct tungsten_kit::prelude::PathFollower
 impl tungsten_kit::PathFollower
+pub fn tungsten_kit::PathFollower::end(&self) -> core::option::Option<tungsten_kit::PathEnd>
 pub fn tungsten_kit::PathFollower::is_finished(&self) -> bool
+pub fn tungsten_kit::PathFollower::is_paused(&self) -> bool
 pub fn tungsten_kit::PathFollower::looping(self) -> Self
 pub fn tungsten_kit::PathFollower::new(impl core::iter::traits::collect::IntoIterator<Item = glam::f32::vec2::Vec2>, f32) -> Self
 pub fn tungsten_kit::PathFollower::ping_pong(self) -> Self
+pub fn tungsten_kit::PathFollower::points(&self) -> &[glam::f32::vec2::Vec2]
+pub fn tungsten_kit::PathFollower::returning(&self) -> bool
+pub fn tungsten_kit::PathFollower::set_paused(&mut self, bool)
+pub fn tungsten_kit::PathFollower::speed(&self) -> f32
+pub fn tungsten_kit::PathFollower::turn_back(&mut self) -> bool
 pub fn tungsten_kit::PathFollower::two_way(self) -> Self
 pub fn tungsten_kit::PathFollower::with_easing(self, tungsten_core::tween::Easing) -> Self
 pub fn tungsten_kit::PathFollower::with_rider(self, f32, f32) -> Self
@@ -4720,6 +4746,25 @@ impl core::marker::Unpin for tungsten_kit::Past
 impl core::marker::UnsafeUnpin for tungsten_kit::Past
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Past
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Past
+pub enum tungsten_kit::PathEnd
+pub tungsten_kit::PathEnd::First
+pub tungsten_kit::PathEnd::Last
+impl core::clone::Clone for tungsten_kit::PathEnd
+pub fn tungsten_kit::PathEnd::clone(&self) -> tungsten_kit::PathEnd
+impl core::cmp::Eq for tungsten_kit::PathEnd
+impl core::cmp::PartialEq for tungsten_kit::PathEnd
+pub fn tungsten_kit::PathEnd::eq(&self, &tungsten_kit::PathEnd) -> bool
+impl core::fmt::Debug for tungsten_kit::PathEnd
+pub fn tungsten_kit::PathEnd::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::PathEnd
+impl core::marker::StructuralPartialEq for tungsten_kit::PathEnd
+impl core::marker::Freeze for tungsten_kit::PathEnd
+impl core::marker::Send for tungsten_kit::PathEnd
+impl core::marker::Sync for tungsten_kit::PathEnd
+impl core::marker::Unpin for tungsten_kit::PathEnd
+impl core::marker::UnsafeUnpin for tungsten_kit::PathEnd
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PathEnd
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PathEnd
 #[non_exhaustive] pub enum tungsten_kit::Payload
 pub tungsten_kit::Payload::Conduct(alloc::boxed::Box<tungsten_kit::Conduct>)
 pub tungsten_kit::Payload::Cone(alloc::boxed::Box<tungsten_kit::Cone>)
@@ -8182,10 +8227,17 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ParticleBurst
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ParticleBurst
 pub struct tungsten_kit::PathFollower
 impl tungsten_kit::PathFollower
+pub fn tungsten_kit::PathFollower::end(&self) -> core::option::Option<tungsten_kit::PathEnd>
 pub fn tungsten_kit::PathFollower::is_finished(&self) -> bool
+pub fn tungsten_kit::PathFollower::is_paused(&self) -> bool
 pub fn tungsten_kit::PathFollower::looping(self) -> Self
 pub fn tungsten_kit::PathFollower::new(impl core::iter::traits::collect::IntoIterator<Item = glam::f32::vec2::Vec2>, f32) -> Self
 pub fn tungsten_kit::PathFollower::ping_pong(self) -> Self
+pub fn tungsten_kit::PathFollower::points(&self) -> &[glam::f32::vec2::Vec2]
+pub fn tungsten_kit::PathFollower::returning(&self) -> bool
+pub fn tungsten_kit::PathFollower::set_paused(&mut self, bool)
+pub fn tungsten_kit::PathFollower::speed(&self) -> f32
+pub fn tungsten_kit::PathFollower::turn_back(&mut self) -> bool
 pub fn tungsten_kit::PathFollower::two_way(self) -> Self
 pub fn tungsten_kit::PathFollower::with_easing(self, tungsten_core::tween::Easing) -> Self
 pub fn tungsten_kit::PathFollower::with_rider(self, f32, f32) -> Self

@@ -311,7 +311,7 @@ pub use motion::knockback::{KNOCKBACK, Knockback, KnockbackPlugin, knock_back};
 pub use motion::linear::{LINEAR_MOTION, LinearMotion, LinearMotionPlugin};
 pub use motion::orbit::{ORBIT, Orbit, OrbitPlugin};
 pub use motion::oscillator::{OSCILLATOR, OSCILLATOR_PRESENT, Oscillator, OscillatorPlugin};
-pub use motion::path::{PATH_FOLLOW, PathFollower, PathFollowerPlugin};
+pub use motion::path::{PATH_FOLLOW, PathEnd, PathFollower, PathFollowerPlugin};
 pub use motion::platformer::{
     PLATFORMER_CONTROLLER, PlatformerController, PlatformerControllerPlugin,
 };
@@ -384,7 +384,7 @@ pub mod prelude {
         KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback, KnockbackPlugin, LabelStyle,
         Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin, LinearMotion, LinearMotionPlugin,
         Lob, LocalOffset, Looks, LooksPlugin, Modifier, Offer, Offers, Orbit, OrbitPlugin,
-        Oscillator, OscillatorPlugin, Output, Parent, ParticleBurst, Past, PathFollower,
+        Oscillator, OscillatorPlugin, Output, Parent, ParticleBurst, Past, PathEnd, PathFollower,
         PathFollowerPlugin, Payload, Penetration, Phase, PickedUp, Pickup, PickupPlugin, Place,
         PlatformerController, PlatformerControllerPlugin, Projectile, ProjectileBounced,
         ProjectileExpired, ProjectilePassed, ProjectilePlugin, Reaction, Refresh, Resist, Scaled,

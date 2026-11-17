@@ -75,10 +75,18 @@ enum Mode {
 /// an end, a stop path's last point included, and `departed` as it leaves
 /// one, about itself at its point, when a cue names them.
 ///
+/// A game's own rule holds it where it stands
+/// ([`set_paused`](Self::set_paused)), turns a ping-pong back the way it
+/// came ([`turn_back`](Self::turn_back)) and reads the end it stands at
+/// ([`end`](Self::end)), its way ([`returning`](Self::returning)), its
+/// points and its speed: a lift that waits for a rider it must not move
+/// under, and goes back up over one in its way.
+///
 /// It is data: a save holds its world points, speed, mode, easing and
-/// time, its wait, rider rule, the seconds of its hold, the rider's mark
-/// and a two-way lift's carried rider and boarding, each skipped when
-/// none, so a loaded follower continues where it was, and a load checks
+/// time, its wait, rider rule, the seconds of its hold, the rider's mark,
+/// a two-way lift's carried rider and boarding, its pause and a turn-back's
+/// `departed` to come, each skipped when none, so a loaded follower
+/// continues where it was, and a load checks
 /// what [`new`](Self::new) checks plus a finite time within the path. A
 /// game restoring a level object inserts the saved follower over the
 /// prefab's.
@@ -135,10 +143,24 @@ pub struct PathFollower {
     speed: f32,
     mode: Mode,
     easing: Easing,
+    /// A game holds it where it stands: its step does nothing.
+    paused: bool,
+    /// It turned back between its ends: its next step sends `departed`.
+    turned: bool,
     /// Time along the path's legs, below one cycle unless it stopped.
     time: f32,
     /// A waiting or riding follower's hold; a plain follower has none.
     hold: Option<Box<Hold>>,
+}
+
+/// One of a path's two ends, where [`PathFollower::end`] finds a follower
+/// standing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathEnd {
+    /// Its first point.
+    First,
+    /// A ping-pong's last point.
+    Last,
 }
 
 /// A follower's hold at its ends: its wait, its riders' rule, the seconds
@@ -269,6 +291,8 @@ impl PathFollower {
             speed,
             mode: Mode::Stop,
             easing: Easing::Linear,
+            paused: false,
+            turned: false,
             time: 0.0,
             hold: None,
         }
@@ -548,7 +572,7 @@ impl PathFollower {
         }
         let before = self.time;
         self.advance(dt);
-        ends.departed = from_end && self.time != before;
+        ends.departed = (from_end && self.time != before) || std::mem::take(&mut self.turned);
         let total = self.total();
         match self.mode {
             Mode::Stop => ends.arrived = before < total && self.time >= total,
@@ -594,9 +618,73 @@ impl PathFollower {
         self.mode == Mode::Stop && self.time >= self.total()
     }
 
+    /// Holds it where it stands, or lets it go on: a paused follower's step
+    /// does nothing along its path. Its time and a hold's seconds stand,
+    /// its rider's mark is left as it is, unread, for the step it resumes
+    /// at, and it sends no cue. Its body stands as a stopped follower's
+    /// does: its `Velocity` zero, or, with an
+    /// [`Oscillator`](crate::Oscillator) on the body, the wave alone about
+    /// the held point. A game's own rule pauses a lift for a rider it must
+    /// not move under.
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+    }
+
+    /// Whether a game holds it ([`set_paused`](Self::set_paused)).
+    #[must_use]
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
+    /// Turns a ping-pong back the way it came from where it stands,
+    /// between its ends: its time is mirrored about its last point, so the
+    /// return takes the time it travelled, and its next unpaused step sends
+    /// `departed` at its point when a cue names it. `false`, changing
+    /// nothing: at an end, on a path that does not ping-pong, and on an
+    /// easing not symmetric about its middle (every `_in` and `_out`
+    /// easing), whose mirrored point would jump.
+    pub fn turn_back(&mut self) -> bool {
+        if self.mode != Mode::PingPong || self.at_end().is_some() || !symmetric(self.easing) {
+            return false;
+        }
+        let total = self.total();
+        let mirrored = total - self.time;
+        // A hair off an end rounds onto it: it stands there.
+        if !(mirrored > 0.0 && mirrored < total) || mirrored == self.out_time() {
+            return false;
+        }
+        self.time = mirrored;
+        self.turned = true;
+        true
+    }
+
+    /// The end it stands at: [`PathEnd::First`] at its first point,
+    /// [`PathEnd::Last`] at a ping-pong's last, `None` between them and on
+    /// a stop path, whose end [`is_finished`](Self::is_finished) reads. A
+    /// follower that holds at an end stands there; one that does not passes
+    /// it within a step.
+    #[must_use]
+    pub fn end(&self) -> Option<PathEnd> {
+        self.at_end()
+            .map(|far| if far { PathEnd::Last } else { PathEnd::First })
+    }
+
+    /// Whether a ping-pong is on its way back from its last point.
+    #[must_use]
+    pub fn returning(&self) -> bool {
+        self.mode == Mode::PingPong && self.time > self.out_time()
+    }
+
     /// The points, in order.
-    pub(crate) fn points(&self) -> &[Vec2] {
+    #[must_use]
+    pub fn points(&self) -> &[Vec2] {
         &self.points
+    }
+
+    /// Its speed along the path, in world pixels a second.
+    #[must_use]
+    pub fn speed(&self) -> f32 {
+        self.speed
     }
 
     /// Whether it goes on from the last point to the first.
@@ -663,6 +751,12 @@ impl PathFollower {
         }
         self.leg(self.legs() - 1).1
     }
+}
+
+/// Whether `easing` is symmetric about its middle, so a path eased by it
+/// reads the same point from either of a leg's ends.
+fn symmetric(easing: Easing) -> bool {
+    (easing.apply(0.25) + easing.apply(0.75) - 1.0).abs() <= 1e-4
 }
 
 /// Registers the `path_follower` scene component and [`PATH_FOLLOW`] in the
@@ -900,6 +994,9 @@ impl TryFrom<PathFollowerFields> for PathFollowerDef {
 /// A follower as a save writes it: world points and its time.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+// Independent flags, each a key of its own skipped when unset; no two are a
+// state.
+#[allow(clippy::struct_excessive_bools)]
 struct FollowerSave {
     points: Vec<[f32; 2]>,
     speed: f32,
@@ -918,6 +1015,10 @@ struct FollowerSave {
     carried: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     boarding: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    paused: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    turned: bool,
 }
 
 // The reference is serde's `skip_serializing_if` signature.
@@ -956,6 +1057,8 @@ impl TryFrom<FollowerSave> for PathFollower {
             speed,
             mode,
             easing,
+            paused: save.paused,
+            turned: save.turned,
             time: save.time,
             hold: None,
         };
@@ -1003,13 +1106,16 @@ impl From<PathFollower> for FollowerSave {
             ridden: follower.hold.as_ref().is_some_and(|hold| hold.ridden),
             carried: follower.hold.as_ref().is_some_and(|hold| hold.carried),
             boarding: follower.hold.as_ref().is_some_and(|hold| hold.boarding),
+            paused: follower.paused,
+            turned: follower.turned,
         }
     }
 }
 
-/// Steps every follower, then adds an oscillating body's wave to its
-/// velocity and sends the step's `arrived` and `departed` cue events that
-/// something names, through the kit's list. The query stays four columns
+/// Steps every follower but a stopped or a paused one, which stands, then
+/// adds an oscillating body's wave to its velocity and sends the step's
+/// `arrived` and `departed` cue events that something names, through the
+/// kit's list. The query stays four columns
 /// wide, the entity in the oscillator's place, since each column widens
 /// the list a query collects each call, which example 01's guard pins;
 /// `followers` is the step's scratch list, reserved at build.
@@ -1022,7 +1128,7 @@ fn path_follow(world: &mut World, followers: &mut Vec<(Entity, Ends)>) {
     for (entity, follower, position, velocity) in
         world.query_mut::<(Entity, &mut PathFollower, &Position, &mut Velocity)>()
     {
-        let moved = if follower.is_finished() {
+        let moved = if follower.is_finished() || follower.paused {
             velocity.0 = Vec2::ZERO;
             Ends::default()
         } else {
