@@ -137,8 +137,7 @@ pub const FIRE_MISSILE_PREFAB: &str = "fire_missile";
 /// top-down mover, the force push's waves, the missiles' bending before
 /// their motion, their contacts before the kit's projectile step and their
 /// ends and the flasks' after it, so a blast's or a splash's hits take the
-/// step's resolve, the escaped
-/// bodies' cull, the holes' broom and the sprays' end; in the present
+/// step's resolve, the holes' broom and the sprays' end; in the present
 /// phase the toys' looks and the waves' crescents, and before the frame's
 /// particles the sprays' and
 /// the holes' particles, then the sprays' sprites and puffs; and their
@@ -192,7 +191,6 @@ impl Plugin for ToysPlugin {
                 })
                 .after(PROJECTILE_TICK),
             ),
-            Phase::Overlap.join(system("toys_bounds", systems::bounds)),
             Phase::Overlap.join(system("hole_broom", systems::broom)),
             Phase::Overlap.join(system("iron_friction", systems::friction)),
             Phase::Overlap.join(

@@ -24,7 +24,9 @@ use tungsten::core::{
     AmbientLight, Bundle, CameraController, Collider, DataRegistry, Entity, Light, Position,
     RigidBodyBundle, Schedule, Stage, TilemapInstance, TilemapRegistry, Transform, World, system,
 };
-use tungsten::kit::{PathFollower, Phase, StateMachine, TRANSFORM_PROPAGATE, ensure_phases};
+use tungsten::kit::{
+    PathFollower, Phase, StateMachine, TRANSFORM_PROPAGATE, WorldBounds, ensure_phases,
+};
 use tungsten::plugins::{CAMERA_UPDATE, PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
@@ -57,7 +59,10 @@ pub const CAMERA_ROWS: f32 = 18.0;
 pub const SPAWN_MARKER: &str = "spawn";
 /// Below this, `tools/level.json`'s `kill_row`, a fall ends the run.
 pub const KILL_Y: f32 = 71.0 * TILE;
-/// The box the bodies live in: past it, one has escaped the level.
+/// The box the bodies live in, the run's `WorldBounds`: past it, one has
+/// escaped the level. A toy, a prop, the dummy or an enemy whose point, its
+/// sprite's top-left corner, leaves it goes at the frame's flush (its
+/// prefab's `despawn_outside`), and the player past its sides or foot dies.
 pub const WORLD_MIN: Vec2 = Vec2::new(-2.0 * TILE, -8.0 * TILE);
 pub const WORLD_MAX: Vec2 = Vec2::new(
     (MAP_COLS as f32 + 2.0) * TILE,
@@ -240,6 +245,9 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
     lava::start(world);
     geyser::start(world);
     elevator::start(world);
+    // The box the bodies live in, which the kit's `despawn_outside` rules
+    // on the toys', props', dummy's and enemies' prefabs leave.
+    world.insert_resource(WorldBounds::new(WORLD_MIN, WORLD_MAX));
     let mut moon = Light::directional(MOONLIGHT, -std::f32::consts::FRAC_PI_4);
     moon.intensity = MOONLIGHT_INTENSITY;
     world.spawn_with((
@@ -314,6 +322,7 @@ pub fn despawn(world: &mut World) {
     world.remove_resource::<SceneTime>();
     world.remove_resource::<SavedNames>();
     world.remove_resource::<elevator::Decks>();
+    world.remove_resource::<WorldBounds>();
     world.remove_resource::<components::Cover>();
     world.remove_resource::<components::AreaLight>();
     world.insert_resource(AmbientLight::default());

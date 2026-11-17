@@ -43,7 +43,6 @@ use crate::features::level::components::Hazard;
 use crate::features::level::geyser::{self, Geyser};
 use crate::features::level::systems::{CORE, CORE_MATERIAL, drawn_time};
 use crate::features::player::components::Player;
-use crate::features::player::systems::escaped;
 use crate::features::props::{self, components::Crate};
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
@@ -847,29 +846,6 @@ pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
     thrown.sort_by_key(|(id, ..)| *id);
     for (_, enemy, push) in thrown {
         knock_back(world, enemy, push);
-    }
-}
-
-/// `toys_bounds`, in the overlap phase: a ball, block, scrap, crate, keg,
-/// dummy or enemy that has left the level's box goes, as the player's
-/// escape ends a run: a placed enemy is gone from the next save, and what a
-/// troll held drops at the next `troll_holds`.
-pub fn bounds(world: &mut World) {
-    let escaped: Vec<Entity> = world
-        .query::<(Entity, &Position, Option<&Collider>)>()
-        .filter(|(_, at, collider)| escaped(at.0, *collider))
-        .filter(|(entity, ..)| {
-            world.has::<Ball>(*entity)
-                || world.has::<IronBlock>(*entity)
-                || world.has::<IronScrap>(*entity)
-                || props::is_prop(world, *entity)
-                || world.has::<Dummy>(*entity)
-                || world.has::<Enemy>(*entity)
-        })
-        .map(|(entity, ..)| entity)
-        .collect();
-    for entity in escaped {
-        despawn_tree(world, entity);
     }
 }
 

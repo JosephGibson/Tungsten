@@ -97,6 +97,9 @@
       "group": "summon.dummies",
       "max": 8,
       "count_dead": false
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

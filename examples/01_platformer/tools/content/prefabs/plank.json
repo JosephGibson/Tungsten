@@ -46,6 +46,9 @@
     "cap": {
       "group": "plank",
       "max": 40
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

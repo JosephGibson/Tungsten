@@ -29,6 +29,9 @@
     "cap": {
       "group": "rock",
       "max": 24
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

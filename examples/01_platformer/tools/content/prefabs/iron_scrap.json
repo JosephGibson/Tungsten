@@ -46,6 +46,9 @@
       },
       "land": "now",
       "prepare": "armour"
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

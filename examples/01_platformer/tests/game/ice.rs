@@ -28,7 +28,7 @@ use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState
 use example_01_platformer::features::level::WORLD_MAX;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{IronBlock, IronScrap, Spray};
-use example_01_platformer::features::toys::systems::{bounds, friction, iron_look};
+use example_01_platformer::features::toys::systems::{friction, iron_look};
 use example_01_platformer::features::toys::{
     self, BLAST_RADIUS, FROZEN_FRICTION, IRON_FRICTION, SCRAP_COUNT, SPRAY_RANGE,
 };
@@ -192,7 +192,8 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
     );
     let escaped = scraps(&harness)[1];
     harness.world_mut().get_mut::<Position>(escaped).unwrap().0 = WORLD_MAX + Vec2::splat(100.0);
-    bounds(harness.world_mut());
+    // Its prefab's `despawn_outside`, at the step's frame's flush.
+    harness.step(1);
     assert!(!harness.world().is_alive(escaped));
     assert_eq!(scraps(&harness).len(), SCRAP_COUNT - 1);
 }

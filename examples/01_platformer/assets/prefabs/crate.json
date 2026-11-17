@@ -48,6 +48,9 @@
     "cap": {
       "group": "crate",
       "max": 16
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

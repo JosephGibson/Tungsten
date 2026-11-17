@@ -4,10 +4,9 @@
 //! and the rainbow's pure primaries.
 
 use example_01_platformer::features::level::WORLD_MAX;
-use example_01_platformer::features::player::systems::escaped;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{BallHue, BlackHole, SmallBall};
-use example_01_platformer::features::toys::systems::{ball_look, bounds, pull, rainbow_rgba, tick};
+use example_01_platformer::features::toys::systems::{ball_look, pull, rainbow_rgba, tick};
 use example_01_platformer::features::toys::{self, HOLE_RADIUS};
 use glam::Vec2;
 use tungsten::core::{
@@ -94,22 +93,16 @@ fn black_hole_lifetime_system_despawns_expired_hole() {
 fn despawn_out_of_bounds_culls_escaped_balls_and_keeps_in_bounds_balls() {
     let (mut harness, _) = run();
     let inside = ball(&mut harness, Vec2::new(1000.0, 1000.0), false);
-    let partly = ball(
-        &mut harness,
-        Vec2::new(100.0, WORLD_MAX.y + prefab_box("bowling_ball").0.x - 1.0),
-        false,
-    );
-    let outside = ball(
-        &mut harness,
-        Vec2::new(100.0, WORLD_MAX.y + prefab_box("bowling_ball").0.x + 1.0),
-        false,
-    );
+    // The kit's rule, each ball's prefab's, tests a body's point, its
+    // `Position`, against the run's `WorldBounds`: one 4 px short of the
+    // box's foot, one 4 px past it.
+    let partly = ball(&mut harness, Vec2::new(100.0, 1000.0), false);
+    let outside = ball(&mut harness, Vec2::new(300.0, 1000.0), false);
     let world = harness.world_mut();
-    for (e, kept) in [(inside, true), (partly, true), (outside, false)] {
-        let at = world.get::<Position>(e).unwrap().0;
-        assert_eq!(escaped(at, world.get::<Collider>(e)), !kept);
-    }
-    bounds(world);
+    world.get_mut::<Position>(partly).unwrap().0 = Vec2::new(100.0, WORLD_MAX.y - 4.0);
+    world.get_mut::<Position>(outside).unwrap().0 = Vec2::new(300.0, WORLD_MAX.y + 4.0);
+    harness.step(1);
+    let world = harness.world();
     assert!(world.is_alive(inside) && world.is_alive(partly));
     assert!(!world.is_alive(outside));
 }

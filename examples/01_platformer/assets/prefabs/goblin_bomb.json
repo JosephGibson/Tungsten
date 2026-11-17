@@ -41,6 +41,9 @@
       "floor": 2,
       "mass": 1.5,
       "prepare": "armour"
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

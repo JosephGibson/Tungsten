@@ -32,6 +32,9 @@
       "most": 120,
       "floor": 2,
       "prepare": "armour"
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

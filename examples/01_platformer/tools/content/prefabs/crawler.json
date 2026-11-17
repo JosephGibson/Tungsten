@@ -313,6 +313,9 @@
       "group": "summon.foes",
       "max": 10,
       "count_dead": false
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

@@ -460,8 +460,8 @@ fn lists(kind: &str) -> Lists {
     };
 
     use tungsten::kit::{
-        ActionInput, Aim, CharacterAnimator, Children, ContactDamage, Cues, Effects, Facing,
-        HitFlash, Hitbox, Hurtbox, Intent, Knockback, Stats,
+        ActionInput, Aim, CharacterAnimator, Children, ContactDamage, Cues, DespawnOutside,
+        Effects, Facing, HitFlash, Hitbox, Hurtbox, Intent, Knockback, Stats,
     };
     let body = [name::<Collider>(), name::<RigidBody>()];
     let at = [name::<Saved>(), name::<Position>()];
@@ -551,6 +551,7 @@ fn lists(kind: &str) -> Lists {
             rebuilt: [
                 &body[..],
                 &[
+                    name::<DespawnOutside>(),
                     name::<Ball>(),
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
@@ -567,6 +568,7 @@ fn lists(kind: &str) -> Lists {
             rebuilt: [
                 &body[..],
                 &[
+                    name::<DespawnOutside>(),
                     name::<IronBlock>(),
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
@@ -587,6 +589,7 @@ fn lists(kind: &str) -> Lists {
             rebuilt: [
                 &body[..],
                 &[
+                    name::<DespawnOutside>(),
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
                     name::<Children>(),
@@ -612,6 +615,7 @@ fn lists(kind: &str) -> Lists {
             rebuilt: [
                 &body[..],
                 &[
+                    name::<DespawnOutside>(),
                     name::<Dummy>(),
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
@@ -674,6 +678,7 @@ fn lists(kind: &str) -> Lists {
             rebuilt: [
                 &body[..],
                 &[
+                    name::<DespawnOutside>(),
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
                     name::<tungsten::kit::Looks>(),
@@ -694,6 +699,7 @@ fn lists(kind: &str) -> Lists {
             rebuilt: [
                 &body[..],
                 &[
+                    name::<DespawnOutside>(),
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
                     name::<Stone>(),
@@ -710,6 +716,7 @@ fn lists(kind: &str) -> Lists {
             rebuilt: [
                 &body[..],
                 &[
+                    name::<DespawnOutside>(),
                     name::<SceneEntity>(),
                     name::<PreviousVelocity>(),
                     name::<tungsten::kit::Cap>(),
@@ -744,6 +751,7 @@ fn lists(kind: &str) -> Lists {
                 rebuilt: [
                     &body[..],
                     &[
+                        name::<DespawnOutside>(),
                         name::<SceneEntity>(),
                         name::<PreviousVelocity>(),
                         name::<Hurtbox>(),

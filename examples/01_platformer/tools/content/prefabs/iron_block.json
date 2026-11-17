@@ -97,6 +97,9 @@
     "cap": {
       "group": "iron",
       "max": 24
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

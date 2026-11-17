@@ -53,6 +53,9 @@
     "cap": {
       "group": "keg",
       "max": 8
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }
