@@ -474,6 +474,7 @@ fn lists(kind: &str) -> Lists {
                 &[
                     name::<Player>(),
                     name::<SceneEntity>(),
+                    name::<DespawnOutside>(),
                     name::<ActionInput>(),
                     name::<Intent>(),
                     name::<Aim>(),

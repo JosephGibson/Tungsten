@@ -14,14 +14,14 @@ pub mod systems;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
-    ACTION_INPUT, CHARACTER_ANIMATOR, CUES, CharacterAnimator, Modifier, Phase, Stats, TagFilter,
-    Tags, ensure_phases,
+    ACTION_INPUT, CHARACTER_ANIMATOR, CUES, CharacterAnimator, DespawnOutside, Modifier, Phase,
+    Stats, TagFilter, Tags, WorldBounds, ensure_phases,
 };
 use tungsten::{Plugin, SceneEntity};
 
 use crate::features::combat::{BLAST, CRIT_CHANCE, CRIT_FACTOR, PLAYER_BLAST_SHARE};
-use crate::features::level::GLOWS;
 use crate::features::level::components::Glow;
+use crate::features::level::{self, GLOWS};
 use crate::game::GAMEPLAY;
 use crate::shared::{self, BODIES, Body, Bursts, SaveId, Saved};
 use components::{Lantern, LanternAnchors, Moves, StaffGlow};
@@ -118,7 +118,6 @@ impl Plugin for PlayerPlugin {
             (Phase::Intent, system("player_actions", systems::actions)),
             (Phase::Intent, staff),
             (Phase::Intent, unstick),
-            (Phase::Overlap, system("player_bounds", systems::bounds)),
             (Phase::React, hurt),
             (Phase::React, system("player_moves", systems::moves)),
         ];
@@ -151,16 +150,38 @@ pub enum Gesture {
     Shoot,
 }
 
+/// The rule that kills a player who falls past the map's kill row or
+/// leaves the level's box by a side: the kit's `despawn_outside` over a
+/// region, killing, built from the map's [`level::KILL_MARKER`] place and
+/// the run's `WorldBounds`. The kit tests the entity's point, its
+/// `Position`, so the region is where that point may be: past the kill row
+/// by the body's centre, past a side by its whole box, and never over the
+/// top, where a bound may carry the wizard and gravity brings him back.
+/// None before the level has spawned.
+fn fall_rule(world: &World) -> Option<DespawnOutside> {
+    let bounds = world.get_resource::<WorldBounds>()?;
+    let kill = level::marker(world, level::KILL_MARKER)?;
+    let (centre, half) = (body(world).centre, body(world).half);
+    let min = Vec2::new(bounds.min().x - centre.x - half.x, f32::MIN);
+    let max = Vec2::new(bounds.max().x - centre.x + half.x, kill.y - centre.y);
+    Some(DespawnOutside::region(min, max).killing())
+}
+
 /// Spawns the player with its body's centre at `centre`, owned by gameplay,
 /// at its prefab's health, with the save ID of [`SAVE_NAME`], its body
 /// from its data ([`shared::fit_body`]), its staff light off, and its
 /// prefab's glow at its staff's orb ([`systems::anchor`]), kept for the
-/// staff's flare. Its prefab's crit and blast share are the values 01's
-/// code names, which a debug build checks ([`holds_combat_values`]).
+/// staff's flare, and the rule a fall kills it by ([`fall_rule`]). Its
+/// prefab's crit and blast share are the values 01's code names, which a
+/// debug build checks ([`holds_combat_values`]).
 pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
     let at = centre - body(world).centre;
     let id = SaveId::authored(SAVE_NAME);
-    let player = world
+    let falls = fall_rule(world);
+    if falls.is_none() {
+        log::warn!("the player spawns before its level: no fall kills it");
+    }
+    let prepared = world
         .prepare_prefab(PLAYER_PREFAB, at.to_array())
         .expect("the manifest's prefabs load with it")
         .with((
@@ -168,8 +189,12 @@ pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
             Saved::kept(id),
             Lantern::default(),
             Moves::default(),
-        ))
-        .spawn(world);
+        ));
+    let player = match falls {
+        Some(rule) => prepared.with((rule,)),
+        None => prepared,
+    }
+    .spawn(world);
     shared::fit_body(world, player, PLAYER_PREFAB);
     debug_assert!(
         holds_combat_values(world, player),

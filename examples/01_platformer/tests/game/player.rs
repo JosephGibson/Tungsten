@@ -3,17 +3,17 @@
 //! a run, inside the invulnerability window too, a blow's tint and hurt
 //! clip, and each cast's gesture with the staff's flare.
 
-use example_01_platformer::features::level::{self, KILL_Y, MAP, TILE, WORLD_MAX, WORLD_MIN};
+use example_01_platformer::features::level::{self, MAP, TILE, WORLD_MAX, WORLD_MIN};
 use example_01_platformer::features::player::components::Moves;
-use example_01_platformer::features::player::systems::{DEATH_CLIP, HURT_CLIP, escaped};
+use example_01_platformer::features::player::systems::{DEATH_CLIP, HURT_CLIP};
 use example_01_platformer::features::run::DEATH_SECS;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::shared::Burst;
 use example_01_platformer::shell::game_over::GAME_OVER;
 use glam::Vec2;
 use tungsten::core::{
-    AnimationState, AudioCommand, Collider, Entity, ParticleConfigRegistry, ParticleEmitter,
-    PhysicsConfig, Position, SoundRegistry, TilemapRegistry, Time, Transform, Velocity,
+    AnimationState, AudioCommand, Entity, ParticleConfigRegistry, ParticleEmitter, PhysicsConfig,
+    Position, SoundRegistry, TilemapRegistry, Time, Transform, Velocity,
 };
 use tungsten::kit::{Health, PlatformerController, damage};
 use tungsten::testing::UiHarness;
@@ -190,20 +190,16 @@ fn the_dead_fall_for_two_seconds_before_game_over() {
 fn despawn_out_of_bounds_keeps_player_while_collider_overlaps_bounds() {
     let (mut harness, player) = run();
     harness.step(5);
-    let collider = *harness.world().get::<Collider>(player).unwrap();
+    // A pixel of its body inside the box's left side.
     let start = Vec2::new(WORLD_MIN.x - player_half().x + 1.0, 30.0 * TILE);
-    assert!(
-        !escaped(start - body_offset(), Some(&collider)),
-        "a pixel inside"
-    );
-    assert!(escaped(
-        start - body_offset() - Vec2::X * 2.0,
-        Some(&collider)
-    ));
     teleport(&mut harness, player, start);
     harness.step(1);
-    let health = health(&harness, player);
-    assert_eq!(health.current(), health.max(), "an overlapping body lives");
+    let alive = health(&harness, player);
+    assert_eq!(alive.current(), alive.max(), "an overlapping body lives");
+    // Two pixels farther its whole body is past the side.
+    teleport(&mut harness, player, start - Vec2::X * 2.0);
+    harness.step(1);
+    assert!(health(&harness, player).is_dead(), "wholly past the side");
 }
 
 #[test]
@@ -229,9 +225,6 @@ fn a_wizard_ten_tiles_over_the_maps_top_falls_back_alive() {
 #[test]
 fn despawn_out_of_bounds_is_noop_for_in_bounds_player() {
     let (mut harness, player) = run();
-    let collider = *harness.world().get::<Collider>(player).unwrap();
-    let middle = (WORLD_MIN + WORLD_MAX) * 0.5;
-    assert!(!escaped(middle, Some(&collider)));
     harness.step(60);
     let health = health(&harness, player);
     assert_eq!(health.current(), health.max());
@@ -249,14 +242,16 @@ fn real_map_dimensions_spawn_and_fall_death() {
     );
     let text = std::fs::read_to_string("tools/level.json").unwrap();
     let source: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(source["kill_row"].as_f64().unwrap() as f32 * TILE, KILL_Y);
+    // The kill row, the map's `kill` place, as `level.json` has it.
+    let kill = level::marker(world, level::KILL_MARKER).unwrap().y;
+    assert_eq!(source["kill_row"].as_f64().unwrap() as f32 * TILE, kill);
     let feet = level::marker(world, level::SPAWN_MARKER).unwrap();
     harness.step(60);
     assert!(controller(&harness, player).grounded());
     let stood = centre(&harness, player) + Vec2::new(0.0, player_half().y);
     assert!((stood - feet).length() < 1.0, "{stood} on {feet}");
     // Past the kill row with a landing pending.
-    teleport(&mut harness, player, Vec2::new(feet.x, KILL_Y + 1.0));
+    teleport(&mut harness, player, Vec2::new(feet.x, kill + 1.0));
     harness
         .world_mut()
         .get_mut::<Moves>(player)
@@ -362,7 +357,10 @@ fn a_fall_is_fatal_during_immunity_and_the_screen_advances_while_game_time_is_pa
     damage(harness.world_mut(), player, 10.0);
     assert!(health(&harness, player).is_invulnerable());
     let at = centre(&harness, player);
-    teleport(&mut harness, player, Vec2::new(at.x, KILL_Y + 1.0));
+    let kill = level::marker(harness.world(), level::KILL_MARKER)
+        .unwrap()
+        .y;
+    teleport(&mut harness, player, Vec2::new(at.x, kill + 1.0));
     harness.step(1);
     assert!(
         health(&harness, player).is_dead(),

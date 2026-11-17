@@ -6,7 +6,7 @@
 //! dearer spells and their doubled hits, beside the hits it leaves alone,
 //! and all three tomes held together.
 
-use example_01_platformer::features::level::KILL_Y;
+use example_01_platformer::features::level;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::hud::Hud;
 use example_01_platformer::features::spells::{self, hud as spell_hud};
@@ -317,7 +317,10 @@ fn the_kill_row_kills_a_player_behind_a_full_shield() {
     let (mut harness, player) = sky();
     pact(&mut harness, player);
     assert_eq!(shield(&harness, player), Some(50.0));
-    teleport(&mut harness, player, Vec2::new(400.0, KILL_Y + 20.0));
+    let kill = level::marker(harness.world(), level::KILL_MARKER)
+        .unwrap()
+        .y;
+    teleport(&mut harness, player, Vec2::new(400.0, kill + 20.0));
     harness.step(1);
     let world = harness.world();
     assert!(world.get::<Health>(player).unwrap().is_dead());

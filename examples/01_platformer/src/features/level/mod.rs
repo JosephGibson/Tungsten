@@ -57,8 +57,9 @@ pub const LAVA_LAYER: u32 = 1 << 4;
 pub const CAMERA_ROWS: f32 = 18.0;
 /// The map's marker where a fresh run's player stands, its feet's point.
 pub const SPAWN_MARKER: &str = "spawn";
-/// Below this, `tools/level.json`'s `kill_row`, a fall ends the run.
-pub const KILL_Y: f32 = 71.0 * TILE;
+/// The map's place whose row a fall ends the run below: `tools/level.json`'s
+/// `kill_row`, which the player's rule reads at its spawn.
+pub const KILL_MARKER: &str = "kill";
 /// The box the bodies live in, the run's `WorldBounds`: past it, one has
 /// escaped the level. A toy, a prop, the dummy or an enemy whose point, its
 /// sprite's top-left corner, leaves it goes at the frame's flush (its

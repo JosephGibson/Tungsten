@@ -12,8 +12,8 @@ use tungsten::core::{
     With, World,
 };
 use tungsten::kit::{
-    CharacterAnimator, DamageRequest, Damaged, Facing, Health, Intent, PlatformerController,
-    Shield, Stats, Used, use_ability,
+    CharacterAnimator, Damaged, Facing, Health, Intent, PlatformerController, Stats, Used,
+    use_ability,
 };
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
@@ -25,7 +25,6 @@ use super::{
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::{Glow, Zoom};
-use crate::features::level::{KILL_Y, WORLD_MAX, WORLD_MIN};
 use crate::features::tomes;
 use crate::shared::{body_centre, just_pressed, spawn_burst};
 
@@ -186,61 +185,6 @@ pub fn unstick(world: &mut World) {
         wake(world, entity);
     }
     world.insert_resource(Shove(Some(centre)));
-}
-
-/// Whether a body at `at` with `collider` lies wholly outside the box the
-/// level's bodies live in.
-#[must_use]
-pub fn escaped(at: Vec2, collider: Option<&Collider>) -> bool {
-    let (min, max) = extent(at, collider);
-    max.y < WORLD_MIN.y || past_the_sides_or_foot(min, max)
-}
-
-/// The box of a body at `at` with `collider`, min and max; its point with
-/// none.
-fn extent(at: Vec2, collider: Option<&Collider>) -> (Vec2, Vec2) {
-    collider.map_or((at, at), |collider| {
-        let centre = at + collider.offset;
-        let half = collider.shape.half_extents();
-        (centre - half, centre + half)
-    })
-}
-
-/// Whether a box, min to max, lies wholly past the level box's sides or its
-/// foot: what the player's check reads, since a bound may carry the wizard
-/// over its top, and gravity always brings him back.
-fn past_the_sides_or_foot(min: Vec2, max: Vec2) -> bool {
-    max.x < WORLD_MIN.x || min.x > WORLD_MAX.x || min.y > WORLD_MAX.y
-}
-
-/// `player_bounds`, in the overlap phase: a player whose body falls past
-/// the kill row, or leaves the level's box by a side or its foot, takes a
-/// hit of all its health and the pact's shield over it; over the box's top,
-/// where a bound may carry him, he falls back. The hit is periodic, so it
-/// lands inside the invulnerability window.
-pub fn bounds(world: &mut World) {
-    let Some(player) = player(world) else {
-        return;
-    };
-    let (Some(at), Some(health)) = (
-        world.get::<Position>(player).map(|p| p.0),
-        world.get::<Health>(player),
-    ) else {
-        return;
-    };
-    if health.is_dead() {
-        return;
-    }
-    // Through the pact's shield too, which takes a hit first.
-    let amount = health.current() + world.get::<Shield>(player).map_or(0.0, Shield::current);
-    let collider = world.get::<Collider>(player);
-    let below = body_centre(world, player).is_some_and(|centre| centre.y > KILL_Y);
-    let (min, max) = extent(at, collider);
-    if below || past_the_sides_or_foot(min, max) {
-        DamageRequest::new(player, amount)
-            .with_periodic(true)
-            .queue(world);
-    }
 }
 
 /// `player_staff_light`, in the intent phase before the spells: a lit
