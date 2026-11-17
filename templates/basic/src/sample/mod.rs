@@ -15,7 +15,6 @@
 //! holds them by: a loaded run spawns as a new one, then takes the save's
 //! changes over it.
 
-pub mod components;
 pub mod hud;
 pub mod script;
 
@@ -32,7 +31,6 @@ use crate::game::GAMEPLAY;
 use crate::save::SaveGame;
 use crate::shell::options::GameOptions;
 use crate::shell::{self, Difficulty, RunStart};
-use components::Player;
 
 /// The sample's code-built level, the area its placed entities are named
 /// in.
@@ -167,14 +165,14 @@ fn show_damage_numbers(world: &mut World) {
         .set(DAMAGE_NUMBERS_FLAG, shown);
 }
 
-/// The sample as a plugin: the components its prefabs name, the camera's
-/// shake, and `sample_frame`, the HUD's update, in `Update`.
+/// The sample as a plugin: its script hooks, the camera's shake, and
+/// `sample_frame`, the HUD's update, in `Update`. Its prefabs name the
+/// kit's components alone, the player classed by its `team.player` tag, so
+/// it registers none of its own.
 pub struct SamplePlugin;
 
 impl Plugin for SamplePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
-        // Before the manifest loads, which checks each prefab's components.
-        world.register_component::<Player>("player");
         script::register(world);
         if let Some(camera) = world.get_resource_mut::<CameraController>() {
             // The trauma rides an 18 Hz carrier and decays in under a second.

@@ -3,6 +3,7 @@
 //! kit's `place` and `tagged` on the player's tag.
 
 use tungsten::core::script::{Report, Script};
+use tungsten::kit::Tags;
 
 use super::harness;
 
@@ -31,16 +32,29 @@ fn a_script_starts_a_run_and_holds_the_player_where_it_puts_it() {
 
 #[test]
 fn a_frame_one_sheet_clears_the_title_and_spawns_its_items() {
-    let report = run(r#"{
+    let script = Script::parse(
+        r#"{
         "version": 1,
         "frames": 3,
         "steps": [
             { "frame": 1, "sheet": { "items": ["player", "prefab:gem", "dummy"] } },
-            { "frame": 3, "assert": { "probe": "states", "op": "==", "value": ["script_stage"] } },
-            { "frame": 3, "assert": { "probe": "count", "args": { "component": "player" }, "op": "==", "value": 1 } }
+            { "frame": 3, "assert": { "probe": "states", "op": "==", "value": ["script_stage"] } }
         ]
-    }"#);
+    }"#,
+    )
+    .expect("a valid script");
+    let mut harness = harness();
+    let report = harness.harness_mut().run_script(&script);
     assert!(report.passed, "{report:#?}");
+    // Exactly one player on the sheet: the `count` probe reads a component
+    // registered as itself and `tagged` the first holder, so the holders of
+    // the player's tag are counted here.
+    let players = harness
+        .world()
+        .query::<&Tags>()
+        .filter(|tags| tags.has("team.player"))
+        .count();
+    assert_eq!(players, 1);
 }
 
 #[test]

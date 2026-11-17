@@ -12,12 +12,11 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     Counters, Damaged, Effects, Flags, Health, Hit, HitFlash, LinearMotion, Projectile, Source,
-    Spawner, Stats, damage,
+    Spawner, Stats, Tags, damage,
 };
 use tungsten::testing::UiHarness;
 use tungsten::{App, SceneEntity, WindowSize};
 use tungsten_template_basic::game;
-use tungsten_template_basic::sample::components::Player;
 use tungsten_template_basic::sample::{
     DAMAGE_NUMBERS_FLAG, DUMMY_START, ENEMIES, ENEMY_RETURN_SECS, GEM_PREFAB, HAZARD_PREFAB,
     HAZARD_START, MUSIC_FADE, MUSIC_RUN, PICKUPS, PLAY_CENTRE, PLAYER_PREFAB, PLAYER_START,
@@ -191,9 +190,9 @@ fn a_new_run_spawns_the_player_owned_by_gameplay() {
     start(&mut harness);
     assert_eq!(player(&harness), Some(PLAYER_START));
     let world = harness.world();
-    let (sprite, owner) = world
-        .query_filtered::<(&Sprite, &SceneEntity), With<Player>>()
-        .next()
+    let (sprite, owner, _) = world
+        .query::<(&Sprite, &SceneEntity, &Tags)>()
+        .find(|(_, _, tags)| tags.has("team.player"))
         .expect("the player spawned");
     let assets = world.resource::<AssetRegistry>();
     assert_eq!(assets.sprite_name(sprite.asset_id), Some("player"));

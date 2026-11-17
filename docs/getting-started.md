@@ -40,7 +40,7 @@ Then make the game yours (`D-181`). Delete `src/sample/`, its script hooks in `s
 
 Leave `src/shell/` as the template ships it, so a later template's shell can replace it whole. Your gameplay state calls `shell::game_over(world)` when the player dies, asks for an autosave at a checkpoint with `shell::request_autosave(world)`, and reads the run's difficulty through `shell::run(world)`; `save::capture` puts `shell::run_meta(world)`, the run's part of a save, in the `SaveGame` it returns. The sample also uses the shell's `play`, `top`, `stack` and `enter`, `options::GameOptions` and the screens' IDs, and builds its HUD from the engine's `tungsten::core::ui::widgets`; a later shell may change the shell's names, so a game that uses them checks them when it takes one.
 
-The sample's assets go with it, each file with its manifest entry: a `.json` file the manifest no longer names loads as a scene and fails `tungsten check`, while an unlisted image or sound passes unreported and ships in the players' archive. That is every prefab you do not reuse, `assets/data/effects/`, `assets/data/abilities/` and `assets/data/cue_rules/labels.json`, `assets/animations/` and `assets/particles/`, the sample's sounds (`shoot`, `hit`, `hurt`, `pickup`, `music_run` and `music_pause`) and the sprites `tools/sprites.py` draws, with their entries in `tools/sounds.py` and that script (its `gem()` stays while `tools/icon.py` draws the icon from it), and the `shoot` binding and label in `input.json`, whose `labels` list the actions the Keybindings screen shows, each with its row's label. `player.json` names the sample's `player` marker, which only `SamplePlugin::build` registers, so a game that keeps the prefab registers a marker of its own under that name or drops the line. The shell's tests read the sample wherever they import from its `sample` module: the helpers in `tests/game/main.rs` (`player`, `player_position`, `player_entity`, `release_and_settle`, on `SampleRun` and `Player`), and `SampleRun`, `Hud`, `PLAYER_START`, `GEM_STARTS`, `HAZARD_START` and `CAMERA_SHAKE` in `shell.rs`, `saves.rs`, `settings.rs` and `keys.rs`, with a few of its numbers (the max health of each difficulty, a slot's summary line): point those at your gameplay. The deleted `sample.rs` also held the resolved schedule's snapshot and the manifest check, `data_files_load`, which a game writes again for its own. Rewrite the lines of `README.md` and `AGENTS.md` that describe the sample, and count `SaveGame::SCHEMA` on from the sample's 4, so a save the sample wrote while you tried it reads as damaged rather than as a newer version's.
+The sample's assets go with it, each file with its manifest entry: a `.json` file the manifest no longer names loads as a scene and fails `tungsten check`, while an unlisted image or sound passes unreported and ships in the players' archive. That is every prefab you do not reuse, `assets/data/effects/`, `assets/data/abilities/` and `assets/data/cue_rules/labels.json`, `assets/animations/` and `assets/particles/`, the sample's sounds (`shoot`, `hit`, `hurt`, `pickup`, `music_run` and `music_pause`) and the sprites `tools/sprites.py` draws, with their entries in `tools/sounds.py` and that script (its `gem()` stays while `tools/icon.py` draws the icon from it), and the `shoot` binding and label in `input.json`, whose `labels` list the actions the Keybindings screen shows, each with its row's label. `player.json` names the kit's components alone, classing the player by its `team.player` tag, so a game that keeps the prefab keeps it whole. The shell's tests read the sample wherever they import from its `sample` module: the helpers in `tests/game/main.rs` (`player`, `player_position`, `player_entity`, `release_and_settle`, on `SampleRun` and the `team.player` tag), and `SampleRun`, `Hud`, `PLAYER_START`, `GEM_STARTS`, `HAZARD_START` and `CAMERA_SHAKE` in `shell.rs`, `saves.rs`, `settings.rs` and `keys.rs`, with a few of its numbers (the max health of each difficulty, a slot's summary line): point those at your gameplay. The deleted `sample.rs` also held the resolved schedule's snapshot and the manifest check, `data_files_load`, which a game writes again for its own. Rewrite the lines of `README.md` and `AGENTS.md` that describe the sample, and count `SaveGame::SCHEMA` on from the sample's 4, so a save the sample wrote while you tried it reads as damaged rather than as a newer version's.
 
 ## Run and test
 
@@ -140,7 +140,7 @@ Tests set the folder in code, so they never read or write your own settings or s
 - `src/main.rs` loads `tungsten.json`, creates the app, names the manifest, turns on hot reload in debug builds, turns the engine's Escape-to-quit off, registers the game and runs it.
 - `src/game.rs` registers the kit, the shell and the game, and holds the seam's three game names; `src/save.rs` holds the other three, `SaveGame`, `capture` and `summary`.
 - `src/shell/` holds the screens every game keeps, each a state on the engine's state stack with a UI root it owns: the title, pause, game over, save and load, settings, keybindings, the confirm dialog and toasts, with their theme, built from `tungsten::core::ui::widgets` and the screen files in `assets/ui/screens/`, handling each control by its key.
-- `src/sample/` is the sample game: its plugin and gameplay state, its components, its HUD, its music and its script hooks (`script.rs`: `reload_run` and the `player` probe, beside the shell's `start_run` and the kit's `place` and `tagged`), the pattern for a game's own. The player's eased movement, aim and shot, health, knockback and camera, the enemies' motion and touch, the dummy's mend, the gems and the pickups are the kit's, named on their prefabs ([Composing with the kit](#composing-with-the-kit)).
+- `src/sample/` is the sample game: its plugin and gameplay state, its HUD, its music and its script hooks (`script.rs`: `reload_run` and the `player` probe, beside the shell's `start_run` and the kit's `place` and `tagged`), the pattern for a game's own. The player's eased movement, aim and shot, health, knockback and camera, the enemies' motion and touch, the dummy's mend, the gems and the pickups are the kit's, named on their prefabs ([Composing with the kit](#composing-with-the-kit)).
 - `tests/game/` steps the game on the headless harness, with no window: a module each for the sample, the shell, the saves, the settings, the keybindings, every screen's fit at six windows and scale extremes, the screen files, and the title's pixels; `sample` holds the snapshot of the resolved schedule.
 - `assets/manifest.json` names every asset by an ID, and game code uses the IDs, never file paths ([assets](assets.md)).
 - `assets/prefabs/` holds the prefab files, one per entity kind the game spawns by ID ([Queries and spawns](#queries-and-spawns)); `assets/data/tags.json` declares the tags its prefabs name, `assets/data/effects/` and `assets/data/abilities/` hold the effects the prefabs and a continued run name and the shot, `assets/data/cue_rules/labels.json` floats a hit's damage, `assets/animations/enemy_spin.json` turns the enemies, `assets/particles/spark.json` is a bolt's impact, `assets/ui/themes/shell.json` is the shell's theme, `assets/shaders/damage_flash.wgsl` is the kit's hit-flash shader, and `assets/sounds/` and `assets/sprites/` hold what `tools/sounds.py` and `tools/sprites.py` make, M36's `player.png` aside.
@@ -149,12 +149,12 @@ Tests set the folder in code, so they never read or write your own settings or s
 
 ## Systems and stages
 
-A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys, its state dispatcher and the UI's input routing), `fixed_update` (once per fixed step: the physics snapshot and `physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). A game with a UI reads its gameplay input from `RoutedInput`, which `ActionMap` reads as it reads `InputState` but which holds only what the UI did not take, so a click on a button is not also a jump (`D-149`). The shell's plugin registers `shell_start` in `startup`, `shell_frame` and `shell_flow` in `update` and `shell_checkpoint` in `fixed_update`; the sample's registers its component and one system; the player's movement, the hazard's touch and the gems are the kit's, on the fixed step ([Composing with the kit](#composing-with-the-kit)):
+A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys, its state dispatcher and the UI's input routing), `fixed_update` (once per fixed step: the physics snapshot and `physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). A game with a UI reads its gameplay input from `RoutedInput`, which `ActionMap` reads as it reads `InputState` but which holds only what the UI did not take, so a click on a button is not also a jump (`D-149`). The shell's plugin registers `shell_start` in `startup`, `shell_frame` and `shell_flow` in `update` and `shell_checkpoint` in `fixed_update`; the sample's registers its script hooks and one system; the player's movement, the hazard's touch and the gems are the kit's, on the fixed step ([Composing with the kit](#composing-with-the-kit)):
 
 ```rust
 impl Plugin for SamplePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
-        world.register_component::<Player>("player");
+        script::register(world);
         schedule.add(Stage::Update, system("sample_frame", frame));
     }
 }
@@ -170,19 +170,36 @@ A constraint names a system in the same stage. A typo, a duplicate name or a cyc
 
 ## Queries and spawns
 
-A system reads and writes components through one query that names its data as a type: `&A` reads a component, `&mut A` writes one, `Option<&A>` reads one the entity may lack, and `Entity` is the entity itself, alone or in a tuple of up to eight. A filter as the second type parameter, `With<T>`, `Without<T>` or a tuple of them, narrows the rows by components the body never reads. A game system reads the kit's components the same way: here, whether the player, found by the game's `Player` marker, is down to its last hit (`D-130`):
+A system reads and writes components through one query that names its data as a type: `&A` reads a component, `&mut A` writes one, `Option<&A>` reads one the entity may lack, and `Entity` is the entity itself, alone or in a tuple of up to eight. A filter as the second type parameter, `With<T>`, `Without<T>` or a tuple of them, narrows the rows by components the body never reads: `world.query_filtered::<&Transform, With<Coin>>()` reads where each entity holding a game's own `Coin` stands. A game system reads the kit's components the same way: here, whether the player, the entity whose `Tags` hold `team.player`, is down to its last hit (`D-130`):
 
 ```rust
 let last_hit = world
-    .query_filtered::<&Health, With<Player>>()
-    .any(|health| health.current() <= 1.0);
+    .query::<(&Health, &Tags)>()
+    .any(|(health, tags)| tags.has("team.player") && health.current() <= 1.0);
 ```
 
 `world.query::<(Entity, &Transform, Option<&Sprite>)>()` reads; `query_mut` writes, and panics at the call if two items name one component. Write in place through the query rather than collecting entities and calling `get_mut` on each. The engine's `query2`, `query3_mut` and the other numbered functions are deprecated and go at the API freeze; each one's deprecation note gives its tuple form.
 
-A spawn gives the entity every component at once, in one archetype move, through a tuple of up to sixteen components: `world.spawn_with((Player, transform, sprite, Visibility::default()))`. A tuple's elements are components, never bundles; join a bundle with `with`: `RigidBodyBundle::dynamic(position, collider).with((Player, transform))` spawns a body with its `Position`, `PrevPosition` (the history it is drawn from), `Velocity`, `Collider` and `RigidBody` and the game's components beside them. A system without `&mut World` records the same through `CommandBuffer::spawn_with`. A body that jumps to a new place, a respawn or a portal, writes `Position` and `PrevPosition` together; otherwise it is drawn sliding from the old point for a step.
+A spawn gives the entity every component at once, in one archetype move, through a tuple of up to sixteen components: `world.spawn_with((Coin { value: 5 }, transform, sprite, Visibility::default()))`. A tuple's elements are components, never bundles; join a bundle with `with`: `RigidBodyBundle::dynamic(position, collider).with((Coin { value: 5 }, transform))` spawns a body with its `Position`, `PrevPosition` (the history it is drawn from), `Velocity`, `Collider` and `RigidBody` and the game's components beside them. A system without `&mut World` records the same through `CommandBuffer::spawn_with`. A body that jumps to a new place, a respawn or a portal, writes `Position` and `PrevPosition` together; otherwise it is drawn sliding from the old point for a step.
 
-An entity kind the game places more than once, or that a level places, is a prefab: a file under `assets/prefabs/`, listed in the manifest's `prefabs`, with a scene entry's fields but no transform: its sprite, visibility, tag, one tween and its components by their registered names. The template's player is one: its sprite, the game's `player` marker and the kit's components ([Composing with the kit](#composing-with-the-kit)); `SamplePlugin::build` registers `Player` as `player` before the manifest loads, which checks each prefab's components and the assets they name, and the kit's plugins register theirs. The sample's gameplay state spawns its player:
+An entity kind the game places more than once, or that a level places, is a prefab: a file under `assets/prefabs/`, listed in the manifest's `prefabs`, with a scene entry's fields but no transform: its sprite, visibility, tag, one tween and its components by their registered names. The template's player is one: its sprite and the kit's components ([Composing with the kit](#composing-with-the-kit)), which the kit's plugins register, with no component of the game's own: its `team.player` tag classes it. A component of the game's own that a prefab names derives `Deserialize` and is registered under its scene name in its plugin's `build`, so before the manifest loads, which checks each prefab's components and the assets they name:
+
+```rust
+/// What a coin is worth. A prefab names it `"coin": { "value": 5 }`; a
+/// marker with no fields is written `"<name>": null`.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct Coin {
+    pub value: u32,
+}
+
+impl Plugin for CoinPlugin {
+    fn build(&self, _schedule: &mut Schedule, world: &mut World) {
+        world.register_component::<Coin>("coin");
+    }
+}
+```
+
+The sample's gameplay state spawns its player:
 
 ```rust
 world
@@ -207,7 +224,6 @@ The state keeps the handles of what it spawned in a `SampleRun` resource, and it
 {
   "sprite": { "asset_id": "player" },
   "components": {
-    "player": null,
     "tags": ["team.player"],
     "rigid_body": { "kind": "kinematic", "shape": { "kind": "aabb", "half_extents": [12, 12] }, "offset": [16, 16] },
     "action_input": {
