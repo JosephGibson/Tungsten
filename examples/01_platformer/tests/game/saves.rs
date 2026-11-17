@@ -40,6 +40,7 @@ use example_01_platformer::features::gun::components::{Bullet, Reload};
 use example_01_platformer::features::level;
 use example_01_platformer::features::level::elevator::{Elevator, Stop};
 use example_01_platformer::features::level::geyser::{self, Geyser, GeyserPhase};
+use example_01_platformer::features::level::lava::CRUST_SECS;
 use example_01_platformer::features::level::lava::{self, Lava};
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::{Player, StaffGlow};
@@ -419,7 +420,7 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
         Oscillator, PathFollower, Pickup, PlatformerController, Projectile, Resist, Shield,
         Source, Spawner, Stats, Steering, Tags, TopDownMover, Tomes, Elevator, Geyser, Lava,
         Spellbook, Lantern, Bullet, Reload, Enemy, Brain, Sight, StateMachine<EnemyState>,
-        Displaced, Orb, Holding, BlackHole, IronScrap, MapProp, Plank,
+        StateMachine<GeyserPhase>, Displaced, Orb, Holding, BlackHole, IronScrap, MapProp, Plank,
     );
     if registry.component_names().any(|saved| saved == "carried") {
         types.insert(CARRIED);
@@ -4017,16 +4018,24 @@ fn the_maps_saved_objects_and_the_player_are_named_with_the_save_ids_their_names
     assert_eq!(world.get::<Saved>(player).unwrap().area(), None, "global");
 }
 
-/// The geysers' states by save ID: each one's ID, phase, the phase's
-/// seconds left and its choke's.
-fn geyser_states(harness: &UiHarness) -> Vec<(u64, GeyserPhase, f32, f32)> {
-    let mut states: Vec<(u64, GeyserPhase, f32, f32)> = harness
+/// The geysers' states by save ID: each one's ID, its phase and the
+/// seconds it has spent in it, its machine's.
+fn geyser_states(harness: &UiHarness) -> Vec<(u64, GeyserPhase, f32)> {
+    let mut states: Vec<(u64, GeyserPhase, f32)> = harness
         .world()
-        .query::<(&Saved, &Geyser)>()
-        .map(|(id, geyser)| (id.id().0, geyser.phase, geyser.left, geyser.choked))
+        .query::<(&Saved, &Geyser, &StateMachine<GeyserPhase>)>()
+        .map(|(id, _, machine)| (id.id().0, machine.state(), machine.elapsed()))
         .collect();
     states.sort_by_key(|&(id, ..)| id);
     states
+}
+
+/// Whether the map's geyser `at` has its touch on, by its switch.
+fn geyser_on(harness: &UiHarness, at: usize) -> bool {
+    harness
+        .world()
+        .get::<ContactDamage>(geysers(harness)[at].1)
+        .is_some_and(ContactDamage::is_on)
 }
 
 #[test]
@@ -4036,23 +4045,22 @@ fn a_geyser_saved_mid_eruption_and_one_saved_choked_load_back_to_finish_as_they_
     let [(_, erupting), (_, choked), _] = geysers(&harness)[..] else {
         panic!("the map's three geysers")
     };
-    geyser::set(harness.world_mut(), erupting, GeyserPhase::Erupt, 0.4, 0.0);
+    // 0.4 s of an eruption left, and 3 s of a choke.
+    let world = harness.world_mut();
     geyser::set(
-        harness.world_mut(),
-        choked,
-        GeyserPhase::Idle,
-        geyser::IDLE_SECS,
-        3.0,
+        world,
+        erupting,
+        GeyserPhase::Erupt,
+        geyser::ERUPT_SECS - 0.4,
     );
+    geyser::set(world, choked, GeyserPhase::Choked, CRUST_SECS - 3.0);
     let saved = capture(&harness);
     let read: SaveGame = serde_json::from_value(json(&saved)).expect("a save reads");
     let mut fresh = super::harness();
     fresh.harness_mut().set_dt(1.0 / 60.0);
     load(&mut fresh, read);
     fresh.world_mut().resource_mut::<Time>().resume();
-    let touched = |harness: &UiHarness, at: usize| {
-        harness.world().has::<ContactDamage>(geysers(harness)[at].1)
-    };
+    let touched = geyser_on;
     assert!(touched(&fresh, 0), "loaded erupting, its touch on");
     assert!(!touched(&fresh, 1), "loaded choked, its touch held");
     // Each step on, the loaded run's geysers as the saved run's.
@@ -4064,7 +4072,6 @@ fn a_geyser_saved_mid_eruption_and_one_saved_choked_load_back_to_finish_as_they_
         for (want, got) in a.iter().zip(&b) {
             assert_eq!((want.0, want.1), (got.0, got.1), "step {step}");
             assert!((want.2 - got.2).abs() < 1e-4, "step {step}");
-            assert!((want.3 - got.3).abs() < 1e-4, "step {step}");
         }
         assert_eq!(touched(&fresh, 0), touched(&harness, 0), "step {step}");
         if ended.is_none() && !touched(&fresh, 0) {
@@ -4081,6 +4088,266 @@ fn a_geyser_saved_mid_eruption_and_one_saved_choked_load_back_to_finish_as_they_
         sputtered.abs_diff(330) <= 2,
         "3 s choked, 2.5 s idle: {sputtered}"
     );
+}
+
+/// A capture's JSON with its map geysers' records rewritten as schema 39
+/// wrote them: each machine's state and seconds back into `phase`, `left`
+/// and `choked`, a field-level diff over the phase and seconds left its
+/// offset began at; its touch whole where it erupts, as the entity gained
+/// it, and absent else, as it was held aside; no `geyser_phase`.
+fn geysers_at_schema_39(harness: &UiHarness, save: &SaveGame) -> serde_json::Value {
+    let mut older = json(save);
+    let world = &mut older["world"];
+    world["versions"]["components"]
+        .as_object_mut()
+        .expect("the components' versions")
+        .remove("geyser_phase")
+        .expect("the machine's version");
+    let named = world["areas"][level::MAP]["named"]
+        .as_object_mut()
+        .expect("the map's named records");
+    // Each map geyser with the phase its offset began in at schema 39.
+    for (name, fresh) in [
+        ("geyser_floor_west", "idle"),
+        ("geyser_floor_east", "idle"),
+        ("geyser_shelf", "sputter"),
+    ] {
+        let entity = by_id(harness, SaveId::authored(name).0);
+        let machine = harness
+            .world()
+            .get::<StateMachine<GeyserPhase>>(entity)
+            .expect("its cycle");
+        let touch = harness
+            .world()
+            .get::<ContactDamage>(entity)
+            .expect("a touch");
+        let elapsed = machine.elapsed();
+        let (phase, left, choked) = match machine.state() {
+            GeyserPhase::Idle => ("idle", geyser::IDLE_SECS - elapsed, 0.0),
+            GeyserPhase::Sputter => ("sputter", geyser::SPUTTER_SECS - elapsed, 0.0),
+            GeyserPhase::Erupt => ("erupt", geyser::ERUPT_SECS - elapsed, 0.0),
+            GeyserPhase::Choked => ("idle", geyser::IDLE_SECS, CRUST_SECS - elapsed),
+        };
+        let mut state = serde_json::Map::new();
+        state.insert("left".to_owned(), serde_json::json!(left));
+        if phase != fresh {
+            state.insert("phase".to_owned(), serde_json::json!(phase));
+        }
+        if choked > 0.0 {
+            state.insert("choked".to_owned(), serde_json::json!(choked));
+        }
+        let record = named
+            .get_mut(name)
+            .unwrap_or_else(|| panic!("{name}: a record"));
+        let components = record["components"]
+            .as_object_mut()
+            .unwrap_or_else(|| panic!("{name}: its components"));
+        components
+            .remove("geyser_phase")
+            .unwrap_or_else(|| panic!("{name}: its machine"));
+        let clock = components
+            .remove("contact_damage")
+            .and_then(|touch| touch.get("clock").cloned())
+            .unwrap_or(serde_json::json!(0.0));
+        components.insert("geyser".to_owned(), serde_json::Value::Object(state));
+        if touch.is_on() {
+            let contact = serde_json::to_value(touch).expect("a touch serializes");
+            assert!(contact.get("on").is_none(), "on, as schema 39 held it");
+            components.insert(
+                "contact_damage".to_owned(),
+                serde_json::json!({ "clock": clock, "contact": contact }),
+            );
+        }
+    }
+    older
+}
+
+/// S-84, S-156: a schema-39 save's geysers load with their cycle on the
+/// kit's machine and their touch behind its switch: each one's state and
+/// seconds as its old phase and seconds left gave them, its touch on only
+/// in an eruption, and each finishing its phase within a step of the run
+/// the save was taken from.
+#[test]
+fn an_older_saves_geysers_keep_their_cycle_and_touch() {
+    const DT: f32 = 1.0 / 60.0;
+    let stamp = tungsten::core::SaveStamp::new(39, "0.117.0", 1_760_400_000_000);
+    // The map's geysers' machines: each one's state and seconds.
+    let cycles = |harness: &UiHarness| -> Vec<(GeyserPhase, f32)> {
+        geysers(harness)
+            .iter()
+            .map(|&(_, entity)| {
+                let machine = harness
+                    .world()
+                    .get::<StateMachine<GeyserPhase>>(entity)
+                    .expect("its cycle");
+                (machine.state(), machine.elapsed())
+            })
+            .collect()
+    };
+    // Writes `older` as a schema 39 save, loads it migrated into a fresh
+    // run and steps it beside `twin`, the run it was captured from: the
+    // loaded geysers as the twin's, and the step each one's phase ends at.
+    let check = |twin: &mut UiHarness, older: &serde_json::Value, slot: &str| {
+        let slots = harness_slots(twin);
+        slots
+            .save_stamped(slot, older, &stamp)
+            .expect("a schema 39 save is written");
+        let migrated = slots
+            .load::<SaveGame>(slot)
+            .expect("a schema 39 save migrates");
+        let mut loaded = super::harness();
+        loaded.harness_mut().set_dt(DT);
+        load(&mut loaded, migrated);
+        loaded.world_mut().resource_mut::<Time>().resume();
+        let (want, got) = (cycles(twin), cycles(&loaded));
+        for (at, (want, got)) in want.iter().zip(&got).enumerate() {
+            assert_eq!(want.0, got.0, "geyser {at}: its phase");
+            assert!(
+                (want.1 - got.1).abs() < 1e-4,
+                "geyser {at}: {} s in against {}",
+                got.1,
+                want.1
+            );
+            let entity = geysers(&loaded)[at].1;
+            assert!(
+                loaded.world().has::<ContactDamage>(entity),
+                "geyser {at}: its touch"
+            );
+            assert_eq!(
+                geyser_on(&loaded, at),
+                want.0 == GeyserPhase::Erupt,
+                "geyser {at}: on only in its eruption"
+            );
+            assert_eq!(geyser_on(&loaded, at), geyser_on(twin, at), "geyser {at}");
+        }
+        // Each one's phase ends within a step of its twin's.
+        let mut ends = [[None; 2]; 3];
+        for step in 1..=260_u32 {
+            twin.step(1);
+            loaded.step(1);
+            for (run, now) in [cycles(twin), cycles(&loaded)].iter().enumerate() {
+                for (at, (phase, _)) in now.iter().enumerate() {
+                    if ends[at][run].is_none() && *phase != want[at].0 {
+                        ends[at][run] = Some((step, *phase));
+                    }
+                }
+            }
+        }
+        for (at, [twin_end, loaded_end]) in ends.into_iter().enumerate() {
+            let (twin_end, loaded_end) = (
+                twin_end.expect("the twin's phase ended"),
+                loaded_end.expect("the loaded one's phase ended"),
+            );
+            assert_eq!(twin_end.1, loaded_end.1, "geyser {at}: its next phase");
+            assert!(
+                twin_end.0.abs_diff(loaded_end.0) <= 1,
+                "geyser {at}: ended at step {} against {}",
+                loaded_end.0,
+                twin_end.0
+            );
+        }
+        want
+    };
+
+    // One idle, one erupting with 0.4 s left and one choked with 3 s left,
+    // each a step into what it was set to.
+    let dir = user_folder("geysers-39");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    let [_, (_, erupting), (_, choked)] = geysers(&harness)[..] else {
+        panic!("the map's three geysers")
+    };
+    let world = harness.world_mut();
+    geyser::set(
+        world,
+        erupting,
+        GeyserPhase::Erupt,
+        geyser::ERUPT_SECS - 0.4 - DT,
+    );
+    geyser::set(world, choked, GeyserPhase::Choked, CRUST_SECS - 3.0 - DT);
+    harness.step(1);
+    let saved = capture(&harness);
+    let older = geysers_at_schema_39(&harness, &saved);
+    let named = &older["world"]["areas"][level::MAP]["named"];
+    let record = |name: &str| named[name]["components"].clone();
+    let west = record("geyser_floor_west");
+    assert_eq!(
+        west.as_object().map(serde_json::Map::len),
+        Some(1),
+        "idle: {west}"
+    );
+    assert_eq!(
+        west["geyser"].as_object().map(serde_json::Map::len),
+        Some(1),
+        "only its seconds left: {west}"
+    );
+    let east = record("geyser_floor_east");
+    assert_eq!(east["geyser"]["phase"], "erupt", "{east}");
+    assert!(
+        (east["geyser"]["left"].as_f64().unwrap() - 0.4).abs() < 1e-4,
+        "{east}"
+    );
+    assert_eq!(east["contact_damage"]["contact"]["damage"], 12.0, "{east}");
+    let shelf = record("geyser_shelf");
+    assert_eq!(shelf["geyser"]["phase"], "idle", "{shelf}");
+    assert!(
+        (shelf["geyser"]["choked"].as_f64().unwrap() - 3.0).abs() < 1e-4,
+        "{shelf}"
+    );
+    assert!(shelf.get("contact_damage").is_none(), "{shelf}");
+    let states = check(&mut harness, &older, "slot_1");
+    assert_eq!(
+        states.iter().map(|state| state.0).collect::<Vec<_>>(),
+        [GeyserPhase::Idle, GeyserPhase::Erupt, GeyserPhase::Choked]
+    );
+    assert!((states[1].1 - (geyser::ERUPT_SECS - 0.4)).abs() < 1e-4);
+    assert!((states[2].1 - (CRUST_SECS - 3.0)).abs() < 1e-4);
+
+    // A record written at a sputter's first step with the old cycle's
+    // carry, its seconds left a hair over the sputter's: it loads at 0 s.
+    let mut carried = older.clone();
+    carried["world"]["areas"][level::MAP]["named"]["geyser_floor_west"]["components"]["geyser"] =
+        serde_json::json!({ "phase": "sputter", "left": 0.600_005 });
+    let slots = harness_slots(&harness);
+    slots
+        .save_stamped("slot_2", &carried, &stamp)
+        .expect("a schema 39 save is written");
+    let migrated = slots
+        .load::<SaveGame>("slot_2")
+        .expect("a schema 39 save migrates");
+    let mut loaded = super::harness();
+    load(&mut loaded, migrated);
+    assert_eq!(cycles(&loaded)[0], (GeyserPhase::Sputter, 0.0));
+    assert!(!geyser_on(&loaded, 0));
+    let _ = std::fs::remove_dir_all(dir);
+
+    // A fresh run a few steps in: the shelf geyser, begun in its sputter,
+    // holds only its seconds left.
+    let dir = user_folder("geysers-39-fresh");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    harness.step(6);
+    let saved = capture(&harness);
+    let older = geysers_at_schema_39(&harness, &saved);
+    let shelf = older["world"]["areas"][level::MAP]["named"]["geyser_shelf"]["components"].clone();
+    assert_eq!(
+        shelf.as_object().map(serde_json::Map::len),
+        Some(1),
+        "{shelf}"
+    );
+    let state = shelf["geyser"].as_object().expect("its state");
+    assert!(
+        state.len() == 1 && state.contains_key("left"),
+        "only its seconds left: {shelf}"
+    );
+    let states = check(&mut harness, &older, "slot_1");
+    assert_eq!(
+        states.iter().map(|state| state.0).collect::<Vec<_>>(),
+        [GeyserPhase::Idle, GeyserPhase::Idle, GeyserPhase::Sputter]
+    );
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]

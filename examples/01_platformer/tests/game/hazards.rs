@@ -26,7 +26,10 @@ use tungsten::core::{
     ParticleConfigRegistry, ParticleEmitter, Position, PrevPosition, RigidBodyBundle,
     SoundRegistry, Sprite, Transform, Visibility, World,
 };
-use tungsten::kit::{ContactDamage, DamageRequest, Damaged, Health, HitFlash, Tags, damage, heal};
+use tungsten::kit::{
+    ContactDamage, ContactTouch, DamageRequest, Damaged, Health, HitFlash, StateMachine, Tags,
+    damage, heal,
+};
 use tungsten::testing::UiHarness;
 
 use example_01_platformer::features::elements::FIRE_CENTRE;
@@ -918,13 +921,21 @@ fn geyser_at(harness: &mut UiHarness, x: f32, top: f32, offset: f32) -> Entity {
     geyser
 }
 
-/// Whether `geyser`'s touch is on.
+/// Whether `geyser`'s touch is on, by its switch.
 fn erupting(harness: &UiHarness, geyser: Entity) -> bool {
-    harness.world().has::<ContactDamage>(geyser)
+    harness
+        .world()
+        .get::<ContactDamage>(geyser)
+        .is_some_and(ContactDamage::is_on)
 }
 
-fn state(harness: &UiHarness, geyser: Entity) -> Geyser {
-    harness.world().get::<Geyser>(geyser).unwrap().clone()
+/// `geyser`'s phase and the seconds it has spent in it, its machine's.
+fn state(harness: &UiHarness, geyser: Entity) -> (GeyserPhase, f32) {
+    let machine = harness
+        .world()
+        .get::<StateMachine<GeyserPhase>>(geyser)
+        .expect("its cycle");
+    (machine.state(), machine.elapsed())
 }
 
 #[test]
@@ -948,6 +959,89 @@ fn a_geysers_touch_is_off_through_its_idle_and_sputter_and_on_for_its_eruption()
         on.windows(2).all(|w| w[1] == w[0] + 1),
         "one eruption: {on:?}"
     );
+}
+
+/// S-84, S-156: a cycle that starts part-way starts quietly, as the shelf
+/// geyser's does 2.6 s in: in its sputter from its first step with no
+/// gurgle, then its eruption 0.5 s and a step later with its one burst and
+/// its one roar. Its touch is one `ContactDamage` the whole cycle through,
+/// switched on for an eruption alone and keeping its touches while off.
+#[test]
+fn a_geyser_starting_mid_sputter_starts_quietly() {
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    ground(&mut harness, GEYSER_TOP);
+    let geyser = geyser_at(&mut harness, GEYSER_X, GEYSER_TOP, 2.6);
+    let touch = |harness: &UiHarness| {
+        harness
+            .world()
+            .get::<ContactDamage>(geyser)
+            .expect("its touch, on the geyser through its cycle")
+            .touches()
+            .collect::<Vec<ContactTouch>>()
+    };
+    // Its sputter's 0.5 s left: no gurgle, no burst, no roar, its touch off.
+    for step in 1..=30 {
+        harness.step(1);
+        assert_eq!(
+            state(&harness, geyser).0,
+            GeyserPhase::Sputter,
+            "step {step}"
+        );
+        assert!(!erupting(&harness, geyser), "step {step}: its touch off");
+        assert!(touch(&harness).is_empty(), "step {step}");
+        assert_eq!(sounded(&harness, Sound::GeyserSputter), 0, "step {step}");
+        assert_eq!(sounded(&harness, Sound::GeyserErupt), 0, "step {step}");
+        assert_eq!(bursts(&harness, "ex10_geyser_burst"), 0, "step {step}");
+    }
+    // A step later it erupts, with its one key burst and its one roar.
+    harness.step(1);
+    assert_eq!(state(&harness, geyser).0, GeyserPhase::Erupt);
+    assert!(erupting(&harness, geyser), "its touch on");
+    assert_eq!(bursts(&harness, "ex10_geyser_burst"), 1, "one key burst");
+    assert_eq!(sounded(&harness, Sound::GeyserErupt), 1, "one roar");
+    assert_eq!(sounded(&harness, Sound::GeyserSputter), 0);
+    // Its eruption's 0.8 s, then off again.
+    let mut on = 1;
+    for _ in 0..60 {
+        harness.step(1);
+        if !erupting(&harness, geyser) {
+            break;
+        }
+        assert_eq!(sounded(&harness, Sound::GeyserErupt), 0, "one roar");
+        on += 1;
+    }
+    assert_eq!(on, 48, "0.8 s on");
+    assert_eq!(state(&harness, geyser).0, GeyserPhase::Idle);
+    // A touch it holds as its eruption ends: hurt 0.2 s ago and met now.
+    harness
+        .world_mut()
+        .get_mut::<ContactDamage>(geyser)
+        .unwrap()
+        .set_touches([ContactTouch::new(player, 0.2, 0.0)]);
+    let held = touch(&harness);
+    assert_eq!(held.len(), 1);
+    // The cycle's idle and sputter, 3.1 s: its touch stays on the geyser,
+    // off, with that touch as it was; the sputter this time gurgles, once.
+    let (mut off, mut gurgles) = (1, 0);
+    for _ in 0..200 {
+        harness.step(1);
+        gurgles += sounded(&harness, Sound::GeyserSputter);
+        if erupting(&harness, geyser) {
+            break;
+        }
+        assert_eq!(touch(&harness), held, "kept while off, step {off}");
+        assert_eq!(sounded(&harness, Sound::GeyserErupt), 0);
+        off += 1;
+    }
+    assert_eq!(off, 186, "2.5 s idle and 0.6 s sputter");
+    assert_eq!(gurgles, 1, "the cycle's own sputter gurgles");
+    assert_eq!(state(&harness, geyser).0, GeyserPhase::Erupt);
+    assert_eq!(sounded(&harness, Sound::GeyserErupt), 1, "its second roar");
+    let kept = touch(&harness);
+    assert_eq!(kept.len(), 1, "the same touch, a cycle on");
+    assert_eq!(kept[0].target(), player);
 }
 
 #[test]
@@ -1040,12 +1134,12 @@ fn the_ice_spray_on_a_geysers_vent_chokes_it_for_six_seconds_then_it_idles() {
         aim_at(&mut harness, mouth);
         harness.step(1);
         held += 1;
-        if state(&harness, geyser).choked > 0.0 {
+        if state(&harness, geyser).0 == GeyserPhase::Choked {
             break;
         }
     }
     harness.harness_mut().release_action("cast");
-    assert!(state(&harness, geyser).choked > 0.0, "choked");
+    assert_eq!(state(&harness, geyser).0, GeyserPhase::Choked, "choked");
     assert!(held <= 36, "within 0.6 s: {held} steps");
     // Six seconds without an eruption, then its idle's 2.5 s to its sputter.
     let mut choked = 0;
@@ -1053,8 +1147,11 @@ fn the_ice_spray_on_a_geysers_vent_chokes_it_for_six_seconds_then_it_idles() {
         harness.step(1);
         choked += 1;
         assert!(!erupting(&harness, geyser), "no eruption while choked");
-        assert_eq!(state(&harness, geyser).phase, GeyserPhase::Idle);
-        if state(&harness, geyser).choked <= 0.0 {
+        // Its phase is the choke's own, where 01's cycle read idle with
+        // seconds of choke left; its end is a fresh idle.
+        let phase = state(&harness, geyser).0;
+        if phase != GeyserPhase::Choked {
+            assert_eq!(phase, GeyserPhase::Idle);
             break;
         }
     }
@@ -1063,7 +1160,7 @@ fn the_ice_spray_on_a_geysers_vent_chokes_it_for_six_seconds_then_it_idles() {
     for _ in 0..200 {
         harness.step(1);
         idle += 1;
-        if state(&harness, geyser).phase == GeyserPhase::Sputter {
+        if state(&harness, geyser).0 == GeyserPhase::Sputter {
             break;
         }
         assert!(!erupting(&harness, geyser), "idle");
@@ -1106,11 +1203,11 @@ fn the_ice_spray_aimed_at_the_first_floors_map_geyser_chokes_it() {
         aim_at(&mut harness, mouth);
         harness.step(1);
         held += 1;
-        if state(&harness, geyser).choked > 0.0 {
+        if state(&harness, geyser).0 == GeyserPhase::Choked {
             break;
         }
     }
     harness.harness_mut().release_action("cast");
-    assert!(state(&harness, geyser).choked > 0.0, "choked");
+    assert_eq!(state(&harness, geyser).0, GeyserPhase::Choked, "choked");
     assert!(held <= 36, "within 0.6 s: {held} steps");
 }

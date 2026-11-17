@@ -35,7 +35,7 @@ use tungsten::core::save::{
     RestoreError, Value, WorldSave, capture_world, check_world, restore_world,
 };
 use tungsten::core::{CameraController, DataRef, Entity, Position, SaveData, Velocity, World};
-use tungsten::kit::{ContactDamage, EffectRequest, Health, ImpactDamage, Stats, carrier_of};
+use tungsten::kit::{EffectRequest, Health, ImpactDamage, Stats, carrier_of};
 
 use crate::features::dummy::{self, components::Dummy};
 use crate::features::elements::components::ColdFace;
@@ -47,7 +47,6 @@ use crate::features::enemies::components::{Enemy, Holding, Throws};
 use crate::features::enemies::drops::{self, Orb};
 use crate::features::enemies::{self, troll};
 use crate::features::level::components::Hazard;
-use crate::features::level::geyser::{self, Geyser};
 use crate::features::level::lava::{self, Lava};
 use crate::features::props;
 use crate::features::run::Run;
@@ -93,9 +92,10 @@ impl SaveData for SaveGame {
     /// the tracers' turns onto the kit's facing ([`to_35`]), 36 the
     /// black hole's life onto a kit cooldown ([`to_36`]), 37 the props'
     /// caps onto the kit's, marking their records ([`to_37`]), 38 iron's
-    /// and the black holes' ([`to_38`]), and 39 the summoned dummies' and
-    /// enemies' ([`to_39`]).
-    const SCHEMA: u32 = 39;
+    /// and the black holes' ([`to_38`]), 39 the summoned dummies' and
+    /// enemies' ([`to_39`]), and 40 the geysers' cycles onto the kit's
+    /// timed machine, their touch kept behind its switch ([`to_40`]).
+    const SCHEMA: u32 = 40;
 
     fn migrate_step(
         from: u32,
@@ -170,6 +170,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 38: the save has no world")?;
                 to_39(world);
+                Ok(data)
+            }
+            39 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 39: the save has no world")?;
+                to_40(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -546,6 +553,192 @@ const S38_SUMMONS: [&str; 8] = [
     "troll_armoured",
 ];
 
+/// Schema 39 to 40 over a save's `world`: each geyser's cycle moves onto
+/// the kit's timed machine, saved as `geyser_phase`, and its touch stays on
+/// it behind its switch. The global record and each area are walked for the
+/// map's geysers that hold a record ([`S39_GEYSERS`], in `named`) and for
+/// the spawns of [`S39_GEYSER`] ([`s39_geyser`]).
+fn to_40(world: &mut Value) {
+    if let Some(global) = world.get_mut("global") {
+        s39_area(global);
+    }
+    if let Some(Value::Object(areas)) = world.get_mut("areas") {
+        for area in areas.values_mut() {
+            s39_area(area);
+        }
+    }
+}
+
+/// One area's geysers at schema 39: its named records by the map's names,
+/// each a patch over a fresh geyser at its offset, and its spawns of the
+/// geyser's prefab, each whole.
+fn s39_area(area: &mut Value) {
+    if let Some(Value::Object(named)) = area.get_mut("named") {
+        for (name, offset) in S39_GEYSERS {
+            if let Some(record) = named.get_mut(name) {
+                s39_geyser(record, Some(offset));
+            }
+        }
+    }
+    if let Some(Value::Array(spawns)) = area.get_mut("spawns") {
+        for spawn in spawns {
+            if spawn.get("prefab").and_then(Value::as_str) == Some(S39_GEYSER) {
+                s39_geyser(spawn, None);
+            }
+        }
+    }
+}
+
+/// One geyser's record from schema 39 to 40; `named` is a map geyser's
+/// offset, whose record is a patch, and none for a spawn's, which is whole.
+///
+/// The record's `geyser` is laid over what a fresh geyser held at schema
+/// 39: the phase and seconds left its offset gave, no chill, no choke,
+/// started. `geyser` keeps its offset, chill and `started`, written whole,
+/// since the form refuses the fields it lost. `geyser_phase` is the machine
+/// in that phase, entered when the cycle had started, the seconds spent in
+/// it the phase's length less the seconds left, or, choked, the choke's
+/// length less what was left of it; at least 0, since the old cycle's carry
+/// left up to 1e-5 s over and the machine's save refuses a negative time.
+/// Its touch is the save's own where it held one, erupting, else for a
+/// spawn the prefab's with its clock at 0, and takes its switch, on only in
+/// an eruption: a named record lies over a fresh geyser whose touch is off.
+fn s39_geyser(record: &mut Value, named: Option<f64>) {
+    let Value::Object(record) = record else {
+        return;
+    };
+    if let Some(Value::Array(removed)) = record.get_mut("removed") {
+        removed.retain(|name| name.as_str() != Some(S39_TOUCH));
+    }
+    let components = record
+        .entry("components")
+        .or_insert_with(|| Value::Object(Default::default()));
+    let Value::Object(components) = components else {
+        return;
+    };
+    let old = components.remove(S39_GEYSER);
+    let field = |key: &str| old.as_ref().and_then(|geyser| geyser.get(key));
+    let offset = field("offset")
+        .and_then(Value::as_f64)
+        .or(named)
+        .unwrap_or(0.0);
+    let (fresh, fresh_left) = s39_at_offset(offset);
+    let phase = field("phase").and_then(Value::as_str).unwrap_or(fresh);
+    let left = field("left").and_then(Value::as_f64).unwrap_or(fresh_left);
+    let cold = field("cold").and_then(Value::as_f64).unwrap_or(0.0);
+    let choked = field("choked").and_then(Value::as_f64).unwrap_or(0.0);
+    let started = field("started").and_then(Value::as_bool).unwrap_or(true);
+    let (state, elapsed) = if choked > 0.0 {
+        (S39_CHOKED, S39_CHOKE - choked)
+    } else {
+        let seconds = match phase {
+            "sputter" => S39_SPUTTER,
+            "erupt" => S39_ERUPT,
+            _ => S39_IDLE,
+        };
+        (phase, seconds - left)
+    };
+    let machine = Value::from_iter([
+        ("state".to_owned(), Value::from(state)),
+        ("previous".to_owned(), Value::Null),
+        ("elapsed".to_owned(), Value::from(elapsed.max(0.0))),
+        ("next".to_owned(), Value::Null),
+        ("entered".to_owned(), Value::from(started)),
+        ("held".to_owned(), Value::from(false)),
+    ]);
+    let erupting = state == "erupt";
+    let geyser = Value::from_iter([
+        ("offset".to_owned(), Value::from(offset)),
+        ("cold".to_owned(), Value::from(cold)),
+        ("started".to_owned(), Value::from(started)),
+    ]);
+    components.insert(S39_GEYSER.to_owned(), geyser);
+    components.insert(S39_PHASE.to_owned(), machine);
+    let touch = components.entry(S39_TOUCH).or_insert_with(|| {
+        if named.is_some() {
+            Value::Object(Default::default())
+        } else {
+            s39_touch()
+        }
+    });
+    if let Value::Object(touch) = touch
+        && let Value::Object(contact) = touch
+            .entry("contact")
+            .or_insert_with(|| Value::Object(Default::default()))
+    {
+        contact.insert("on".to_owned(), Value::from(erupting));
+    }
+}
+
+/// The phase and its seconds left `offset` seconds into a cycle, as schema
+/// 39's geysers began: frozen for the migration.
+fn s39_at_offset(offset: f64) -> (&'static str, f64) {
+    let cycle = S39_IDLE + S39_SPUTTER + S39_ERUPT;
+    let t = offset.rem_euclid(cycle);
+    if t < S39_IDLE {
+        ("idle", S39_IDLE - t)
+    } else if t < S39_IDLE + S39_SPUTTER {
+        ("sputter", S39_IDLE + S39_SPUTTER - t)
+    } else {
+        ("erupt", cycle - t)
+    }
+}
+
+/// A geyser's touch as its prefab gave it at schema 39, its clock at 0:
+/// 12 fire every 0.5 s on the enemies and the player, thrown at 1,000 px/s
+/// past the window, over its plume's box. Frozen for the migration.
+fn s39_touch() -> Value {
+    let names = |names: [&str; 2]| Value::from(names.map(Value::from).to_vec());
+    let pair = |x: f64, y: f64| Value::from(vec![Value::from(x), Value::from(y)]);
+    let part = Value::from_iter([
+        ("amount".to_owned(), Value::from(12.0)),
+        (
+            "tags".to_owned(),
+            Value::from(vec![Value::from("damage.fire")]),
+        ),
+    ]);
+    let contact = Value::from_iter([
+        ("damage".to_owned(), Value::from(12.0)),
+        (
+            "filter".to_owned(),
+            Value::from_iter([("any".to_owned(), names(["team.enemy", "team.player"]))]),
+        ),
+        ("interval".to_owned(), Value::from(0.5)),
+        ("knockback".to_owned(), Value::from(1000.0)),
+        ("offset".to_owned(), pair(32.0, 32.0)),
+        ("parts".to_owned(), Value::from(vec![part])),
+        ("push_always".to_owned(), Value::from(true)),
+        (
+            "shape".to_owned(),
+            Value::from_iter([("aabb".to_owned(), pair(20.0, 176.0))]),
+        ),
+        ("tags".to_owned(), Value::from(Vec::<Value>::new())),
+    ]);
+    Value::from_iter([
+        ("clock".to_owned(), Value::from(0.0)),
+        ("contact".to_owned(), contact),
+    ])
+}
+
+/// Schema 39's geysers, frozen for the migration: the map's three by name,
+/// each with the seconds into its cycle its run began at; their prefab,
+/// which is also the name their state was saved under; the names of their
+/// touch and, at schema 40, of their machine and its choke; and the seconds
+/// of their three phases and of a choke.
+const S39_GEYSERS: [(&str, f64); 3] = [
+    ("geyser_floor_west", 0.0),
+    ("geyser_floor_east", 1.3),
+    ("geyser_shelf", 2.6),
+];
+const S39_GEYSER: &str = "geyser";
+const S39_TOUCH: &str = "contact_damage";
+const S39_PHASE: &str = "geyser_phase";
+const S39_CHOKED: &str = "choked";
+const S39_IDLE: f64 = 2.5;
+const S39_SPUTTER: f64 = 0.6;
+const S39_ERUPT: f64 = 0.8;
+const S39_CHOKE: f64 = 6.0;
+
 /// Each record of `prefabs` within `value` the map did not set down
 /// takes [`S36_ADMITTED`].
 fn mark_admitted(value: &mut Value, prefabs: &[&str]) {
@@ -897,18 +1090,6 @@ pub fn summary(save: &SaveGame) -> String {
 /// found by the check before the first pass, with the World as it was.
 pub fn restore(world: &mut World, save: &SaveGame) -> Result<(), RestoreError> {
     check_world(world, &save.world)?;
-    // The run's own touches, which a geyser holds aside where no save
-    // keeps them.
-    let touches: Vec<(Entity, Option<ContactDamage>)> = world
-        .query::<(Entity, &Geyser)>()
-        .map(|(entity, state)| {
-            let touch = world
-                .get::<ContactDamage>(entity)
-                .cloned()
-                .or_else(|| state.touch.clone());
-            (entity, touch)
-        })
-        .collect();
     let staged = spawn_balls(world, save);
     let scene = (SceneEntity { state_id: GAMEPLAY }, Joined);
     match restore_world(world, &save.world, &scene) {
@@ -927,7 +1108,7 @@ pub fn restore(world: &mut World, save: &SaveGame) -> Result<(), RestoreError> {
             return Err(err);
         }
     }
-    rebuild(world, &touches);
+    rebuild(world);
     Ok(())
 }
 
@@ -966,12 +1147,10 @@ fn spawn_balls(world: &mut World, save: &SaveGame) -> Vec<Entity> {
 /// enemy's disarm, a dropped orb's fall, a flask's end, shape and body
 /// walls and a body's or an enemy's impact rule, a body's credited to the
 /// player; each live throw's rule set as the throw set it; a crusted basin's body layers, mask, touch and glow, a
-/// doused hazard's touch, glow and trail, a geyser's touch on in an
-/// eruption and held aside else, from `touches`, the run's, where the save
-/// holds none; a troll's hold lifted again; the taken tomes' books off the
+/// doused hazard's touch, glow and trail; a troll's hold lifted again; the taken tomes' books off the
 /// map; the bodies the player stands in shoved; and the camera on the
 /// player where the save left it.
-fn rebuild(world: &mut World, touches: &[(Entity, Option<ContactDamage>)]) {
+fn rebuild(world: &mut World) {
     let recorded: Vec<Entity> = world
         .query::<(Entity, &Saved)>()
         .filter(|(_, saved)| saved.prefab().is_some())
@@ -1025,9 +1204,6 @@ fn rebuild(world: &mut World, touches: &[(Entity, Option<ContactDamage>)]) {
         .collect();
     for hazard in hazards {
         show_douse(world, hazard);
-    }
-    for (geyser, touch) in touches {
-        geyser::restored(world, *geyser, touch.clone());
     }
     let holds: Vec<(Entity, Entity)> = world
         .query::<(Entity, &Holding)>()

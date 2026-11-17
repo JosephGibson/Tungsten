@@ -25,7 +25,7 @@ use tungsten::core::{
     PhysicsConfig, Position, RigidBodyBundle, Schedule, Stage, TilemapInstance, TilemapRegistry,
     Transform, World, system,
 };
-use tungsten::kit::{PathFollower, Phase, ensure_phases};
+use tungsten::kit::{PathFollower, Phase, StateMachine, ensure_phases};
 use tungsten::plugins::{CAMERA_UPDATE, PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
@@ -176,7 +176,7 @@ pub const PARTICLE_CAP: u32 = 2048;
 /// The level as a plugin: the components its prefabs name, the world's
 /// gravity and its broadphase cells of one tile, which cap a dense pile's
 /// pair candidates, the particle budget, the camera's shake, the
-/// level's clock and the geysers' cycles on the
+/// level's clock, the geysers' chill and their cycles, the kit's timed machine, on the
 /// step, `level_zoom` before the camera's update, the glows in the present
 /// phase, the geysers' look before the frame's particles, the bursts' cleanup and the title's sky in `Update`, the title's
 /// view before the camera's update, and the backdrop under the engine's
@@ -201,6 +201,10 @@ impl Plugin for LevelPlugin {
         world.register_component::<components::Glow>("glow");
         world.register_component::<elevator::ElevatorDef>("elevator");
         world.register_component::<geyser::Geyser>("geyser");
+        // The geysers' cycle, the kit's machine, which registers no name
+        // of its own: a prefab's component and a saved one.
+        world.register_component::<StateMachine<geyser::GeyserPhase>>("geyser_phase");
+        world.register_saved::<StateMachine<geyser::GeyserPhase>>("geyser_phase");
         world.register_data_kind::<components::OpaqueTiles>("opaque_tiles");
         if let Some(physics) = world.get_resource_mut::<PhysicsConfig>() {
             physics.gravity = Vec2::new(0.0, GRAVITY);
@@ -226,6 +230,7 @@ impl Plugin for LevelPlugin {
             Stage::FixedUpdate,
             Phase::Tick.join(system("geyser_tick", geyser::tick)),
         );
+        geyser::machine().build(schedule, world);
         schedule.add(
             Stage::FixedUpdate,
             Phase::Intent.join(system("elevator_tick", elevator::tick)),
