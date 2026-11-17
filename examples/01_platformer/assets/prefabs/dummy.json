@@ -13,7 +13,8 @@
       "flesh",
       "freezable",
       "conductive",
-      "living"
+      "living",
+      "level.saved"
     ],
     "rigid_body": {
       "kind": "dynamic",

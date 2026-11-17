@@ -72,6 +72,9 @@
           "burst": "ex10_orb_mana"
         }
       ]
-    }
+    },
+    "tags": [
+      "level.saved"
+    ]
   }
 }

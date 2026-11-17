@@ -25,7 +25,8 @@
       "team.enemy",
       "flesh",
       "freezable",
-      "living"
+      "living",
+      "level.saved"
     ],
     "rigid_body": {
       "kind": "kinematic",

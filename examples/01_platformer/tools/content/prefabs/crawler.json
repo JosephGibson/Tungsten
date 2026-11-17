@@ -24,7 +24,8 @@
     "tags": [
       "team.enemy",
       "flesh",
-      "living"
+      "living",
+      "level.saved"
     ],
     "rigid_body": {
       "kind": "kinematic",

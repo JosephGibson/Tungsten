@@ -25,15 +25,10 @@ use tungsten::core::{
     RigidBodyBundle, Schedule, SpawnContext, Stage, TilemapInstance, TilemapRegistry, Transform,
     World, system,
 };
-use tungsten::kit::{
-    PathFollower, Phase, StateMachine, TRANSFORM_PROPAGATE, WorldBounds, ensure_phases,
-};
+use tungsten::kit::{Phase, StateMachine, TRANSFORM_PROPAGATE, Tags, WorldBounds, ensure_phases};
 use tungsten::plugins::{CAMERA_UPDATE, PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
-use crate::features::dummy::components::Dummy;
-use crate::features::enemies::components::Enemy;
-use crate::features::enemies::drops::Orb;
 use crate::features::player;
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, Saved};
@@ -223,6 +218,10 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         );
         names.push(name);
     }
+    // Ahead of the kept IDs: a basin then never stands with a kept ID and
+    // no `Lava`, so its chain is an archetype shorter, one fewer in every
+    // body query's list.
+    lava::start(world);
     let mut taken = HashSet::from([SaveId::authored(player::SAVE_NAME)]);
     let mut named = Vec::new();
     for (&entity, name) in objects.iter().zip(&names) {
@@ -254,7 +253,6 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         .with_layers(crate::features::enemies::SLAB_LAYER)
         .with((SceneEntity { state_id: GAMEPLAY },)),
     );
-    lava::start(world);
     geyser::start(world);
     elevator::start(world);
     let mut moon = Light::directional(MOONLIGHT, -std::f32::consts::FRAC_PI_4);
@@ -308,19 +306,21 @@ pub fn name_saved(world: &mut World) {
     }
 }
 
+/// The tag of a prefab whose map objects a save names: a hazard's, a
+/// deck's, the dummy's, an enemy's, an orb's and the geyser's carry it
+/// (`tools/level.py`'s `SAVED` and the content prefabs' `tags`).
+pub const SAVED_TAG: &str = "level.saved";
+
 /// Whether a save names the map object `entity`, which then takes a save
-/// ID: a lava basin, a deck, the elevator's among them, a dummy, an enemy, a
-/// placed orb or a geyser,
-/// the layers `tools/level.py` holds to unique names. Props, slabs, iron,
+/// ID: one whose prefab carries [`SAVED_TAG`], a lava basin, a deck, the
+/// elevator's among them, a dummy, an enemy, a placed orb or a geyser, the
+/// layers `tools/level.py` holds to unique names. Props, slabs, iron,
 /// areas, emitters and markers take none, so an art change moves no save
 /// (schema 10).
 fn saved(world: &World, entity: Entity) -> bool {
-    world.has::<components::Hazard>(entity)
-        || world.has::<PathFollower>(entity)
-        || world.has::<Dummy>(entity)
-        || world.has::<Enemy>(entity)
-        || world.has::<Orb>(entity)
-        || world.has::<geyser::Geyser>(entity)
+    world
+        .get::<Tags>(entity)
+        .is_some_and(|tags| tags.has(SAVED_TAG))
 }
 
 /// Undoes what [`spawn`] set beyond its entities, which leave with

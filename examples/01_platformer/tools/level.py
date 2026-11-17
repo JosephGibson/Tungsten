@@ -45,6 +45,8 @@ LIFT_SHEAVE = (0.5, 0.6)
 # rider, a fresh one taken back down from the top too; and the sounds its
 # `departed` and `arrived` cues play, 0.3 s apart at least.
 LIFT_RIDER = dict(board=0.3, back=4.0, filter=dict(any=['team.player']), two_way=True)
+# The tag of a prefab whose map objects a save names: `level::saved` reads it.
+SAVED = ['level.saved']
 LIFT_CUES = dict(departed=[dict(sound=dict(id='ex10_lift_start_sfx', min_interval=0.3))],
                  arrived=[dict(sound=dict(id='ex10_lift_stop_sfx', min_interval=0.3))])
 WOOD = ('bridge_rope', 'bridge_weathered')
@@ -193,7 +195,8 @@ def build_objects(source, images, lit):
         centre = [v * tile for v in h['position']]
         if not h['fire']:
             prefabs['ex10_spikes'] = dict(sprite=dict(asset_id='ex10_spikes', z_order=Z_SPIKES), components=dict(
-                hazard=dict(fire=False), contact_damage=dict(touch, shape=dict(aabb=SPIKES_HALF), offset=SPIKES_CENTRE)))
+                hazard=dict(fire=False), tags=SAVED,
+                contact_damage=dict(touch, shape=dict(aabb=SPIKES_HALF), offset=SPIKES_CENTRE)))
             hazards.append(obj('ex10_spikes', centre[0] - SPIKES_CENTRE[0], centre[1] - SPIKES_CENTRE[1],
                                name=h.get('name', '')))
             continue
@@ -208,7 +211,7 @@ def build_objects(source, images, lit):
         # emitter emits from its entity's point, the sprite's top-left.
         trail = f'ex10_fire_trail_{i}'
         prefabs[trail] = dict(components=dict(particle_emitter=dict(config='ex10_fire_trail', seed=700 + i)))
-        components = dict(hazard=dict(fire=True), glow=FIRE_GLOW,
+        components = dict(hazard=dict(fire=True), tags=SAVED, glow=FIRE_GLOW,
             character_animator=dict(idle=dict(left='ex10_fireball_left', right='ex10_fireball')),
             contact_damage=dict(touch, shape=dict(aabb=FIRE_HALF), offset=FIRE_CENTRE),
             spawn_children=[dict(prefab=trail, offset=FIRE_CENTRE),
@@ -237,7 +240,7 @@ def build_objects(source, images, lit):
                     knockback=LAVA_KNOCKBACK, interval=LAVA_INTERVAL, push_always=True)
         surface = dict(kind='static', shape=dict(kind='aabb', half_extents=[width / 2, LAVA_SURFACE / 2]),
                        offset=[width / 2, LAVA_TOP + LAVA_SURFACE / 2], layers=[LAVA_LAYER], mask=[])
-        components = dict(hazard=dict(fire=False, lava=True), contact_damage=bite, rigid_body=surface,
+        components = dict(hazard=dict(fire=False, lava=True), tags=SAVED, contact_damage=bite, rigid_body=surface,
                           cues=dict(hit=[dict(sound=dict(id='ex10_lava_sizzle_sfx', min_interval=0.3))]))
         if basin.get('light'):
             components['glow'] = dict(LAVA_GLOW, offset=[width / 2, LAVA_TOP])
@@ -265,7 +268,7 @@ def build_objects(source, images, lit):
                                 offset=[half[0], floor + half[1]]),
                 path_follower=dict(points=[[0, 0], [0, -lift['rise'] * tile]], speed=lift['speed'],
                                    mode='ping_pong', easing='sine_in_out', rider=LIFT_RIDER),
-                cues=LIFT_CUES, elevator={}))
+                cues=LIFT_CUES, elevator={}, tags=SAVED))
             platforms.append(obj(cls, m['position'][0] * tile - half[0], m['position'][1] * tile - floor,
                                  name=m.get('name', '')))
             continue
@@ -287,7 +290,8 @@ def build_objects(source, images, lit):
         prefabs[cls] = dict(sprite=dict(asset_id='ex10_' + name, z_order=Z_DECK), components=dict(
             rigid_body=dict(kind='kinematic', shape=dict(kind='aabb', half_extents=half), offset=half),
             path_follower=dict(points=[[0, 0], [2 * travel[0], 2 * travel[1]]],
-                speed=4 * math.hypot(*travel) / m['period'], mode='ping_pong', easing='sine_in_out')))
+                speed=4 * math.hypot(*travel) / m['period'], mode='ping_pong', easing='sine_in_out'),
+            tags=SAVED))
         platforms.append(obj(cls, centre[0] - travel[0] - half[0], centre[1] - travel[1] - half[1],
                              name=m.get('name', '')))
     layer('platforms', platforms)

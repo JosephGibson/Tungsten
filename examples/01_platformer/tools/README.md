@@ -384,27 +384,31 @@ written with sorted keys, a tile layer a map row a line and an object a line
 (`level.tiled_text`), so a change's diff shows the rows and objects it moves. The object layers
 sit before `collision`, in spawn order, and `level::spawn` spawns them from
 `World::prepare_map_objects_named`, each with its state in its spawn's own move,
-when a run starts. The objects a save names, those of the layers `SAVED_LAYERS`
-lists (the lava basins, the decks, the dummy, the enemies, the placed orbs and
-the geysers), take the save ID their `name` derives (`D-222`), which
-`validate_level` holds unique across those layers and never `player`, so no
-object's place or order moves a save; the rest take none:
+when a run starts. The objects a save names are those whose prefab carries the
+`level.saved` tag, which `level::saved` reads: `level.py`'s `SAVED` on the
+basins', spikes', fireballs' and decks' prefabs, and the last of `tags` on the
+content prefabs of the dummy, the enemies, the orbs and the geyser. They are the
+objects of the layers `SAVED_LAYERS` lists (the lava basins, the decks, the
+dummy, the enemies, the placed orbs and the geysers), and each takes the save ID
+its `name` derives (`D-222`), which `validate_level` holds unique across those
+layers and never `player`, so no object's place or order moves a save; the rest
+take none:
 
 | Layer | Objects | Prefab class |
 | --- | --- | --- |
 | `props` | Every prop, at its tile position | `ex10_prop_<sprite>_<depth>`: its sprite, behind (`back`) or among (`world`) the world's sprites, and its animation |
 | `slabs` | One box per thin platform: slab runs that share a row, a depth and a material and touch end to end merge, so a body sunk into a deck meets no join | `ex10_slab_<width>x<height>`: a static body in physics layer 1 (stone); `ex10_wood_<width>x<height>` for the rope bridge's and the scaffolds' wooden decks, in layer 3 |
 | `iron` | The mine's iron cladding, merged into the fewest boxes a greedy pass finds (`level.boxes`) | `ex10_iron_<width>x<height>`: a static body in physics layer 2 |
-| `hazards` | The lava basins, and the spikes and fireballs `level.json`'s `hazards` places (none today) | `ex10_lava_<n>`, each basin's surface body and its touch to the bed, `hazard.lava` set so cold never douses it, the lake's east pool with its glow; `ex10_spikes`; `ex10_fire_<n>`, each fireball's own: its sine motion on the kit's `oscillator`, starting where the sine stands at time 0. All hurt through the kit's `contact_damage`, the spikes and fireballs 34 a touch, pushing 560 px/s away |
-| `platforms` | The moving platforms, and the mine's elevator | `ex10_platform_<n>`, each its own: a kinematic deck on the kit's `path_follower`, ping-ponging between its sine's two ends with a sine easing, half a period a leg, drawn by `lift_deck_<n>`, three deck tiles across its width; deck 4 the elevator, a cage drawn by `lift_deck_elevator` on the kit's two-way lift (`path_follower` with its `rider` rule, `LIFT_RIDER`; `cues` for its start and stop sounds, `LIFT_CUES`; `elevator`, a marker for the game's own rules), with the gantry's `lift_sheave` marker for its cable |
+| `hazards` | The lava basins, and the spikes and fireballs `level.json`'s `hazards` places (none today) | `ex10_lava_<n>`, each basin's surface body and its touch to the bed, `hazard.lava` set so cold never douses it, the lake's east pool with its glow; `ex10_spikes`; `ex10_fire_<n>`, each fireball's own: its sine motion on the kit's `oscillator`, starting where the sine stands at time 0. All hurt through the kit's `contact_damage`, the spikes and fireballs 34 a touch, pushing 560 px/s away, and all carry the `level.saved` tag |
+| `platforms` | The moving platforms, and the mine's elevator | `ex10_platform_<n>`, each its own: a kinematic deck on the kit's `path_follower`, ping-ponging between its sine's two ends with a sine easing, half a period a leg, drawn by `lift_deck_<n>`, three deck tiles across its width; deck 4 the elevator, a cage drawn by `lift_deck_elevator` on the kit's two-way lift (`path_follower` with its `rider` rule, `LIFT_RIDER`; `cues` for its start and stop sounds, `LIFT_CUES`; `elevator`, a marker for the game's own rules), with the gantry's `lift_sheave` marker for its cable; every deck's prefab carries the `level.saved` tag |
 | `areas` | `landmarks`, a zone across each one's columns | `ex10_area_<n>`: a sensor body, the kit's `zone` for the player and its `area`: its name, `indoor`, `ambience`, `backdrop`, `night`, `horizon`, `ridges` and `woodland` |
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`, classed by its `level.ambient` tag (`content/data/tags/game.json`); each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
 | `markers` | `spawn`, where a fresh run's player stands, an `iron` marker at each loose block's centre, a `crate` or `keg` marker at each placed prop's, a `stone_<size>` marker at each stone's, and the elevator's `lift_sheave` | None: the game reads them by name |
-| `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
-| `enemies` | The 36 enemies, each by its `name`; a new one needs a name no saved object has, and moves no save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
-| `pickups` | The eight placed health orbs, each by its `name` | `health_orb`, the drops' prefab; the run takes their `lifetime` off |
+| `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its first three tags (`flesh`, `freezable`, `conductive`), the prefab's `living` and `level.saved` left after them |
+| `enemies` | The 36 enemies, each by its `name`; a new one needs a name no saved object has, and moves no save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), whose `tags` end in `level.saved`, its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
+| `pickups` | The eight placed health orbs, each by its `name` | `health_orb`, the drops' prefab, tagged `level.saved`, which only the map's spawn reads, so a dropped orb carries it unread; the run takes their `lifetime` off |
 | `tomes` | The three books; no save names a book, so none takes a save ID | `tome_<kind>`, its point the book's top-left |
-| `geysers` | The three geysers, the map's last saved layer, each by its `name` | `geyser`, its point the vent sprite's top-left, its column's middle less 32 px and its support's row less 32, so the vent's bottom row stands on the floor; its `geyser.offset` property |
+| `geysers` | The three geysers, the map's last saved layer, each by its `name` | `geyser`, tagged `level.saved`, its point the vent sprite's top-left, its column's middle less 32 px and its support's row less 32, so the vent's bottom row stands on the floor; its `geyser.offset` property |
 
 A parameter that lives in an array (a box's half extents, an oscillator's
 amplitude, a path's points) gives its object a prefab of its own; a scalar would

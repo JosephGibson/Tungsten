@@ -28,7 +28,8 @@
       "brittle",
       "beetle",
       "living",
-      "armoured"
+      "armoured",
+      "level.saved"
     ],
     "rigid_body": {
       "kind": "kinematic",

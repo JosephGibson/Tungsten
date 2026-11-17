@@ -26,7 +26,8 @@
       "flesh",
       "freezable",
       "troll",
-      "living"
+      "living",
+      "level.saved"
     ],
     "rigid_body": {
       "kind": "kinematic",

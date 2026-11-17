@@ -55,6 +55,9 @@
         ],
         "kind": "aabb"
       }
-    }
+    },
+    "tags": [
+      "level.saved"
+    ]
   }
 }
