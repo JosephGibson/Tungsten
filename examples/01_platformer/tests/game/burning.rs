@@ -13,7 +13,7 @@ use example_01_platformer::features::elements::systems::{
 use example_01_platformer::features::elements::{
     self, BALL_BURN, BURN_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP, FLAME_SIZE, burn_left,
 };
-use example_01_platformer::features::level::components::{Hazard, SceneTime};
+use example_01_platformer::features::level::components::Hazard;
 use example_01_platformer::features::toys::components::Ball;
 use example_01_platformer::features::toys::systems::ball_look;
 use example_01_platformer::game::GAMEPLAY;
@@ -21,7 +21,7 @@ use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
     AssetRegistry, CameraState, Collider, DataRef, Entity, Particle, ParticleBudget, Position,
-    PrevPosition, Sprite, Transform,
+    PrevPosition, Sprite, Time, Transform,
 };
 use tungsten::kit::end_effect;
 use tungsten::testing::UiHarness;
@@ -240,11 +240,11 @@ fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
     assert_eq!(pool(&harness).len(), FIRE_EMITTER_CAP);
     let mover = pool(&harness)[0];
     let before = harness.world().get::<Transform>(mover).unwrap().position;
-    // Each pair hops once a dwell, the first at a whole dwell.
-    // Past the part of a step the drawn clock trails by.
+    // Each pair hops once a dwell: a whole dwell on the clock moves it on.
     harness
         .world_mut()
-        .insert_resource(SceneTime(EMITTER_DWELL + 0.05));
+        .resource_mut::<Time>()
+        .advance_frame(EMITTER_DWELL);
     fire_particles(harness.world_mut());
     assert_ne!(
         harness.world().get::<Transform>(mover).unwrap().position,

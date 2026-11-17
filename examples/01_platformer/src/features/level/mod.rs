@@ -36,7 +36,6 @@ use crate::features::enemies::drops::Orb;
 use crate::features::player;
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, Saved};
-use components::SceneTime;
 
 /// The level's tilemap, by its manifest ID.
 pub const MAP: &str = "ex10_level";
@@ -101,9 +100,8 @@ pub const AREA_FADE: f32 = 5.0 * TILE;
 pub const GLOWS: &str = "level_glows";
 
 /// The level as a plugin: the components its prefabs name, the camera's
-/// shake, the
-/// level's clock, the geysers' chill and their cycles, the kit's timed machine, on the
-/// step, `level_zoom` before the camera's update, the glows in the present
+/// shake, the geysers' chill and their cycles, the kit's timed machine, on
+/// the step, `level_zoom` before the camera's update, the glows in the present
 /// phase, the geysers' look before the frame's transform propagation and its particles, the bursts' cleanup and the title's sky in `Update`, the title's
 /// view before the camera's update, and the backdrop under the engine's
 /// default drawing.
@@ -137,10 +135,6 @@ impl Plugin for LevelPlugin {
         world.insert_resource(components::Zoom::default());
         world.resource_mut::<Extracts>().replace_sprites(draw::base);
         ensure_phases(schedule);
-        schedule.add(
-            Stage::FixedUpdate,
-            Phase::Tick.join(system("level_clock", systems::clock)),
-        );
         schedule.add(
             Stage::FixedUpdate,
             Phase::Tick.join(system("geyser_tick", geyser::tick)),
@@ -199,7 +193,7 @@ impl Plugin for CursorPlugin {
 /// ([`SaveId::authored`]), the level's box and the start's boundary
 /// ([`boundary`]), the basins' chill and crust ([`lava::start`]), the geysers' cycles
 /// ([`geyser::start`]), the elevators' decks listed ([`elevator::start`]),
-/// the moon's light, the level's clock, the midnight ambient and the post stack. The player's
+/// the moon's light, the area's light, the midnight ambient and the post stack. The player's
 /// prefab carries the run's camera, a rig bounded by the map. Returns the
 /// objects in layer and file order.
 ///
@@ -266,7 +260,6 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         Transform::default(),
         SceneEntity { state_id: GAMEPLAY },
     ));
-    world.insert_resource(SceneTime::default());
     world.insert_resource(components::AreaLight::default());
     // What the map's opaque tiles hide of the backdrop.
     let cover = world
@@ -327,10 +320,8 @@ fn saved(world: &World, entity: Entity) -> bool {
 }
 
 /// Undoes what [`spawn`] set beyond its entities, which leave with
-/// gameplay: the clock, the area's light, the ambient light and the post
-/// stack.
+/// gameplay: the area's light, the ambient light and the post stack.
 pub fn despawn(world: &mut World) {
-    world.remove_resource::<SceneTime>();
     world.remove_resource::<SavedNames>();
     world.remove_resource::<elevator::Decks>();
     world.remove_resource::<WorldBounds>();

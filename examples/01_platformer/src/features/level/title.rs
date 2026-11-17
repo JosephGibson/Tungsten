@@ -13,7 +13,7 @@ use tungsten::core::{
 };
 use tungsten::{SceneEntity, WindowSize};
 
-use super::components::SceneTime;
+use super::components::AreaLight;
 use super::draw::START_VIEW;
 use super::{CAMERA_ROWS, TILE};
 use crate::shell::{self, title::TITLE};
@@ -146,7 +146,7 @@ fn twinkle_size(i: u32) -> &'static str {
 /// [`METEOR_EVERY`] seconds, which crosses down and right and goes. The first frame a run is live the sky goes,
 /// and with it the stars' emitters and every particle they left.
 pub fn sky(world: &mut World) {
-    if world.has_resource::<SceneTime>() {
+    if world.has_resource::<AreaLight>() {
         if world.remove_resource::<TitleSky>().is_some() {
             clear(world);
         }

@@ -1,5 +1,5 @@
-//! The level's systems: its clock, the camera's zoom, the glows and each
-//! area's light; and the areas the view shows.
+//! The level's systems: its drawn clock, the camera's zoom, the glows and
+//! each area's light; and the areas the view shows.
 
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
@@ -8,7 +8,7 @@ use tungsten::core::{
     Position, Shape, Sprite, Time, Transform, Visibility, World,
 };
 
-use super::components::{Area, AreaLight, Glow, GlowPart, GlowParts, SceneTime, Zoom};
+use super::components::{Area, AreaLight, Glow, GlowPart, GlowParts, Zoom};
 use super::{AMBIENT, AMBIENT_INDOOR, AREA_FADE, LIGHT_EASE, MOONLIGHT_INTENSITY, TILE};
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
@@ -37,27 +37,24 @@ pub fn zoom(world: &mut World) {
     }
 }
 
-/// `level_clock`: the level's clock advances by each step.
-pub fn clock(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    if let Some(time) = world.get_resource_mut::<SceneTime>() {
-        time.0 += dt;
-    }
-}
-
-/// The level's clock at the instant bodies are drawn: [`SceneTime`] less
-/// the part of a step the drawn bodies trail the last step by, while the
-/// clock interpolates, so the scene moves in frames that run no step.
+/// The level's clock at the instant bodies are drawn: the engine's game
+/// seconds ([`Time::elapsed`]), which a pause holds, less the step the
+/// drawn bodies trail them by while the clock interpolates, or less the
+/// part of a step past the last one when it does not, so the scene moves
+/// in frames that run no step. The clouds drift and the glows and lights
+/// pulse by it. 0 with no clock.
 #[must_use]
 pub fn drawn_time(world: &World) -> f32 {
-    let time = world.get_resource::<SceneTime>().map_or(0.0, |t| t.0);
-    match world
-        .get_resource::<Time>()
-        .filter(|clock| clock.interpolate())
-    {
-        Some(clock) => (time - (1.0 - clock.alpha()) * clock.fixed_step()).max(0.0),
-        None => time,
-    }
+    let Some(clock) = world.get_resource::<Time>() else {
+        return 0.0;
+    };
+    let step = f64::from(clock.fixed_step());
+    let behind = if clock.interpolate() {
+        step
+    } else {
+        f64::from(clock.alpha()) * step
+    };
+    (clock.elapsed() - behind).max(0.0) as f32
 }
 
 /// Whether the Bloom option is on: the halos, bloom's look drawn as

@@ -38,7 +38,6 @@ use example_01_platformer::features::enemies::components::{Brain, EnemyKind, Ene
 use example_01_platformer::features::enemies::draw::{HIT_COLOR, HIT_THICKNESS};
 use example_01_platformer::features::enemies::goblin::{self, STAB_HALF};
 use example_01_platformer::features::enemies::troll::{self, SLAM_REACH, SWIPE_HALF};
-use example_01_platformer::features::level::components::SceneTime;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{OpeningOf, Ring, ShockRing};
 use example_01_platformer::features::toys::{self, components::BlackHole};
@@ -825,10 +824,9 @@ fn cloud_parallax_and_vortex_instances_animate_without_world_mutation() {
         .get_mut::<tungsten::kit::Cooldown>(hole)
         .unwrap()
         .set_left(2.0);
-    world.insert_resource(SceneTime(0.0));
     let first = draw::backdrop(world);
     let still = toys::draw::vortices(world);
-    world.insert_resource(SceneTime(0.25));
+    world.resource_mut::<Time>().advance_frame(0.25);
     let second = draw::backdrop(world);
     let turned = toys::draw::vortices(world);
     assert_ne!(

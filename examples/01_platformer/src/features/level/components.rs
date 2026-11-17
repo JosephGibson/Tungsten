@@ -148,12 +148,6 @@ pub struct AreaLight {
     pub lit: bool,
 }
 
-/// The level's clock: game seconds since the run began, which the fixed
-/// step advances, so a pause holds it. The clouds drift and the glows and
-/// lights pulse by it, drawn between its last two steps.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct SceneTime(pub f32);
-
 /// The sprites every pixel of which is opaque, as the generator measured
 /// them (`data/opaque_tiles/level.json`).
 #[derive(Debug, Clone, Default, Deserialize)]

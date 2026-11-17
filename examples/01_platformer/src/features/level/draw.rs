@@ -15,7 +15,7 @@ use tungsten::render::{SpriteBatch, SpriteInstance};
 use tungsten::{WindowSize, extract_sprites_default, extract_tilemaps};
 
 use super::TILE;
-use super::components::{Area, AssetsReload, Cover, OpaqueTiles, SceneTime};
+use super::components::{Area, AreaLight, AssetsReload, Cover, OpaqueTiles};
 use super::systems::{CORE, CORE_MATERIAL, HALO, HALO_MATERIAL, area_shares, bloom_on, drawn_time};
 use super::title::TitleSky;
 use crate::game::GAMEPLAY;
@@ -169,7 +169,7 @@ pub fn instance(asset: &SpriteAsset, position: Vec2, size: Vec2, color: [u8; 4])
 /// ([`TITLE_RIDGES`], [`TITLE_FAR`], [`TITLE_WOODLAND`]).
 #[must_use]
 pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
-    let live = world.has_resource::<SceneTime>();
+    let live = world.has_resource::<AreaLight>();
     let title = !live && world.has_resource::<TitleSky>();
     let (Some(assets), true) = (world.get_resource::<AssetRegistry>(), live || title) else {
         return Vec::new();
