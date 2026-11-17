@@ -10,11 +10,12 @@ use glam::Vec2;
 use serde::Deserialize;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    ActionMap, AnimationRegistry, AnimationState, AssetRegistry, Collider, DataRegistry, Entity,
-    InputState, Position, PrefabRegistry, RoutedInput, Shape, SpriteAssetId, World,
+    ActionMap, AnimationRegistry, AnimationState, AssetRegistry, Collider, CommandBuffer,
+    DataRegistry, Entity, InputState, Position, PrefabRegistry, RoutedInput, Shape, SpriteAssetId,
+    World,
 };
 
-use tungsten::kit::{Aim, Children, Hurtbox};
+use tungsten::kit::{Aim, Hurtbox, despawn_recursive};
 
 use crate::game::GAMEPLAY;
 
@@ -343,14 +344,12 @@ const OWNED: (SceneEntity,) = (SceneEntity { state_id: GAMEPLAY },);
 
 /// Despawns `entity` and every entity that hangs from it, down the tree,
 /// at once: a body that leaves mid-step takes its art and emitters along.
+/// The kit's `despawn_recursive`, queued on a buffer of its own and flushed
+/// here, so nothing else queued for the frame's flush runs early.
 pub fn despawn_tree(world: &mut World, entity: Entity) {
-    let mut stack = vec![entity];
-    while let Some(entity) = stack.pop() {
-        if let Some(children) = world.get::<Children>(entity) {
-            stack.extend(children.iter());
-        }
-        world.despawn(entity);
-    }
+    let mut commands = CommandBuffer::new();
+    despawn_recursive(&mut commands, entity);
+    world.flush(commands);
 }
 
 /// Whether `action` is held, through the `ActionMap`, in the input the UI

@@ -7,6 +7,7 @@ use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{BallHue, BlackHole, SmallBall};
 use example_01_platformer::features::toys::systems::{ball_look, pull, rainbow_rgba, tick};
 use example_01_platformer::features::toys::{self, HOLE_RADIUS};
+use example_01_platformer::shared::despawn_tree;
 use glam::Vec2;
 use tungsten::core::{
     AnimationRegistry, AssetRegistry, AudioCommand, Collider, Entity, Position, RigidBodyBundle,
@@ -86,6 +87,26 @@ fn black_hole_lifetime_system_despawns_expired_hole() {
     assert!(!world.is_alive(hole));
     assert!(!world.is_alive(dust[0]), "its dust goes with it");
     assert_eq!(world.query::<&BlackHole>().count(), 0);
+}
+
+#[test]
+fn a_tree_despawn_takes_the_children_in_its_own_call() {
+    let (mut harness, _) = run();
+    let hole = toys::place_black_hole(harness.world_mut(), Vec2::new(1200.0, 600.0));
+    harness.step(1);
+    let dust: Vec<Entity> = harness
+        .world()
+        .get::<Children>(hole)
+        .expect("its dust")
+        .iter()
+        .collect();
+    assert_eq!(dust.len(), 1);
+    // No step runs between the call and the reads, so no propagation pass
+    // has had the chance to take a dead parent's child.
+    despawn_tree(harness.world_mut(), hole);
+    let world = harness.world();
+    assert!(!world.is_alive(hole));
+    assert!(!world.is_alive(dust[0]), "its dust goes in the same call");
 }
 
 #[test]

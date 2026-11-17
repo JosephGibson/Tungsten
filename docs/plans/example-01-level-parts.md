@@ -1,6 +1,6 @@
-# 01's level parts on the kit (example-01-level-parts) — draft
+# 01's level parts on the kit (example-01-level-parts) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13e, the fourth of its five plans (§2.8): example 01's `despawn_tree` on the kit's recursive despawn (S-177); its level's clock on `Time` (S-136); the title's shooting star on the kit's linear motion and lifetime (S-169); its glows' parts as their owners' children (S-128); its ambient emitters and the map objects a save names classed by kit tags, and the template sample's player by its `team.player` tag (S-111); every test's outcome unchanged but §3's Moves.
 - **non-goals:**
   - 7.13e's shell, written when this plan closes (§2.8), the cadence of the title's stars with it (known issues' P3, S-157).
@@ -251,5 +251,6 @@ Round 2: the same reviewer at xhigh, 2026-11-17, the plan without this section a
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-17 | landed | From `examples/01_platformer`: `cargo clippy --all-targets -- -D warnings` exit 0, right after the test; `cargo fmt --all -- --check`, `just lint`, `just repo-check` exit 0; `cargo test --test game` exit 0, `496 passed; 0 failed; 1 ignored` (56.44 s), the base's 495 and the new one; `saves::every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation ... ok`; `rg -q 'stack\.pop\(\)\|vec!\[entity\]' src/shared.rs; test $? -eq 1` exit 0 (2 lines at the base); `rg -c 'despawn_recursive\(&mut commands, entity\)' src/shared.rs` → `1` (no match at the base); `spawning::a_tree_despawn_takes_the_children_in_its_own_call ... ok` (a hole placed and stepped once has one child; after `despawn_tree`, no step, both are dead) and `spawning::black_hole_lifetime_system_despawns_expired_hole ... ok`, unchanged. Negative control, restored (`cmp` exit 0): with `commands.despawn(entity)` in `despawn_recursive`'s place the new test fails, exit 101, at `tests/game/spawning.rs:109`, `its dust goes in the same call`. The pit, plain: `cargo test --test game -- guards::` exit 0, `git diff --quiet tests/game/guards/` exit 0 | `examples/01_platformer/src/shared.rs`, `examples/01_platformer/tests/game/spawning.rs` |
 
 ## Follow-ups
