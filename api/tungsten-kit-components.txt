@@ -813,6 +813,8 @@ shape offers: What a level up offers: distinct entries drawn by weight without r
 shape path_rider: A lift's rule: it boards once a rider has stood on it, and comes back once its last rider has gone.
   field board: f32 (>= 0) = 0.3 — seconds a rider stands on it at its first point before it goes
   field back: f32 (>= 0) = 4.0 — seconds after its last rider left its last point before it comes back
+  field filter: tag filter = {} — the controllers that are its riders, by their tags, the others carried without boarding or holding it; the load checks its tags
+  field two_way: bool = false — a fresh rider boards it at its last point too and rides back, the rider it carried to an end holding it there until it steps off
   sample: {}
 shape place_payload: A prefab set down by its centre at the aim's point, a `nearest` or `random` target's centre or the entity's `aim` point, from the entity; refused before anything is spent with no point or one past the range (`no_target`), its body there meeting a solid tile or a body that is not dynamic, the entity's own aside (`no_room`), or its cap refusing it, the use's earlier spawns and places counted (`capped`).
   field prefab: prefab ID — the manifest prefab; the load checks the ID

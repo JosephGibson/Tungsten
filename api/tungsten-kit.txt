@@ -3027,8 +3027,10 @@ pub fn tungsten_kit::PathFollower::is_finished(&self) -> bool
 pub fn tungsten_kit::PathFollower::looping(self) -> Self
 pub fn tungsten_kit::PathFollower::new(impl core::iter::traits::collect::IntoIterator<Item = glam::f32::vec2::Vec2>, f32) -> Self
 pub fn tungsten_kit::PathFollower::ping_pong(self) -> Self
+pub fn tungsten_kit::PathFollower::two_way(self) -> Self
 pub fn tungsten_kit::PathFollower::with_easing(self, tungsten_core::tween::Easing) -> Self
 pub fn tungsten_kit::PathFollower::with_rider(self, f32, f32) -> Self
+pub fn tungsten_kit::PathFollower::with_rider_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::PathFollower::with_wait(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::clone(&self) -> tungsten_kit::PathFollower
@@ -8184,8 +8186,10 @@ pub fn tungsten_kit::PathFollower::is_finished(&self) -> bool
 pub fn tungsten_kit::PathFollower::looping(self) -> Self
 pub fn tungsten_kit::PathFollower::new(impl core::iter::traits::collect::IntoIterator<Item = glam::f32::vec2::Vec2>, f32) -> Self
 pub fn tungsten_kit::PathFollower::ping_pong(self) -> Self
+pub fn tungsten_kit::PathFollower::two_way(self) -> Self
 pub fn tungsten_kit::PathFollower::with_easing(self, tungsten_core::tween::Easing) -> Self
 pub fn tungsten_kit::PathFollower::with_rider(self, f32, f32) -> Self
+pub fn tungsten_kit::PathFollower::with_rider_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::PathFollower::with_wait(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::clone(&self) -> tungsten_kit::PathFollower

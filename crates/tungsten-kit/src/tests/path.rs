@@ -546,3 +546,271 @@ fn a_loaded_lift_boards_and_returns_as_the_uninterrupted_one() {
         }
     }
 }
+
+/// A rider's script for the lift, a mark or none after each step: aboard
+/// and carried up, to stand 3 s and more at the top; off for a step and on
+/// again, down, to stand a second and more at the bottom; off and on, up;
+/// off 59 steps, short of the lift's second alone; a boarding broken by a
+/// step off and begun again; then off for good.
+fn script() -> Vec<bool> {
+    [
+        (true, 270),
+        (false, 1),
+        (true, 160),
+        (false, 1),
+        (true, 100),
+        (false, 59),
+        (true, 10),
+        (false, 1),
+        (true, 10),
+        (false, 200),
+    ]
+    .into_iter()
+    .flat_map(|(riding, steps)| std::iter::repeat_n(riding, steps))
+    .collect()
+}
+
+/// `follower`'s heights over [`script`], after each step.
+fn script_heights(follower: PathFollower) -> Vec<f32> {
+    let (mut world, mut schedule) = rig();
+    let lift = platform(&mut world, follower);
+    script()
+        .into_iter()
+        .map(|riding| {
+            ride(&mut world, &mut schedule, lift, riding);
+            position(&world, lift).y
+        })
+        .collect()
+}
+
+#[test]
+fn a_two_way_lift_takes_a_fresh_rider_back_and_holds_for_the_one_it_carried() {
+    const TOP: f32 = -60.0;
+    // The first step after `from` at which the lift has left `end`.
+    let leaves = |heights: &[f32], from: usize, end: f32| {
+        (from..heights.len())
+            .find(|&at| (heights[at] - end).abs() > 1e-3)
+            .expect("it leaves")
+    };
+    let stands = |heights: &[f32], steps: std::ops::Range<usize>, end: f32| {
+        steps.clone().all(|at| (heights[at] - end).abs() < 1e-3)
+    };
+    let two_way = script_heights(lift().two_way());
+    // Aboard 0.3 s, read a step late, then up, a second.
+    assert_eq!(leaves(&two_way, 0, 0.0), 19, "it boards as a one-way lift");
+    // Carried up, it holds under its rider: 3 s and more.
+    assert!(stands(&two_way, 85..271, TOP), "held under its rider");
+    // One step off, then 0.3 s of marks: it leaves, and carries the rider
+    // down, where it holds again, a second and more.
+    let down = leaves(&two_way, 271, TOP);
+    assert!(
+        (289..=291).contains(&down),
+        "a fresh rider's boarding: {down}"
+    );
+    assert!(stands(&two_way, 356..432, 0.0), "held at the bottom");
+    // Off and on, it goes up.
+    let up = leaves(&two_way, 432, 0.0);
+    assert!((450..=452).contains(&up), "a fresh rider's boarding: {up}");
+    // Alone 59 steps, short of its second; then a boarding broken by a step
+    // off, which starts over: 20 marks either side of it never add up.
+    // Alone for good, it comes back a second later.
+    assert!(
+        stands(&two_way, 517..672, TOP),
+        "alone, then a boarding broken"
+    );
+    let back = leaves(&two_way, 612, TOP);
+    assert!((672..=674).contains(&back), "a second alone: {back}");
+    assert!(stands(&two_way, 740..812, 0.0), "back down, waiting");
+
+    // The same script on a one-way lift: it never leaves its last point
+    // under a rider, and comes back a second after the last one left.
+    let one_way = script_heights(lift());
+    assert_eq!(leaves(&one_way, 0, 0.0), 19);
+    assert!(stands(&one_way, 85..672, TOP), "held while ridden");
+    let back = leaves(&one_way, 85, TOP);
+    assert!((672..=674).contains(&back), "a second alone: {back}");
+    assert!(stands(&one_way, 740..812, 0.0), "back down, waiting");
+}
+
+#[test]
+fn a_two_way_lift_saved_at_any_step_resumes_as_the_uninterrupted_one() {
+    let script = script();
+    let (mut kept, mut kept_schedule) = rig();
+    let kept_lift = platform(&mut kept, lift().two_way());
+    // A twin whose follower is saved and read back before every step.
+    let (mut twin, mut twin_schedule) = rig();
+    let twin_lift = platform(&mut twin, lift().two_way());
+    let (mut heights, mut saves) = (Vec::new(), Vec::new());
+    let mut flags = [false; 2];
+    for (at, &riding) in script.iter().enumerate() {
+        let follower = kept.get::<PathFollower>(kept_lift).unwrap().clone();
+        let saved = serde_json::to_value(&follower).unwrap();
+        let loaded: PathFollower = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(loaded, follower, "step {at}: read back, it is itself");
+        assert_eq!(serde_json::to_value(&loaded).unwrap(), saved, "step {at}");
+        flags[0] |= saved.get("carried").is_some();
+        flags[1] |= saved.get("boarding").is_some();
+        saves.push((saved, position(&kept, kept_lift)));
+        let own = twin.get::<PathFollower>(twin_lift).unwrap();
+        let own: PathFollower = serde_json::from_value(serde_json::to_value(own).unwrap()).unwrap();
+        *twin.get_mut::<PathFollower>(twin_lift).unwrap() = own;
+        ride(&mut kept, &mut kept_schedule, kept_lift, riding);
+        ride(&mut twin, &mut twin_schedule, twin_lift, riding);
+        assert_eq!(
+            twin.get::<PathFollower>(twin_lift),
+            kept.get::<PathFollower>(kept_lift),
+            "step {at}"
+        );
+        assert_eq!(
+            position(&twin, twin_lift),
+            position(&kept, kept_lift),
+            "step {at}"
+        );
+        heights.push(position(&kept, kept_lift).y);
+    }
+    assert_eq!(
+        flags, [true; 2],
+        "a save held its carried rider and a boarding"
+    );
+    // Every seventh save, restored into a fresh World, runs on as the
+    // uninterrupted lift does.
+    for save_at in (0..script.len()).step_by(7) {
+        let (saved, at_save) = &saves[save_at];
+        let (mut loaded, mut loaded_schedule) = rig();
+        let follower: PathFollower = serde_json::from_value(saved.clone()).unwrap();
+        let restored = platform(&mut loaded, follower);
+        loaded.get_mut::<Position>(restored).unwrap().0 = *at_save;
+        for at in save_at..script.len() {
+            ride(&mut loaded, &mut loaded_schedule, restored, script[at]);
+            let height = position(&loaded, restored).y;
+            assert!(
+                (height - heights[at]).abs() < 1e-3,
+                "saved at {save_at}, step {at}: {height} against {}",
+                heights[at]
+            );
+        }
+    }
+
+    // A one-way lift over the same script and a plain follower write the
+    // keys they wrote.
+    let (mut world, mut schedule) = rig();
+    let one_way = platform(&mut world, lift());
+    let plain = platform(
+        &mut world,
+        PathFollower::new([Vec2::new(100.0, 0.0), Vec2::new(160.0, 0.0)], 60.0).ping_pong(),
+    );
+    let keys = |world: &World, entity: Entity| -> (Vec<String>, serde_json::Value) {
+        let saved = serde_json::to_value(world.get::<PathFollower>(entity).unwrap()).unwrap();
+        let mut keys: Vec<String> = saved.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        (keys, saved)
+    };
+    for (at, &riding) in script.iter().enumerate() {
+        ride(&mut world, &mut schedule, one_way, riding);
+        let (lift_keys, saved) = keys(&world, one_way);
+        assert!(
+            lift_keys.iter().all(|key| [
+                "points", "speed", "mode", "easing", "time", "rider", "hold", "ridden"
+            ]
+            .contains(&key.as_str())),
+            "step {at}: {lift_keys:?}"
+        );
+        let mut rule: Vec<&String> = saved["rider"].as_object().unwrap().keys().collect();
+        rule.sort();
+        assert_eq!(rule, ["back", "board"], "step {at}");
+        assert_eq!(
+            keys(&world, plain).0,
+            ["easing", "mode", "points", "speed", "time"],
+            "step {at}"
+        );
+    }
+}
+
+#[test]
+fn a_filter_and_a_ride_back_need_a_rider_rule() {
+    let points = [Vec2::ZERO, Vec2::new(0.0, -60.0)];
+    // In code: neither without a rider rule, a waiting follower among them.
+    assert!(
+        std::panic::catch_unwind(|| PathFollower::new(points, 60.0)
+            .ping_pong()
+            .with_rider_filter(crate::TagFilter::new().any(["team.player"])))
+        .is_err()
+    );
+    assert!(
+        std::panic::catch_unwind(|| PathFollower::new(points, 60.0).ping_pong().two_way()).is_err()
+    );
+    assert!(
+        std::panic::catch_unwind(|| PathFollower::new(points, 60.0)
+            .ping_pong()
+            .with_wait(1.0)
+            .two_way())
+        .is_err()
+    );
+    // In data they are the rule's fields: beside it they are unknown, and
+    // the rule checks them.
+    let scene = |extra: serde_json::Value| {
+        let mut fields = serde_json::json!({
+            "points": [[0, 0], [0, -60]], "speed": 60, "mode": "ping_pong"
+        });
+        for (key, value) in extra.as_object().unwrap() {
+            fields[key] = value.clone();
+        }
+        serde_json::from_value::<PathFollowerDef>(fields).map(|def| def.rider)
+    };
+    let rule = scene(serde_json::json!({
+        "rider": { "filter": { "any": ["team.player"] }, "two_way": true }
+    }))
+    .expect("a filtered two-way rule")
+    .expect("its rule");
+    let built = lift()
+        .with_rider_filter(crate::TagFilter::new().any(["team.player"]))
+        .two_way();
+    assert_eq!(
+        (rule.filter.clone(), rule.two_way),
+        (built.hold_rule().1.unwrap().filter.clone(), true)
+    );
+    assert!(!built.takes(None) && built.takes(Some(&crate::Tags::new(["team.player"]))));
+    assert!(lift().takes(None), "no filter takes every controller");
+    assert!(!PathFollower::new(points, 60.0).ping_pong().takes(None));
+    for refused in [
+        serde_json::json!({ "filter": { "any": ["team.player"] } }),
+        serde_json::json!({ "two_way": true }),
+        serde_json::json!({ "rider": { "two_way": "yes" } }),
+        serde_json::json!({ "rider": { "filter": { "any": ["Team Player"] } } }),
+        serde_json::json!({ "rider": { "filter": { "some": ["team.player"] } } }),
+    ] {
+        assert!(scene(refused.clone()).is_err(), "{refused}");
+    }
+    // A save holds the rule's fields, and a two-way lift's state on no
+    // other follower.
+    let saved = serde_json::to_value(&built).unwrap();
+    assert_eq!(saved["rider"]["two_way"], true);
+    assert_eq!(
+        saved["rider"]["filter"],
+        serde_json::json!({ "any": ["team.player"] })
+    );
+    assert_eq!(
+        serde_json::from_value::<PathFollower>(saved.clone()).unwrap(),
+        built
+    );
+    for key in ["carried", "boarding"] {
+        let mut held = saved.clone();
+        held[key] = serde_json::json!(true);
+        assert!(
+            serde_json::from_value::<PathFollower>(held).is_ok(),
+            "a two-way lift's {key}"
+        );
+        for other in [
+            lift(),
+            PathFollower::new(points, 60.0).ping_pong(),
+            PathFollower::new(points, 60.0).ping_pong().with_wait(1.0),
+        ] {
+            let mut save = serde_json::to_value(&other).unwrap();
+            save[key] = serde_json::json!(true);
+            assert!(
+                serde_json::from_value::<PathFollower>(save).is_err(),
+                "{key} on a follower that is no two-way lift"
+            );
+        }
+    }
+}
