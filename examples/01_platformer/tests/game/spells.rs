@@ -1526,6 +1526,36 @@ fn a_flask_after_its_wizards_death_credits_nobody() {
     );
 }
 
+/// S-85: a toss is aimed by the acceleration the flask flies by, its
+/// prefab's, so the world's gravity, `tungsten.json`'s, does not move it.
+#[test]
+fn a_flask_is_tossed_by_its_prefabs_acceleration_whatever_the_worlds_gravity() {
+    use tungsten::core::PhysicsConfig;
+    use tungsten::kit::lob_velocity;
+    let (mut harness, player) = flask_range();
+    let fall = Vec2::new(0.0, 3600.0);
+    assert_eq!(flask::acceleration(harness.world()), fall, "its prefab's");
+    let world = harness.world_mut();
+    let gravity = world.resource::<PhysicsConfig>().gravity;
+    assert_eq!(gravity, fall, "the world's, as `tungsten.json` has it");
+    world.resource_mut::<PhysicsConfig>().gravity = gravity * 0.5;
+    let from = centre(&harness, player);
+    let to = Vec2::new(from.x + 400.0, SKY - 120.0);
+    let flight = flask::flight(harness.world(), from.distance(to));
+    let tossed = flask::throw(harness.world_mut(), player, from, to).expect("a flask");
+    let motion = harness
+        .world()
+        .get::<LinearMotion>(tossed)
+        .expect("its motion");
+    let aimed = lob_velocity(from, to, flight, fall);
+    assert!(
+        (motion.velocity() - aimed).length() < 1e-3,
+        "tossed at {}, aimed at {aimed}",
+        motion.velocity()
+    );
+    assert_eq!(motion.acceleration(), fall, "it flies by its prefab's");
+}
+
 #[test]
 fn a_fourth_flask_with_three_in_flight_is_refused_and_spends_nothing() {
     use tungsten::kit::{Abilities, Cap};

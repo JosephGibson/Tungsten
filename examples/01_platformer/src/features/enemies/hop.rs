@@ -5,14 +5,13 @@
 //! high and how far, its body's half size from its kind.
 
 use glam::Vec2;
-use tungsten::core::{BodyKind, Entity, RigidBody, Shape, World};
+use tungsten::core::{BodyKind, Entity, PhysicsConfig, RigidBody, Shape, World};
 use tungsten::kit::{PlatformerController, Stats};
 use tungsten::physics::{SpatialFilter, cast_ray, overlap};
 
 use super::components::Enemy;
 use super::systems::{blocked, rest, solid, stride};
 use super::{centre, turn};
-use crate::features::level::GRAVITY;
 use crate::features::props::components::{Bomb, Keg};
 
 /// A walker's hops: its hop's speed up, px/s, which clears its square over
@@ -137,6 +136,14 @@ pub fn ahead(world: &World, walker: Entity, heading: f32, hops: &Hops) -> Ahead 
     }
 }
 
+/// The world's gravity down, px/s², which a walker's controller falls by:
+/// `tungsten.json`'s `physics.gravity`.
+fn gravity(world: &World) -> f32 {
+    world
+        .get_resource::<PhysicsConfig>()
+        .map_or(0.0, |config| config.gravity.y)
+}
+
 /// Whether a hop along `heading` has room: nothing over its head for the
 /// hop's height, nothing ahead its clear over its feet, and ground beyond.
 fn room(world: &World, walker: Entity, heading: f32, hops: &Hops) -> bool {
@@ -144,7 +151,7 @@ fn room(world: &World, walker: Entity, heading: f32, hops: &Hops) -> bool {
         return false;
     };
     let filter = SpatialFilter::new().excluding(walker);
-    let rise = hops.rise * hops.rise / (2.0 * GRAVITY);
+    let rise = hops.rise * hops.rise / (2.0 * gravity(world));
     let head = cast_ray(world, at, Vec2::NEG_Y, half.y + rise, &filter).is_none();
     let over = Vec2::new(at.x, at.y + half.y - hops.clear - 6.0);
     let clear = cast_ray(world, over, Vec2::new(heading, 0.0), half.x + 64.0, &filter).is_none();
@@ -160,16 +167,16 @@ fn room(world: &World, walker: Entity, heading: f32, hops: &Hops) -> bool {
     head && clear && ground
 }
 
-/// How far across `leap` carries a walker, at `run` px/s once its lock
-/// ends, before it comes down to `up` px over its feet; none when it never
-/// rises that high.
+/// How far across `leap` carries a walker falling by `gravity`, px/s², at
+/// `run` px/s once its lock ends, before it comes down to `up` px over its
+/// feet; none when it never rises that high.
 #[must_use]
-pub fn reach(leap: Leap, up: f32, run: f32) -> Option<f32> {
-    let left = leap.lift * leap.lift - 2.0 * GRAVITY * up;
+pub fn reach(leap: Leap, up: f32, run: f32, gravity: f32) -> Option<f32> {
+    let left = leap.lift * leap.lift - 2.0 * gravity * up;
     if left < 0.0 {
         return None;
     }
-    let flight = (leap.lift + left.sqrt()) / GRAVITY;
+    let flight = (leap.lift + left.sqrt()) / gravity;
     Some(leap.across * flight.min(leap.lock) + run * (flight - leap.lock).max(0.0))
 }
 
@@ -184,7 +191,8 @@ fn leaps(world: &World, walker: Entity, heading: f32, hops: &Hops, leap: Leap) -
         return false;
     };
     let filter = SpatialFilter::new().excluding(walker);
-    let apex = leap.lift * leap.lift / (2.0 * GRAVITY);
+    let gravity = gravity(world);
+    let apex = leap.lift * leap.lift / (2.0 * gravity);
     if cast_ray(world, at, Vec2::NEG_Y, half.y + apex, &filter).is_some() {
         return false;
     }
@@ -192,7 +200,7 @@ fn leaps(world: &World, walker: Entity, heading: f32, hops: &Hops, leap: Leap) -
         .get::<Stats>(walker)
         .and_then(|stats| stats.get(Stats::MOVE_SPEED))
         .unwrap_or(0.0);
-    let Some(farthest) = reach(leap, -hops.step_down, run) else {
+    let Some(farthest) = reach(leap, -hops.step_down, run, gravity) else {
         return false;
     };
     let feet = at.y + half.y;
@@ -213,7 +221,7 @@ fn leaps(world: &World, walker: Entity, heading: f32, hops: &Hops, leap: Leap) -
             &filter,
         ) {
             let up = feet - hit.point.y;
-            return reach(leap, up, run).is_some_and(|reach| look <= reach - LEAP_SLACK);
+            return reach(leap, up, run, gravity).is_some_and(|reach| look <= reach - LEAP_SLACK);
         }
         look += LEAP_LOOK;
     }

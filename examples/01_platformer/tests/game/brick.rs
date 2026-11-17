@@ -16,7 +16,6 @@ use example_01_platformer::features::elements::systems::crush;
 use example_01_platformer::features::elements::{self, CRUSH_SPEED, SHATTER_SPEED, SMASH_KEEP};
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
 use example_01_platformer::features::enemies::{self, troll};
-use example_01_platformer::features::level::GRAVITY;
 use example_01_platformer::features::player::components::Lantern;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys;
@@ -29,8 +28,8 @@ use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
 use example_01_platformer::{game, save};
 use glam::Vec2;
 use tungsten::core::{
-    AudioCommand, Collider, Entity, Position, RigidBody, RigidBodyBundle, SoundRegistry, Time,
-    Transform, Tween, Velocity, World,
+    AudioCommand, Collider, Entity, PhysicsConfig, Position, RigidBody, RigidBodyBundle,
+    SoundRegistry, Time, Transform, Tween, Velocity, World,
 };
 use tungsten::kit::{Abilities, Children, Health, Knockback, StateMachine, Stats};
 use tungsten::testing::UiHarness;
@@ -603,7 +602,8 @@ fn gore_follows_only_the_blow_that_kills() {
 #[test]
 fn a_thrown_block_falls_on_the_trolls_arc() {
     let mut harness = iron_arena();
-    let step_fall = GRAVITY / 60.0;
+    let gravity = harness.world().resource::<PhysicsConfig>().gravity.y;
+    let step_fall = gravity / 60.0;
     // Falling free, a block falls harder than the world's gravity.
     let free = block(&mut harness, Vec2::new(1700.0, 300.0));
     kick(&mut harness, free, Vec2::new(0.0, 100.0));

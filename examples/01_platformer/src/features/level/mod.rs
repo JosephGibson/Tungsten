@@ -21,9 +21,8 @@ use glam::{Vec2, Vec3};
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
 use tungsten::core::save::SaveOptions;
 use tungsten::core::{
-    AmbientLight, Bundle, CameraController, Collider, DataRegistry, Entity, Light, ParticleBudget,
-    PhysicsConfig, Position, RigidBodyBundle, Schedule, Stage, TilemapInstance, TilemapRegistry,
-    Transform, World, system,
+    AmbientLight, Bundle, CameraController, Collider, DataRegistry, Entity, Light, Position,
+    RigidBodyBundle, Schedule, Stage, TilemapInstance, TilemapRegistry, Transform, World, system,
 };
 use tungsten::kit::{PathFollower, Phase, StateMachine, TRANSFORM_PROPAGATE, ensure_phases};
 use tungsten::plugins::{CAMERA_UPDATE, PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
@@ -52,9 +51,6 @@ pub const MAP_ROWS: u32 = 72;
 /// controller stands on and that meets no body, so balls, blocks and the
 /// enemies, whose filters leave it out, fall in.
 pub const LAVA_LAYER: u32 = 1 << 4;
-/// The world's gravity, px/s² with y down, which the player and the bodies
-/// fall by.
-pub const GRAVITY: f32 = 3600.0;
 /// The rows of tiles a view shows at a zoom of 1.
 pub const CAMERA_ROWS: f32 = 18.0;
 /// The map's marker where a fresh run's player stands, its feet's point.
@@ -170,12 +166,9 @@ pub const LIGHT_EASE: f32 = 1.0;
 pub const AREA_FADE: f32 = 5.0 * TILE;
 /// [`systems::glows`]'s name: the player's lantern writes its glow before.
 pub const GLOWS: &str = "level_glows";
-/// Most particles alive at once, the emitters' shared budget.
-pub const PARTICLE_CAP: u32 = 2048;
 
-/// The level as a plugin: the components its prefabs name, the world's
-/// gravity and its broadphase cells of one tile, which cap a dense pile's
-/// pair candidates, the particle budget, the camera's shake, the
+/// The level as a plugin: the components its prefabs name, the camera's
+/// shake, the
 /// level's clock, the geysers' chill and their cycles, the kit's timed machine, on the
 /// step, `level_zoom` before the camera's update, the glows in the present
 /// phase, the geysers' look before the frame's transform propagation and its particles, the bursts' cleanup and the title's sky in `Update`, the title's
@@ -202,10 +195,6 @@ impl Plugin for LevelPlugin {
         world.register_component::<StateMachine<geyser::GeyserPhase>>("geyser_phase");
         world.register_saved::<StateMachine<geyser::GeyserPhase>>("geyser_phase");
         world.register_data_kind::<components::OpaqueTiles>("opaque_tiles");
-        if let Some(physics) = world.get_resource_mut::<PhysicsConfig>() {
-            physics.gravity = Vec2::new(0.0, GRAVITY);
-            physics.broadphase_cell_size = TILE;
-        }
         if let Some(camera) = world.get_resource_mut::<CameraController>() {
             camera.shake_amplitude = Vec2::ZERO;
             camera.shake_frequency_hz = SHAKE_HZ;
@@ -213,9 +202,6 @@ impl Plugin for LevelPlugin {
             camera.shake_max_offset = SHAKE_OFFSET;
         }
         world.insert_resource(components::Zoom::default());
-        world.insert_resource(ParticleBudget {
-            global_cap: PARTICLE_CAP,
-        });
         world.resource_mut::<Extracts>().replace_sprites(draw::base);
         ensure_phases(schedule);
         schedule.add(

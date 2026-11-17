@@ -1,7 +1,9 @@
 //! The toxic flask (e01flask, V39): a glass flask of poison the wizard lobs
-//! at the cursor on the world's gravity ([`throw`]). Its `toxic_flask`
-//! prefab is the fire missile's kit projectile on its linear motion, which
-//! is exact under a constant fall, so it passes through the cursor; it has
+//! at the cursor ([`throw`]), aimed by the acceleration it flies by, its
+//! prefab's `linear_motion.acceleration`, whatever the world's gravity. Its
+//! `toxic_flask` prefab is the fire missile's kit projectile on its linear
+//! motion, which is exact under a constant fall, so it passes through the
+//! cursor; it has
 //! no body, so nothing pushes it and it passes through the wizard. The
 //! kit's projectile step ends it where its own shape's sweep first meets a
 //! tile or a body in its body walls but the wizard's, or at its range's end
@@ -24,9 +26,8 @@ use tungsten::kit::{
 };
 
 use super::components::ToxicFlask;
-use crate::features::level::GRAVITY;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, Saved};
+use crate::shared::{SaveId, Saved, prefab_part};
 
 /// Its prefab, whose `cap` refuses a toss past three in flight, its radius
 /// and its centre from its sprite's top-left.
@@ -65,10 +66,24 @@ pub fn count(world: &World) -> usize {
     world.query::<&ToxicFlask>().count()
 }
 
-/// The seconds a toss takes over `distance`.
+/// The acceleration a flask flies by, px/s²: its prefab's
+/// `linear_motion.acceleration`, which its motion integrates; none when
+/// the prefab or the part is missing.
 #[must_use]
-pub fn flight(distance: f32) -> f32 {
-    (2.0 * distance / GRAVITY)
+pub fn acceleration(world: &World) -> Vec2 {
+    prefab_part::<[f32; 2]>(world, FLASK_PREFAB, &["linear_motion", "acceleration"])
+        .map_or(Vec2::ZERO, Vec2::from)
+}
+
+/// The seconds a toss takes over `distance`, falling by a flask's
+/// [`acceleration`]; the most when it does not fall.
+#[must_use]
+pub fn flight(world: &World, distance: f32) -> f32 {
+    let fall = acceleration(world).length();
+    if fall <= 0.0 {
+        return FLIGHT_MOST;
+    }
+    (2.0 * distance / fall)
         .sqrt()
         .clamp(FLIGHT_LEAST, FLIGHT_MOST)
 }
@@ -79,8 +94,8 @@ pub fn throw(world: &mut World, thrower: Entity, from: Vec2, to: Vec2) -> Option
     if cap_refuses(world, FLASK_PREFAB) {
         return None;
     }
-    let time = flight(from.distance(to));
-    let velocity = lob_velocity(from, to, time, Vec2::new(0.0, GRAVITY));
+    let time = flight(world, from.distance(to));
+    let velocity = lob_velocity(from, to, time, acceleration(world));
     spawn(world, from - FLASK_CENTRE, velocity, Some(thrower))
 }
 

@@ -78,6 +78,15 @@ fn drawn(harness: &mut UiHarness, lit: bool) -> Vec<tungsten::render::SpriteInst
         .collect()
 }
 
+/// `tungsten.json`'s `particles.budget`, the emitters' shared budget, which
+/// the engine puts into the World's `ParticleBudget`.
+fn configured_budget() -> u32 {
+    let text = std::fs::read_to_string("tungsten.json").expect("tungsten.json reads");
+    let config: serde_json::Value = serde_json::from_str(&text).expect("tungsten.json parses");
+    let budget = config["particles"]["budget"].as_u64();
+    u32::try_from(budget.expect("particles.budget")).expect("a u32")
+}
+
 #[test]
 fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
     let (mut harness, _) = run();
@@ -888,7 +897,7 @@ fn repeated_channels_and_long_holds_keep_particles_bounded_and_stop_on_death() {
     assert!(particles(&harness, &long.emitters) <= SPRAY_PARTICLES);
     assert_eq!(
         harness.world().resource::<ParticleBudget>().global_cap,
-        2048
+        configured_budget()
     );
     assert!(
         harness

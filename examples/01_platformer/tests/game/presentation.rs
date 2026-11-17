@@ -87,6 +87,15 @@ fn burst_particles(harness: &UiHarness) -> usize {
         .count()
 }
 
+/// `tungsten.json`'s `particles.budget`, the emitters' shared budget, which
+/// the engine puts into the World's `ParticleBudget`.
+fn configured_budget() -> u32 {
+    let text = std::fs::read_to_string("tungsten.json").expect("tungsten.json reads");
+    let config: serde_json::Value = serde_json::from_str(&text).expect("tungsten.json parses");
+    let budget = config["particles"]["budget"].as_u64();
+    u32::try_from(budget.expect("particles.budget")).expect("a u32")
+}
+
 #[test]
 fn animation_transitions_hold_finish_face_and_interrupt_landing() {
     let (mut harness, player) = run();
@@ -244,7 +253,7 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
         ));
     }
     let cap = world.resource::<ParticleBudget>().global_cap as usize;
-    assert_eq!(cap, 2048);
+    assert_eq!(cap, configured_budget() as usize);
     for _ in 0..240 {
         harness.step(1);
         assert!(harness.world().query::<&Particle>().count() <= cap);

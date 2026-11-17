@@ -13,7 +13,7 @@ use example_01_platformer::shell::game_over::GAME_OVER;
 use glam::Vec2;
 use tungsten::core::{
     AnimationState, AudioCommand, Collider, Entity, ParticleConfigRegistry, ParticleEmitter,
-    Position, SoundRegistry, TilemapRegistry, Time, Transform, Velocity,
+    PhysicsConfig, Position, SoundRegistry, TilemapRegistry, Time, Transform, Velocity,
 };
 use tungsten::kit::{Health, PlatformerController, damage};
 use tungsten::testing::UiHarness;
@@ -301,7 +301,8 @@ fn double_jump_needs_a_fresh_press_emits_once_and_refills_on_landing() {
     assert_eq!(controller(&harness, player).air_jumps_left(), 0);
     // The step's mean: the jump's speed, less half a step of gravity.
     let rise = harness.world().get::<Velocity>(player).unwrap().0.y;
-    let expected = -1280.0 + level::GRAVITY * DT * 0.5;
+    let gravity = harness.world().resource::<PhysicsConfig>().gravity.y;
+    let expected = -1280.0 + gravity * DT * 0.5;
     assert!((rise - expected).abs() < 1e-2, "{rise} vs {expected}");
     let burst = bursts(&harness, "ex10_double_jump");
     assert_eq!(burst.len(), 1);

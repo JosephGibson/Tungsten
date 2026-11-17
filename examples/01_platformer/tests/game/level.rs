@@ -653,22 +653,22 @@ fn the_elevator_sweep_clears_tiles_slabs_iron_and_a_riders_headroom() {
 
 /// The farthest across, in px, the player can still be at or above `dy` px
 /// over its take-off, if anywhere: its run times the latest time a jump
-/// stays that high, over every air jump's time and a coyote take-off.
-fn reach(dy: f32) -> Option<f32> {
+/// stays that high, over every air jump's time and a coyote take-off,
+/// falling by `gravity`, the world's.
+fn reach(dy: f32, gravity: f32) -> Option<f32> {
     const JUMP: f32 = 1280.0;
-    const GRAVITY: f32 = 3600.0;
     const RUN: f32 = 560.0;
     const COYOTE: f32 = 0.1;
     let mut best: Option<f32> = None;
     for coyote in [0.0, COYOTE] {
         // Off an edge for `coyote` seconds first, falling.
-        let need = dy + 0.5 * GRAVITY * coyote * coyote;
+        let need = dy + 0.5 * gravity * coyote * coyote;
         for millis in 0..=2000 {
             let a = millis as f32 / 1000.0;
-            let at_air_jump = JUMP * a - 0.5 * GRAVITY * a * a;
-            let disc = JUMP * JUMP - 2.0 * GRAVITY * (need - at_air_jump);
+            let at_air_jump = JUMP * a - 0.5 * gravity * a * a;
+            let disc = JUMP * JUMP - 2.0 * gravity * (need - at_air_jump);
             if disc >= 0.0 {
-                let t = coyote + a + (JUMP + disc.sqrt()) / GRAVITY;
+                let t = coyote + a + (JUMP + disc.sqrt()) / gravity;
                 best = Some(best.map_or(RUN * t, |b: f32| b.max(RUN * t)));
             }
         }
@@ -687,6 +687,7 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
     harness.harness_mut().set_dt(DT);
     // Out of every jump: no tile top or static box top in the mine's reach.
     let world = harness.world();
+    let gravity = world.resource::<PhysicsConfig>().gravity.y;
     let map = world.resource::<TilemapRegistry>().get(MAP).unwrap();
     let collision = map
         .layers
@@ -717,7 +718,7 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
     for (x0, x1, y) in surfaces {
         let dy = y - top;
         let gap = (left - x1).max(x0 - right).max(0.0) - body;
-        if let Some(across) = reach(dy) {
+        if let Some(across) = reach(dy, gravity) {
             nearest = nearest.min(gap - across);
             assert!(
                 across < gap,
