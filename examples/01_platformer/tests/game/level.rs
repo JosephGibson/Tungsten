@@ -20,7 +20,7 @@ use tungsten::core::{
     TilemapRegistry, Velocity,
 };
 use tungsten::kit::{CharacterAnimator, PathFollower, PlatformerController};
-use tungsten::physics::BodyKind;
+use tungsten::physics::{BodyKind, SpatialFilter, overlap};
 use tungsten::testing::UiHarness;
 
 use super::player_half;
@@ -241,10 +241,31 @@ fn release_all(harness: &mut UiHarness) {
     }
 }
 
-/// Whether a player's body centred at `centre` meets a collision tile.
+/// Whether a player's body centred at `centre` meets a collision tile, by
+/// the engine's overlap over the tiles alone, which reads the tile cache
+/// the last step used.
 fn embedded(harness: &UiHarness, centre: Vec2) -> bool {
-    let map = harness
-        .world()
+    let mut met = Vec::new();
+    overlap(
+        harness.world(),
+        Shape::Aabb {
+            half_extents: player_half(),
+        },
+        centre,
+        &SpatialFilter::new().with_bodies(false),
+        &mut met,
+    );
+    !met.is_empty()
+}
+
+/// The positive control a tile box test asserts first, since a cold tile
+/// cache would pass every "meets no tile" assert: a box centred in a solid
+/// cell found in the collision layer meets a tile, and one in the tests'
+/// sky (`tools/level.py`'s `TEST_SKY`) meets none. Gives the solid cell's
+/// centre.
+fn tile_control(harness: &UiHarness) -> Vec2 {
+    let world = harness.world();
+    let map = world
         .resource::<TilemapRegistry>()
         .get(MAP)
         .expect("the level's map");
@@ -253,12 +274,32 @@ fn embedded(harness: &UiHarness, centre: Vec2) -> bool {
         .iter()
         .find(|layer| layer.kind == LayerKind::Collision)
         .expect("a collision layer");
-    let (min, max) = (centre - player_half(), centre + player_half());
-    let rows = (min.y / TILE).floor() as u32..(max.y / TILE).ceil() as u32;
-    rows.flat_map(|row| {
-        ((min.x / TILE).floor() as u32..(max.x / TILE).ceil() as u32).map(move |col| (col, row))
-    })
-    .any(|(col, row)| collision.tiles[(row * map.width + col) as usize] >= 0)
+    let index = collision
+        .tiles
+        .iter()
+        .position(|&tile| tile >= 0)
+        .expect("a solid cell") as u32;
+    let solid = Vec2::new(
+        (index % map.width) as f32 + 0.5,
+        (index / map.width) as f32 + 0.5,
+    ) * TILE;
+    let sky = Vec2::new(10.5, 5.5) * TILE;
+    let tiles = SpatialFilter::new().with_bodies(false);
+    let shape = Shape::Aabb {
+        half_extents: Vec2::splat(TILE * 0.25),
+    };
+    let mut met = Vec::new();
+    overlap(world, shape, solid, &tiles, &mut met);
+    assert!(
+        !met.is_empty(),
+        "a box in the solid cell at {solid} meets a tile"
+    );
+    overlap(world, shape, sky, &tiles, &mut met);
+    assert!(
+        met.is_empty(),
+        "a box in the tests' sky at {sky} meets no tile"
+    );
+    solid
 }
 
 /// One attempt with ordinary input on the real map: the player settles at
@@ -382,6 +423,7 @@ fn search_launch(
 fn authored_routes_and_recovery_shelves_traverse_with_real_physics() {
     let level = source();
     let mut harness = bare_level();
+    tile_control(&harness);
     let platforms: BTreeMap<&str, &Platform> = level
         .platforms
         .iter()
@@ -438,6 +480,7 @@ fn authored_routes_and_recovery_shelves_traverse_with_real_physics() {
 fn each_tomes_support_is_reached_from_its_platform_by_the_double_jump() {
     let level = source();
     let mut harness = bare_level();
+    tile_control(&harness);
     let mut failures = Vec::new();
     for &(name, ..) in TOME_LAUNCHES {
         if !level.tomes.iter().any(|tome| tome.name == name) {
@@ -520,16 +563,10 @@ fn every_platform_sweep_clears_terrain_and_player_headroom() {
     let level = source();
     let mut harness = harness();
     start(&mut harness);
+    tile_control(&harness);
     let world = harness.world();
-    let map = world
-        .resource::<TilemapRegistry>()
-        .get(MAP)
-        .expect("the level's map");
-    let collision = map
-        .layers
-        .iter()
-        .find(|layer| layer.kind == LayerKind::Collision)
-        .expect("a collision layer");
+    let tiles = SpatialFilter::new().with_bodies(false);
+    let mut met = Vec::new();
     for placement in level
         .moving_platforms
         .iter()
@@ -544,14 +581,14 @@ fn every_platform_sweep_clears_terrain_and_player_headroom() {
             let half = placement.half_width * TILE;
             let min = pos - Vec2::new(half, deck_depth() * 0.5 + player_half().y * 2.0);
             let max = pos + Vec2::new(half, deck_depth() * 0.5);
-            for row in (min.y / TILE).floor() as u32..(max.y / TILE).ceil() as u32 {
-                for col in (min.x / TILE).floor() as u32..(max.x / TILE).ceil() as u32 {
-                    assert!(
-                        collision.tiles[(row * map.width + col) as usize] < 0,
-                        "platform at {pos:?} intersects tile {col},{row}"
-                    );
-                }
-            }
+            let shape = Shape::Aabb {
+                half_extents: (max - min) * 0.5,
+            };
+            overlap(world, shape, (min + max) * 0.5, &tiles, &mut met);
+            assert!(
+                met.is_empty(),
+                "platform at {pos:?} meets a tile in its box {min}..{max}"
+            );
         }
     }
 }
@@ -582,13 +619,10 @@ fn the_elevator_sweep_clears_tiles_slabs_iron_and_a_riders_headroom() {
     let rise = lift.elevator.as_ref().unwrap().rise * TILE;
     let mut harness = harness();
     start(&mut harness);
+    tile_control(&harness);
     let world = harness.world();
-    let map = world.resource::<TilemapRegistry>().get(MAP).unwrap();
-    let collision = map
-        .layers
-        .iter()
-        .find(|layer| layer.kind == LayerKind::Collision)
-        .unwrap();
+    let tiles = SpatialFilter::new().with_bodies(false);
+    let mut met = Vec::new();
     let boxes = static_boxes(world);
     let half = lift.half_width * TILE;
     let x = lift.position[0] * TILE;
@@ -598,14 +632,14 @@ fn the_elevator_sweep_clears_tiles_slabs_iron_and_a_riders_headroom() {
         // The cage's floor and a rider's head room over it.
         let min = Vec2::new(x - half, top - player_half().y * 2.0);
         let max = Vec2::new(x + half, top + deck_depth());
-        for row in (min.y / TILE).floor() as u32..(max.y / TILE).ceil() as u32 {
-            for col in (min.x / TILE).floor() as u32..(max.x / TILE).ceil() as u32 {
-                assert!(
-                    collision.tiles[(row * map.width + col) as usize] < 0,
-                    "the elevator at {top} meets tile {col},{row}"
-                );
-            }
-        }
+        let shape = Shape::Aabb {
+            half_extents: (max - min) * 0.5,
+        };
+        overlap(world, shape, (min + max) * 0.5, &tiles, &mut met);
+        assert!(
+            met.is_empty(),
+            "the elevator at {top} meets a tile in its box {min}..{max}"
+        );
         for (low, high) in &boxes {
             let inside =
                 low.x < max.x - 0.01 && high.x > min.x + 0.01 && low.y < max.y && high.y > min.y;

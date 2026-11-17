@@ -1,6 +1,6 @@
-# 01's lift, bounds and map facts on the kit and the loaded map (example-01-map) — draft
+# 01's lift, bounds and map facts on the kit and the loaded map (example-01-map) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13e, the third of its five plans (§2.8): example 01's lift on the kit's path follower as prefab data, its sounds the follower's cue events, older saves migrated (S-19, the lift plan's stopped Step 6, re-planned from what it built and measured); its tile box tests on `overlap` (S-83); the map's objects named as they spawn (S-144); gravity, the broadphase cell and the particle budget in `tungsten.json` (S-85); the pit's cast, the tests' places and the kill row as map markers (S-106); the toys' box and the player's kill row on the kit's `despawn_outside` and `WorldBounds` (S-31); the map's size and object counts read off the loaded map (S-160); every test's outcome unchanged but §3's Moves.
 - **non-goals:**
   - 7.13e's level parts and its shell, each written when the plan before it closes (§2.8).
@@ -263,5 +263,6 @@ Round 2: the same reviewer at xhigh, 2026-11-17, the plan without this section a
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-17 | landed | From `examples/01_platformer`: `cargo clippy --all-targets -- -D warnings` exit 0, right after the tests; `cargo fmt --all -- --check`, `just lint`, `just repo-check` exit 0; `cargo test --test game` exit 0, `493 passed; 0 failed; 1 ignored` (52.97 s), the base's count; `saves::every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation ... ok`; `rg -c 'collision\.tiles\[' tests/game/level.rs` → `1` (from 4); `rg -c 'with_bodies\(false\)' tests/game/level.rs` → `4` (`embedded`, the two sweeps and the control); `level::every_platform_sweep_clears_terrain_and_player_headroom`, `level::the_elevator_sweep_clears_tiles_slabs_iron_and_a_riders_headroom`, `level::each_tomes_support_is_reached_from_its_platform_by_the_double_jump` (the one test that reaches `embedded`) and `level::authored_routes_and_recovery_shelves_traverse_with_real_physics` (which shares `launch_lands`) ok, each calling `tile_control` first: a 32 px box in the collision layer's first solid cell meets a tile and one in the tests' sky (cell 10, 5) meets none. Negative control, restored (`cmp` exit 0): with the platforms' sweep's first sample moved onto the control's solid cell the test fails, exit 101, `platform at Vec2(27424.0, 672.0) meets a tile in its box [27340.8, 604.5]..[27507.2, 683.5]`. The pit, plain: `cargo test --test game -- guards::` exit 0, `git diff --quiet tests/game/guards/` exit 0. The map's collision layer holds one tile kind, so no one-way cell changes a result | `examples/01_platformer/tests/game/level.rs` |
 
 ## Follow-ups
