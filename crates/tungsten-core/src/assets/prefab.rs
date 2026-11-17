@@ -956,17 +956,29 @@ impl World {
         map: &str,
         origin: impl Into<Vec2>,
     ) -> Result<Vec<PreparedPrefab>, PrefabError> {
-        let prepared = self.prepare_map_objects_named(map, origin.into())?;
+        let prepared = self.prepare_map_objects_named(map, origin)?;
         Ok(prepared.into_iter().map(|(prefab, _)| prefab).collect())
     }
 
     /// [`prepare_map_objects`](Self::prepare_map_objects), each with its
-    /// object's name, empty when Tiled gave none.
-    pub(crate) fn prepare_map_objects_named(
+    /// object's name, the empty string when Tiled gave none: the form a
+    /// game takes to spawn each object itself, with
+    /// [`PreparedPrefab::with`] adding what its run needs in the spawn's
+    /// own archetype move, and to name the ones it saves.
+    ///
+    /// # Errors
+    ///
+    /// As [`prepare_map_objects`](Self::prepare_map_objects).
+    ///
+    /// # Panics
+    ///
+    /// As [`prepare_prefab`](Self::prepare_prefab).
+    pub fn prepare_map_objects_named(
         &mut self,
         map: &str,
-        origin: Vec2,
+        origin: impl Into<Vec2>,
     ) -> Result<Vec<(PreparedPrefab, String)>, PrefabError> {
+        let origin = origin.into();
         let built = {
             let data = self
                 .get_resource::<TilemapRegistry>()

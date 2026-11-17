@@ -295,10 +295,21 @@ impl Plugin for CursorPlugin {
 pub fn spawn(world: &mut World) -> Vec<Entity> {
     let map = TilemapInstance::new(MAP, Vec2::ZERO);
     world.spawn_with((map, SceneEntity { state_id: GAMEPLAY }));
-    let names = object_names(world);
-    let objects = world
-        .spawn_map_objects(MAP, Vec2::ZERO)
+    // Each object takes its state in its spawn's own move: an insert after
+    // it would leave an archetype behind for every query to list.
+    let prepared = world
+        .prepare_map_objects_named(MAP, Vec2::ZERO)
         .expect("the level's objects load with the manifest");
+    let mut names = Vec::with_capacity(prepared.len());
+    let mut objects = Vec::with_capacity(prepared.len());
+    for (prefab, name) in prepared {
+        objects.push(
+            prefab
+                .with((SceneEntity { state_id: GAMEPLAY },))
+                .spawn(world),
+        );
+        names.push(name);
+    }
     let mut taken = HashSet::from([SaveId::authored(player::SAVE_NAME)]);
     let mut named = Vec::new();
     for (&entity, name) in objects.iter().zip(&names) {
@@ -309,7 +320,6 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
             world.insert(entity, Saved::kept(id));
             named.push((entity, name.clone()));
         }
-        world.insert(entity, SceneEntity { state_id: GAMEPLAY });
     }
     world.insert_resource(SavedNames(named));
     let [min, max] = BOUNDARY;
@@ -349,23 +359,6 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
     world.insert_resource(AmbientLight(AMBIENT));
     world.insert_resource(post_stack());
     objects
-}
-
-/// The names of the map's objects that spawn a prefab, in the order
-/// `spawn_map_objects` spawns them.
-fn object_names(world: &World) -> Vec<String> {
-    world
-        .get_resource::<TilemapRegistry>()
-        .and_then(|maps| maps.get(MAP))
-        .map(|map| {
-            map.object_layers
-                .iter()
-                .flat_map(|layer| &layer.objects)
-                .filter(|object| !object.class.is_empty())
-                .map(|object| object.name.clone())
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 /// The map's saved objects with their names, in spawn order: a World

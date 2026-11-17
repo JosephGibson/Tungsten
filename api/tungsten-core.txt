@@ -9124,6 +9124,7 @@ pub fn tungsten_core::World::register_generator(&mut self, &str, impl tungsten_c
 impl tungsten_core::World
 pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::prefab::PreparedPrefab>, tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::prepare_map_objects_named(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<(tungsten_core::assets::prefab::PreparedPrefab, alloc::string::String)>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::Entity, tungsten_core::assets::prefab::PrefabError>
@@ -25500,6 +25501,7 @@ pub fn tungsten_core::World::register_generator(&mut self, &str, impl tungsten_c
 impl tungsten_core::World
 pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::prefab::PreparedPrefab>, tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::prepare_map_objects_named(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<(tungsten_core::assets::prefab::PreparedPrefab, alloc::string::String)>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::Entity, tungsten_core::assets::prefab::PrefabError>

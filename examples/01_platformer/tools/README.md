@@ -381,7 +381,8 @@ lists the wholly opaque sprites among the map's tiles and the backdrops
 (`level.opaque_tiles`). `level.tmj` is
 written with sorted keys, a tile layer a map row a line and an object a line
 (`level.tiled_text`), so a change's diff shows the rows and objects it moves. The object layers
-sit before `collision`, in spawn order, and `World::spawn_map_objects` spawns them
+sit before `collision`, in spawn order, and `level::spawn` spawns them from
+`World::prepare_map_objects_named`, each with its state in its spawn's own move,
 when a run starts. The objects a save names, those of the layers `SAVED_LAYERS`
 lists (the lava basins, the decks, the dummy, the enemies, the placed orbs and
 the geysers), take the save ID their `name` derives (`D-222`), which

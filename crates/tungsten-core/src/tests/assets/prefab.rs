@@ -1313,11 +1313,36 @@ fn map_objects_spawn_with_their_names() {
         ],
     );
     let prepared = world
-        .prepare_map_objects_named("level", Vec2::ZERO)
+        .prepare_map_objects_named("level", [100.0, 200.0])
         .unwrap();
     let names: Vec<&str> = prepared.iter().map(|(_, name)| name.as_str()).collect();
     assert_eq!(names, ["object1", "", "object2"], "in layer and file order");
     assert!(prepared.iter().all(|(prefab, _)| prefab.id() == "slime"));
+    // The public form's use: each object spawned by the caller with a
+    // bundle of its own in the spawn's one move, its name beside it.
+    let before = world.counters();
+    let spawned: Vec<(Vec2, bool, String)> = prepared
+        .into_iter()
+        .map(|(prefab, name)| {
+            let entity = prefab.with((Player,)).spawn(&mut world);
+            let at = world.get::<Transform>(entity).unwrap().position;
+            (at, world.get::<Player>(entity).is_some(), name)
+        })
+        .collect();
+    assert_eq!(
+        spawned,
+        [
+            (Vec2::new(100.0, 200.0), true, "object1".to_owned()),
+            (Vec2::new(108.0, 208.0), true, String::new()),
+            (Vec2::new(116.0, 200.0), true, "object2".to_owned()),
+        ],
+        "the origin added, the caller's bundle on each, the names in step"
+    );
+    assert_eq!(
+        world.counters().archetype_moves - before.archetype_moves,
+        3,
+        "one move a spawn, the bundle in it"
+    );
 }
 
 /// Prefab files `<id>.json` in a temp directory of their own, removed on
