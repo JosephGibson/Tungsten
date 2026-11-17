@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use example_01_platformer::features::level::components::Hazard;
-use example_01_platformer::features::level::elevator::{Elevator, Stop};
+use example_01_platformer::features::level::elevator::Lift as LiftMarker;
 use example_01_platformer::features::level::{BOUNDARY, LAVA_LAYER, MAP, TILE};
 use example_01_platformer::features::player;
 use example_01_platformer::features::run::Run;
@@ -19,7 +19,7 @@ use tungsten::core::{
     Collider, Entity, LayerKind, PhysicsConfig, Position, PrevPosition, RigidBody, Shape, Sprite,
     TilemapRegistry, Velocity,
 };
-use tungsten::kit::{CharacterAnimator, PathFollower, PlatformerController};
+use tungsten::kit::{CharacterAnimator, PathEnd, PathFollower, PlatformerController};
 use tungsten::physics::{BodyKind, SpatialFilter, overlap};
 use tungsten::testing::UiHarness;
 
@@ -727,13 +727,8 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
     }
     println!("the nearest surface falls {nearest} px short");
     // The elevator carries the player up.
-    let world = harness.world();
-    let (deck, lift) = world
-        .query::<(Entity, &Elevator)>()
-        .map(|(entity, lift)| (entity, *lift))
-        .next()
-        .expect("the elevator");
-    assert_eq!(lift.stop, Stop::Bottom);
+    let (deck, lift) = elevator(&harness);
+    assert_eq!(stop_of(&lift), Stop::Bottom);
     let deck_top = |harness: &UiHarness| {
         let world = harness.world();
         let at = world.get::<Position>(deck).unwrap().0;
@@ -743,7 +738,7 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
         };
         at.y + collider.offset.y - half_extents.y
     };
-    let stop = |harness: &UiHarness| harness.world().get::<Elevator>(deck).unwrap().stop;
+    let stop = |harness: &UiHarness| stop_of(&elevator(harness).1);
     let middle = harness.world().get::<Position>(deck).unwrap().0.x + 96.0;
     let feet = deck_top(&harness);
     let player = fresh_player(
@@ -799,7 +794,7 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
             harness.harness_mut().press_action("move_right");
             running = true;
         }
-        held |= harness.world().get::<Elevator>(deck).unwrap().held;
+        held |= elevator(&harness).1.is_paused();
         let at = centre(&harness, player);
         let (low, high) = (at - player_half(), at + player_half());
         let inside = low.x < right
@@ -819,12 +814,166 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
     assert_eq!(stop(&harness), Stop::Top, "it went on to the top");
 }
 
-/// The run's elevator, its deck and its state.
-fn elevator(harness: &UiHarness) -> (Entity, Elevator) {
+/// Where the elevator stands or goes, read off its follower: the end it
+/// stands at, or its way between them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stop {
+    Bottom,
+    Top,
+    Rising,
+    Falling,
+}
+
+/// `lift`'s stop: its first point the bottom and its last the top, rising
+/// between them until it is on its way back.
+fn stop_of(lift: &PathFollower) -> Stop {
+    match lift.end() {
+        Some(PathEnd::First) => Stop::Bottom,
+        Some(PathEnd::Last) => Stop::Top,
+        None if lift.returning() => Stop::Falling,
+        None => Stop::Rising,
+    }
+}
+
+/// One frame, adding the plays of the lift's start and stop sounds, by the
+/// audio log, to `heard`.
+fn step_hearing(harness: &mut UiHarness, heard: &mut [usize; 2]) {
+    harness.step(1);
+    heard[0] += super::player::plays(harness, "ex10_lift_start_sfx");
+    heard[1] += super::player::plays(harness, "ex10_lift_stop_sfx");
+}
+
+/// S-19: the elevator is the kit's two-way lift, the player its only
+/// rider. A foe standing on it sends it nowhere; the player it carried up
+/// holds it at the top, and stepping off and on again rides it down, where
+/// it stays under its rider until that one steps off and on; its start
+/// sound plays once at each leaving and its stop sound once at each
+/// arrival.
+#[test]
+fn the_lift_takes_the_player_down_from_its_top_and_no_foe_anywhere() {
+    use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
+    use example_01_platformer::features::enemies::spawn as spawn_enemy;
+    use tungsten::kit::StateMachine;
+
+    let level = source();
+    let upper = level.platform("mine_upper").clone();
+    let mut harness = harness();
+    start(&mut harness);
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    let (deck, _) = elevator(&harness);
+    let stop = |harness: &UiHarness| stop_of(&elevator(harness).1);
+    let middle = harness.world().get::<Position>(deck).unwrap().0.x + 96.0;
+    let surface = |harness: &UiHarness| deck_box(harness, deck).0.y;
+    // Off the lift: on the upper level beside its shaft, near enough that a
+    // foe on the deck below stays awake.
+    let aside = Vec2::new(
+        (upper.left + 2.0) * TILE,
+        upper.row * TILE - player_half().y - 0.5,
+    );
+    let aboard = |harness: &UiHarness| Vec2::new(middle, surface(harness) - player_half().y - 0.5);
+    let mut heard = [0; 2];
+
+    // A crawler standing on the deck for two seconds, its mind taken away:
+    // a controller on it, no rider of its rule's.
+    // The run's own player, whom the listener follows.
+    let player = super::player_entity(&harness);
+    super::teleport(&mut harness, player, aside);
+    let body = super::kind_body(EnemyKind::Crawler);
+    let corner = Vec2::new(middle, surface(&harness) - body.half.y - 0.5) - body.centre;
+    let foe = spawn_enemy(harness.world_mut(), EnemyKind::Crawler, corner).expect("its prefab");
+    harness
+        .world_mut()
+        .remove_component::<StateMachine<EnemyState>>(foe);
+    for frame in 0..120 {
+        step_hearing(&mut harness, &mut heard);
+        assert_eq!(stop(&harness), Stop::Bottom, "frame {frame}: under a foe");
+    }
+    let stood = harness.world().get::<PlatformerController>(foe);
+    assert_eq!(
+        stood.and_then(PlatformerController::ground),
+        Some(deck),
+        "the foe stands on the deck"
+    );
+    harness.world_mut().despawn(foe);
+    assert_eq!(heard, [0, 0], "no sound under a foe");
+
+    // The player rides it to the top, where it stays two seconds under its
+    // rider.
+    let on = aboard(&harness);
+    super::teleport(&mut harness, player, on);
+    for _ in 0..600 {
+        step_hearing(&mut harness, &mut heard);
+        if stop(&harness) == Stop::Top {
+            break;
+        }
+    }
+    assert_eq!(stop(&harness), Stop::Top, "carried to the top");
+    assert_eq!(heard, [1, 1], "one start, one stop");
+    for frame in 0..120 {
+        step_hearing(&mut harness, &mut heard);
+        assert_eq!(stop(&harness), Stop::Top, "frame {frame}: under its rider");
+    }
+
+    // Off and on again: it leaves within the boarding's 0.3 s and two
+    // steps, and carries its rider to the bottom, feet on its deck.
+    let ride = |harness: &mut UiHarness, heard: &mut [usize; 2], to: Stop| {
+        let from = stop(harness);
+        super::teleport(harness, player, aside);
+        for _ in 0..6 {
+            step_hearing(harness, heard);
+        }
+        assert_eq!(stop(harness), from, "left alone a moment, it stands");
+        let on = aboard(harness);
+        super::teleport(harness, player, on);
+        let mut left = None;
+        for frame in 1..=600 {
+            step_hearing(harness, heard);
+            if left.is_none() && stop(harness) != from {
+                left = Some(frame);
+            }
+            if left.is_some() {
+                let feet = centre(harness, player).y + player_half().y;
+                let top = surface(harness);
+                assert!(
+                    (feet - top).abs() <= 1.0,
+                    "frame {frame}: feet at {feet}, the deck's top at {top}"
+                );
+            }
+            if stop(harness) == to {
+                break;
+            }
+        }
+        assert_eq!(stop(harness), to, "carried to its other end");
+        let left = left.expect("it left");
+        assert!(
+            left <= 20,
+            "it left {left} steps after its rider stepped on"
+        );
+    };
+    ride(&mut harness, &mut heard, Stop::Bottom);
+    assert_eq!(heard, [2, 2], "a start and a stop more");
+    // At the bottom it stays under its rider, until that one steps off and
+    // on.
+    for frame in 0..120 {
+        step_hearing(&mut harness, &mut heard);
+        assert_eq!(
+            stop(&harness),
+            Stop::Bottom,
+            "frame {frame}: under its rider"
+        );
+    }
+    assert_eq!(heard, [2, 2]);
+    ride(&mut harness, &mut heard, Stop::Top);
+    assert_eq!(heard, [3, 3], "and again on the way back up");
+}
+
+/// The run's elevator, its deck and its follower.
+fn elevator(harness: &UiHarness) -> (Entity, PathFollower) {
     harness
         .world()
-        .query::<(Entity, &Elevator)>()
-        .map(|(entity, lift)| (entity, *lift))
+        .query::<(Entity, &LiftMarker, &PathFollower)>()
+        .map(|(entity, _, lift)| (entity, lift.clone()))
         .next()
         .expect("the elevator")
 }
@@ -850,18 +999,25 @@ fn inside_deck(harness: &UiHarness, deck: Entity, player: Entity) -> bool {
 }
 
 /// The run on the map at a fixed step a frame, its enemies off, with the
-/// elevator at its top stop, left there unridden.
-fn lift_at_top() -> (UiHarness, Entity, Elevator) {
+/// elevator at its top stop, left there unridden: its follower staged
+/// through its saved form, its time its way out by the kit's own sum, and
+/// its body at its last point.
+fn lift_at_top() -> (UiHarness, Entity, PathFollower) {
     let mut harness = harness();
     start(&mut harness);
     calm(&mut harness);
     harness.harness_mut().set_dt(DT);
     let (deck, lift) = elevator(&harness);
+    let (bottom, top) = (lift.points()[0], lift.points()[1]);
+    let mut saved = serde_json::to_value(&lift).expect("a follower serializes");
+    saved["time"] = serde_json::json!(bottom.distance(top) / lift.speed());
+    let staged: PathFollower = serde_json::from_value(saved).expect("a follower at its top");
     let world = harness.world_mut();
-    world.get_mut::<Position>(deck).unwrap().0 = lift.top;
-    world.get_mut::<PrevPosition>(deck).unwrap().0 = lift.top;
-    world.get_mut::<Elevator>(deck).unwrap().stop = Stop::Top;
+    world.get_mut::<Position>(deck).unwrap().0 = top;
+    world.get_mut::<PrevPosition>(deck).unwrap().0 = top;
+    *world.get_mut::<PathFollower>(deck).unwrap() = staged;
     harness.step(1);
+    assert_eq!(stop_of(&elevator(&harness).1), Stop::Top);
     (harness, deck, lift)
 }
 
@@ -878,7 +1034,7 @@ fn turned_back(harness: &mut UiHarness, deck: Entity, player: Entity) -> Vec<Sto
             deck_box(harness, deck),
             centre(harness, player)
         );
-        let stop = elevator(harness).1.stop;
+        let stop = stop_of(&elevator(harness).1);
         if stops.last() != Some(&stop) {
             stops.push(stop);
         }
@@ -906,9 +1062,10 @@ fn the_elevator_turns_back_over_a_player_and_sets_one_inside_out() {
     // A player standing on a slab halfway down, which the deck meets at its
     // eased path's top speed.
     let (mut harness, deck, lift) = lift_at_top();
-    let half_way = (lift.top.y + lift.bottom.y) * 0.5;
+    let (bottom, top) = (lift.points()[0], lift.points()[1]);
+    let half_way = (top.y + bottom.y) * 0.5;
     let (min, max) = deck_box(&harness, deck);
-    let head = half_way + (max.y - min.y) + (min.y - lift.top.y) + 4.0;
+    let head = half_way + (max.y - min.y) + (min.y - top.y) + 4.0;
     let feet = head + player_half().y * 2.0;
     super::floor(
         &mut harness,
@@ -934,7 +1091,7 @@ fn the_elevator_turns_back_over_a_player_and_sets_one_inside_out() {
         calm(&mut rest);
         rest.harness_mut().set_dt(DT);
         let (deck, lift) = elevator(&rest);
-        assert_eq!(lift.stop, Stop::Bottom);
+        assert_eq!(stop_of(&lift), Stop::Bottom);
         let (min, max) = deck_box(&rest, deck);
         let y = if inset > 0.0 {
             min.y + inset
@@ -978,7 +1135,7 @@ fn a_still_rider_idles_on_the_rising_elevator() {
     let mut rising = 0;
     for _ in 0..600 {
         harness.step(1);
-        match elevator(&harness).1.stop {
+        match stop_of(&elevator(&harness).1) {
             Stop::Rising => {
                 rising += 1;
                 assert_eq!(state(&harness), "idle", "a still rider, {rising} frames up");

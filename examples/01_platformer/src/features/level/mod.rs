@@ -188,10 +188,6 @@ impl Plugin for LevelPlugin {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<components::AmbientEmitter>("ambient_emitter");
         world.register_saved_with(
-            "elevator",
-            SaveOptions::<elevator::Elevator>::form::<elevator::ElevatorForm>(),
-        );
-        world.register_saved_with(
             "geyser",
             SaveOptions::<geyser::Geyser>::form::<geyser::GeyserForm>(),
         );
@@ -199,7 +195,7 @@ impl Plugin for LevelPlugin {
         world.register_component::<components::Hazard>("hazard");
         world.register_component::<components::Area>("area");
         world.register_component::<components::Glow>("glow");
-        world.register_component::<elevator::ElevatorDef>("elevator");
+        world.register_component::<elevator::Lift>("elevator");
         world.register_component::<geyser::Geyser>("geyser");
         // The geysers' cycle, the kit's machine, which registers no name
         // of its own: a prefab's component and a saved one.
@@ -282,9 +278,8 @@ impl Plugin for CursorPlugin {
 /// Spawns the level for a run, owned by gameplay: the map and its objects,
 /// each one a save names ([`saved`]) taking the save ID its name derives
 /// ([`SaveId::authored`]), the start's [`BOUNDARY`], the basins' chill and crust ([`lava::start`]), the geysers' cycles
-/// ([`geyser::start`]), the elevator at rest
-/// ([`elevator::start`]), the moon's light, the
-/// level's clock, the midnight ambient and the post stack. The player's
+/// ([`geyser::start`]), the elevators' decks listed ([`elevator::start`]),
+/// the moon's light, the level's clock, the midnight ambient and the post stack. The player's
 /// prefab carries the run's camera, a rig bounded by the map. Returns the
 /// objects in layer and file order.
 ///
@@ -387,14 +382,14 @@ pub fn name_saved(world: &mut World) {
 }
 
 /// Whether a save names the map object `entity`, which then takes a save
-/// ID: a lava basin, a deck, a dummy, an enemy, a placed orb or a geyser,
+/// ID: a lava basin, a deck, the elevator's among them, a dummy, an enemy, a
+/// placed orb or a geyser,
 /// the layers `tools/level.py` holds to unique names. Props, slabs, iron,
 /// areas, emitters and markers take none, so an art change moves no save
 /// (schema 10).
 fn saved(world: &World, entity: Entity) -> bool {
     world.has::<components::Hazard>(entity)
         || world.has::<PathFollower>(entity)
-        || world.has::<elevator::ElevatorDef>(entity)
         || world.has::<Dummy>(entity)
         || world.has::<Enemy>(entity)
         || world.has::<Orb>(entity)
@@ -407,6 +402,7 @@ fn saved(world: &World, entity: Entity) -> bool {
 pub fn despawn(world: &mut World) {
     world.remove_resource::<SceneTime>();
     world.remove_resource::<SavedNames>();
+    world.remove_resource::<elevator::Decks>();
     world.remove_resource::<components::Cover>();
     world.remove_resource::<components::AreaLight>();
     world.insert_resource(AmbientLight::default());

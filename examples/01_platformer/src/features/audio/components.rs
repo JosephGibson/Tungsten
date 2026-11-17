@@ -106,9 +106,6 @@ pub enum Sound {
     StaffGuttered,
     /// Lava crusting over under the ice spray.
     LavaSet,
-    /// The mine's elevator setting off, and arriving.
-    LiftStarted,
-    LiftStopped,
     /// A cast with no room: a toy at its cap, a body that does not fit or
     /// no cursor.
     Fizzled,
@@ -180,7 +177,7 @@ pub enum Sound {
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 67] = [
+    pub const ALL: [Sound; 65] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -211,8 +208,6 @@ impl Sound {
         Sound::Splintered,
         Sound::StaffGuttered,
         Sound::LavaSet,
-        Sound::LiftStarted,
-        Sound::LiftStopped,
         Sound::Fizzled,
         Sound::BallThudded,
         Sound::DryFired,
@@ -284,8 +279,6 @@ impl Sound {
             Sound::Splintered => "splintered",
             Sound::StaffGuttered => "staff_guttered",
             Sound::LavaSet => "lava_set",
-            Sound::LiftStarted => "lift_started",
-            Sound::LiftStopped => "lift_stopped",
             Sound::Fizzled => "fizzled",
             Sound::BallThudded => "ball_thudded",
             Sound::DryFired => "dry_fired",

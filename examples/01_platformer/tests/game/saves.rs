@@ -38,7 +38,7 @@ use example_01_platformer::features::enemies::{self, snowball, troll};
 use example_01_platformer::features::gun;
 use example_01_platformer::features::gun::components::{Bullet, Reload};
 use example_01_platformer::features::level;
-use example_01_platformer::features::level::elevator::{Elevator, Stop};
+use example_01_platformer::features::level::elevator::Lift;
 use example_01_platformer::features::level::geyser::{self, Geyser, GeyserPhase};
 use example_01_platformer::features::level::lava::CRUST_SECS;
 use example_01_platformer::features::level::lava::{self, Lava};
@@ -266,7 +266,7 @@ fn busy(harness: &mut UiHarness) {
 fn platform_points(harness: &UiHarness) -> Vec<[f32; 2]> {
     let mut points: Vec<(u64, [f32; 2])> = harness
         .world()
-        .query_filtered::<(&Saved, &Position, &PathFollower), tungsten::core::Without<Elevator>>()
+        .query_filtered::<(&Saved, &Position, &PathFollower), tungsten::core::Without<Lift>>()
         .map(|(id, at, _)| (id.id().0, at.0.to_array()))
         .collect();
     points.sort_by_key(|&(id, _)| id);
@@ -418,7 +418,7 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
         Abilities, Aim, ContactDamage, Cooldown, Counters, Delivery, Effects, Facing, Flags,
         Follow, Health, Hitbox, Hurtbox, ImpactDamage, Knockback, Level, Lifetime, LinearMotion, Orbit,
         Oscillator, PathFollower, Pickup, PlatformerController, Projectile, Resist, Shield,
-        Source, Spawner, Stats, Steering, Tags, TopDownMover, Tomes, Elevator, Geyser, Lava,
+        Source, Spawner, Stats, Steering, Tags, TopDownMover, Tomes, Geyser, Lava,
         Spellbook, Lantern, Bullet, Reload, Enemy, Brain, Sight, StateMachine<EnemyState>,
         StateMachine<GeyserPhase>, Displaced, Orb, Holding, BlackHole, IronScrap, MapProp, Plank,
     );
@@ -447,7 +447,7 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
 
 fn lists(kind: &str) -> Lists {
     use example_01_platformer::features::level::components::{Glow, GlowParts, Hazard};
-    use example_01_platformer::features::level::elevator::{CableLook, ElevatorDef};
+    use example_01_platformer::features::level::elevator::CableLook;
     use example_01_platformer::features::level::lava::CrustLook;
     use example_01_platformer::features::player::components::Moves;
     use example_01_platformer::features::toys::components::{
@@ -504,9 +504,15 @@ fn lists(kind: &str) -> Lists {
             rebuilt: [&body[..], &[name::<SceneEntity>()]].concat(),
             presentation: drawn.to_vec(),
         },
+        // The elevator, the kit's lift: its follower saved, its marker and
+        // its cues, its start and stop sounds, its prefab's again.
         "elevator" => Lists {
             recorded: Vec::new(),
-            rebuilt: [&body[..], &[name::<SceneEntity>(), name::<ElevatorDef>()]].concat(),
+            rebuilt: [
+                &body[..],
+                &[name::<SceneEntity>(), name::<Lift>(), name::<Cues>()],
+            ]
+            .concat(),
             presentation: [&drawn[..], &[name::<CableLook>()]].concat(),
         },
         "hazard" => Lists {
@@ -816,7 +822,7 @@ fn lists(kind: &str) -> Lists {
 fn kind(world: &World, entity: Entity) -> &'static str {
     if world.has::<Player>(entity) {
         "player"
-    } else if world.has::<Elevator>(entity) {
+    } else if world.has::<Lift>(entity) {
         "elevator"
     } else if world.has::<PathFollower>(entity) {
         "platform"
@@ -3191,12 +3197,12 @@ fn placed_health_orbs_never_fade_and_one_taken_stays_gone_through_a_load() {
     assert_eq!(left, expected, "the taken one gone, the rest there");
 }
 
-/// The elevator's deck and its state.
-fn elevator(harness: &UiHarness) -> (Entity, Elevator) {
+/// The elevator's deck and its follower.
+fn elevator(harness: &UiHarness) -> (Entity, PathFollower) {
     harness
         .world()
-        .query::<(Entity, &Elevator)>()
-        .map(|(entity, lift)| (entity, *lift))
+        .query::<(Entity, &Lift, &PathFollower)>()
+        .map(|(entity, _, lift)| (entity, lift.clone()))
         .next()
         .expect("the mine's elevator")
 }
@@ -3234,22 +3240,28 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
     let middle = harness.world().get::<Position>(deck).unwrap().0.x + 96.0;
     let bottom = deck_top(&harness, deck);
     stand(&mut harness, player, middle, bottom);
-    let halfway = bottom - (lift.bottom.y - lift.top.y) * 0.5;
+    let halfway = bottom - (lift.points()[0].y - lift.points()[1].y) * 0.5;
     for _ in 0..600 {
         harness.step(1);
         if deck_top(&harness, deck) < halfway {
             break;
         }
     }
-    assert_eq!(elevator(&harness).1.stop, Stop::Rising, "halfway up");
+    let rising = elevator(&harness).1;
+    assert!(
+        rising.end().is_none() && !rising.returning(),
+        "halfway up, rising"
+    );
     let shelf = basin(&harness, SaveId::authored("lava_shelf").0);
     lava::set_cold(harness.world_mut(), shelf, 0.2);
     let world = harness.world();
     assert!(lava::crust_left(world, lake).is_some_and(|left| left > 1.0 && left < 4.0));
     assert_eq!(lava::cold_of(world, shelf), 0.2);
-    assert_eq!(world.query::<&Elevator>().count(), 1);
+    assert_eq!(world.query::<&Lift>().count(), 1);
     let (deck, lift) = elevator(&harness);
-    assert!(world.has::<PathFollower>(deck) && lift.ridden);
+    // Its rider's mark, as its save holds it.
+    let ridden = serde_json::to_value(&lift).expect("a follower serializes")["ridden"] == true;
+    assert!(world.has::<PathFollower>(deck) && ridden);
     let saved = capture(&harness);
     // Loaded from its file, as Continue loads it, it captures back to
     // itself: the crust's touch held, its surface solid, the deck mid-path.
@@ -3316,7 +3328,11 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
         );
     }
     let (_, lift) = elevator(&fresh);
-    assert_eq!(lift.stop, Stop::Top, "carried to the top");
+    assert_eq!(
+        lift.end(),
+        Some(tungsten::kit::PathEnd::Last),
+        "carried to the top"
+    );
     // The crust melted on the way: its touch is back.
     let world = fresh.world();
     assert!(!lava::crusted(world, lake), "melted");
@@ -3326,6 +3342,292 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
             .is_some_and(tungsten::kit::ContactDamage::is_on),
         "its touch back"
     );
+}
+
+/// What an older save's lift does once loaded.
+enum LiftThen {
+    /// It reaches this end at the older build's step count, within four.
+    Arrives(tungsten::kit::PathEnd, u32),
+    /// It leaves the top at the first count and reaches the bottom at the
+    /// second, each the older build's within four.
+    Returns(u32, u32),
+    /// It stands at this end two seconds.
+    Stands(tungsten::kit::PathEnd),
+}
+
+/// S-19: a schema-40 save's lift loads onto the kit's follower where it
+/// stood and goes on as the older build's would: the five states a ride
+/// passes through, a trip held mid-shaft, one resumed there and one saved
+/// on the step it reached each end.
+#[test]
+fn an_older_saves_lift_keeps_its_place_and_trip() {
+    use serde_json::json as value;
+    use tungsten::kit::PathEnd;
+    const DT: f32 = 1.0 / 60.0;
+    let stamp = tungsten::core::SaveStamp::new(40, "0.117.0", 1_760_400_000_000);
+    let dir = user_folder("lift-40");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    let player = player_entity(&harness);
+    let home = centre(&harness, player);
+    let (deck, lift) = elevator(&harness);
+    let (bottom, top) = (lift.points()[0], lift.points()[1]);
+    assert_eq!(
+        (bottom.to_array(), top.to_array()),
+        ([20160.0, 3351.0], [20160.0, 2327.0]),
+        "the points schema 40's lift held"
+    );
+    let middle = bottom.x + 96.0;
+    // The deck's top over its point.
+    let surface = deck_top(&harness, deck) - bottom.y;
+    // The way out as the old follower's clamp left it: the kit's own sum.
+    let way = f64::from(bottom.distance(top) / lift.speed());
+    let follower = |from: [f32; 2], to: [f32; 2], time: f64| {
+        value!({ "easing": "sine_in_out", "mode": "stop", "points": [from, to],
+            "speed": 320.0, "time": time })
+    };
+    let (low, high) = (bottom.to_array(), top.to_array());
+    let at = |y: f32| value!([20160.0, y]);
+    // Each: the lift's record as schema 40 wrote it, where its deck stood,
+    // whether the player stood on it, whether its trip was held, and what
+    // it does next.
+    let cases: [(&str, serde_json::Value, f32, bool, bool, LiftThen); 9] = [
+        (
+            "boarding",
+            value!({ "components": { "elevator": { "board": 0.266_666_650_772_094_7, "ridden": true } } }),
+            3351.0,
+            true,
+            false,
+            LiftThen::Arrives(PathEnd::Last, 208),
+        ),
+        (
+            "rising",
+            value!({ "components": {
+                "elevator": { "ridden": true, "stop": "rising" },
+                "path_follower": follower(low, high, 1.616_665_840_148_925_8),
+                "position": at(2_830.623),
+                "transform": { "position": at(2_830.623) },
+                "velocity": [0.0, -502.661_102_294_921_9] } }),
+            2_830.623,
+            true,
+            false,
+            LiftThen::Arrives(PathEnd::Last, 96),
+        ),
+        (
+            "at the top, ridden",
+            value!({ "components": {
+                "elevator": { "ridden": true, "stop": "top" },
+                "position": at(2327.0),
+                "transform": { "position": at(2327.0) } } }),
+            2327.0,
+            true,
+            false,
+            LiftThen::Stands(PathEnd::Last),
+        ),
+        (
+            "at the top, left alone",
+            value!({ "components": {
+                "elevator": { "idle": 1.216_666_221_618_652_3, "stop": "top" },
+                "position": at(2327.0),
+                "transform": { "position": at(2327.0) } } }),
+            2327.0,
+            false,
+            false,
+            LiftThen::Returns(166, 358),
+        ),
+        (
+            "falling",
+            value!({ "components": {
+                "elevator": { "stop": "falling" },
+                "path_follower": follower(high, low, 0.350_000_083_446_502_7),
+                "position": at(2_356.929_7),
+                "transform": { "position": at(2_356.929_7) },
+                "velocity": [0.0, 165.454_086_303_710_94] } }),
+            2_356.929_7,
+            false,
+            false,
+            LiftThen::Arrives(PathEnd::First, 172),
+        ),
+        // A quarter of the way up, held for its rider, so with no
+        // follower: the new path's remainder, 2.13 s.
+        (
+            "held a quarter up",
+            value!({ "components": {
+                "elevator": { "held": true, "ridden": true, "stop": "rising" },
+                "position": at(3095.0),
+                "transform": { "position": at(3095.0) } } }),
+            3095.0,
+            true,
+            true,
+            LiftThen::Arrives(PathEnd::Last, 128),
+        ),
+        // A quarter of the way down, just resumed: its follower begins
+        // where it stands.
+        (
+            "resumed a quarter down",
+            value!({ "components": {
+                "elevator": { "stop": "falling" },
+                "path_follower": follower([20160.0, 2583.0], low, 0.0),
+                "position": at(2583.0),
+                "transform": { "position": at(2583.0) } } }),
+            2583.0,
+            false,
+            false,
+            LiftThen::Arrives(PathEnd::First, 128),
+        ),
+        // The step it reached each end, before the old tick named the stop.
+        (
+            "arriving at the top",
+            value!({ "components": {
+                "elevator": { "ridden": true, "stop": "rising" },
+                "path_follower": follower(low, high, way),
+                "position": at(2327.0),
+                "transform": { "position": at(2327.0) } } }),
+            2327.0,
+            true,
+            false,
+            LiftThen::Stands(PathEnd::Last),
+        ),
+        (
+            "arriving at the bottom",
+            value!({ "components": {
+                "elevator": { "stop": "falling" },
+                "path_follower": follower(high, low, way) } }),
+            3351.0,
+            false,
+            false,
+            LiftThen::Stands(PathEnd::First),
+        ),
+    ];
+    for (name, record, stood, rider, held, then) in cases {
+        // A new build's capture, the player on the deck or away, rewritten
+        // to schema 40's shape: the lift's record and its version.
+        if rider {
+            stand(&mut harness, player, middle, stood + surface);
+        } else {
+            teleport(&mut harness, player, home);
+        }
+        let mut older = json(&capture(&harness));
+        let world = &mut older["world"];
+        world["versions"]["components"]["elevator"] = value!(1);
+        world["areas"][level::MAP]["named"]["deck_elevator"] = record;
+        let slots = harness_slots(&harness);
+        slots
+            .save_stamped("slot_1", &older, &stamp)
+            .expect("a schema 40 save is written");
+        let migrated = slots
+            .load::<SaveGame>("slot_1")
+            .expect("a schema 40 save migrates");
+        // On the JSON: a restore ignores a version no registration names.
+        let moved = json(&migrated);
+        let record = &moved["world"]["areas"][level::MAP]["named"]["deck_elevator"];
+        assert!(
+            record["components"].get("elevator").is_none(),
+            "{name}: {record}"
+        );
+        assert!(
+            record["components"]["path_follower"]["rider"]["two_way"] == true,
+            "{name}: {record}"
+        );
+        let versions = &moved["world"]["versions"]["components"];
+        assert!(versions.get("elevator").is_none(), "{name}: {versions}");
+        let mut loaded = super::harness();
+        loaded.harness_mut().set_dt(DT);
+        load(&mut loaded, migrated);
+        calm(&mut loaded);
+        let (deck, lift) = elevator(&loaded);
+        let point = loaded.world().get::<Position>(deck).unwrap().0;
+        assert!(
+            (point.x - bottom.x).abs() < 0.01 && (point.y - stood).abs() < 0.01,
+            "{name}: the deck stands at {point}, saved at {stood}"
+        );
+        assert_eq!(lift.is_paused(), held, "{name}: held");
+        // A capture of it reads back, its follower as the migration wrote
+        // it.
+        let again = json(&capture(&loaded));
+        let _: SaveGame =
+            serde_json::from_value(again.clone()).unwrap_or_else(|err| panic!("{name}: {err}"));
+        let (wrote, reads) = (
+            &record["components"]["path_follower"],
+            &again["world"]["areas"][level::MAP]["named"]["deck_elevator"]["components"]["path_follower"],
+        );
+        for key in ["time", "hold"] {
+            let (wrote, reads) = (
+                wrote.get(key).and_then(serde_json::Value::as_f64),
+                reads.get(key).and_then(serde_json::Value::as_f64),
+            );
+            assert!(
+                (wrote.unwrap_or(0.0) - reads.unwrap_or(0.0)).abs() < 1e-5,
+                "{name}: {key} {wrote:?} reads back {reads:?}"
+            );
+        }
+        for key in ["boarding", "carried", "paused"] {
+            assert_eq!(wrote.get(key), reads.get(key), "{name}: {key}");
+        }
+        loaded.world_mut().resource_mut::<Time>().resume();
+        let end = |harness: &UiHarness| elevator(harness).1.end();
+        // Steps until the lift stands at `to`, at most `most` steps.
+        let reach = |harness: &mut UiHarness, to: PathEnd, most: u32| {
+            (1..=most).find(|_| {
+                harness.step(1);
+                end(harness) == Some(to)
+            })
+        };
+        match then {
+            LiftThen::Arrives(to, steps) => {
+                let mut first = 0;
+                if held {
+                    // It waits for its rider's ground.
+                    loaded.step(1);
+                    first = 1;
+                    let now = loaded.world().get::<Position>(deck).unwrap().0;
+                    assert_eq!(now, point, "{name}: held through the first step");
+                }
+                let arrived = reach(&mut loaded, to, steps + 60)
+                    .unwrap_or_else(|| panic!("{name}: it never arrived"))
+                    + first;
+                assert!(
+                    arrived.abs_diff(steps) <= 4,
+                    "{name}: arrived at step {arrived}, the older build's at {steps}"
+                );
+                if rider {
+                    let feet = centre(&loaded, player_entity(&loaded)).y + player_half().y;
+                    let top = deck_top(&loaded, deck);
+                    assert!((feet - top).abs() <= 1.0, "{name}: its rider with it");
+                }
+            }
+            LiftThen::Returns(leaves, arrives) => {
+                assert_eq!(end(&loaded), Some(PathEnd::Last), "{name}");
+                let left = (1..=leaves + 60)
+                    .find(|_| {
+                        loaded.step(1);
+                        end(&loaded).is_none()
+                    })
+                    .unwrap_or_else(|| panic!("{name}: it never left"));
+                assert!(
+                    left.abs_diff(leaves) <= 4,
+                    "{name}: left at step {left}, the older build's at {leaves}"
+                );
+                let arrived = reach(&mut loaded, PathEnd::First, 260)
+                    .unwrap_or_else(|| panic!("{name}: it never arrived"))
+                    + left;
+                assert!(
+                    arrived.abs_diff(arrives) <= 4,
+                    "{name}: arrived at step {arrived}, the older build's at {arrives}"
+                );
+            }
+            LiftThen::Stands(at) => {
+                assert_eq!(end(&loaded), Some(at), "{name}: standing at its end");
+                for step in 0..120 {
+                    loaded.step(1);
+                    assert_eq!(end(&loaded), Some(at), "{name}: step {step}");
+                }
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]

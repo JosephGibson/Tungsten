@@ -25,7 +25,6 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements;
-use crate::features::level::elevator::Elevator;
 use crate::features::props::components::{Crate, Keg};
 use crate::features::run::Run;
 use crate::features::toys::components::{IronBlock, IronScrap};
@@ -170,9 +169,7 @@ pub(crate) fn solid(world: &World, from: Vec2, direction: Vec2, distance: f32, m
         match world.get::<RigidBody>(entity).map(|body| body.kind) {
             Some(BodyKind::Static) => return true,
             // A moving platform or the elevator's deck, not a character.
-            Some(BodyKind::Kinematic)
-                if world.has::<PathFollower>(entity) || world.has::<Elevator>(entity) =>
-            {
+            Some(BodyKind::Kinematic) if world.has::<PathFollower>(entity) => {
                 return true;
             }
             Some(BodyKind::Dynamic) => {

@@ -40,6 +40,13 @@ SLAB_LAYER, IRON_LAYER, WOOD_LAYER = 1, 2, 3
 # The elevator's sheave in its gantry's art, in tiles from the gantry's
 # top-left: the wheel's centre over the shaft, its rim's bottom.
 LIFT_SHEAVE = (0.5, 0.6)
+# The elevator as the kit's lift (7.13e): its rider rule, 0.3 s aboard before
+# it goes and 4 s alone at the top before it comes back, the player its only
+# rider, a fresh one taken back down from the top too; and the sounds its
+# `departed` and `arrived` cues play, 0.3 s apart at least.
+LIFT_RIDER = dict(board=0.3, back=4.0, filter=dict(any=['team.player']), two_way=True)
+LIFT_CUES = dict(departed=[dict(sound=dict(id='ex10_lift_start_sfx', min_interval=0.3))],
+                 arrived=[dict(sound=dict(id='ex10_lift_stop_sfx', min_interval=0.3))])
 WOOD = ('bridge_rope', 'bridge_weathered')
 # A ground platform's style and the family its tiles come from.
 FAMILIES = {'ground': 'masonry', 'pit': 'masonry', 'wet': 'wet', 'basalt': 'basalt', 'mine': 'mine',
@@ -236,8 +243,10 @@ def build_objects(source, images, lit):
     for i, m in enumerate(source['moving_platforms']):
         if 'elevator' in m:
             # The mine's elevator (M79): a cage whose floor's top rests at
-            # `position`'s row in the shaft's collar, which 01 sends up `rise`
-            # rows when stood on; its sprite stands over its floor's body.
+            # `position`'s row in the shaft's collar, which the kit's lift
+            # sends up `rise` rows when the player stands on it and back down
+            # from there; its sprite stands over its floor's body. `elevator`
+            # marks it for 01's own rules.
             lift = m['elevator']
             cage = images['lift_deck_elevator']
             half = [m['half_width'] * tile, source['deck_depth'] / 2]
@@ -246,7 +255,9 @@ def build_objects(source, images, lit):
             prefabs[cls] = dict(sprite=dict(asset_id='ex10_lift_deck_elevator', z_order=Z_DECK), components=dict(
                 rigid_body=dict(kind='kinematic', shape=dict(kind='aabb', half_extents=half),
                                 offset=[half[0], floor + half[1]]),
-                elevator=dict(rise=lift['rise'] * tile, speed=lift['speed'])))
+                path_follower=dict(points=[[0, 0], [0, -lift['rise'] * tile]], speed=lift['speed'],
+                                   mode='ping_pong', easing='sine_in_out', rider=LIFT_RIDER),
+                cues=LIFT_CUES, elevator={}))
             platforms.append(obj(cls, m['position'][0] * tile - half[0], m['position'][1] * tile - floor,
                                  name=m.get('name', '')))
             continue

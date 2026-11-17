@@ -93,9 +93,10 @@ impl SaveData for SaveGame {
     /// black hole's life onto a kit cooldown ([`to_36`]), 37 the props'
     /// caps onto the kit's, marking their records ([`to_37`]), 38 iron's
     /// and the black holes' ([`to_38`]), 39 the summoned dummies' and
-    /// enemies' ([`to_39`]), and 40 the geysers' cycles onto the kit's
-    /// timed machine, their touch kept behind its switch ([`to_40`]).
-    const SCHEMA: u32 = 40;
+    /// enemies' ([`to_39`]), 40 the geysers' cycles onto the kit's timed
+    /// machine, their touch kept behind its switch ([`to_40`]), and 41 the
+    /// elevator onto the kit's two-way lift ([`to_41`]).
+    const SCHEMA: u32 = 41;
 
     fn migrate_step(
         from: u32,
@@ -177,6 +178,13 @@ impl SaveData for SaveGame {
                     .get_mut("world")
                     .ok_or("schema 39: the save has no world")?;
                 to_40(world);
+                Ok(data)
+            }
+            40 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 40: the save has no world")?;
+                to_41(world);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
@@ -738,6 +746,189 @@ const S39_IDLE: f64 = 2.5;
 const S39_SPUTTER: f64 = 0.6;
 const S39_ERUPT: f64 = 0.8;
 const S39_CHOKE: f64 = 6.0;
+
+/// Schema 40 to 41 over a save's `world`: the mine's elevator moves onto
+/// the kit's two-way lift. Its saved component, [`S40_ELEVATOR`], leaves
+/// the components' versions, and its named record ([`S40_LIFT`]), where
+/// the global record or an area holds one, takes the lift's
+/// `path_follower` in its place ([`s40_lift`]). An untouched lift has no
+/// record and spawns fresh.
+fn to_41(world: &mut Value) {
+    if let Some(Value::Object(versions)) = world
+        .get_mut("versions")
+        .and_then(|versions| versions.get_mut("components"))
+    {
+        versions.remove(S40_ELEVATOR);
+    }
+    if let Some(global) = world.get_mut("global") {
+        s40_area(global);
+    }
+    if let Some(Value::Object(areas)) = world.get_mut("areas") {
+        for area in areas.values_mut() {
+            s40_area(area);
+        }
+    }
+}
+
+/// One area's lift at schema 40: its named record, a patch over a fresh
+/// lift.
+fn s40_area(area: &mut Value) {
+    if let Some(record) = area
+        .get_mut("named")
+        .and_then(|named| named.get_mut(S40_LIFT))
+    {
+        s40_lift(record);
+    }
+}
+
+/// The lift's record from schema 40 to 41.
+///
+/// Its `elevator` is laid over what a fresh one held at schema 40: at the
+/// bottom, nobody boarding, no seconds alone, not ridden, not held. Its
+/// time on the kit's path, the bottom to the top and back, each way
+/// [`s40_way`] seconds, is 0 at the bottom and the way out at the top; on
+/// a trip, the seconds along its way ([`s40_along`]), the way out added
+/// when falling. A trip that has reached its end, the step before the old
+/// tick named the stop, stands at that end, since a ping-pong refuses a
+/// time of its whole length. `path_follower` is written whole in the kit's
+/// saved form, the rider's rule as the prefab has it, with the hold's
+/// state: `boarding` and the seconds a boarding has counted; `carried`
+/// where the player rode it to the stop it stands at; else its seconds
+/// alone, which count toward the return at the top; and `paused` where a
+/// trip was held. `elevator` leaves the record and its `removed`; its
+/// `position`, `transform` and `velocity` stay.
+fn s40_lift(record: &mut Value) {
+    let Value::Object(record) = record else {
+        return;
+    };
+    if let Some(Value::Array(removed)) = record.get_mut("removed") {
+        removed.retain(|name| name.as_str() != Some(S40_ELEVATOR));
+    }
+    let components = record
+        .entry("components")
+        .or_insert_with(|| Value::Object(Default::default()));
+    let Value::Object(components) = components else {
+        return;
+    };
+    let old = components.remove(S40_ELEVATOR);
+    let field = |key: &str| old.as_ref().and_then(|lift| lift.get(key));
+    let stop = field("stop").and_then(Value::as_str).unwrap_or("bottom");
+    let board = field("board").and_then(Value::as_f64);
+    let idle = field("idle").and_then(Value::as_f64).unwrap_or(0.0);
+    let ridden = field("ridden").and_then(Value::as_bool).unwrap_or(false);
+    let held = field("held").and_then(Value::as_bool).unwrap_or(false);
+    let way = s40_way();
+    let falling = stop == "falling";
+    let (time, standing, trip) = if falling || stop == "rising" {
+        let along = s40_along(
+            components.get(S40_FOLLOWER),
+            components.get("position"),
+            falling,
+            way,
+        );
+        // The time the kit reads, an `f32`: at the way out or past it, the
+        // trip has reached its end.
+        if along as f32 >= way as f32 {
+            (if falling { 0.0 } else { way }, true, true)
+        } else {
+            (if falling { way + along } else { along }, false, true)
+        }
+    } else {
+        (if stop == "top" { way } else { 0.0 }, true, false)
+    };
+    let pair = |[x, y]: [f64; 2]| Value::from(vec![Value::from(x), Value::from(y)]);
+    let rider = Value::from_iter([
+        ("board".to_owned(), Value::from(S40_BOARD)),
+        ("back".to_owned(), Value::from(S40_BACK)),
+        (
+            "filter".to_owned(),
+            Value::from_iter([("any".to_owned(), Value::from(vec![Value::from(S40_RIDER)]))]),
+        ),
+        ("two_way".to_owned(), Value::from(true)),
+    ]);
+    let mut follower = Value::from_iter([
+        (
+            "points".to_owned(),
+            Value::from(vec![pair(S40_BOTTOM), pair(S40_TOP)]),
+        ),
+        ("speed".to_owned(), Value::from(f64::from(S40_SPEED))),
+        ("mode".to_owned(), Value::from("ping_pong")),
+        ("easing".to_owned(), Value::from("sine_in_out")),
+        ("time".to_owned(), Value::from(time)),
+        ("rider".to_owned(), rider),
+    ]);
+    if let Value::Object(follower) = &mut follower {
+        if let Some(left) = board.filter(|_| !trip) {
+            follower.insert("boarding".to_owned(), Value::from(true));
+            follower.insert("hold".to_owned(), Value::from((S40_BOARD - left).max(0.0)));
+        } else if standing && ridden {
+            follower.insert("carried".to_owned(), Value::from(true));
+        } else if stop == "top" {
+            follower.insert("hold".to_owned(), Value::from(idle.max(0.0)));
+        }
+        if held && !standing {
+            follower.insert("paused".to_owned(), Value::from(true));
+        }
+    }
+    components.insert(S40_FOLLOWER.to_owned(), follower);
+}
+
+/// The seconds a schema 40 trip is along its way from the stop it left,
+/// the top when `falling`, `way` seconds from the other: its saved
+/// follower's time where that follower began at that stop; else, for a
+/// trip resumed or turned back mid-shaft, whose follower began there, and
+/// a held one, with none, the time whose eased point is its saved
+/// `position`, the sine's inverse of the share of the shaft it has
+/// covered.
+fn s40_along(follower: Option<&Value>, position: Option<&Value>, falling: bool, way: f64) -> f64 {
+    let (left, toward) = if falling {
+        (S40_TOP, S40_BOTTOM)
+    } else {
+        (S40_BOTTOM, S40_TOP)
+    };
+    let began = follower
+        .and_then(|follower| follower.get("points"))
+        .and_then(|points| points.get(0))
+        .and_then(|point| point.get(1))
+        .and_then(Value::as_f64);
+    let time = follower
+        .and_then(|follower| follower.get("time"))
+        .and_then(Value::as_f64);
+    if let (Some(began), Some(time)) = (began, time)
+        && (began - left[1]).abs() < 0.01
+    {
+        return time.max(0.0);
+    }
+    // A record without a `position` stands where a fresh lift does.
+    let y = position
+        .and_then(|position| position.get(1))
+        .and_then(Value::as_f64)
+        .unwrap_or(S40_BOTTOM[1]);
+    let share = ((y - left[1]) / (toward[1] - left[1])).clamp(0.0, 1.0);
+    (1.0 - 2.0 * share).acos() / std::f64::consts::PI * way
+}
+
+/// The seconds the lift's path takes each way, in the kit's own sum: its
+/// rise over its speed in `f32`, widened, so a lift at its top reads as
+/// standing there.
+fn s40_way() -> f64 {
+    f64::from((S40_BOTTOM[1] - S40_TOP[1]) as f32 / S40_SPEED)
+}
+
+/// Schema 40's lift, frozen for the migration: its record's name in its
+/// area, its saved component and the kit's follower, its points at rest and
+/// at the top, its speed, and its rider's rule as schema 41's prefab has
+/// it: the seconds aboard before it goes, the seconds alone at the top
+/// before it comes back, and the tag its riders carry.
+const S40_LIFT: &str = "deck_elevator";
+const S40_ELEVATOR: &str = "elevator";
+const S40_FOLLOWER: &str = "path_follower";
+const S40_BOTTOM: [f64; 2] = [20160.0, 3351.0];
+const S40_TOP: [f64; 2] = [20160.0, 2327.0];
+const S40_SPEED: f32 = 320.0;
+const S40_BOARD: f64 = 0.3;
+const S40_BACK: f64 = 4.0;
+const S40_RIDER: &str = "team.player";
 
 /// Each record of `prefabs` within `value` the map did not set down
 /// takes [`S36_ADMITTED`].
