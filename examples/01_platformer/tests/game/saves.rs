@@ -56,7 +56,7 @@ use example_01_platformer::features::toys::components::{
 };
 use example_01_platformer::features::toys::{self, BALL_CAP};
 use example_01_platformer::game;
-use example_01_platformer::save::{self, MAP_ENEMIES, SaveGame};
+use example_01_platformer::save::{self, SaveGame};
 use example_01_platformer::shared::{Joined, SaveId, Saved};
 use example_01_platformer::shell::toast::Toasts;
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart, SlotState};
@@ -280,6 +280,15 @@ fn bullets_flying(harness: &UiHarness) -> usize {
         .query::<(&Bullet, &Projectile)>()
         .filter(|(_, projectile)| !projectile.is_spent())
         .count()
+}
+/// How many objects the loaded map's object layer `layer` places.
+fn placed_on(world: &World, layer: &str) -> u64 {
+    let map = world
+        .resource::<tungsten::core::TilemapRegistry>()
+        .get(level::MAP)
+        .expect("the level's map");
+    let layer = map.object_layers.iter().find(|group| group.name == layer);
+    layer.map_or(0, |group| group.objects.len()) as u64
 }
 
 #[test]
@@ -3166,7 +3175,8 @@ fn placed_orbs(harness: &UiHarness) -> Vec<(u64, Entity)> {
 fn placed_health_orbs_never_fade_and_one_taken_stays_gone_through_a_load() {
     let (mut harness, player) = run();
     let orbs = placed_orbs(&harness);
-    assert_eq!(orbs.len() as u64, save::MAP_PICKUPS);
+    assert_eq!(orbs.len() as u64, placed_on(harness.world(), "pickups"));
+    assert!(!orbs.is_empty(), "the map places orbs");
     for &(_, orb) in &orbs {
         let world = harness.world();
         assert_eq!(world.get::<Orb>(orb).unwrap().kind, OrbKind::Health);
@@ -3654,7 +3664,11 @@ fn pit_full_saves_within_two_mib() {
         toys::spawn_ball(world, at, true);
     }
     let alive = enemies::live(world).len();
-    assert_eq!(alive as u64, MAP_ENEMIES, "the map's enemies alive");
+    assert_eq!(
+        alive as u64,
+        placed_on(world, "enemies"),
+        "the map's enemies alive"
+    );
     let started = Instant::now();
     assert!(game_shell::save_to(world, "slot_1"), "the slot is written");
     let took = started.elapsed();
@@ -4319,10 +4333,16 @@ fn the_maps_saved_objects_and_the_player_are_named_with_the_save_ids_their_names
             .filter(|(entity, _)| kind(world, *entity))
             .count() as u64
     };
-    assert_eq!(count(|w, e| w.has::<Geyser>(e)), save::MAP_GEYSERS);
-    assert_eq!(count(|w, e| w.has::<Enemy>(e)), MAP_ENEMIES);
-    assert_eq!(count(|w, e| w.has::<Orb>(e)), save::MAP_PICKUPS);
-    assert_eq!(count(|w, e| w.has::<Dummy>(e)), save::MAP_DUMMIES);
+    // Each saved layer's objects, counted off the loaded map: none empty.
+    for (kind, layer) in [
+        (count(|w, e| w.has::<Geyser>(e)), "geysers"),
+        (count(|w, e| w.has::<Enemy>(e)), "enemies"),
+        (count(|w, e| w.has::<Orb>(e)), "pickups"),
+        (count(|w, e| w.has::<Dummy>(e)), "dummies"),
+    ] {
+        assert_eq!(kind, placed_on(world, layer), "{layer}");
+        assert!(kind > 0, "the map's `{layer}` layer is empty");
+    }
     let id = SaveId::authored("player");
     assert_eq!(id_of(&harness, player), id.0);
     assert_eq!(state.name_of(id), Some("player"));

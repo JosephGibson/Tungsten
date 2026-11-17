@@ -45,9 +45,6 @@ pub const MAP: &str = "ex10_level";
 pub const OPAQUE: &str = "level";
 /// A tile's side, in world pixels.
 pub const TILE: f32 = 64.0;
-/// The map's size, in tiles: `tools/level.json`'s `cols` and `rows`.
-pub const MAP_COLS: u32 = 430;
-pub const MAP_ROWS: u32 = 72;
 /// The physics layer of lava's surface, as a mask bit (`tools/level.py`'s
 /// `LAVA_LAYER`, 4): a static box at each basin's skin that the player's
 /// controller stands on and that meets no body, so balls, blocks and the
@@ -60,22 +57,27 @@ pub const SPAWN_MARKER: &str = "spawn";
 /// The map's place whose row a fall ends the run below: `tools/level.json`'s
 /// `kill_row`, which the player's rule reads at its spawn.
 pub const KILL_MARKER: &str = "kill";
-/// The box the bodies live in, the run's `WorldBounds`: past it, one has
-/// escaped the level. A toy, a prop, the dummy or an enemy whose point, its
-/// sprite's top-left corner, leaves it goes at the frame's flush (its
-/// prefab's `despawn_outside`), and the player past its sides or foot dies.
-pub const WORLD_MIN: Vec2 = Vec2::new(-2.0 * TILE, -8.0 * TILE);
-pub const WORLD_MAX: Vec2 = Vec2::new(
-    (MAP_COLS as f32 + 2.0) * TILE,
-    (MAP_ROWS as f32 + 8.0) * TILE,
-);
-/// The start's boundary (01 (k)): a box left of the map, from x -64 to 0
-/// and from the world's top to its foot, its min and max corners. A static
-/// body in the slabs' stone layer meeting every layer, drawing nothing and
-/// saved by no save, so nothing flung over the start's wall leaves the map
-/// on the left; the map cannot place it, since the tests' sky refuses an
-/// object there.
-pub const BOUNDARY: [Vec2; 2] = [Vec2::new(-TILE, WORLD_MIN.y), Vec2::new(0.0, WORLD_MAX.y)];
+/// How far past the loaded map's edges the box the bodies live in reaches:
+/// two tiles a side, eight above and below. That box is the run's
+/// `WorldBounds` ([`spawn`]): past it, one has escaped the level. A toy, a
+/// prop, the dummy or an enemy whose point, its sprite's top-left corner,
+/// leaves it goes at the frame's flush (its prefab's `despawn_outside`),
+/// and the player past its sides or the kill row dies.
+pub const LEVEL_PAD: Vec2 = Vec2::new(2.0 * TILE, 8.0 * TILE);
+
+/// The start's boundary (01 (k)) for the level's box `bounds`: a box left
+/// of the map, from x -64 to 0 and from the box's top to its foot, its min
+/// and max corners. A static body in the slabs' stone layer meeting every
+/// layer, drawing nothing and saved by no save, so nothing flung over the
+/// start's wall leaves the map on the left; the map cannot place it, since
+/// the tests' sky refuses an object there.
+#[must_use]
+pub fn boundary(bounds: &WorldBounds) -> [Vec2; 2] {
+    [
+        Vec2::new(-TILE, bounds.min().y),
+        Vec2::new(0.0, bounds.max().y),
+    ]
+}
 /// The camera's shake at full trauma, in world pixels, its carrier and its
 /// decay: a hit's trauma of 0.5 moves the view a few pixels for half a
 /// second. The shell's Screen shake option scales the offset.
@@ -194,7 +196,8 @@ impl Plugin for CursorPlugin {
 
 /// Spawns the level for a run, owned by gameplay: the map and its objects,
 /// each one a save names ([`saved`]) taking the save ID its name derives
-/// ([`SaveId::authored`]), the start's [`BOUNDARY`], the basins' chill and crust ([`lava::start`]), the geysers' cycles
+/// ([`SaveId::authored`]), the level's box and the start's boundary
+/// ([`boundary`]), the basins' chill and crust ([`lava::start`]), the geysers' cycles
 /// ([`geyser::start`]), the elevators' decks listed ([`elevator::start`]),
 /// the moon's light, the level's clock, the midnight ambient and the post stack. The player's
 /// prefab carries the run's camera, a rig bounded by the map. Returns the
@@ -234,7 +237,17 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         }
     }
     world.insert_resource(SavedNames(named));
-    let [min, max] = BOUNDARY;
+    // The box the bodies live in, the loaded map grown by `LEVEL_PAD`:
+    // what the kit's `despawn_outside` rules on the toys', props', dummy's
+    // and enemies' prefabs leave, and the player's and the lightning's read.
+    let size = world
+        .get_resource::<TilemapRegistry>()
+        .and_then(|maps| maps.get(MAP))
+        .expect("the level's map loads with the manifest")
+        .pixel_size();
+    let bounds = WorldBounds::new(-LEVEL_PAD, size + LEVEL_PAD);
+    world.insert_resource(bounds);
+    let [min, max] = boundary(&bounds);
     world.spawn_with(
         RigidBodyBundle::r#static(
             Position((min + max) * 0.5),
@@ -246,9 +259,6 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
     lava::start(world);
     geyser::start(world);
     elevator::start(world);
-    // The box the bodies live in, which the kit's `despawn_outside` rules
-    // on the toys', props', dummy's and enemies' prefabs leave.
-    world.insert_resource(WorldBounds::new(WORLD_MIN, WORLD_MAX));
     let mut moon = Light::directional(MOONLIGHT, -std::f32::consts::FRAC_PI_4);
     moon.intensity = MOONLIGHT_INTENSITY;
     world.spawn_with((

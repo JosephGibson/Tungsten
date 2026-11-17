@@ -3,7 +3,6 @@
 //! cull, the small balls' rainbow beside the bowling balls' own colours,
 //! and the rainbow's pure primaries.
 
-use example_01_platformer::features::level::WORLD_MAX;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{BallHue, BlackHole, SmallBall};
 use example_01_platformer::features::toys::systems::{ball_look, pull, rainbow_rgba, tick};
@@ -99,8 +98,9 @@ fn despawn_out_of_bounds_culls_escaped_balls_and_keeps_in_bounds_balls() {
     let partly = ball(&mut harness, Vec2::new(100.0, 1000.0), false);
     let outside = ball(&mut harness, Vec2::new(300.0, 1000.0), false);
     let world = harness.world_mut();
-    world.get_mut::<Position>(partly).unwrap().0 = Vec2::new(100.0, WORLD_MAX.y - 4.0);
-    world.get_mut::<Position>(outside).unwrap().0 = Vec2::new(300.0, WORLD_MAX.y + 4.0);
+    let foot = world.resource::<tungsten::kit::WorldBounds>().max().y;
+    world.get_mut::<Position>(partly).unwrap().0 = Vec2::new(100.0, foot - 4.0);
+    world.get_mut::<Position>(outside).unwrap().0 = Vec2::new(300.0, foot + 4.0);
     harness.step(1);
     let world = harness.world();
     assert!(world.is_alive(inside) && world.is_alive(partly));

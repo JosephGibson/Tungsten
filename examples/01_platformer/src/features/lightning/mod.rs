@@ -25,8 +25,8 @@ use tungsten::core::{
     Shape, Sprite, Stage, Transform, Visibility, World, system,
 };
 use tungsten::kit::{
-    ABILITY_TICK, Blast, Conduct, Health, Phase, Resist, TagFilter, Tags, WorldCue, blast,
-    conduct_from, ensure_phases,
+    ABILITY_TICK, Blast, Conduct, Health, Phase, Resist, TagFilter, Tags, WorldBounds, WorldCue,
+    blast, conduct_from, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, cast_ray};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -34,7 +34,6 @@ use tungsten::{Extracts, Plugin, SceneEntity};
 use crate::features::combat::{FROZEN, Kind, SPELL};
 use crate::features::elements::cascade::Cascades;
 use crate::features::enemies::{self, armour, components::Enemy};
-use crate::features::level::{WORLD_MAX, WORLD_MIN};
 use crate::features::props::{self, components::Keg};
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, body_centre, surface_distance};
@@ -198,8 +197,14 @@ fn met(world: &World, entity: Option<Entity>) -> Met {
 /// not stop it.
 #[must_use]
 pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Landing {
-    let top = Vec2::new(point.x, WORLD_MIN.y);
-    let mut stop = WORLD_MAX.y - top.y;
+    // From the level's box's top to its foot; with no level, at its aim.
+    let (ceiling, foot) = world
+        .get_resource::<WorldBounds>()
+        .map_or((point.y, point.y), |bounds| {
+            (bounds.min().y, bounds.max().y)
+        });
+    let top = Vec2::new(point.x, ceiling);
+    let mut stop = foot - top.y;
     let mut what = Met::Ground;
     let filter = caster.map_or_else(SpatialFilter::new, |caster| {
         SpatialFilter::new().excluding(caster)

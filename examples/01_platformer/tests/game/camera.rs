@@ -5,23 +5,32 @@
 use example_01_platformer::features::level::components::Zoom;
 use example_01_platformer::features::level::draw;
 use example_01_platformer::features::level::title::{TITLE_CAMERA, sky_view};
-use example_01_platformer::features::level::{CAMERA_ROWS, MAP_COLS, MAP_ROWS, TILE};
+use example_01_platformer::features::level::{CAMERA_ROWS, MAP, TILE};
 use example_01_platformer::features::player::{ZOOM_MAX, ZOOM_MIN};
 use glam::Vec2;
 use tungsten::WindowSize;
 use tungsten::core::{
     AssetRegistry, CameraBounds, CameraController, CameraRig, CameraState, FixedRig, FollowRig,
-    RigBlend, RigKind, Transform,
+    RigBlend, RigKind, TilemapRegistry, Transform, World,
 };
 
 use super::{mock_sprite, run};
+
+/// The loaded map's size, in world pixels.
+fn map_size(world: &World) -> Vec2 {
+    world
+        .resource::<TilemapRegistry>()
+        .get(MAP)
+        .expect("the level's map")
+        .pixel_size()
+}
 
 #[test]
 fn the_camera_prefabs_restate_the_map_and_the_sky() {
     let (run, player) = run();
     let world = run.world();
     let view = CAMERA_ROWS * TILE;
-    let map = Vec2::new(MAP_COLS as f32, MAP_ROWS as f32) * TILE;
+    let map = map_size(world);
     let expected = CameraRig::follow(FollowRig::default())
         .with_view_height(view)
         .with_bounds(CameraBounds::new(Vec2::ZERO, map));
@@ -59,6 +68,7 @@ fn camera_clamps_both_axes_and_keeps_cursor_inverse_after_resize_and_zoom() {
     let (mut harness, player) = run();
     // A bare entity the player's rig follows, which no rule kills off the
     // map.
+    let map = map_size(harness.world());
     let world = harness.world_mut();
     let probe = world.spawn_with((Transform::from_position(Vec2::splat(40_000.0)),));
     if let RigKind::Follow(follow) = &mut world.get_mut::<CameraRig>(player).unwrap().kind {
@@ -78,11 +88,8 @@ fn camera_clamps_both_axes_and_keeps_cursor_inverse_after_resize_and_zoom() {
                 "{} vs {zoom}",
                 camera.zoom
             );
-            let maximum = Vec2::new(
-                MAP_COLS as f32 * TILE - width as f32 / zoom,
-                MAP_ROWS as f32 * TILE - height as f32 / zoom,
-            )
-            .max(Vec2::ZERO);
+            let maximum = Vec2::new(map.x - width as f32 / zoom, map.y - height as f32 / zoom)
+                .max(Vec2::ZERO);
             assert!(
                 (camera.position - maximum).length() < 0.01,
                 "{width}x{height} at {multiplier}"
@@ -146,6 +153,7 @@ fn zoom_returns_to_one() {
 #[test]
 fn parallax_covers_camera_extremes_resizes_zoom_and_shake() {
     let (mut harness, _) = run();
+    let map = map_size(harness.world());
     let world = harness.world_mut();
     let assets = world.resource_mut::<AssetRegistry>();
     for (handle, name) in ["ex10_sky", "ex10_distant_ridges", "ex10_near_woodland"]
@@ -157,10 +165,7 @@ fn parallax_covers_camera_extremes_resizes_zoom_and_shake() {
     for (width, height) in [(1920, 1080), (960, 720), (3840, 720)] {
         world.insert_resource(WindowSize { width, height });
         for multiplier in [0.35, 1.0, 3.0] {
-            for position in [
-                Vec2::splat(-16.0),
-                Vec2::new(MAP_COLS as f32 * TILE, MAP_ROWS as f32 * TILE),
-            ] {
+            for position in [Vec2::splat(-16.0), map] {
                 let camera = world.resource_mut::<CameraState>();
                 camera.position = position;
                 camera.zoom = height as f32 / (CAMERA_ROWS * TILE) * multiplier;

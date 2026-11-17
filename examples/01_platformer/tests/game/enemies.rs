@@ -3382,14 +3382,25 @@ fn a_killed_map_enemy_stays_dead_through_a_load() {
         .map(|(entity, _, id)| (id.id().0, entity))
         .collect();
     placed.sort_unstable_by_key(|&(id, _)| id);
-    assert_eq!(placed.len() as u64, save::MAP_ENEMIES, "the map's enemies");
+    // As many as the loaded map's `enemies` layer places.
+    let map = world
+        .resource::<tungsten::core::TilemapRegistry>()
+        .get(example_01_platformer::features::level::MAP)
+        .expect("the level's map");
+    let layer = map
+        .object_layers
+        .iter()
+        .find(|group| group.name == "enemies");
+    let on_map = layer.map_or(0, |group| group.objects.len());
+    assert!(on_map > 0, "the map places enemies");
+    assert_eq!(placed.len(), on_map, "the map's enemies");
     let (dead_id, dead) = placed[0];
     land(&mut harness, dead, Kind::Physical, 1000.0);
     harness.step(3);
     assert!(!harness.world().is_alive(dead));
     let live = enemies::live(harness.world());
     assert!(live.iter().all(|&(id, _)| id != dead_id), "gone");
-    assert_eq!(live.len() as u64, save::MAP_ENEMIES - 1);
+    assert_eq!(live.len(), on_map - 1);
     let saved = save::capture(harness.world()).unwrap();
     let mut fresh = harness_loaded(saved);
     fresh.step(2);
@@ -3399,7 +3410,7 @@ fn a_killed_map_enemy_stays_dead_through_a_load() {
         .map(|(_, id)| id.id().0)
         .collect();
     assert!(!live.contains(&dead_id), "it stays dead");
-    assert_eq!(live.len() as u64, save::MAP_ENEMIES - 1);
+    assert_eq!(live.len(), on_map - 1);
 }
 
 /// A fresh game that loads `save`.
@@ -3724,7 +3735,11 @@ fn an_enemy_thrown_out_of_the_level_is_gone_and_stays_gone_through_a_load() {
         .map(|(entity, _, id)| (entity, id.id().0))
         .min_by_key(|&(_, id)| id)
         .expect("a placed enemy");
-    let out = example_01_platformer::features::level::WORLD_MAX + Vec2::new(400.0, 400.0);
+    let foot = harness
+        .world()
+        .resource::<tungsten::kit::WorldBounds>()
+        .max();
+    let out = foot + Vec2::new(400.0, 400.0);
     harness.world_mut().get_mut::<Position>(enemy).unwrap().0 = out;
     harness.step(2);
     assert!(!harness.world().is_alive(enemy), "the level's edge took it");

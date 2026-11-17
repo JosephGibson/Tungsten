@@ -3,7 +3,7 @@
 //! a run, inside the invulnerability window too, a blow's tint and hurt
 //! clip, and each cast's gesture with the staff's flare.
 
-use example_01_platformer::features::level::{self, MAP, TILE, WORLD_MAX, WORLD_MIN};
+use example_01_platformer::features::level::{self, MAP, TILE};
 use example_01_platformer::features::player::components::Moves;
 use example_01_platformer::features::player::systems::{DEATH_CLIP, HURT_CLIP};
 use example_01_platformer::features::run::DEATH_SECS;
@@ -15,7 +15,7 @@ use tungsten::core::{
     AnimationState, AudioCommand, Entity, ParticleConfigRegistry, ParticleEmitter, PhysicsConfig,
     Position, SoundRegistry, TilemapRegistry, Time, Transform, Velocity,
 };
-use tungsten::kit::{Health, PlatformerController, damage};
+use tungsten::kit::{Health, PlatformerController, WorldBounds, damage};
 use tungsten::testing::UiHarness;
 
 use example_01_platformer::game::GAMEPLAY;
@@ -128,7 +128,8 @@ fn despawn_out_of_bounds_kills_escaped_player_whose_body_drops() {
     let (mut harness, player) = run();
     harness.step(5);
     // Past the box's right side at a height the kill row leaves alone.
-    let out = Vec2::new(WORLD_MAX.x + player_half().x + 50.0, 20.0 * TILE);
+    let right = harness.world().resource::<WorldBounds>().max().x;
+    let out = Vec2::new(right + player_half().x + 50.0, 20.0 * TILE);
     teleport(&mut harness, player, out);
     harness.step(1);
     assert!(health(&harness, player).is_dead());
@@ -191,7 +192,8 @@ fn despawn_out_of_bounds_keeps_player_while_collider_overlaps_bounds() {
     let (mut harness, player) = run();
     harness.step(5);
     // A pixel of its body inside the box's left side.
-    let start = Vec2::new(WORLD_MIN.x - player_half().x + 1.0, 30.0 * TILE);
+    let left = harness.world().resource::<WorldBounds>().min().x;
+    let start = Vec2::new(left - player_half().x + 1.0, 30.0 * TILE);
     teleport(&mut harness, player, start);
     harness.step(1);
     let alive = health(&harness, player);

@@ -25,7 +25,6 @@ use example_01_platformer::features::elements::{
 };
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
-use example_01_platformer::features::level::WORLD_MAX;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{IronBlock, IronScrap, Spray};
 use example_01_platformer::features::toys::systems::{friction, iron_look};
@@ -191,7 +190,11 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
         "frost turns with its metal"
     );
     let escaped = scraps(&harness)[1];
-    harness.world_mut().get_mut::<Position>(escaped).unwrap().0 = WORLD_MAX + Vec2::splat(100.0);
+    let foot = harness
+        .world()
+        .resource::<tungsten::kit::WorldBounds>()
+        .max();
+    harness.world_mut().get_mut::<Position>(escaped).unwrap().0 = foot + Vec2::splat(100.0);
     // Its prefab's `despawn_outside`, at the step's frame's flush.
     harness.step(1);
     assert!(!harness.world().is_alive(escaped));

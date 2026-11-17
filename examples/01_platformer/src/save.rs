@@ -1002,14 +1002,6 @@ fn s31_rest(seconds: f64) -> Value {
     ])
 }
 
-/// The dummies the map's `dummies` layer places.
-pub const MAP_DUMMIES: u64 = 1;
-/// The enemies the map's `enemies` layer places, the health orbs its
-/// `pickups` layer places and the geysers its `geysers` layer places.
-pub const MAP_ENEMIES: u64 = 36;
-pub const MAP_PICKUPS: u64 = 8;
-pub const MAP_GEYSERS: u64 = 3;
-
 /// A small ball or a bowling ball, its hue, its fire and its ice. A full
 /// pit holds 12,000, so each is one flat array in the save: `[id, small, x,
 /// y, vx, vy, hue, hue speed, burn left, ice]`, the last four `null` when

@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use example_01_platformer::features::level::components::Hazard;
 use example_01_platformer::features::level::elevator::Lift as LiftMarker;
-use example_01_platformer::features::level::{BOUNDARY, LAVA_LAYER, MAP, TILE};
+use example_01_platformer::features::level::{self, LAVA_LAYER, MAP, TILE};
 use example_01_platformer::features::player;
 use example_01_platformer::features::run::Run;
 use glam::Vec2;
@@ -19,7 +19,7 @@ use tungsten::core::{
     Collider, Entity, LayerKind, PhysicsConfig, Position, PrevPosition, RigidBody, Shape, Sprite,
     TilemapRegistry, Velocity,
 };
-use tungsten::kit::{CharacterAnimator, PathEnd, PathFollower, PlatformerController};
+use tungsten::kit::{CharacterAnimator, PathEnd, PathFollower, PlatformerController, WorldBounds};
 use tungsten::physics::{BodyKind, SpatialFilter, overlap};
 use tungsten::testing::UiHarness;
 
@@ -34,7 +34,9 @@ const DT: f32 = 1.0 / 60.0;
 struct Source {
     platforms: Vec<Platform>,
     routes: BTreeMap<String, Vec<String>>,
-    hazards: Vec<SourceHazard>,
+    /// The spikes and fires the map places: none, which the launches
+    /// rely on.
+    hazards: Vec<serde_json::Value>,
     moving_platforms: Vec<Moving>,
     kill_row: f32,
     tomes: Vec<SourceTome>,
@@ -70,11 +72,10 @@ impl Source {
 /// open air under it.
 const UNDERSIDE_DECK: &str = "bridge_b";
 
-#[derive(Deserialize)]
-struct SourceHazard {
-    fire: bool,
-    position: [f32; 2],
-}
+/// Why a launch test refuses a placed spike or fire: a launch lands
+/// with no hazard's touch box read, since the map places none.
+const PLACED_HAZARD: &str =
+    "tools/level.json places a spike or a fire: a launch must read its touch box again";
 
 #[derive(Deserialize)]
 struct Moving {
@@ -103,8 +104,6 @@ fn source() -> Source {
 fn deck_depth() -> f32 {
     2.0 * prefab_box("ex10_platform_0").0.y
 }
-/// The spikes' touch box's half extents.
-const SPIKES_HALF: Vec2 = Vec2::new(27.0, 14.0);
 
 /// The launch that lands each route pair: the platforms' names, start and
 /// goal x in tiles, and whether the player jumps on the first step. Every
@@ -330,12 +329,6 @@ fn launch_lands(
     if !grounded(harness, player) || (settled.y + player_half().y - from.row * TILE).abs() > 1.0 {
         return false;
     }
-    let spikes: Vec<Vec2> = level
-        .hazards
-        .iter()
-        .filter(|hazard| !hazard.fire)
-        .map(|hazard| Vec2::from(hazard.position) * TILE)
-        .collect();
     // While rising, then released, then spent.
     let mut double = air.then_some(false);
     let landed = (0..(2.5 / DT) as usize).any(|tick| {
@@ -366,11 +359,7 @@ fn launch_lands(
         }
         harness.step(1);
         let at = centre(harness, player);
-        let spiked = spikes.iter().any(|spike| {
-            let reach = player_half() + SPIKES_HALF;
-            (at - *spike).abs().cmplt(reach).all()
-        });
-        if spiked || at.y > level.kill_row * TILE {
+        if at.y > level.kill_row * TILE {
             return true;
         }
         tick > 3
@@ -380,7 +369,7 @@ fn launch_lands(
             && at.x <= to.right * TILE - player_half().x
     });
     release_all(harness);
-    // `any` stopped on a landing or on a fall onto spikes or past the map.
+    // `any` stopped on a landing or on a fall past the map.
     let at = centre(harness, player);
     landed
         && (at.y + player_half().y - to.row * TILE).abs() < 1.0
@@ -422,6 +411,7 @@ fn search_launch(
 #[test]
 fn authored_routes_and_recovery_shelves_traverse_with_real_physics() {
     let level = source();
+    assert!(level.hazards.is_empty(), "{PLACED_HAZARD}");
     let mut harness = bare_level();
     tile_control(&harness);
     let platforms: BTreeMap<&str, &Platform> = level
@@ -479,6 +469,7 @@ fn authored_routes_and_recovery_shelves_traverse_with_real_physics() {
 #[test]
 fn each_tomes_support_is_reached_from_its_platform_by_the_double_jump() {
     let level = source();
+    assert!(level.hazards.is_empty(), "{PLACED_HAZARD}");
     let mut harness = bare_level();
     tile_control(&harness);
     let mut failures = Vec::new();
@@ -1245,7 +1236,7 @@ fn each_slab_platform_and_iron_box_spawns_one_collider_with_no_join_inside() {
         })
         .collect();
     let mut want = slabs.clone();
-    let [min, max] = BOUNDARY;
+    let [min, max] = level::boundary(world.resource::<WorldBounds>());
     want.push([min.x, min.y, max.x - min.x, max.y - min.y]);
     let key = |b: &[f32; 4]| (b[1] as i64, b[0] as i64, b[2] as i64, b[3] as i64);
     boxes.sort_by_key(key);
@@ -1257,7 +1248,7 @@ fn each_slab_platform_and_iron_box_spawns_one_collider_with_no_join_inside() {
 fn the_start_wall_and_its_boundary_keep_a_thrown_ball_in_the_map() {
     // A bowling ball flung from over the clearing crosses x 0 near row 18,
     // over the wall's top at row 21: the boundary turns it back, where
-    // without it `toys::bounds` would take it past x -128.
+    // without it the level's box would take it past x -128.
     let mut harness = harness();
     start(&mut harness);
     harness.harness_mut().set_dt(DT);
