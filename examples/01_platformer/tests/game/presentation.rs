@@ -5,7 +5,7 @@
 //! material batches, an enemy's alert and search marks with the alert's
 //! one sting, F1's hit boxes beside the colliders while they land, the
 //! theme's own colours' contrast, and the title's starry night, whose stars
-//! leave with it.
+//! leave with it and whose shooting star the kit flies and ends.
 
 use std::path::PathBuf;
 
@@ -1485,6 +1485,100 @@ fn the_title_draws_its_sky_and_its_twinkles_leave_with_it() {
     assert_eq!(stars(&harness), 0, "no star lingers");
     let run = drawn(&harness);
     assert!(run.contains(&960), "the run's sky: {run:?}");
+}
+
+/// The title's shooting star in flight, and where it is drawn.
+fn shooting_star(harness: &UiHarness) -> Option<Vec2> {
+    use example_01_platformer::features::level::title::METEOR;
+    let world = harness.world();
+    let config = world
+        .resource::<ParticleConfigRegistry>()
+        .id_for_name(METEOR)
+        .expect("the star's config");
+    world
+        .query::<(&ParticleEmitter, &Transform)>()
+        .find(|(emitter, _)| emitter.config == config)
+        .map(|(_, at)| at.position)
+}
+
+/// Steps the title until a star is out, then through its flight, calling
+/// `during` with the frames it has been seen for before each of them: the
+/// frames stepped before it came, and its drawn point after each frame it
+/// was alive in, `longest` frames at most.
+fn star_flight(
+    harness: &mut UiHarness,
+    longest: usize,
+    mut during: impl FnMut(&mut UiHarness, usize),
+) -> (u32, Vec<Vec2>) {
+    let mut waited = 0;
+    while shooting_star(harness).is_none() {
+        assert!(waited < 600, "no star came");
+        harness.step(1);
+        waited += 1;
+    }
+    let mut track = Vec::new();
+    while let Some(at) = shooting_star(harness) {
+        track.push(at);
+        assert!(track.len() <= longest, "the star outlives its flight");
+        during(harness, track.len());
+        harness.step(1);
+    }
+    (waited, track)
+}
+
+#[test]
+fn the_titles_shooting_star_crosses_on_the_kit_and_goes() {
+    use example_01_platformer::features::level::title::{
+        METEOR_EVERY, METEOR_HEADING, METEOR_SECS, METEOR_SPEED,
+    };
+    use example_01_platformer::shell::settings::SETTINGS;
+    let dt = 1.0 / 60.0;
+    let longest = (METEOR_SECS / dt).round() as usize + 3;
+    let mut harness = super::harness();
+    harness.harness_mut().set_dt(dt);
+    // The harness stepped the title's first frame.
+    let (waited, track) = star_flight(&mut harness, longest, |_, _| {});
+    let mut frames = 1 + waited;
+    let came = frames as f32 * dt;
+    assert!(came >= METEOR_EVERY, "a star after {came} s");
+    assert!(came <= METEOR_EVERY + 2.0 * dt, "the first after {came} s");
+    // Spawned after its frame's steps and drawn between its last two, it
+    // rests two frames, then crosses on its line at its speed.
+    let stride = METEOR_HEADING.normalize() * METEOR_SPEED * dt;
+    for pair in track[1..].windows(2) {
+        let moved = pair[1] - pair[0];
+        assert!((moved - stride).length() < 1.0, "{moved} a frame");
+    }
+    let flown = track[track.len() - 1].distance(track[0]);
+    assert!(flown >= 900.0, "gone {flown} px out");
+    frames += track.len() as u32;
+    // The second, with Settings pushed over the title five frames into its
+    // flight: it still ends on time.
+    let (waited, track) = star_flight(&mut harness, longest, |harness, seen| {
+        if seen == 5 {
+            let settings = harness.find("Settings").expect("the title's Settings");
+            assert!(harness.focus(settings));
+            harness.harness_mut().press_action("ui_accept");
+        } else if seen == 6 {
+            harness.harness_mut().release_action("ui_accept");
+        }
+    });
+    let came = (frames + waited) as f32 * dt;
+    assert!(
+        came <= 2.0 * METEOR_EVERY + 2.0 * dt,
+        "the second: {came} s"
+    );
+    assert_eq!(super::top(&harness), Some(SETTINGS));
+    let flown = track[track.len() - 1].distance(track[0]);
+    assert!(flown >= 900.0, "gone {flown} px out under Settings");
+    // At 15 fps the engine runs two steps a frame and drops the rest, so
+    // the kit's star, moved and aged by them, takes twice the real time.
+    let mut harness = super::harness();
+    harness.harness_mut().set_dt(1.0 / 15.0);
+    let (_, track) = star_flight(&mut harness, 22, |_, _| {});
+    assert!(track.len() >= 20, "{} frames at 15 fps", track.len());
+    let flown = track[track.len() - 1].distance(track[0]);
+    assert!(flown >= 900.0, "gone {flown} px out at 15 fps");
 }
 
 #[test]
