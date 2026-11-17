@@ -125,20 +125,18 @@ impl Glow {
 }
 
 /// What a glow draws with, on its owner: the halo's and the core's sprite
-/// entities and its light, which leave with the owner.
-#[derive(Debug, Clone, Copy)]
+/// entities and its light, its children (the kit's), which leave with it.
+/// A prefab's `glow` gives it empty beside the [`Glow`], in the spawn's own
+/// move; `level_glows` fills it the first frame it sees the glow.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct GlowParts {
     pub halo: Option<Entity>,
     pub core: Option<Entity>,
     pub light: Option<Entity>,
     /// The pulse's phase, from the owner's save ID or its column.
     pub phase: f32,
-}
-
-/// One of a glow's parts, naming its owner.
-#[derive(Debug, Clone, Copy)]
-pub struct GlowPart {
-    pub owner: Entity,
+    /// Whether its parts have spawned.
+    pub spawned: bool,
 }
 
 /// Whether `level_light` has lit the run yet: its first frame snaps to the

@@ -2,7 +2,8 @@
 //! the particle caps, the drawing order, the lit frames' feet, the props'
 //! animations in step, the staff light's glow and light, the wizard's
 //! overlays on his body, midnight's post stack and moon, the glows'
-//! material batches, an enemy's alert and search marks with the alert's
+//! material batches and their parts as their owners' children, an enemy's
+//! alert and search marks with the alert's
 //! one sting, F1's hit boxes beside the colliders while they land, the
 //! theme's own colours' contrast, and the title's starry night, whose stars
 //! leave with it and whose shooting star the kit flies and ends.
@@ -15,7 +16,7 @@ use example_01_platformer::features::level::draw;
 use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
 use example_01_platformer::game::GAMEPLAY;
-use example_01_platformer::shared::{BURST_CAP, Burst, Saved, spawn_burst};
+use example_01_platformer::shared::{BURST_CAP, Burst, Saved, despawn_tree, spawn_burst};
 use example_01_platformer::shell::options::GameOptions;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, ResolvedManifest, TilemapData, TilemapLayer};
@@ -27,15 +28,18 @@ use tungsten::core::{
     ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Sprite, TilemapInstance,
     TilemapRegistry, Transform, Visibility,
 };
-use tungsten::kit::{Facing, PlatformerController, damage};
+use tungsten::kit::{Children, Facing, Parent, PlatformerController, damage};
 use tungsten::testing::UiHarness;
 use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap_layers};
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::beetle::{self, PLOUGH_HALF};
-use example_01_platformer::features::enemies::components::{Brain, EnemyKind, EnemyState, Strike};
+use example_01_platformer::features::enemies::components::{
+    Brain, Enemy, EnemyKind, EnemyState, Strike,
+};
 use example_01_platformer::features::enemies::draw::{HIT_COLOR, HIT_THICKNESS};
+use example_01_platformer::features::enemies::drops::{Orb, PlacedOrbs};
 use example_01_platformer::features::enemies::goblin::{self, STAB_HALF};
 use example_01_platformer::features::enemies::troll::{self, SLAM_REACH, SWIPE_HALF};
 use example_01_platformer::features::spells::components::Spell;
@@ -752,9 +756,8 @@ fn glows_draw_through_soft_materials_without_absorbing_other_sprites() {
     let (mut harness, _) = run();
     // Only this test's lamps glow.
     let world = harness.world_mut();
-    let owners: Vec<Entity> = world.query::<(Entity, &Glow)>().map(|(e, _)| e).collect();
-    for owner in owners {
-        world.remove_component::<Glow>(owner);
+    for glow in world.query_mut::<&mut Glow>() {
+        glow.hidden = true;
     }
     let halo = world.resource::<MaterialRegistry>().get(HALO_MATERIAL);
     assert!(halo.is_some(), "the manifest's soft halo");
@@ -799,6 +802,65 @@ fn glows_draw_through_soft_materials_without_absorbing_other_sprites() {
         plain
             .iter()
             .all(|b| b.instances.iter().all(|i| i.size == [64.0, 64.0]))
+    );
+}
+
+#[test]
+fn a_glows_parts_are_its_children_and_leave_with_it() {
+    let (mut harness, player) = run();
+    harness.step(1);
+    let world = harness.world();
+    let placed = &world.resource::<PlacedOrbs>().0;
+    let orb = world
+        .query::<(Entity, &Orb, &Saved)>()
+        .find(|(_, _, id)| placed.contains(&id.id().0))
+        .map(|(entity, ..)| entity)
+        .expect("a placed orb");
+    let wisp = world
+        .query::<(Entity, &Enemy)>()
+        .find(|(_, enemy)| enemy.kind == EnemyKind::Wisp)
+        .map(|(entity, _)| entity)
+        .expect("the map's wisps");
+    // Each part names its owner as its parent and is among its children.
+    let parts_of = |harness: &UiHarness, owner: Entity| -> Vec<Entity> {
+        let world = harness.world();
+        let parts = world.get::<GlowParts>(owner).expect("its glow's parts");
+        let parts: Vec<Entity> = [parts.halo, parts.core, parts.light]
+            .into_iter()
+            .flatten()
+            .collect();
+        assert!(!parts.is_empty(), "a glow draws with a part");
+        let children = world.get::<Children>(owner).expect("its children");
+        for &part in &parts {
+            let parent = world.get::<Parent>(part).map(|parent| parent.entity());
+            assert_eq!(parent, Some(owner), "a part's parent");
+            assert!(children.iter().any(|child| child == part), "listed");
+        }
+        parts
+    };
+    let wisps = parts_of(&harness, wisp);
+    let orbs = parts_of(&harness, orb);
+    // A tree despawn takes the wisp's parts in its own call, before any step.
+    despawn_tree(harness.world_mut(), wisp);
+    let world = harness.world();
+    assert!(
+        wisps.iter().all(|&part| !world.is_alive(part)),
+        "the wisp's parts go with it"
+    );
+    // The orb taken: its parts are gone when the frame it goes in ends.
+    let at = world.get::<Position>(orb).unwrap().0 + Vec2::splat(12.0);
+    teleport(&mut harness, player, at);
+    for _ in 0..30 {
+        harness.step(1);
+        if !harness.world().is_alive(orb) {
+            break;
+        }
+    }
+    let world = harness.world();
+    assert!(!world.is_alive(orb), "taken");
+    assert!(
+        orbs.iter().all(|&part| !world.is_alive(part)),
+        "the orb's parts go in its frame"
     );
 }
 

@@ -491,6 +491,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Hurtbox>(),
                     name::<Cues>(),
                     name::<Glow>(),
+                    name::<Children>(),
                     name::<StaffGlow>(),
                 ],
             ]
@@ -798,6 +799,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Pickup>(),
                     name::<Cues>(),
                     name::<Glow>(),
+                    name::<Children>(),
                 ]),
                 presentation: [&drawn[..], &[name::<GlowParts>()]].concat(),
             }

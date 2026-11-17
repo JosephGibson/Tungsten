@@ -22,7 +22,8 @@ use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
 use tungsten::core::save::SaveOptions;
 use tungsten::core::{
     AmbientLight, Bundle, CameraController, Collider, DataRegistry, Entity, Light, Position,
-    RigidBodyBundle, Schedule, Stage, TilemapInstance, TilemapRegistry, Transform, World, system,
+    RigidBodyBundle, Schedule, SpawnContext, Stage, TilemapInstance, TilemapRegistry, Transform,
+    World, system,
 };
 use tungsten::kit::{
     PathFollower, Phase, StateMachine, TRANSFORM_PROPAGATE, WorldBounds, ensure_phases,
@@ -118,7 +119,11 @@ impl Plugin for LevelPlugin {
         world.register_saved::<lava::Lava>("lava");
         world.register_component::<components::Hazard>("hazard");
         world.register_component::<components::Area>("area");
-        world.register_component::<components::Glow>("glow");
+        // With its parts' place, so the glows' first frame moves no owner
+        // but for the kit's `Children`.
+        world.register_component_with("glow", |glow: components::Glow, _: &SpawnContext<'_>| {
+            (glow, components::GlowParts::default())
+        });
         world.register_component::<elevator::Lift>("elevator");
         world.register_component::<geyser::Geyser>("geyser");
         // The geysers' cycle, the kit's machine, which registers no name
