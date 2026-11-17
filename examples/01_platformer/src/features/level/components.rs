@@ -6,12 +6,6 @@ use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::{Entity, LayerKind, TilemapData};
 
-/// A level emitter of torch embers, spray or motes: the map's `emitters`
-/// objects spawn it from the `ex10_ambient_emitter` prefab, which names it
-/// `ambient_emitter`.
-#[derive(Debug, Clone, Copy, Deserialize)]
-pub struct AmbientEmitter;
-
 /// A hazard the map places: spikes, a fireball on its oscillator, or a
 /// lava basin, whose touch the kit's contact damage deals. Its prefab names
 /// it `hazard`. Cold douses a fire and crusts a basin over for a while

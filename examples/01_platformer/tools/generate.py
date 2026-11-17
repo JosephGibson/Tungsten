@@ -927,10 +927,11 @@ def content_family(made,sprites,lit):
     for name,(shader,f32s) in MATERIALS.items():
         made.entries[('materials','ex10_'+name)]=dict(shader='ex10_'+shader,uniform_defaults=dict(
             vec4=[[0.0]*4 for _ in range(4)],f32s=f32s,i32s=[0]*4))
-    # The class of the level's `emitters` objects: each object's properties
-    # set its emitter's config and seed over this prefab's.
+    # The class of the level's `emitters` objects, tagged `level.ambient`:
+    # each object's properties set its emitter's config and seed over this
+    # prefab's.
     made.files['assets/prefabs/ambient_emitter.json']=json_bytes(dict(components=dict(
-        ambient_emitter=None,particle_emitter=dict(config='ex10_torch_embers'))))
+        tags=['level.ambient'],particle_emitter=dict(config='ex10_torch_embers'))))
     made.entries[('prefabs','ex10_ambient_emitter')]=dict(path='prefabs/ambient_emitter.json')
     made.configs=particle_configs()
     for name,data in sorted(made.configs.items()):

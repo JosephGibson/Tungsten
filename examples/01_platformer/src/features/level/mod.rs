@@ -111,7 +111,6 @@ pub struct LevelPlugin;
 impl Plugin for LevelPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
-        world.register_component::<components::AmbientEmitter>("ambient_emitter");
         world.register_saved_with(
             "geyser",
             SaveOptions::<geyser::Geyser>::form::<geyser::GeyserForm>(),

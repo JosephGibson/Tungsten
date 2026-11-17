@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 
 use example_01_platformer::features::combat::draw::overlays;
-use example_01_platformer::features::level::components::{AmbientEmitter, Glow, GlowParts};
+use example_01_platformer::features::level::components::{Glow, GlowParts};
 use example_01_platformer::features::level::draw;
 use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
@@ -28,7 +28,7 @@ use tungsten::core::{
     ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Sprite, TilemapInstance,
     TilemapRegistry, Transform, Visibility,
 };
-use tungsten::kit::{Children, Facing, Parent, PlatformerController, damage};
+use tungsten::kit::{Children, Facing, Parent, PlatformerController, Tags, damage};
 use tungsten::testing::UiHarness;
 use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap_layers};
 
@@ -202,7 +202,8 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
     calm(&mut harness);
     let world = harness.world();
     let registry = world.resource::<ParticleConfigRegistry>();
-    // The map's emitters: each object at its place, with its config and seed.
+    // The map's emitters, classed by their prefab's tag: each object at its
+    // place, with its config and seed.
     let map = world
         .resource::<TilemapRegistry>()
         .get("ex10_level")
@@ -214,7 +215,8 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
         .flat_map(|layer| &layer.objects)
         .collect();
     let spawned: Vec<(Vec2, ParticleEmitter)> = world
-        .query::<(&AmbientEmitter, &Transform, &ParticleEmitter)>()
+        .query::<(&Tags, &Transform, &ParticleEmitter)>()
+        .filter(|(tags, _, _)| tags.has("level.ambient"))
         .map(|(_, at, emitter)| (at.position, *emitter))
         .collect();
     assert_eq!(spawned.len(), objects.len());
