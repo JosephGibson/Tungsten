@@ -70,8 +70,6 @@ pub enum Sound {
     Steamed,
     /// Thermal shock: a frozen thing exploding.
     FrostBlasted,
-    /// A lightning strike's thunder.
-    Thundered,
     /// A conduction jump's crackle.
     Crackled,
     /// A gun's shot.
@@ -111,15 +109,9 @@ pub enum Sound {
     /// The mine's elevator setting off, and arriving.
     LiftStarted,
     LiftStopped,
-    /// A black hole closing, by its time or the cap.
-    HoleCollapsed,
-    /// An iron block landing hard.
-    IronLanded,
     /// A cast with no room: a toy at its cap, a body that does not fit or
     /// no cursor.
     Fizzled,
-    /// A strike's snap under its thunder.
-    Snapped,
     /// A bowling ball landing hard.
     BallThudded,
     /// The trigger pulled on an empty magazine or during a reload.
@@ -163,11 +155,6 @@ pub enum Sound {
     LavaChilled,
     LavaCracked,
     LavaMelted,
-    /// A tome taken (01 (l)): the pact, bounding and arcane power, each
-    /// its own.
-    TomePactTaken,
-    TomeBoundingTaken,
-    TomeArcaneTaken,
     /// A beetle's charge setting a body moving out of its way (e01foes).
     BeetlePloughed,
     /// A crawler's hop or leap (e01foes).
@@ -180,9 +167,6 @@ pub enum Sound {
     GoblinCrouched,
     GoblinDashed,
     GoblinYelped,
-    /// Lightning striking the ground or a deck, in place of the snap a
-    /// body takes (e01sfx).
-    GroundStruck,
     /// A crate breaking into its planks under a heavy hit (e01sfx).
     CrateBroke,
     /// A geyser's sputter starting, and its eruption (e01hollow).
@@ -190,15 +174,13 @@ pub enum Sound {
     GeyserErupt,
     /// A rubble stone meeting something hard (e01hollow).
     StoneKnock,
-    /// The toxic flask's burst (e01flask).
-    FlaskBurst,
     /// Corrosive taking a target's armour (e01flask).
     Corroded,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 76] = [
+    pub const ALL: [Sound; 67] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -211,7 +193,6 @@ impl Sound {
         Sound::Placed,
         Sound::Steamed,
         Sound::FrostBlasted,
-        Sound::Thundered,
         Sound::Crackled,
         Sound::Shot,
         Sound::Reloaded,
@@ -232,10 +213,7 @@ impl Sound {
         Sound::LavaSet,
         Sound::LiftStarted,
         Sound::LiftStopped,
-        Sound::HoleCollapsed,
-        Sound::IronLanded,
         Sound::Fizzled,
-        Sound::Snapped,
         Sound::BallThudded,
         Sound::DryFired,
         Sound::Racked,
@@ -258,9 +236,6 @@ impl Sound {
         Sound::LavaChilled,
         Sound::LavaCracked,
         Sound::LavaMelted,
-        Sound::TomePactTaken,
-        Sound::TomeBoundingTaken,
-        Sound::TomeArcaneTaken,
         Sound::BeetlePloughed,
         Sound::CrawlerHopped,
         Sound::SnowballThrown,
@@ -268,12 +243,10 @@ impl Sound {
         Sound::GoblinCrouched,
         Sound::GoblinDashed,
         Sound::GoblinYelped,
-        Sound::GroundStruck,
         Sound::CrateBroke,
         Sound::GeyserSputter,
         Sound::GeyserErupt,
         Sound::StoneKnock,
-        Sound::FlaskBurst,
         Sound::Corroded,
     ];
 
@@ -293,7 +266,6 @@ impl Sound {
             Sound::Placed => "placed",
             Sound::Steamed => "steamed",
             Sound::FrostBlasted => "frost_blasted",
-            Sound::Thundered => "thundered",
             Sound::Crackled => "crackled",
             Sound::Shot => "shot",
             Sound::Reloaded => "reloaded",
@@ -314,10 +286,7 @@ impl Sound {
             Sound::LavaSet => "lava_set",
             Sound::LiftStarted => "lift_started",
             Sound::LiftStopped => "lift_stopped",
-            Sound::HoleCollapsed => "hole_collapsed",
-            Sound::IronLanded => "iron_landed",
             Sound::Fizzled => "fizzled",
-            Sound::Snapped => "snapped",
             Sound::BallThudded => "ball_thudded",
             Sound::DryFired => "dry_fired",
             Sound::Racked => "racked",
@@ -340,9 +309,6 @@ impl Sound {
             Sound::LavaChilled => "lava_chilled",
             Sound::LavaCracked => "lava_cracked",
             Sound::LavaMelted => "lava_melted",
-            Sound::TomePactTaken => "tome_pact_taken",
-            Sound::TomeBoundingTaken => "tome_bounding_taken",
-            Sound::TomeArcaneTaken => "tome_arcane_taken",
             Sound::BeetlePloughed => "beetle_ploughed",
             Sound::CrawlerHopped => "crawler_hopped",
             Sound::SnowballThrown => "snowball_thrown",
@@ -350,12 +316,10 @@ impl Sound {
             Sound::GoblinCrouched => "goblin_crouched",
             Sound::GoblinDashed => "goblin_dashed",
             Sound::GoblinYelped => "goblin_yelped",
-            Sound::GroundStruck => "ground_struck",
             Sound::CrateBroke => "crate_broke",
             Sound::GeyserSputter => "geyser_sputtered",
             Sound::GeyserErupt => "geyser_erupted",
             Sound::StoneKnock => "stone_knocked",
-            Sound::FlaskBurst => "flask_burst",
             Sound::Corroded => "corroded",
         }
     }

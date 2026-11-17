@@ -4,5 +4,5 @@
   "costs": "Half your maximum health, for good",
   "icon": "ex10_icon_tome_pact",
   "take_clip": "ex10_tome_pact_take",
-  "take_sparks": "ex10_tome_pact_take_sparks"
+  "take_cue": "tome_pact_taken"
 }

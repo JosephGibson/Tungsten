@@ -1,0 +1,13 @@
+[
+  {
+    "burst": {
+      "particles": "ex10_tome_arcane_take_sparks",
+      "key": true
+    }
+  },
+  {
+    "sound": {
+      "id": "ex10_tome_arcane_sfx"
+    }
+  }
+]

@@ -3,8 +3,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::features::audio::components::Sound;
-
 /// One of the three tomes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -50,22 +48,13 @@ impl TomeKind {
             TomeKind::Arcane => "arcane",
         }
     }
-
-    /// Its pickup sound.
-    #[must_use]
-    pub const fn sound(self) -> Sound {
-        match self {
-            TomeKind::Pact => Sound::TomePactTaken,
-            TomeKind::Bounding => Sound::TomeBoundingTaken,
-            TomeKind::Arcane => Sound::TomeArcaneTaken,
-        }
-    }
 }
 
 /// A tome's texts and art, its entry in the `tomes` data
 /// (`data/tomes/<id>.json`): its name, what it gives and what it costs on
-/// the panel, its HUD tile, and the clip its book comes apart in and the
-/// sparks that follow it.
+/// the panel, its HUD tile, the clip its book comes apart in, and the
+/// world cue (`data/world_cues/`) its take plays there, the sparks that
+/// follow the clip and its pickup sound.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TomeData {
@@ -74,7 +63,7 @@ pub struct TomeData {
     pub costs: String,
     pub icon: String,
     pub take_clip: String,
-    pub take_sparks: String,
+    pub take_cue: String,
 }
 
 /// A book on the map, its prefab's `tome`: `{ "kind": "pact" }`.

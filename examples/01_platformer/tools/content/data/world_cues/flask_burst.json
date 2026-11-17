@@ -1,0 +1,11 @@
+[
+  {
+    "burst": "ex10_flask_splash"
+  },
+  {
+    "sound": {
+      "id": "ex10_flask_burst_sfx",
+      "min_interval": 0.08
+    }
+  }
+]

@@ -2,9 +2,9 @@
 
 use glam::Vec2;
 use tungsten::SceneEntity;
-use tungsten::core::{AnimationState, Entity, Sprite, Time, Transform, Visibility, World};
+use tungsten::core::{AnimationState, Entity, Sprite, Transform, Visibility, World};
 use tungsten::kit::{
-    Health, Lifetime, Line, Modifier, PlatformerController, Shield, Stats, TagFilter,
+    Health, Lifetime, Line, Modifier, PlatformerController, Shield, Stats, TagFilter, WorldCue,
 };
 
 use super::components::{TomeKind, Tomes};
@@ -13,13 +13,12 @@ use super::{
     INTERACT, PACT_DELAY, PACT_RECHARGE, PACT_SHIELD, PACT_SOURCE, TAKE_CENTRE, TAKE_SECS, TAKE_Z,
     nearest,
 };
-use crate::features::audio;
 use crate::features::combat::{SPELL, STATUS_THRESHOLD};
 use crate::features::run::Run;
 use crate::features::spells::SPELL_COST;
 use crate::features::spells::hud;
 use crate::game::GAMEPLAY;
-use crate::shared::{despawn_tree, just_pressed, spawn_key_burst};
+use crate::shared::{despawn_tree, just_pressed};
 use crate::shell;
 
 /// The pact's factor on the player's [`STATUS_THRESHOLD`]: 50 to 40, as
@@ -36,14 +35,14 @@ fn live_player(world: &World) -> Option<Entity> {
 }
 
 /// `tomes_take`, in the tick phase before the kit's `stats_apply`: on an
-/// `interact` press the live player takes the nearest book in reach, once
-/// a frame (`taken` holds the frame of the last). Its kind joins the
-/// player's [`Tomes`], its change applies ([`apply`]), its take clip and key
-/// burst play at its centre with its pickup sound, and the book goes with
-/// its children.
-pub fn take(world: &mut World, taken: &mut Option<u64>) {
-    let frame = world.resource::<Time>().frame();
-    if *taken == Some(frame) || !just_pressed(world, INTERACT) {
+/// `interact` press the live player takes the nearest book in reach. A
+/// press is fresh in one fixed step alone, the engine's rule, so a frame
+/// of two steps takes one book. Its kind joins the player's [`Tomes`], its
+/// change applies ([`apply`]), its take clip plays at its centre with its
+/// world cue, the tome data's `take_cue`, its key burst and its pickup
+/// sound, and the book goes with its children.
+pub fn take(world: &mut World) {
+    if !just_pressed(world, INTERACT) {
         return;
     }
     let Some(player) = live_player(world) else {
@@ -52,20 +51,18 @@ pub fn take(world: &mut World, taken: &mut Option<u64>) {
     let Some((book, kind, at)) = nearest(world, player) else {
         return;
     };
-    *taken = Some(frame);
     match world.get_mut::<Tomes>(player) {
         Some(tomes) => tomes.0.push(kind),
         None => world.insert(player, Tomes(vec![kind])),
     }
     apply(world, player, kind);
     despawn_tree(world, book);
-    let (clip, sparks) = {
+    let (clip, cue) = {
         let tome = super::data(world, kind);
-        (tome.take_clip.clone(), tome.take_sparks.clone())
+        (tome.take_clip.clone(), tome.take_cue.clone())
     };
     one_shot(world, &clip, at - TAKE_CENTRE, TAKE_SECS, TAKE_Z);
-    spawn_key_burst(world, &sparks, at);
-    audio::play(world, kind.sound(), at);
+    WorldCue::new(cue, at).play(world);
 }
 
 /// What taking `kind` changes on `player`. The pact: half the maximum

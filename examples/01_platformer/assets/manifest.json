@@ -1159,6 +1159,18 @@
       }
     },
     "world_cues": {
+      "fireball_blast": {
+        "path": "data/world_cues/fireball_blast.json"
+      },
+      "flask_burst": {
+        "path": "data/world_cues/flask_burst.json"
+      },
+      "hole_collapsed": {
+        "path": "data/world_cues/hole_collapsed.json"
+      },
+      "iron_landed": {
+        "path": "data/world_cues/iron_landed.json"
+      },
       "shot_dusted": {
         "path": "data/world_cues/shot_dusted.json"
       },
@@ -1167,6 +1179,21 @@
       },
       "shot_splintered": {
         "path": "data/world_cues/shot_splintered.json"
+      },
+      "strike_body": {
+        "path": "data/world_cues/strike_body.json"
+      },
+      "strike_ground": {
+        "path": "data/world_cues/strike_ground.json"
+      },
+      "tome_arcane_taken": {
+        "path": "data/world_cues/tome_arcane_taken.json"
+      },
+      "tome_bounding_taken": {
+        "path": "data/world_cues/tome_bounding_taken.json"
+      },
+      "tome_pact_taken": {
+        "path": "data/world_cues/tome_pact_taken.json"
       }
     }
   },

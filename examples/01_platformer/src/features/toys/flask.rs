@@ -19,15 +19,14 @@ use tungsten::core::{
     Sprite, Transform, Visibility, World,
 };
 use tungsten::kit::{
-    Blast, HitShape, Lifetime, LinearMotion, Projectile, ProjectileExpired, Source, cap_refuses,
-    lob_velocity,
+    Blast, HitShape, Lifetime, LinearMotion, Projectile, ProjectileExpired, Source, WorldCue,
+    cap_refuses, lob_velocity,
 };
 
 use super::components::ToxicFlask;
-use crate::features::audio::{self, components::Sound};
 use crate::features::level::GRAVITY;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, Saved, spawn_burst};
+use crate::shared::{SaveId, Saved};
 
 /// Its prefab, whose `cap` refuses a toss past three in flight, its radius
 /// and its centre from its sprite's top-left.
@@ -39,11 +38,13 @@ pub const FLASK_CENTRE: Vec2 = Vec2::splat(8.0);
 pub const FLIGHT_LEAST: f32 = 0.25;
 pub const FLIGHT_MOST: f32 = 0.9;
 /// Its burst: the clip played once over its centre, its frames' seconds,
-/// the clip's frame's centre, its particles and its draw order, the
-/// flask's.
+/// the clip's frame's centre and its draw order, the flask's; and its
+/// world cue (`data/world_cues/`), which bursts its particles,
+/// [`BURST_PARTICLES`], and plays its sound.
 pub const BURST_CLIP: &str = "ex10_toxic_flask_burst";
 pub const BURST_CENTRE: Vec2 = Vec2::splat(48.0);
 pub const BURST_SECS: f32 = 0.3;
+pub const BURST_CUE: &str = "flask_burst";
 pub const BURST_PARTICLES: &str = "ex10_flask_splash";
 const BURST_Z: i32 = 14;
 
@@ -126,7 +127,7 @@ pub fn ends(world: &mut World, cursor: &mut EventCursor<ProjectileExpired>) {
 }
 
 /// A flask's burst's look at `at`, its splash the kit's: its clip once over
-/// its centre, its particles and its sound.
+/// its centre, and its world cue, its particles and its sound.
 pub fn burst(world: &mut World, at: Vec2) {
     if let Some(frame) = crate::shared::clip_sprite(world, BURST_CLIP) {
         let mut sprite = Sprite::new(frame);
@@ -140,8 +141,7 @@ pub fn burst(world: &mut World, at: Vec2) {
             SceneEntity { state_id: GAMEPLAY },
         ));
     }
-    spawn_burst(world, BURST_PARTICLES, at);
-    audio::play(world, Sound::FlaskBurst, at);
+    WorldCue::new(BURST_CUE, at).play(world);
 }
 
 /// What a restored flask's spawn gave it beyond its saved state: an older

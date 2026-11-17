@@ -11,7 +11,7 @@ use tungsten::core::{
 use tungsten::kit::{
     Blast, Children, CooldownElapsed, EffectInstance, Effects, Health, LinearMotion, Modifier,
     PlatformerController, Projectile, ProjectileExpired, Stats, Steering, Tags, TopDownMover,
-    blast, carrier_of, knock_back, steered_direction, stimulate,
+    WorldCue, blast, carrier_of, knock_back, steered_direction, stimulate,
 };
 use tungsten::physics::{SpatialFilter, SpatialHit, cast_shape_where, wake};
 
@@ -115,13 +115,21 @@ pub fn tick(world: &mut World, cursor: &mut EventCursor<CooldownElapsed>) {
     }
 }
 
+/// The toys' looks at a point, named world cues (`data/world_cues/`): a
+/// hole's collapse's sound; a hard landing of iron's thud, with its shake
+/// by the distance from the listener; and a fireball's blast's boom and
+/// its shake, as far.
+pub const HOLE_COLLAPSED: &str = "hole_collapsed";
+pub const IRON_LANDED: &str = "iron_landed";
+pub const FIREBALL_BLAST: &str = "fireball_blast";
+
 /// Closes `hole`, by its time or the cap: its collapse sounds where it
-/// stood and leaves a small pale ring there, which pushes nothing, and it
-/// goes with its emitters.
+/// stood, by its world cue, and leaves a small pale ring there, which
+/// pushes nothing, and it goes with its emitters.
 pub fn collapse(world: &mut World, hole: Entity) {
     if let Some(at) = world.get::<Transform>(hole).map(|at| at.position) {
         ring(world, at, COLLAPSE_RING, Ring::Collapse);
-        audio::play(world, Sound::HoleCollapsed, at);
+        WorldCue::new(HOLE_COLLAPSED, at).play(world);
     }
     despawn_tree(world, hole);
 }
@@ -213,8 +221,8 @@ pub fn weight(world: &mut World) {
 }
 
 /// `block` landing hard at `at`, its contact: its `iron_dusted` impact,
-/// whose rule raises dust there, and its thud, whose rule shakes the
-/// camera by its distance from the listener.
+/// whose rule raises dust there, and its world cue, its thud and the
+/// camera's shake by its distance from the listener.
 pub fn iron_landed(world: &mut World, block: Entity, at: Vec2) {
     let impact = Impact {
         raised: Raised::IronDust,
@@ -224,7 +232,7 @@ pub fn iron_landed(world: &mut World, block: Entity, at: Vec2) {
     if let Some(queue) = world.get_resource_mut::<EventQueue<Impact>>() {
         queue.send(impact);
     }
-    audio::play(world, Sound::IronLanded, at);
+    WorldCue::new(IRON_LANDED, at).play(world);
 }
 
 /// The open holes' centres.
@@ -577,8 +585,9 @@ pub fn flares(world: &mut World) {
 /// [`BLAST_RADIUS`], half at its edge, a spell's hit from the player who
 /// cast it, who is spared, queued for the step's resolve; the small balls
 /// in its heat lit by their centres, and the crates in it lit and its kegs
-/// set off by their boxes, credited to the player; its boom's rule shakes
-/// the camera.
+/// set off by their boxes, credited to the player; its world cue plays its
+/// boom and shakes the camera, beside its four bursts, spawned at once,
+/// its ring, its shatter and its push, which stay here.
 pub fn explode(world: &mut World, at: Vec2) {
     let player = world.get_resource::<Run>().map(|run| run.player);
     let heat = Blast::new(BLAST_RADIUS)
@@ -611,7 +620,7 @@ pub fn explode(world: &mut World, at: Vec2) {
         elements::ignite(world, ball);
     }
     heat_props(world, at);
-    audio::play(world, Sound::Blasted, at);
+    WorldCue::new(FIREBALL_BLAST, at).play(world);
 }
 
 /// A fireball's heat on the props whose bodies lie within [`BLAST_RADIUS`]

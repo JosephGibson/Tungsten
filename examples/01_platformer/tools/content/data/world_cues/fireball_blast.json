@@ -1,0 +1,14 @@
+[
+  {
+    "sound": {
+      "id": "ex10_fireball_blast_sfx"
+    }
+  },
+  {
+    "shake": {
+      "trauma": 0.68,
+      "near": 512,
+      "far": 3072
+    }
+  }
+]

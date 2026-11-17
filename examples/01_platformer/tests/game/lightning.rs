@@ -18,8 +18,8 @@ use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::level::draw::view;
 use example_01_platformer::features::lightning::components::{Arc, Bolt, Scorch, StrikeLight};
 use example_01_platformer::features::lightning::{
-    self, ARC_SECS, JUMP_KEEP, MAX_JUMPS, Met, SCORCH_ANCHOR, SCORCH_CAP, STRIKE_LIGHT,
-    STRIKE_SHOCK, draw,
+    self, ARC_SECS, JUMP_KEEP, MAX_JUMPS, Met, SCORCH_ANCHOR, SCORCH_CAP, STRIKE_BODY,
+    STRIKE_GROUND, STRIKE_LIGHT, STRIKE_SHOCK, draw,
 };
 use example_01_platformer::features::props::{self, components::PropKind};
 use example_01_platformer::features::spells::components::Spell;
@@ -31,10 +31,11 @@ use tungsten::core::{
     AssetRegistry, Bundle, CameraController, Collider, Entity, Light, Position, RigidBodyBundle,
     Sprite, TextureHandle, Transform,
 };
-use tungsten::kit::{Conducted, Damaged, Health, Resist, StateMachine, conductions};
+use tungsten::kit::{Conducted, Damaged, Health, Resist, StateMachine, WorldCue, conductions};
 use tungsten::testing::UiHarness;
 
 use super::combat::{TOP, dummy_at, health};
+use super::player::plays;
 use super::prefab_box;
 use super::{
     aim_at, ball, body, bursts, centre, choose, floor, ground, mana, mock_sprite, pin_camera, run,
@@ -406,7 +407,7 @@ fn a_strike_shows_its_bolt_flash_light_and_shake() {
             .filter(|sounded| sounded.sound == sound)
             .count()
     };
-    assert_eq!(thunder(&harness, Sound::Thundered), 1);
+    assert_eq!(plays(&harness, THUNDER), 1);
     // The next frame: the veil is gone, the bolt stays, the light fades;
     // the chain's first jump crackles and draws its arc.
     harness.step(1);
@@ -433,12 +434,18 @@ fn a_strike_shows_its_bolt_flash_light_and_shake() {
     );
 }
 
-/// The sounds sent this frame.
-fn sounded(harness: &UiHarness) -> Vec<Sound> {
+/// The strikes' manifest sounds, which their world cues play: the thunder,
+/// a body's snap and the ground's crackle.
+const THUNDER: &str = "ex10_thunder_sfx";
+const SNAP: &str = "ex10_thunder_snap_sfx";
+const GROUND_STRIKE: &str = "ex10_ground_strike_sfx";
+
+/// The world cues sent this frame: each one's name and point.
+fn world_cues(harness: &UiHarness) -> Vec<(String, Vec2)> {
     harness
         .harness()
-        .events::<Sounded>()
-        .map(|sounded| sounded.sound)
+        .events::<WorldCue>()
+        .map(|cue| (cue.name.clone(), cue.at))
         .collect()
 }
 
@@ -453,12 +460,9 @@ fn scorches(harness: &UiHarness) -> Vec<(Vec2, u8)> {
 
 /// Asserts the strike this frame sounded and sparked as the ground's.
 fn struck_ground(harness: &UiHarness) {
-    let sounds = sounded(harness);
-    assert!(
-        sounds.contains(&Sound::GroundStruck) && sounds.contains(&Sound::Thundered),
-        "{sounds:?}"
-    );
-    assert!(!sounds.contains(&Sound::Snapped), "{sounds:?}");
+    let sounds = [GROUND_STRIKE, THUNDER, SNAP].map(|sound| plays(harness, sound));
+    assert!(sounds[0] > 0 && sounds[1] > 0, "{sounds:?}");
+    assert_eq!(sounds[2], 0, "{sounds:?}");
     assert_eq!(bursts(harness, "ex10_ground_sparks"), 1);
     assert_eq!(bursts(harness, "ex10_strike_sparks"), 0);
 }
@@ -512,14 +516,52 @@ fn a_strike_on_an_enemy_or_iron_meets_a_body_and_snaps() {
         assert_eq!(landing.met, Met::Body(target), "{case}");
         lightning::strike(harness.world_mut(), player, aim);
         harness.step(1);
-        let sounds = sounded(&harness);
-        assert!(
-            sounds.contains(&Sound::Snapped) && !sounds.contains(&Sound::GroundStruck),
-            "{case}: {sounds:?}"
-        );
+        let sounds = [SNAP, GROUND_STRIKE].map(|sound| plays(&harness, sound));
+        assert!(sounds[0] > 0 && sounds[1] == 0, "{case}: {sounds:?}");
         assert_eq!(bursts(&harness, "ex10_strike_sparks"), 1, "{case}");
         assert!(scorches(&harness).is_empty(), "{case}");
     }
+}
+
+/// S-79: a strike's sparks, its snap or crackle and its thunder are one
+/// world cue at its landing, named by what it met.
+#[test]
+fn a_strike_plays_its_world_cue() {
+    let (mut harness, player) = sky();
+    let iron = toys::place_iron(harness.world_mut(), Vec2::new(900.0, iron_y()));
+    harness.step(1);
+    // A body's strike: the run's first world cue, whose play registers the
+    // queue.
+    let aim = Vec2::new(900.0, TOP - 400.0);
+    let landing = lightning::bolt_end(harness.world(), aim, Some(player));
+    assert_eq!(landing.met, Met::Body(iron));
+    lightning::strike(harness.world_mut(), player, aim);
+    harness.step(1);
+    assert_eq!(
+        world_cues(&harness),
+        [(STRIKE_BODY.to_string(), landing.at)],
+        "one cue, at the landing"
+    );
+    let sounds = [SNAP, THUNDER, GROUND_STRIKE].map(|sound| plays(&harness, sound));
+    assert_eq!(sounds, [1, 1, 0], "its snap and its thunder, once each");
+    assert_eq!(bursts(&harness, "ex10_strike_sparks"), 1);
+    harness.step(1);
+    assert!(world_cues(&harness).is_empty(), "played once");
+    assert_eq!(plays(&harness, THUNDER), 0);
+    // The ground's, past the thunder's 0.1 s.
+    harness.step(30);
+    let open = Vec2::new(400.0, TOP - 200.0);
+    let landing = lightning::bolt_end(harness.world(), open, Some(player));
+    assert_eq!(landing.met, Met::Ground);
+    lightning::strike(harness.world_mut(), player, open);
+    harness.step(1);
+    assert_eq!(
+        world_cues(&harness),
+        [(STRIKE_GROUND.to_string(), landing.at)]
+    );
+    let sounds = [GROUND_STRIKE, THUNDER, SNAP].map(|sound| plays(&harness, sound));
+    assert_eq!(sounds, [1, 1, 0], "its crackle and its thunder, once each");
+    assert_eq!(bursts(&harness, "ex10_ground_sparks"), 1);
 }
 
 #[test]

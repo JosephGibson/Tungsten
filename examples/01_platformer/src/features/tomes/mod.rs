@@ -79,8 +79,7 @@ pub const ARCANE_FACTOR: f32 = 2.0;
 
 /// The tomes as a plugin: the `tome` component the books' prefabs name,
 /// the take in the tick phase before the kit's `stats_apply`, so what a
-/// tome changes of the player's stats lands in its own step, at most one a
-/// frame, since a press reads as fresh through each of the frame's steps;
+/// tome changes of the player's stats lands in its own step, one a press;
 /// and the panel in `PostUpdate` after the camera's update, so it stands
 /// over the book the frame draws.
 pub struct TomesPlugin;
@@ -92,11 +91,7 @@ impl Plugin for TomesPlugin {
         world.register_saved::<Tomes>("tomes");
         world.register_data_kind::<TomeData>(TOMES);
         ensure_phases(schedule);
-        let mut taken = None;
-        let take = system("tomes_take", move |world: &mut World| {
-            systems::take(world, &mut taken);
-        })
-        .before(STATS_APPLY);
+        let take = system("tomes_take", systems::take).before(STATS_APPLY);
         schedule.add(Stage::FixedUpdate, Phase::Tick.join(take));
         let panel = system("tomes_panel", systems::panel).after(CAMERA_UPDATE);
         schedule.add(Stage::PostUpdate, panel);

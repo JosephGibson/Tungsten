@@ -6,7 +6,6 @@
 //! dearer spells and their doubled hits, beside the hits it leaves alone,
 //! and all three tomes held together.
 
-use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::level::KILL_Y;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::hud::Hud;
@@ -74,22 +73,30 @@ fn hud(harness: &UiHarness) -> Hud {
     *harness.world().resource::<Hud>()
 }
 
-/// Presses `interact` for a frame and releases it the next: the pickup
-/// sounds of `sound` heard meanwhile.
-fn interact(harness: &mut UiHarness, sound: Sound) -> usize {
-    let heard = |harness: &UiHarness| {
-        harness
-            .harness()
-            .events::<Sounded>()
-            .filter(|sounded| sounded.sound == sound)
-            .count()
-    };
+/// The tomes' pickup sounds, by manifest ID, which their takes' world
+/// cues play.
+const PACT_SOUND: &str = "ex10_tome_pact_sfx";
+const BOUNDING_SOUND: &str = "ex10_tome_bounding_sfx";
+const ARCANE_SOUND: &str = "ex10_tome_arcane_sfx";
+
+/// `kind`'s pickup sound.
+fn take_sound(kind: TomeKind) -> &'static str {
+    match kind {
+        TomeKind::Pact => PACT_SOUND,
+        TomeKind::Bounding => BOUNDING_SOUND,
+        TomeKind::Arcane => ARCANE_SOUND,
+    }
+}
+
+/// Presses `interact` for a frame and releases it the next: the plays of
+/// the pickup sound `sound` heard meanwhile.
+fn interact(harness: &mut UiHarness, sound: &str) -> usize {
     harness.harness_mut().press_action(INTERACT);
     harness.step(1);
-    let mut sounds = heard(harness);
+    let mut sounds = plays(harness, sound);
     harness.harness_mut().release_action(INTERACT);
     harness.step(1);
-    sounds += heard(harness);
+    sounds += plays(harness, sound);
     sounds
 }
 
@@ -140,11 +147,7 @@ fn an_interact_press_takes_the_nearest_book_once_with_its_burst_and_sound() {
     let near = book(&mut harness, TomeKind::Pact, eye + Vec2::new(40.0, 0.0));
     let far = book(&mut harness, TomeKind::Arcane, eye - Vec2::new(55.0, 0.0));
     harness.step(1);
-    assert_eq!(
-        interact(&mut harness, Sound::TomePactTaken),
-        1,
-        "its sound, once"
-    );
+    assert_eq!(interact(&mut harness, PACT_SOUND), 1, "its sound, once");
     let world = harness.world();
     assert!(!world.is_alive(near), "the nearest book is taken");
     assert!(world.get::<Tome>(far).is_some(), "the other stays");
@@ -157,11 +160,51 @@ fn an_interact_press_takes_the_nearest_book_once_with_its_burst_and_sound() {
     assert_eq!(held(&harness, player), [TomeKind::Pact], "once a press");
     stand(&mut harness, player, 250.0, TOP);
     harness.step(2);
-    assert_eq!(interact(&mut harness, Sound::TomeArcaneTaken), 0);
+    assert_eq!(interact(&mut harness, ARCANE_SOUND), 0);
     stand(&mut harness, player, 400.0, TOP);
     harness.step(2);
-    assert_eq!(interact(&mut harness, Sound::TomeArcaneTaken), 1);
+    assert_eq!(interact(&mut harness, ARCANE_SOUND), 1);
     assert_eq!(held(&harness, player), [TomeKind::Pact, TomeKind::Arcane]);
+}
+
+/// S-185: a press is one fixed step's, so a frame of two steps takes one
+/// book with no guard of the take's own.
+#[test]
+fn a_press_in_a_two_step_frame_takes_one_book() {
+    let (mut harness, player) = sky();
+    harness.harness_mut().set_dt(1.0 / 30.0);
+    harness.step(2);
+    let eye = centre(&harness, player);
+    let near = book(&mut harness, TomeKind::Pact, eye + Vec2::new(30.0, 0.0));
+    let far = book(&mut harness, TomeKind::Arcane, eye - Vec2::new(45.0, 0.0));
+    harness.step(1);
+    harness.harness_mut().press_action(INTERACT);
+    harness.step(1);
+    assert_eq!(super::steps_this_frame(&harness), 2, "a two-step frame");
+    let world = harness.world();
+    assert!(!world.is_alive(near), "the nearest book is taken");
+    assert!(world.get::<Tome>(far).is_some(), "the other stays");
+    assert_eq!(held(&harness, player), [TomeKind::Pact]);
+    assert_eq!(bursts(&harness, "ex10_tome_pact_take_sparks"), 1);
+    assert_eq!(bursts(&harness, "ex10_tome_arcane_take_sparks"), 0);
+    assert_eq!(
+        [PACT_SOUND, ARCANE_SOUND].map(|sound| plays(&harness, sound)),
+        [1, 0],
+        "its sound, once"
+    );
+    // Held on, the press takes no more.
+    harness.step(3);
+    assert_eq!(held(&harness, player), [TomeKind::Pact]);
+    // A second press takes the other.
+    harness.harness_mut().release_action(INTERACT);
+    harness.step(1);
+    harness.harness_mut().press_action(INTERACT);
+    harness.step(1);
+    assert_eq!(super::steps_this_frame(&harness), 2);
+    assert_eq!(held(&harness, player), [TomeKind::Pact, TomeKind::Arcane]);
+    assert!(!harness.world().is_alive(far));
+    assert_eq!(bursts(&harness, "ex10_tome_arcane_take_sparks"), 1);
+    assert_eq!(plays(&harness, ARCANE_SOUND), 1);
 }
 
 #[test]
@@ -175,8 +218,8 @@ fn the_strip_follows_the_order_taken() {
     );
     let eye = centre(&harness, player);
     for (kind, sound) in [
-        (TomeKind::Arcane, Sound::TomeArcaneTaken),
-        (TomeKind::Bounding, Sound::TomeBoundingTaken),
+        (TomeKind::Arcane, ARCANE_SOUND),
+        (TomeKind::Bounding, BOUNDING_SOUND),
     ] {
         book(&mut harness, kind, eye + Vec2::new(30.0, 0.0));
         harness.step(1);
@@ -211,7 +254,7 @@ fn pact(harness: &mut UiHarness, player: Entity) {
     let eye = centre(harness, player);
     book(harness, TomeKind::Pact, eye + Vec2::new(30.0, 0.0));
     harness.step(1);
-    assert_eq!(interact(harness, Sound::TomePactTaken), 1);
+    assert_eq!(interact(harness, PACT_SOUND), 1);
 }
 
 #[test]
@@ -298,7 +341,7 @@ fn bounder() -> (UiHarness, Entity) {
     let eye = centre(&harness, player);
     book(&mut harness, TomeKind::Bounding, eye + Vec2::new(30.0, 0.0));
     harness.step(1);
-    assert_eq!(interact(&mut harness, Sound::TomeBoundingTaken), 1);
+    assert_eq!(interact(&mut harness, BOUNDING_SOUND), 1);
     let world = harness.world_mut();
     world.get_mut::<Tags>(player).unwrap().insert("casting");
     let controller = world.get::<PlatformerController>(player).unwrap();
@@ -381,7 +424,7 @@ pub(super) fn take(harness: &mut UiHarness, player: Entity, kind: TomeKind) {
     let eye = centre(harness, player);
     book(harness, kind, eye + Vec2::new(30.0, 0.0));
     harness.step(1);
-    assert_eq!(interact(harness, kind.sound()), 1, "{kind:?}");
+    assert_eq!(interact(harness, take_sound(kind)), 1, "{kind:?}");
 }
 
 #[test]

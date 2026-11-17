@@ -25,20 +25,19 @@ use tungsten::core::{
     Shape, Sprite, Stage, Transform, Visibility, World, system,
 };
 use tungsten::kit::{
-    ABILITY_TICK, Blast, Conduct, Health, Phase, Resist, TagFilter, Tags, blast, conduct_from,
-    ensure_phases,
+    ABILITY_TICK, Blast, Conduct, Health, Phase, Resist, TagFilter, Tags, WorldCue, blast,
+    conduct_from, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, cast_ray};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
-use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Kind, SPELL};
 use crate::features::elements::cascade::Cascades;
 use crate::features::enemies::{self, armour, components::Enemy};
 use crate::features::level::{WORLD_MAX, WORLD_MIN};
 use crate::features::props::{self, components::Keg};
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, body_centre, spawn_burst, surface_distance};
+use crate::shared::{SaveId, body_centre, surface_distance};
 use components::{Bolt, Scorch, StrikeLight};
 
 /// A strike's shock and its reach from where it lands.
@@ -313,12 +312,19 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
     landing
 }
 
+/// A strike's looks at a point, named world cues (`data/world_cues/`):
+/// where it met a body, its sparks and its snap; where it met the ground
+/// or a deck, the ground's sparks and their crackle; each with the thunder
+/// and its shake.
+pub const STRIKE_BODY: &str = "strike_body";
+pub const STRIKE_GROUND: &str = "strike_ground";
+
 /// A strike's look at `landing`: its bolt from the sky with its veil and
-/// its light; where it met a body the strike's sparks and the snap, where
-/// it met the ground or a deck the ground's sparks and their crackle, with
-/// a scorch on the ground alone; then the thunder, whose rule shakes the
-/// camera. The
-/// strike's number picks the bolt's five to eight pieces.
+/// its light; its world cue, where it met a body [`STRIKE_BODY`], the
+/// strike's sparks and the snap, where it met the ground or a deck
+/// [`STRIKE_GROUND`], the ground's sparks and their crackle, each with the
+/// thunder and its shake; and a scorch on the ground alone. The strike's
+/// number picks the bolt's five to eight pieces.
 fn show(world: &mut World, landing: Vec2, met: Met, number: u64) {
     let count = 5 + (number % 4) as usize;
     let pieces: Vec<usize> = (0..count)
@@ -341,17 +347,15 @@ fn show(world: &mut World, landing: Vec2, met: Met, number: u64) {
         StrikeLight { age: 0.0 },
         SceneEntity { state_id: GAMEPLAY },
     ));
-    if let Met::Body(_) = met {
-        spawn_burst(world, "ex10_strike_sparks", landing);
-        audio::play(world, Sound::Snapped, landing);
+    let cue = if let Met::Body(_) = met {
+        STRIKE_BODY
     } else {
-        spawn_burst(world, "ex10_ground_sparks", landing);
-        audio::play(world, Sound::GroundStruck, landing);
-    }
+        STRIKE_GROUND
+    };
+    WorldCue::new(cue, landing).play(world);
     if met == Met::Ground {
         scorch(world, landing);
     }
-    audio::play(world, Sound::Thundered, landing);
 }
 
 /// A scorch where a strike met the ground, its bottom row's middle on

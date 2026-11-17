@@ -460,11 +460,7 @@ fn three_black_holes_stay_open_and_a_fourth_collapses_the_oldest() {
     assert_eq!(holes(&harness), 3, "three stay open");
     let fourth = toys::place_black_hole(harness.world_mut(), Vec2::new(2100.0, 500.0));
     harness.step(1);
-    let collapsed = harness
-        .harness()
-        .events::<Sounded>()
-        .filter(|sounded| sounded.sound == Sound::HoleCollapsed)
-        .count();
+    let collapsed = super::player::plays(&harness, "ex10_black_hole_collapse_sfx");
     assert_eq!(collapsed, 1, "the fourth's opening collapses one");
     let world = harness.world();
     assert!(!world.is_alive(opened[0]), "the oldest gone");
@@ -1824,10 +1820,7 @@ fn a_hole_collapses_at_its_sixth_second() {
         "its ring"
     );
     assert!(
-        harness
-            .harness()
-            .events::<Sounded>()
-            .any(|sounded| sounded.sound == Sound::HoleCollapsed),
+        super::player::plays(&harness, "ex10_black_hole_collapse_sfx") > 0,
         "its collapse's sound"
     );
 }

@@ -245,25 +245,6 @@
     ]
   },
   {
-    "on": "thundered",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_thunder_sfx",
-          "min_interval": 0.1
-        }
-      },
-      {
-        "shake": 0.5
-      }
-    ]
-  },
-  {
     "on": "crackled",
     "filter": {
       "all": [
@@ -669,44 +650,6 @@
     ]
   },
   {
-    "on": "hole_collapsed",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_black_hole_collapse_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "iron_landed",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_iron_thud_sfx",
-          "min_interval": 0.1
-        }
-      },
-      {
-        "shake": {
-          "trauma": 0.136,
-          "near": 512,
-          "far": 3072
-        }
-      }
-    ]
-  },
-  {
     "on": "fizzled",
     "filter": {
       "all": [
@@ -718,21 +661,6 @@
         "sound": {
           "id": "ex10_fizzle_sfx",
           "min_interval": 0.1
-        }
-      }
-    ]
-  },
-  {
-    "on": "snapped",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_thunder_snap_sfx"
         }
       }
     ]
@@ -1210,51 +1138,6 @@
     ]
   },
   {
-    "on": "tome_pact_taken",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_tome_pact_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "tome_bounding_taken",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_tome_bounding_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "tome_arcane_taken",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_tome_arcane_sfx"
-        }
-      }
-    ]
-  },
-  {
     "on": "air_jumped",
     "filter": {
       "all": [
@@ -1392,22 +1275,6 @@
     ]
   },
   {
-    "on": "ground_struck",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_ground_strike_sfx",
-          "min_interval": 0.1
-        }
-      }
-    ]
-  },
-  {
     "on": "crate_broke",
     "filter": {
       "all": [
@@ -1486,22 +1353,6 @@
           "id": "ex10_flask_throw_sfx",
           "min_interval": 0.08,
           "at": "centre"
-        }
-      }
-    ]
-  },
-  {
-    "on": "flask_burst",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_flask_burst_sfx",
-          "min_interval": 0.08
         }
       }
     ]
