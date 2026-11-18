@@ -966,7 +966,7 @@ fading. Normal release adds a quiet 0.18-second pressure tail, the flamethrower'
 a dying puff (`ex10_flame_end_sfx`); death and caster loss stop quietly.
 
 Iron under the spray gradually gains a pale ice shell, white frost rims, crystalline facets,
-branching cracks and hanging icicles. Four unlit `iron_frost_big_*` overlays keep
+branching cracks and hanging icicles. One unlit overlay, `iron_frost_big`, keeps
 the coating visible at night over the lit iron plates. The block stays frozen
 and brittle. Supported frozen
 iron loses horizontal speed at 120 pixels/second², independently of normal friction.
@@ -1075,9 +1075,9 @@ would meet a solid tile, a body that is not dynamic (a deck, a slab, lava's
 surface, the elevator, the wizard or an enemy) or another block is refused
 before the cast spends anything, with a fizzle; balls in the way are shoved
 aside. It is a
-120-pixel square collider, four large-ball diameters on a side, drawn from four
-64-pixel lit quarters (`iron_brick_big_*`: riveted plates cut along their seams),
-so it keeps the terrain's pixel scale. It weighs 400 balls and falls harder:
+120-pixel square collider, four large-ball diameters on a side, drawn whole as
+one 128-pixel lit sprite (`iron_brick_big`: four riveted plates meeting at their
+seams), so it keeps the terrain's pixel scale. It weighs 400 balls and falls harder:
 past 30 pixels/second downward it gains 1,800 pixels/second² more, half the
 world's gravity, unless a troll holds or has thrown it. Iron receives 20%
 of a ball's black-hole acceleration at the same distance, enough for a nearby

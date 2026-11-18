@@ -19,10 +19,9 @@ def enrich_art(images,lit,animations):
         images[f'fire_{i}']=im;lit.add(f'fire_{i}')
     im,draw=canvas();draw.ellipse((3,3,60,60),outline=PALETTE['Y'],width=3)
     images['shock_ring']=im
-    for name,im in iron_brick().items():
-        images[name]=im;lit.add(name)
+    images['iron_brick_big']=iron_brick();lit.add('iron_brick_big')
     # Frost stays readable in the dark; the iron underneath still receives lighting.
-    images.update(iron_frost())
+    images['iron_frost_big']=iron_frost()
     scraps,scrap_frost=iron_scraps()
     images.update(scraps);lit.update(scraps)
     images.update(scrap_frost)
@@ -173,8 +172,8 @@ def flame_frames():
 
 
 def iron_brick():
-    """The iron brick: 120 riveted pixels centred on a 128-pixel square, cut
-    into four 64-pixel quarters along its plate seams.
+    """The iron brick: 120 riveted pixels centred on a 128-pixel square,
+    drawn whole, four plates meeting at its seams.
 
     Four plates lit from the upper left, each shading from a lighter top to a
     darker foot through dithered steps; a heavy bevel, bright on the top and
@@ -220,15 +219,14 @@ def iron_brick():
                         x=cx+rng.choice((-1,0,1))
                         for k in range(3,3+rng.randrange(6,16)):
                             if cy+k<plate_y+56 and rng.random()<0.85:put(x,cy+k,rng.choice(('(','ω','"')))
-    return {f'iron_brick_big_{row}_{col}':im.crop((col*64,row*64,col*64+64,row*64+64))
-            for row in (0,1) for col in (0,1)}
+    return im
 
 
 def iron_frost():
     """A translucent ice shell with faceted faces, rime, branching cracks and icicles.
 
-    Author the shell across the whole block before cutting at its plate seams,
-    so the frost and fractures join cleanly between its four runtime quarters.
+    The shell is drawn across the whole block, one sprite over the brick, so
+    the frost and fractures run on across its plate seams.
     All colours belong to the existing palette; there are no new materials."""
     im=Image.new('RGBA',(128,128),PALETTE['.'])
     draw=ImageDraw.Draw(im)
@@ -268,5 +266,4 @@ def iron_frost():
     for x,y in ((15,19),(53,47),(89,18),(112,53),(24,104),(76,98)):
         draw.line((x-3,y,x+3,y),fill=PALETTE['Ψ'])
         draw.line((x,y-4,x,y+4),fill=PALETTE['Ψ'])
-    return {f'iron_frost_big_{row}_{col}':im.crop((col*64,row*64,col*64+64,row*64+64))
-            for row in (0,1) for col in (0,1)}
+    return im

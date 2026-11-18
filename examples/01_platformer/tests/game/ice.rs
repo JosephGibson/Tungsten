@@ -91,21 +91,8 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
     let (mut harness, _) = run();
     let centre = Vec2::new(900.0, 400.0);
     let assets = harness.world_mut().resource_mut::<AssetRegistry>();
-    let quarters = ["0_0", "0_1", "1_0", "1_1"];
-    for (i, q) in quarters.iter().enumerate() {
-        mock_sprite(
-            assets,
-            &format!("ex10_iron_brick_big_{q}"),
-            i as u32 + 1,
-            true,
-        );
-        mock_sprite(
-            assets,
-            &format!("ex10_iron_frost_big_{q}"),
-            i as u32 + 5,
-            false,
-        );
-    }
+    mock_sprite(assets, "ex10_iron_brick_big", 1, true);
+    mock_sprite(assets, "ex10_iron_frost_big", 5, false);
     for i in 0..4 {
         mock_sprite(assets, &format!("ex10_iron_scrap_{i}"), i + 9, true);
         mock_sprite(assets, &format!("ex10_iron_scrap_frost_{i}"), i + 13, false);
@@ -113,7 +100,7 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
     let iron = block(&mut harness, centre);
     // Its art pieces land with the step's spawns.
     harness.step(1);
-    assert_eq!(harness.world().get::<Children>(iron).unwrap().len(), 8);
+    assert_eq!(harness.world().get::<Children>(iron).unwrap().len(), 2);
     EffectRequest::new(iron, DataRef::by_id(COAT))
         .with_amount(0.5)
         .apply(harness.world_mut());
@@ -129,7 +116,7 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
     iron_look(harness.world_mut());
     assert_eq!(
         drawn(&mut harness, true).len() + drawn(&mut harness, false).len(),
-        8
+        2
     );
     assert!(
         drawn(&mut harness, true)
@@ -138,7 +125,7 @@ fn frozen_iron_and_scraps_render_and_escaped_scraps_are_cleaned_up() {
     );
     assert_eq!(
         drawn(&mut harness, false).len(),
-        4,
+        1,
         "the coating shows without the scene's light"
     );
     elements::thermal_shatter(harness.world_mut(), centre, BLAST_RADIUS);

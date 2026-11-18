@@ -1501,29 +1501,11 @@
     "ex10_iron_448x64": {
       "path": "prefabs/ex10_iron_448x64.json"
     },
-    "ex10_iron_frost_0_0": {
-      "path": "prefabs/ex10_iron_frost_0_0.json"
+    "ex10_iron_brick": {
+      "path": "prefabs/ex10_iron_brick.json"
     },
-    "ex10_iron_frost_0_1": {
-      "path": "prefabs/ex10_iron_frost_0_1.json"
-    },
-    "ex10_iron_frost_1_0": {
-      "path": "prefabs/ex10_iron_frost_1_0.json"
-    },
-    "ex10_iron_frost_1_1": {
-      "path": "prefabs/ex10_iron_frost_1_1.json"
-    },
-    "ex10_iron_quarter_0_0": {
-      "path": "prefabs/ex10_iron_quarter_0_0.json"
-    },
-    "ex10_iron_quarter_0_1": {
-      "path": "prefabs/ex10_iron_quarter_0_1.json"
-    },
-    "ex10_iron_quarter_1_0": {
-      "path": "prefabs/ex10_iron_quarter_1_0.json"
-    },
-    "ex10_iron_quarter_1_1": {
-      "path": "prefabs/ex10_iron_quarter_1_1.json"
+    "ex10_iron_frost": {
+      "path": "prefabs/ex10_iron_frost.json"
     },
     "ex10_iron_scrap_frost": {
       "path": "prefabs/ex10_iron_scrap_frost.json"
@@ -8659,29 +8641,11 @@
       "filter": "linear",
       "path": "sprites/infall_streak.png"
     },
-    "ex10_iron_brick_big_0_0": {
-      "emissive_mask": "sprites/iron_brick_big_0_0_e.png",
+    "ex10_iron_brick_big": {
+      "emissive_mask": "sprites/iron_brick_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/iron_brick_big_0_0_n.png",
-      "path": "sprites/iron_brick_big_0_0.png"
-    },
-    "ex10_iron_brick_big_0_1": {
-      "emissive_mask": "sprites/iron_brick_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/iron_brick_big_0_1_n.png",
-      "path": "sprites/iron_brick_big_0_1.png"
-    },
-    "ex10_iron_brick_big_1_0": {
-      "emissive_mask": "sprites/iron_brick_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/iron_brick_big_1_0_n.png",
-      "path": "sprites/iron_brick_big_1_0.png"
-    },
-    "ex10_iron_brick_big_1_1": {
-      "emissive_mask": "sprites/iron_brick_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/iron_brick_big_1_1_n.png",
-      "path": "sprites/iron_brick_big_1_1.png"
+      "normal_map": "sprites/iron_brick_big_n.png",
+      "path": "sprites/iron_brick_big.png"
     },
     "ex10_iron_clad_0_0": {
       "emissive_mask": "sprites/iron_clad_0_0_e.png",
@@ -8875,21 +8839,9 @@
       "normal_map": "sprites/iron_clad_8_3_n.png",
       "path": "sprites/iron_clad_8_3.png"
     },
-    "ex10_iron_frost_big_0_0": {
+    "ex10_iron_frost_big": {
       "filter": "nearest",
-      "path": "sprites/iron_frost_big_0_0.png"
-    },
-    "ex10_iron_frost_big_0_1": {
-      "filter": "nearest",
-      "path": "sprites/iron_frost_big_0_1.png"
-    },
-    "ex10_iron_frost_big_1_0": {
-      "filter": "nearest",
-      "path": "sprites/iron_frost_big_1_0.png"
-    },
-    "ex10_iron_frost_big_1_1": {
-      "filter": "nearest",
-      "path": "sprites/iron_frost_big_1_1.png"
+      "path": "sprites/iron_frost_big.png"
     },
     "ex10_iron_scrap_0": {
       "emissive_mask": "sprites/iron_scrap_0_e.png",

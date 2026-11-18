@@ -41,7 +41,8 @@ impl BallHue {
 
 /// An iron block: a heavy box that shoves balls aside, crushes what it
 /// drives into fast and freezes under the cold spray. Its prefab names it
-/// `iron_block`; its art is four quarters and their frost, its children.
+/// `iron_block`; its art is its brick and the brick's frost, its two
+/// children in that order.
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 pub struct IronBlock;
 

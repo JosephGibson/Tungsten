@@ -1630,7 +1630,7 @@ pub fn iron_look(world: &mut World) {
         .collect();
     for (_, amount, children) in blocks {
         for (index, child) in children.into_iter().enumerate() {
-            let frost = index >= 4;
+            let frost = index >= 1;
             tint(world, child, amount, frost);
         }
     }
