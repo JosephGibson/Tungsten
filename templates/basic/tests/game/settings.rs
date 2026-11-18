@@ -87,6 +87,17 @@ fn row_text(harness: &UiHarness, name: &str) -> String {
         .plain_text(control(harness, name).expect("a row"))
 }
 
+/// Plays the window's part, which the harness has none of: the live display
+/// takes the windowed size `Settings` ask for, as a window does the frame
+/// after an apply, so the Window size row, which shows the display as it
+/// runs once its size was sent (`tungsten::requested_display`), shows it.
+fn grant_size(harness: &mut UiHarness) {
+    let size = settings(harness).resolution().expect("a size is set");
+    let world = harness.world_mut();
+    world.resource_mut::<DisplayState>().resolution = size;
+    harness.step(1);
+}
+
 /// Opens Settings from the title, on its Display tab.
 fn from_title(harness: &mut UiHarness) {
     press(harness, "Settings");
@@ -281,6 +292,7 @@ fn window_size_is_disabled_in_fullscreen() {
     press(&mut harness, "Window size");
     press(&mut harness, "Apply");
     press(&mut harness, "Keep");
+    grant_size(&mut harness);
     assert_eq!(row_text(&harness, "Window size"), "1600×900 (16:9)");
     press(&mut harness, "Window mode");
     assert_eq!(harness.find("Window size"), None, "off once picked");
@@ -643,6 +655,7 @@ fn window_sizes_follow_the_monitor() {
     press(&mut harness, "Window size");
     press(&mut harness, "Apply");
     press(&mut harness, "Keep");
+    grant_size(&mut harness);
     assert_eq!(
         row_text(&harness, "Window size"),
         "1280×1024 (5:4)",

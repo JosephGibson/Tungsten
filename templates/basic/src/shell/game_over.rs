@@ -9,7 +9,7 @@
 //! Retry loads the run's last good save at the run's difficulty, or starts
 //! the run fresh when it has none.
 
-use tungsten::core::post::PostPass;
+use tungsten::core::post::{PostPass, PostTail};
 use tungsten::core::ui::{UiKey, UiTree, Visibility, WidgetId, widgets};
 use tungsten::core::{Easing, World};
 use tungsten::{GameState, RootCover, StateContext, StateId, StateMusic, TransitionEffect};
@@ -38,7 +38,7 @@ pub struct GameOverState {
 /// [`theme::DIED_BLOCK_PX`] and dimmed toward [`theme::DIED_DIM`] under
 /// [`theme::DIED_FADE`], eased out over the entrance.
 #[must_use]
-pub fn passes(secs: f32) -> Vec<PostPass> {
+pub fn passes(secs: f32) -> [PostPass; 2] {
     let cover = Easing::QuadOut.apply((secs / theme::DIED_SECS).min(1.0));
     let block = theme::DIED_BLOCK_PX;
     let pixelate = TransitionEffect::Pixelate {
@@ -47,7 +47,7 @@ pub fn passes(secs: f32) -> Vec<PostPass> {
     let fade = TransitionEffect::Fade {
         color: theme::DIED_FADE,
     };
-    vec![
+    [
         pixelate.pass_at(cover),
         fade.pass_at(theme::DIED_DIM * cover),
     ]
@@ -112,6 +112,10 @@ impl GameState for GameOverState {
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
         ctx.world.resource_mut::<Shell>().died = None;
+        // Its passes, which `shell_frame` wrote after the game's stack.
+        if let Some(tail) = ctx.world.get_resource_mut::<PostTail>() {
+            tail.0.clear();
+        }
     }
 
     fn music(&self) -> Option<StateMusic> {

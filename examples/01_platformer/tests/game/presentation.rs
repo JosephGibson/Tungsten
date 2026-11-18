@@ -674,7 +674,8 @@ fn bloom_and_vignette_survive_game_over_and_retry() {
     assert!(pair, "{night:?}");
     damage(harness.world_mut(), player, 1000.0);
     fall_dead(&mut harness);
-    let dead = stack(&harness);
+    // Game over's two passes draw after the night's, which the stack keeps.
+    let dead = harness.harness().draw().expect("a frame").post.clone();
     assert_eq!(dead[..2], night[..], "under game over's passes: {dead:?}");
     press(&mut harness, "Retry");
     assert_eq!(stack(&harness), night, "after Retry");

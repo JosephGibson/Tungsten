@@ -7,9 +7,10 @@
 //! cycles sizes freely; Apply then asks to keep them, reverting after 10 s.
 //! The tabs sit in a rail beside the rows; `ui_next` and `ui_prev` step
 //! through them. Every slider shows its value in a mono readout. The
-//! Display rows show the set value, else the live one, and the shell keeps
-//! the F11 and F9 keys' changes set; the volumes show the set value, else
-//! the one `tungsten.json` ships.
+//! Display rows show the display `Settings` ask for
+//! (`tungsten::requested_display`), which the engine's F11 and F9 keys
+//! write; the volumes show the set value, else the one `tungsten.json`
+//! ships.
 //! The rows, their kinds, ranges and keys are `assets/ui/screens/settings.json`;
 //! their values are the bindings [`bind`] registers over a [`SettingsView`],
 //! and each control is handled by its key.
@@ -20,10 +21,11 @@ use tungsten::core::ui::{
     UiBindings, UiEvent, UiKey, UiRouter, UiTree, UiValue, WidgetId, screen_build,
 };
 use tungsten::core::{
-    AudioBus, DisplayMode, DisplayState, FrameRateCap, MonitorInfo, Resolution, ScaleFactor,
-    Settings, World,
+    AudioBus, DisplayMode, FrameRateCap, MonitorInfo, Resolution, ScaleFactor, Settings, World,
 };
-use tungsten::{GameState, StateContext, StateId, apply_settings, shipped_volume};
+use tungsten::{
+    GameState, StateContext, StateId, apply_settings, requested_display, shipped_volume,
+};
 
 use super::confirm::{self, ConfirmState};
 use super::keybindings::{self, KeybindingsState};
@@ -126,24 +128,6 @@ fn change_display(world: &mut World, edit: impl FnOnce(&mut Settings)) {
     );
 }
 
-/// The display as set, else as it runs.
-fn display(world: &World) -> DisplayState {
-    let settings = world.resource::<Settings>();
-    let mut live = world
-        .get_resource::<DisplayState>()
-        .copied()
-        .unwrap_or_default();
-    live.display_mode = settings.display_mode().unwrap_or(live.display_mode);
-    live.resolution = settings.resolution().unwrap_or(live.resolution);
-    live.vsync = settings.vsync().unwrap_or(live.vsync);
-    live.frame_rate_cap = match settings.frame_rate_cap() {
-        Some(FrameRateCap::Fps(fps)) => Some(fps.get()),
-        Some(FrameRateCap::Uncapped) => None,
-        None => live.frame_rate_cap,
-    };
-    live
-}
-
 /// The window sizes offered, smallest first: the monitor's modes from the
 /// first of [`SIZES`] up to its current size, with [`SIZES`] that fit under
 /// a monitor listing one mode, and [`SIZES`] alone without a monitor.
@@ -197,7 +181,7 @@ fn next<T: PartialEq + Copy>(values: &[T], value: T) -> T {
 /// Whether the window is fullscreen as picked, else as set or running.
 fn fullscreen(world: &World) -> bool {
     let mode = view(world).pending.0;
-    mode.unwrap_or(display(world).display_mode) != DisplayMode::Windowed
+    mode.unwrap_or(requested_display(world).display_mode) != DisplayMode::Windowed
 }
 
 /// The master volume (`bus` `None`) or a bus's, in percent: as set, else
@@ -230,7 +214,7 @@ fn scale(world: &World, key: &str) -> f32 {
 
 /// The frame cap's slider: the cap as set or running, else where it rests.
 fn cap(world: &World) -> f32 {
-    display(world)
+    requested_display(world)
         .frame_rate_cap
         .map_or(view(world).rest, |fps| fps as f32)
 }
@@ -256,20 +240,24 @@ pub(super) fn bind(bindings: &mut UiBindings) {
             ["Windowed", "Fullscreen"][usize::from(fullscreen(w))].to_owned()
         })
         .text("window_size", |w| {
-            let size = view(w).pending.1.unwrap_or(display(w).resolution);
+            let size = view(w).pending.1.unwrap_or(requested_display(w).resolution);
             let (width, height) = (size.width, size.height);
             format!("{width}×{height} ({})", aspect(width, height))
         })
         .enabled("windowed", |w| !fullscreen(w))
-        .value("vsync", |w| on(display(w).vsync))
+        .value("vsync", |w| on(requested_display(w).vsync))
         .value("frame_rate_limit", |w| number(cap(w)))
         .text("frame_rate_text", |w| {
             let floor = |fps: u32| (fps as f32).max(FPS[0]);
-            let fps = display(w).frame_rate_cap.map_or(view(w).rest, floor);
+            let fps = requested_display(w)
+                .frame_rate_cap
+                .map_or(view(w).rest, floor);
             format!("{fps:.0} fps")
         })
-        .enabled("capped", |w| display(w).frame_rate_cap.is_some())
-        .value("uncapped", |w| on(display(w).frame_rate_cap.is_none()))
+        .enabled("capped", |w| requested_display(w).frame_rate_cap.is_some())
+        .value("uncapped", |w| {
+            on(requested_display(w).frame_rate_cap.is_none())
+        })
         .value("bloom", |w| {
             on(w.resource::<Settings>().bloom() != Some(false))
         })
@@ -351,7 +339,7 @@ impl SettingsState {
     /// are picked, the value as it runs dropping the pick, and Apply sends
     /// the picks.
     fn activate(&self, world: &mut World, key: &str) {
-        let (display, (mode, size)) = (display(world), view(world).pending);
+        let (display, (mode, size)) = (requested_display(world), view(world).pending);
         match key {
             "window_mode" => {
                 let picked = match mode.unwrap_or(display.display_mode) {
@@ -488,7 +476,7 @@ impl SettingsState {
 
 /// Writes `Settings`, the gameplay options in their game section; a failure
 /// logs, and no user folder saves nothing. The exit's last frame calls it
-/// while the screen is open, and the F11 and F9 keys while it is not.
+/// while the screen is open.
 pub(crate) fn save(world: &mut World) {
     options::save(world);
 }

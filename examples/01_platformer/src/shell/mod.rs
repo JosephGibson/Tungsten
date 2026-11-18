@@ -27,15 +27,15 @@ pub mod title;
 pub mod toast;
 
 use serde::{Deserialize, Serialize};
-use tungsten::core::post::{PostPass, PostStack};
+use tungsten::core::post::PostTail;
 use tungsten::core::save::SaveError;
 use tungsten::core::ui::{
     LayoutStyle, Sizing, UiBindings, UiEvent, UiKey, UiLayer, UiRouter, UiTrack, UiTree,
     Visibility, WidgetId, screen_build, widgets,
 };
 use tungsten::core::{
-    ActionMap, DisplayMode, DisplayState, EventQueue, InputState, RoutedInput, SaveSlots, Schedule,
-    Settings, Stage, Time, Voice, World, system,
+    ActionMap, EventQueue, InputState, RoutedInput, SaveSlots, Schedule, Stage, Time, Voice, World,
+    system,
 };
 use tungsten::{
     DebugHud, Exiting, GameState, Plugin, RootCover, StateId, StateStack,
@@ -214,17 +214,9 @@ pub(crate) struct Shell {
     /// The slots this program wrote, the first written first: of two saves
     /// of one time, the first written is the older.
     written: Vec<&'static str>,
-    post: Post,
     /// Real seconds since game over came on, while it is on the stack: the
     /// clock of its post passes.
     died: Option<f32>,
-}
-
-/// The shell's edit of `PostStack`, which [`post`] makes.
-#[derive(Default)]
-struct Post {
-    /// The passes the shell appended last frame.
-    tail: Vec<PostPass>,
 }
 
 /// The shell as a plugin: the title first, the run's systems, the options
@@ -423,8 +415,6 @@ fn curtain(world: &mut World, root: WidgetId, secs: f32, mut flow: Option<Flow>)
         && let Some(Flow { replace, run }) = flow.take()
     {
         tree.animate(root, UiTrack::opacity(1.0, 0.0, theme::CURTAIN_OUT_SECS));
-        // The game's stack back as it built it, before its run leaves.
-        post(world, Vec::new());
         let stack = stack(world);
         for _ in 1..stack.depth() {
             stack.request_pop();
@@ -799,30 +789,20 @@ fn save_due(world: &mut World) {
     }
 }
 
-/// The shell's one edit of `PostStack` a frame: a stack that still ends
-/// with the passes the shell appended last frame loses them, then `tail`
-/// goes at the end. Bloom is the engine's switch (`Settings::bloom`).
-fn post(world: &mut World, tail: Vec<PostPass>) {
-    let last = std::mem::take(&mut world.resource_mut::<Shell>().post.tail);
-    let stack = &mut world.resource_mut::<PostStack>().0;
-    if stack.ends_with(&last) {
-        stack.truncate(stack.len() - last.len());
-    }
-    stack.extend(tail.iter().copied());
-    world.resource_mut::<Shell>().post.tail = tail;
-}
-
-/// `shell_frame`: the F11 and F9 keys, the run's playtime, the exit's save
+/// `shell_frame`: game over's passes, the run's playtime, the exit's save
 /// of the Settings screen's changes while it is open, after a confirm's
-/// safe answer, the pause key, focus loss and the post stack.
+/// safe answer, the pause key and focus loss.
 fn frame(world: &mut World) {
-    display_keys(world);
     let real = world.resource::<Time>().real_delta();
     let died = world.resource_mut::<Shell>().died.as_mut().map(|secs| {
         *secs += real;
         *secs
     });
-    post(world, died.map_or_else(Vec::new, game_over::passes));
+    // Game over's passes, which draw after the game's stack while it shows.
+    if let (Some(secs), Some(tail)) = (died, world.get_resource_mut::<PostTail>()) {
+        tail.0.clear();
+        tail.0.extend(game_over::passes(secs));
+    }
     let delta = f64::from(world.resource::<Time>().delta());
     if let Some(run) = world.get_resource_mut::<RunState>() {
         run.playtime_secs += delta;
@@ -837,33 +817,6 @@ fn frame(world: &mut World) {
         push(world, pause::PauseState::default());
     }
     focus(world, open);
-}
-
-/// F11 and F9, the engine's fullscreen and vsync keys, kept in `Settings`
-/// and saved as the engine toggles them, so the Display rows show them and
-/// the next apply, or start, keeps them.
-fn display_keys(world: &mut World) {
-    let keys = ["engine_toggle_fullscreen", "engine_toggle_vsync"];
-    let [full, vsync] = keys.map(|key| pressed(world, key, false));
-    if !full && !vsync {
-        return;
-    }
-    // The engine toggles the live display; its request lands next frame.
-    let live = *world.resource::<DisplayState>();
-    let settings = world.resource_mut::<Settings>();
-    let modes = [DisplayMode::Windowed, DisplayMode::BorderlessFullscreen];
-    if full {
-        settings.set_display_mode(Some(modes[usize::from(live.display_mode == modes[0])]));
-    }
-    if vsync {
-        settings.set_vsync(Some(!live.vsync));
-    }
-    // Applied again, since an apply earlier this frame, a slider's, replaces
-    // the engine's request; the Settings screen saves when it closes.
-    tungsten::apply_settings(world);
-    if !world.resource::<Shell>().settings_open {
-        settings::save(world);
-    }
 }
 
 /// Plays the manifest's sound `id` at its volume, looping as the manifest

@@ -498,7 +498,11 @@ fn game_over_pixelates_and_dims_and_removes_exactly_its_passes() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     let vignette = PostPass::Vignette(VignetteParams::default());
-    let stack = |harness: &UiHarness| harness.world().resource::<PostStack>().0.clone();
+    // What the last frame drew: the game's stack, then the shell's tail.
+    let stack = |harness: &UiHarness| {
+        let draw = harness.harness().draw().expect("a frame drew");
+        draw.post.clone()
+    };
     harness
         .world_mut()
         .insert_resource(PostStack(vec![vignette]));
