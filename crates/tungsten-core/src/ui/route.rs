@@ -536,10 +536,15 @@ fn play_menu_sounds(world: &mut World) {
             _ => {}
         }
     }
+    // A routing that heard nothing copies no name, so an idle frame
+    // allocates nothing here.
+    if !heard.contains(&true) {
+        return;
+    }
     let play: Vec<String> = [&sounds.focus, &sounds.activate, &sounds.back]
         .into_iter()
         .zip(heard)
-        .filter_map(|(sound, heard)| sound.clone().filter(|_| heard))
+        .filter_map(|(sound, heard)| sound.as_ref().filter(|_| heard).cloned())
         .collect();
     for sound in play {
         crate::audio::play(world, &sound, 0.0);

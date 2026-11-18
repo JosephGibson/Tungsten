@@ -2375,8 +2375,9 @@ impl App {
     }
 
     /// Applies `tungsten.json`'s `ui.theme` to the tree once its asset has
-    /// loaded (redo 7.17); a later reload re-applies it as it does any
-    /// theme the tree follows (`D-148`), and a game may set another after.
+    /// loaded (redo 7.17), at the start of each frame's update and after its
+    /// hot reload; a later reload re-applies it as it does any theme the
+    /// tree follows (`D-148`), and a game may set another after.
     fn apply_configured_theme(&mut self) {
         let Some(id) = self.pending_theme.as_deref() else {
             return;
@@ -2823,6 +2824,9 @@ impl App {
         self.apply_pending_display_request();
 
         self.stage_time(clock);
+        // Before the update, so a screen built on the first frame after the
+        // load has its theme (redo 7.11).
+        self.apply_configured_theme();
         let (update_start, mut systems, fixed_steps, exit) = self.stage_update();
         if exit {
             return FrameEnd::ExitRequested;

@@ -32,6 +32,8 @@ pub struct Confirm {
     countdown: Option<Timer>,
     /// The screen and its countdown line, once entered.
     ui: Option<(ModalScreen, WidgetId)>,
+    /// An answer was taken: the first is final.
+    answered: bool,
 }
 
 impl Confirm {
@@ -47,6 +49,7 @@ impl Confirm {
             on_no: None,
             countdown: None,
             ui: None,
+            answered: false,
         }
     }
 
@@ -72,17 +75,18 @@ impl Confirm {
         self
     }
 
-    /// Runs the chosen answer's callback and drops the other's, so the first
-    /// answer is final; then the dialog pops unless the callback changed the
-    /// stack.
+    /// Runs the chosen answer's callback, when it has one, and drops the
+    /// other's, so the first answer is final; then the dialog pops unless the
+    /// callback changed the stack. An answer with no callback closes it too.
     fn answer(&mut self, world: &mut World, yes: bool) {
+        if std::mem::replace(&mut self.answered, true) {
+            return;
+        }
         let answers = [self.on_no.take(), self.on_yes.take()];
-        let chosen = answers.into_iter().nth(usize::from(yes)).flatten();
-        let answered = chosen.is_some();
-        if let Some(answer) = chosen {
+        if let Some(answer) = answers.into_iter().nth(usize::from(yes)).flatten() {
             answer(world);
         }
-        if answered && idle(world) {
+        if idle(world) {
             pop(world);
         }
     }
@@ -94,9 +98,10 @@ pub fn ask(world: &mut World, confirm: Confirm) -> bool {
     super::push(world, confirm)
 }
 
-/// The countdown's line: its whole seconds left.
-fn count_text(timer: &Timer) -> String {
-    format!("{} s", timer.remaining().ceil())
+/// The countdown's line: the answer it takes and its whole seconds left,
+/// as `Revert in 10 s`.
+fn count_text(no: &str, timer: &Timer) -> String {
+    format!("{no} in {} s", timer.remaining().ceil())
 }
 
 impl GameState for Confirm {
@@ -115,7 +120,7 @@ impl GameState for Confirm {
         }
         widgets::show(tree, count, self.countdown.is_some());
         if let Some(timer) = &self.countdown {
-            tree.set_plain_text(count, &count_text(timer));
+            tree.set_plain_text(count, &count_text(&self.no, timer));
         }
         let yes = widgets::button(tree, screen.card, &self.yes);
         tree.set_key(yes, "yes");
@@ -155,7 +160,7 @@ impl GameState for Confirm {
         }
         if let Some(timer) = self.countdown.as_mut() {
             let ended = timer.tick(world.resource::<Time>().real_delta()) > 0;
-            let text = count_text(timer);
+            let text = count_text(&self.no, timer);
             world.resource_mut::<UiTree>().set_plain_text(count, &text);
             if ended {
                 self.countdown = None;

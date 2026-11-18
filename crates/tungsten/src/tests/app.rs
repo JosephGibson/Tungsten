@@ -1519,6 +1519,30 @@ fn the_configured_theme_applies_once_loaded() {
 }
 
 #[test]
+fn the_configured_theme_is_on_for_the_first_frames_screens() {
+    use tungsten_core::ui::{Theme, UiThemeRegistry, UiTree};
+    /// The tree's theme when the startup system ran.
+    struct Seen(Option<String>);
+    let mut config = Config::default();
+    config.ui.theme = Some("shell".to_owned());
+    let mut app = App::new(config).unwrap();
+    app.world
+        .resource_mut::<UiThemeRegistry>()
+        .insert("shell", Theme::default());
+    app.add_system_to(
+        Stage::Startup,
+        system("seen", |world: &mut World| {
+            let id = world.resource::<UiTree>().theme_id().map(str::to_owned);
+            world.insert_resource(Seen(id));
+        }),
+    );
+    app.resolve_schedule().unwrap();
+    headless_frame(&mut app);
+    let seen = app.world.resource::<Seen>();
+    assert_eq!(seen.0.as_deref(), Some("shell"), "on before the update");
+}
+
+#[test]
 fn the_configured_floor_and_reference_height_reach_the_scale_factor() {
     let mut config = Config::default();
     config.ui.reference_height = Some(720.0);
