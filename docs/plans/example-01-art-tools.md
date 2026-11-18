@@ -1,6 +1,6 @@
-# 01's art tools on shared helpers, its big props whole (example-01-art-tools) — draft
+# 01's art tools on shared helpers, its big props whole (example-01-art-tools) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13f (§2.8): example 01's eight art-tool rows in one asset session at max. Five copies call the helper they copy, every owned output byte-equal: `crossfaded` (S-141), the summoning ring and `icon_of` (S-151), `white_alpha` over given steps (S-161), `pixels.ramp` (S-166), one flame-ball field and `fire_symbol` with its limits (S-115); one clip helper in `art.py` writes every clip record (S-55), byte-equal too; `just level-check` runs `tungsten check` after the generator, which drops its copies of that check (S-131); and every prop larger than a tile is drawn, placed and judged whole, one sprite or clip a prop, the iron block's brick and frost included, its groups gone (S-74), the scenery and effects families unlocked for it and locked again on the owner's acceptance (`D-223`).
 - **non-goals:**
   - 7.13g, the evaluation, which starts from this plan's last commit.
@@ -242,5 +242,6 @@ Round 2: the same reviewer at xhigh, 2026-11-18, the plan without this section a
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-18 | landed | `just level-check` exit 0 (545 s): `OK: 6368 owned outputs match and 20 locked families hold; art, level, references and budgets validated`, `Ran 46 tests in 430.875s` `OK`; `just repo-check` and `git diff --check` exit 0, no `__pycache__`; `rg -c 'blend = i / \((overlap\|extra) - 1\)' …/sfx.py` → `1`; `rg -c 'crossfaded\(' …/sfx.py` → `8`; `sfx.py` byte-equal (`cmp`) to `W/edits/s141.py` rehearsed on an export of HEAD; preflight: R7 (`docs/plans/phase-7.md`, its rows at the close) alone | `examples/01_platformer/tools/sfx.py` |
 
 ## Follow-ups

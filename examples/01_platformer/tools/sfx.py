@@ -211,12 +211,7 @@ def ice_spray():
         shimmer = sum(math.sin(math.tau * frequency * t) * weight
                       for frequency, weight in [(1451, .05), (2177, .03), (3221, .018)])
         samples.append(1.3 * wind * flutter + shimmer * (.6 + .4 * math.sin(math.tau * 3 * t)))
-    # Crossfade the extra tail into the beginning, then wrap at adjacent samples.
-    loop = samples[overlap:count]
-    for i in range(overlap):
-        blend = i / (overlap - 1)
-        loop.append(samples[count + i] * (1 - blend) + samples[i] * blend)
-    return finish(loop, fade_in=0, fade_out=0)
+    return finish(crossfaded(samples, count, overlap), fade_in=0, fade_out=0)
 
 
 def ice_freeze():
@@ -299,11 +294,7 @@ def flame_spray():
             crack = .6
         crack *= .93
         samples.append(1.4 * rush * breath + crack * crackles())
-    loop = samples[overlap:count]
-    for i in range(overlap):
-        blend = i / (overlap - 1)
-        loop.append(samples[count + i] * (1 - blend) + samples[i] * blend)
-    return finish(loop, fade_in=0, fade_out=0)
+    return finish(crossfaded(samples, count, overlap), fade_in=0, fade_out=0)
 
 
 def toss():
@@ -702,11 +693,7 @@ def wisp_hum():
             crack = .45
         crack *= .93
         samples.append(2.4 * roar * flicker + drone + crack * crackles())
-    loop = samples[overlap:count]
-    for i in range(overlap):
-        blend = i / (overlap - 1)
-        loop.append(samples[count + i] * (1 - blend) + samples[i] * blend)
-    return finish(loop, fade_in=0, fade_out=0)
+    return finish(crossfaded(samples, count, overlap), fade_in=0, fade_out=0)
 
 
 def wisp_flare():
@@ -1335,11 +1322,7 @@ def ambience_loop(voice, overlap=0.25):
     crossfaded into the head so the loop repeats without a seam."""
     count, extra = AMBIENCE_LENGTH, int(overlap * AMBIENCE_RATE)
     samples = [voice(i, i / AMBIENCE_RATE) for i in range(count + extra)]
-    loop = samples[extra:count]
-    for i in range(extra):
-        blend = i / (extra - 1)
-        loop.append(samples[count + i] * (1 - blend) + samples[i] * blend)
-    return encode(loop, AMBIENCE_RATE)
+    return encode(crossfaded(samples, count, extra), AMBIENCE_RATE)
 
 
 def events(seed, count, length=AMBIENCE_SECONDS, margin=0.4):
