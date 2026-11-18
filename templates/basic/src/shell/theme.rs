@@ -1,7 +1,7 @@
 //! The shell's motion and sound in one place: the theme asset's ID, the
 //! fades and slides each screen change takes, and the manifest IDs of the
-//! menu sounds and the shell's music. Colours, borders, radii, fonts,
-//! spacing, sizes and text styles live in `assets/ui/themes/shell.json`,
+//! shell's music. Colours, borders, radii, fonts, spacing, sizes, text
+//! styles and the menu sounds live in `assets/ui/themes/shell.json`,
 //! which `tungsten.json`'s `ui.theme` applies and which hot-reloads; a
 //! screen reads its spacing and sizes as it builds
 //! (`tungsten::core::ui::widgets::size`).
@@ -22,9 +22,6 @@ pub const SLIDE_UNITS: f32 = 6.0;
 /// and its fade out.
 pub const CURTAIN_IN_SECS: f32 = 0.10;
 pub const CURTAIN_OUT_SECS: f32 = 0.14;
-/// The menu sounds, by manifest ID: a focus move a navigation press made,
-/// an activation, and a cancel or Back.
-pub const MENU_SOUNDS: [&str; 3] = ["ui_move", "ui_select", "ui_back"];
 /// The title's song, by manifest ID, and its fade in and out.
 pub const TITLE_MUSIC: &str = "music_title";
 pub const TITLE_FADE: f32 = 1.0;

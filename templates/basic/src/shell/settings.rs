@@ -1,8 +1,8 @@
 //! Tabbed settings: Display, Audio, Interface, Controls and Gameplay. Every
-//! change applies at once through `shell::apply_settings` and is written
-//! when the screen closes (Back or `ui_cancel` save `Settings` and the
-//! gameplay options) or the game exits with it open; a tab's Reset returns
-//! its values to unset or default.
+//! change applies at once through `shell::apply_settings`, a scale slider's
+//! at its release, and is written when the screen closes (Back or
+//! `ui_cancel` save `Settings` and the gameplay options) or the game exits
+//! with it open; a tab's Reset returns its values to unset or default.
 //! The window mode and size are picked first and sent by Apply, so a player
 //! cycles sizes freely; Apply then asks to keep them, reverting after 10 s.
 //! The tabs sit in a rail beside the rows; `ui_next` and `ui_prev` step
@@ -17,7 +17,9 @@
 use std::num::NonZeroU32;
 
 use tungsten::core::settings::SettingsError;
-use tungsten::core::ui::{UiBindings, UiEvent, UiKey, UiTree, UiValue, WidgetId, screen_build};
+use tungsten::core::ui::{
+    UiBindings, UiEvent, UiKey, UiRouter, UiTree, UiValue, WidgetId, screen_build,
+};
 use tungsten::core::{
     AudioBus, DisplayMode, DisplayState, FrameRateCap, MonitorInfo, Resolution, ScaleFactor,
     Settings, World,
@@ -51,28 +53,20 @@ pub const FPS_REST: u32 = 60;
 pub const UI_SCALES: std::ops::RangeInclusive<f32> = 0.5..=2.0;
 
 /// What the screen shows beyond `Settings` and the options: the open tab,
-/// the window mode and size picked and not yet applied, where the frame
-/// cap's slider rests while Uncapped is on, and the scale slider the
-/// pointer holds with its value, applied at the release so the UI is not
-/// rescaled under the pointer. A resource [`SettingsState`] owns; absent,
-/// the Display tab with nothing pending.
+/// the window mode and size picked and not yet applied, and where the frame
+/// cap's slider rests while Uncapped is on. A resource [`SettingsState`]
+/// owns; absent, the Display tab with nothing pending.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SettingsView {
     tab: usize,
     pending: (Option<DisplayMode>, Option<Resolution>),
     rest: f32,
-    held: Option<(WidgetId, f32)>,
 }
 
 impl Default for SettingsView {
     fn default() -> Self {
-        let (tab, pending, rest, held) = (0, (None, None), FPS_REST as f32, None);
-        Self {
-            tab,
-            pending,
-            rest,
-            held,
-        }
+        let (tab, pending, rest) = (0, (None, None), FPS_REST as f32);
+        Self { tab, pending, rest }
     }
 }
 
@@ -217,19 +211,23 @@ fn volume(world: &World, bus: Option<AudioBus>) -> f32 {
 }
 
 /// A scale as set, else as it applies (`tungsten.json`'s `ui.scale` for
-/// the UI's), or the held slider's value while the pointer holds the slider
-/// keyed `key`.
+/// the UI's), or the slider keyed `key`'s own value while the pointer drags
+/// it: the value applies at its release, so the UI does not rescale under
+/// the pointer.
 fn scale(world: &World, key: &str) -> f32 {
-    let held = view(world)
-        .held
-        .filter(|(slider, _)| world.resource::<UiTree>().key_name(*slider) == Some(key));
+    let tree = world.resource::<UiTree>();
+    let dragged = world
+        .resource::<UiRouter>()
+        .captured()
+        .filter(|slider| tree.key_name(*slider) == Some(key))
+        .and_then(|slider| tree.slider_value(slider));
     let settings = world.resource::<Settings>();
     let applied = world.resource::<ScaleFactor>().ui_scale();
     let set = match key {
         "ui_scale" => settings.ui_scale().unwrap_or(applied),
         _ => settings.text_scale().unwrap_or(1.0),
     };
-    held.map_or(set, |(_, value)| value)
+    dragged.unwrap_or(set)
 }
 
 /// The frame cap's slider: the cap as set or running, else where it rests.
@@ -583,28 +581,13 @@ impl SettingsState {
                     Some(tab) => self.select(world, tab),
                     None => self.activate(world, &key(world, widget)),
                 },
-                UiEvent::Pressed { widget, .. } if scale(&key(world, widget)) => {
-                    let value = world.resource::<UiTree>().slider_value(widget);
-                    view_mut(world).held = Some((widget, value.unwrap_or(1.0)));
+                // A scale applies at its commit, a slider's release or a
+                // step, the rest as they change.
+                UiEvent::ValueCommitted { widget, value, .. } if scale(&key(world, widget)) => {
+                    self.set(world, &key(world, widget), value);
                 }
-                UiEvent::Released { widget, .. } | UiEvent::PressCancelled { widget, .. }
-                    if view(world).held.is_some_and(|(held, _)| held == widget) =>
-                {
-                    view_mut(world).held = None;
-                    let value = world.resource::<UiTree>().slider_value(widget);
-                    let number = UiValue::Number(value.unwrap_or(1.0));
-                    self.set(world, &key(world, widget), number);
-                }
-                UiEvent::ValueChanged { widget, value, .. } => {
-                    // A held scale slider shows its value now and applies
-                    // it at the release.
-                    match view(world).held {
-                        Some((slider, draft)) if slider == widget => {
-                            let draft = value.as_number().unwrap_or(draft);
-                            view_mut(world).held = Some((slider, draft));
-                        }
-                        _ => self.set(world, &key(world, widget), value),
-                    }
+                UiEvent::ValueChanged { widget, value, .. } if !scale(&key(world, widget)) => {
+                    self.set(world, &key(world, widget), value);
                 }
                 _ => {}
             }

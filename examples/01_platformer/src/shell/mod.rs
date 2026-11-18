@@ -858,8 +858,7 @@ fn post(world: &mut World, tail: Vec<PostPass>, swap: bool) {
 
 /// `shell_frame`: the F11 and F9 keys, the run's playtime, the exit's save
 /// of the Settings screen's changes while it is open, after a confirm's
-/// safe answer, the menu sounds, the pause key, focus loss and the post
-/// stack.
+/// safe answer, the pause key, focus loss and the post stack.
 fn frame(world: &mut World) {
     display_keys(world);
     let real = world.resource::<Time>().real_delta();
@@ -877,7 +876,6 @@ fn frame(world: &mut World) {
     if exit && world.resource::<Shell>().settings_open {
         settings::save(world);
     }
-    menu_sounds(world);
     let open = idle(world) && top(world) == Some(game::GAMEPLAY);
     if open && pressed(world, "state_pause", true) {
         push(world, pause::PauseState::default());
@@ -916,35 +914,6 @@ fn display_keys(world: &mut World) {
 /// says, faded in over `fade` seconds; `None` when it names no such sound.
 pub fn play(world: &mut World, id: &str, fade: f32) -> Option<Voice> {
     tungsten::core::audio::play(world, id, fade)
-}
-
-/// The menu sounds for this frame's routing: a move when a navigation
-/// press moved focus, a select on an activation, a back on a cancel or a
-/// Back button.
-fn menu_sounds(world: &mut World) {
-    let navigation = [
-        "ui_up", "ui_down", "ui_left", "ui_right", "ui_next", "ui_prev",
-    ];
-    let navigated = navigation
-        .iter()
-        .any(|action| pressed(world, action, false));
-    let mut heard = [false; 3];
-    for event in events(world) {
-        match event {
-            UiEvent::FocusGained { .. } => heard[0] |= navigated,
-            UiEvent::Activated {
-                key: Some(BACK), ..
-            } => heard[2] = true,
-            UiEvent::Activated { .. } => heard[1] = true,
-            UiEvent::Cancel { .. } => heard[2] = true,
-            _ => {}
-        }
-    }
-    for (sound, heard) in theme::MENU_SOUNDS.into_iter().zip(heard) {
-        if heard {
-            play(world, sound, 0.0);
-        }
-    }
 }
 
 /// Focus loss: mutes when the options say so, and pauses gameplay once
@@ -1016,7 +985,8 @@ pub fn events(world: &World) -> Vec<UiEvent> {
     events.iter_current().copied().collect()
 }
 
-/// The key every screen's Back button takes, which plays the back sound.
+/// The key every screen's Back button takes, the engine's back role: it
+/// backs out of its screen and plays the theme's back sound.
 pub const BACK: UiKey = UiKey::new("back");
 
 /// The keyed control on `root` activated at this routing, with its key.

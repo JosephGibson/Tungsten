@@ -1385,10 +1385,14 @@ fn delete_buttons_and_low_health_use_danger() {
     }
 }
 
-/// How many times each menu sound played, in `theme::MENU_SOUNDS`' order,
-/// over the audio the harness logged since `clear_audio_log`.
+/// How many times each of the theme's menu sounds played, focus, activate
+/// and back, over the audio the harness logged since `clear_audio_log`.
 fn menu_sounds(harness: &UiHarness) -> [usize; 3] {
-    theme::MENU_SOUNDS.map(|name| harness.harness().plays(name).len())
+    let sounds = harness.tree().theme().sounds().clone();
+    [sounds.focus, sounds.activate, sounds.back].map(|name| {
+        let name = name.expect("a theme sound");
+        harness.harness().plays(&name).len()
+    })
 }
 
 #[test]

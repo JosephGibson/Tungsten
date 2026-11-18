@@ -844,7 +844,7 @@ a spray's loop and the pour stop over 0.08 seconds.
 | `ex10_toss_sfx` | `toss.wav` | A bowling ball leaves the hand |
 | `ex10_place_sfx` | `place.wav` | An iron block set down |
 | `ex10_black_hole_sfx` | `black_hole_open.wav` | A black hole tearing open (01 (j)): an inward suck rising over its 0.3 s opening, a deep whomp falling into its drone, a rumble and a faint glassy shimmer |
-| `ui_move`, `ui_select`, `ui_back` | `ui_*.wav` | The shell's menu sounds, by the IDs it plays: a plucked tick, two bells rising, two falling |
+| `ui_move`, `ui_select`, `ui_back` | `ui_*.wav` | The shell's menu sounds, by the IDs its theme's `sounds` names: a plucked tick, two bells rising, two falling |
 | `game_over` | `game_over.wav` | Game over's sting: a falling bell line, then a low toll under a plucked D minor chord |
 | `music_title`, `music_over` | `music_*.wav` | The shell's title loop, a twelve-bar lullaby in D minor, and game over's, a four-bar dirge |
 | `music_explore`, `music_pause` | `music_*.wav` | A run's exploration loop, and pause's over the quieted run |
