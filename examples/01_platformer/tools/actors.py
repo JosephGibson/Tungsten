@@ -3405,7 +3405,7 @@ def goblin_bomb(frame):
     c = {}
     for (x, y) in part.pixels():
         lit = max(0.0, -((x + 0.5 - 8) * -0.55 + (y + 0.5 - 8) * -0.65) / 4.6 * 0.8 + 0.35)
-        c[(x, y)] = 'θbBΩχ'[min(4, int(lit * 5))]
+        c[(x, y)] = ramp(lit, 'θbBΩχ')
     c[(6, 6)] = 'φ'
     for x in (7, 8, 9):
         c[(x, 3)] = 'a'
