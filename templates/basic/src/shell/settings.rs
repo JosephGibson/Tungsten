@@ -19,7 +19,8 @@ use std::num::NonZeroU32;
 use tungsten::core::settings::SettingsError;
 use tungsten::core::ui::{UiBindings, UiEvent, UiKey, UiTree, UiValue, WidgetId, screen_build};
 use tungsten::core::{
-    AudioBus, DisplayMode, DisplayState, FrameRateCap, MonitorInfo, Resolution, Settings, World,
+    AudioBus, DisplayMode, DisplayState, FrameRateCap, MonitorInfo, Resolution, ScaleFactor,
+    Settings, World,
 };
 use tungsten::{GameState, StateContext, StateId, shipped_volume};
 
@@ -28,7 +29,7 @@ use super::keybindings::{self, KeybindingsState};
 use super::options::{self, GameOptions};
 use super::{
     BACK, Difficulty, Menu, RunState, Shell, apply_settings, enter, events, idle, pop, pressed,
-    push, stack, theme, toast,
+    push, stack, toast,
 };
 
 pub const SETTINGS: StateId = "settings";
@@ -215,15 +216,17 @@ fn volume(world: &World, bus: Option<AudioBus>) -> f32 {
     set.unwrap_or_else(|| shipped_volume(world, bus)) * 100.0
 }
 
-/// A scale as set, else its default, or the held slider's value while the
-/// pointer holds the slider keyed `key`.
+/// A scale as set, else as it applies (`tungsten.json`'s `ui.scale` for
+/// the UI's), or the held slider's value while the pointer holds the slider
+/// keyed `key`.
 fn scale(world: &World, key: &str) -> f32 {
     let held = view(world)
         .held
         .filter(|(slider, _)| world.resource::<UiTree>().key_name(*slider) == Some(key));
     let settings = world.resource::<Settings>();
+    let applied = world.resource::<ScaleFactor>().ui_scale();
     let set = match key {
-        "ui_scale" => settings.ui_scale().unwrap_or(theme::UI_SCALE),
+        "ui_scale" => settings.ui_scale().unwrap_or(applied),
         _ => settings.text_scale().unwrap_or(1.0),
     };
     held.map_or(set, |(_, value)| value)
@@ -285,11 +288,8 @@ pub(super) fn bind(bindings: &mut UiBindings) {
         })
         .value("mute_unfocused", |w| on(options(w).mute_unfocused))
         .value("ui_scale", |w| {
-            number(
-                w.resource::<Settings>()
-                    .ui_scale()
-                    .unwrap_or(theme::UI_SCALE),
-            )
+            let applied = w.resource::<ScaleFactor>().ui_scale();
+            number(w.resource::<Settings>().ui_scale().unwrap_or(applied))
         })
         .value("text_scale", |w| {
             number(w.resource::<Settings>().text_scale().unwrap_or(1.0))

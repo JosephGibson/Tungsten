@@ -35,6 +35,14 @@ pub fn config(user_folder: UserFolder) -> Config {
     config
 }
 
+/// `tungsten.json`'s `ui.scale`: the UI scale an unset setting applies as.
+pub fn shipped_ui_scale() -> f32 {
+    config(UserFolder::Off)
+        .ui
+        .scale
+        .expect("tungsten.json sets ui.scale")
+}
+
 /// What `main.rs` hands the shell: the window's title from `tungsten.json`.
 pub fn info() -> GameInfo {
     GameInfo {

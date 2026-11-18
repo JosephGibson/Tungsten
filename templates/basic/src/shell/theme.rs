@@ -1,14 +1,15 @@
-//! The shell's motion and sound in one place: the theme asset's ID and its
-//! apply, the fades and slides each screen change takes, and the manifest
-//! IDs of the menu sounds and the shell's music. Colours, borders, radii,
-//! fonts, spacing, sizes and text styles live in
-//! `assets/ui/themes/shell.json`, which hot-reloads; a screen reads its
-//! spacing and sizes as it builds (`tungsten::core::ui::widgets::size`).
+//! The shell's motion and sound in one place: the theme asset's ID, the
+//! fades and slides each screen change takes, and the manifest IDs of the
+//! menu sounds and the shell's music. Colours, borders, radii, fonts,
+//! spacing, sizes and text styles live in `assets/ui/themes/shell.json`,
+//! which `tungsten.json`'s `ui.theme` applies and which hot-reloads; a
+//! screen reads its spacing and sizes as it builds
+//! (`tungsten::core::ui::widgets::size`).
 
-use tungsten::core::ui::{UiThemeRegistry, UiTrack, UiTree, WidgetId};
-use tungsten::core::{Easing, World};
+use tungsten::core::Easing;
+use tungsten::core::ui::{UiTrack, UiTree, WidgetId};
 
-/// The `ui_themes` ID the shell applies.
+/// The `ui_themes` ID `tungsten.json`'s `ui.theme` names.
 pub const THEME_ID: &str = "shell";
 /// How long a pushed screen fades and slides in, in real seconds; it acts
 /// on its first frame.
@@ -48,32 +49,6 @@ pub const DIED_FADE: [f32; 4] = [0.03, 0.002, 0.008, 1.0];
 pub const DIED_BAND: [u8; 4] = [0, 0, 0, 200];
 pub const DIED_RED: [u8; 4] = [0xbe, 0x14, 0x20, 0xff];
 pub const DIED_SPACING: f32 = 0.2;
-/// The window height, in physical pixels, that lays the UI out at scale 1:
-/// a taller window scales the UI up with it, a shorter one keeps the OS
-/// scale (`D-184`).
-pub const REFERENCE_HEIGHT: f32 = 720.0;
-/// The UI scale an unset setting applies as, 75 %: the Interface tab's
-/// slider reads it until the player moves it, and Reset returns to it.
-pub const UI_SCALE: f32 = 0.75;
-/// The smallest viewport the UI lays out in, in UI units, whatever the
-/// scales: a 1280 × 720 window at the OS scale 1.75.
-pub const MIN_VIEWPORT: [f32; 2] = [731.0, 411.0];
-
-/// Applies the shell's theme to `world`'s tree when it is not already on;
-/// without the asset the built-in theme draws.
-pub fn apply(world: &mut World) {
-    let theme = world
-        .get_resource::<UiThemeRegistry>()
-        .and_then(|registry| registry.get(THEME_ID).cloned());
-    let Some(tree) = world.get_resource_mut::<UiTree>() else {
-        return;
-    };
-    match theme {
-        Some(theme) if tree.theme_id() != Some(THEME_ID) => tree.set_theme_asset(THEME_ID, theme),
-        Some(_) => {}
-        None => log::warn!("ui theme '{THEME_ID}' is not loaded; the built-in theme draws"),
-    }
-}
 
 /// Fades `root` in and slides it up [`SLIDE_UNITS`] into place over
 /// [`PUSH_SECS`] on the real clock, with no overshoot: a new screen's

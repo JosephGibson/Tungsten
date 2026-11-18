@@ -34,11 +34,11 @@ use tungsten::core::ui::{
     Visibility, WidgetId, screen_build, widgets,
 };
 use tungsten::core::{
-    ActionMap, DisplayMode, DisplayState, EventQueue, InputState, RoutedInput, SaveSlots,
-    ScaleFactor, Schedule, Settings, Stage, Time, Voice, World, system,
+    ActionMap, DisplayMode, DisplayState, EventQueue, InputState, RoutedInput, SaveSlots, Schedule,
+    Settings, Stage, Time, Voice, World, system,
 };
 use tungsten::{
-    DebugHud, Exiting, GameState, HudCorner, Plugin, RootCover, StateId, StateStack,
+    DebugHud, Exiting, GameState, Plugin, RootCover, StateId, StateStack,
     plugins::STATE_DISPATCHER, request_exit,
 };
 
@@ -235,9 +235,9 @@ struct Post {
 }
 
 /// The shell as a plugin: the title first, the run's systems, the options
-/// store, the engine's HUD at the top right, hidden until F4 shows it, and
-/// the UI sized from the window's height under a floor (`D-184`), at
-/// [`theme::UI_SCALE`] while the player has set no UI scale.
+/// store and the engine's HUD hidden until F4 shows it. `tungsten.json`'s
+/// `ui` names the theme, the UI's reference height, floor and default scale
+/// (`D-184`) and the HUD's corner.
 pub struct ShellPlugin {
     info: GameInfo,
 }
@@ -263,17 +263,8 @@ impl Plugin for ShellPlugin {
             .visible("saving_off", saving_off);
         settings::bind(bindings);
         title::bind(bindings);
-        let unset = world.resource::<Settings>().ui_scale().is_none();
-        if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
-            scale.set_reference_height(Some(theme::REFERENCE_HEIGHT));
-            scale.set_min_viewport(Some(theme::MIN_VIEWPORT.into()));
-            if unset {
-                scale.set_ui_scale(theme::UI_SCALE);
-            }
-        }
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
             hud.enabled = false;
-            hud.corner = HudCorner::TopRight;
         }
         world.add_script_action_typed(
             "start_run",
@@ -495,11 +486,10 @@ pub fn game_over(world: &mut World) {
 
 /// Applies `Settings` through the engine, keeping the focus mute: while it
 /// holds, the engine sees a copy at volume 0, so no other master volume is
-/// queued. An unset UI scale applies as [`theme::UI_SCALE`].
+/// queued.
 pub fn apply_settings(world: &mut World) {
-    let saved = world.resource::<Settings>().clone();
-    let unset = saved.ui_scale().is_none();
     if world.resource::<Shell>().focus_muted {
+        let saved = world.resource::<Settings>().clone();
         let mut quiet = saved.clone();
         quiet.set_master_volume(Some(0.0));
         world.insert_resource(quiet);
@@ -507,9 +497,6 @@ pub fn apply_settings(world: &mut World) {
         world.insert_resource(saved);
     } else {
         tungsten::apply_settings(world);
-    }
-    if let (true, Some(scale)) = (unset, world.get_resource_mut::<ScaleFactor>()) {
-        scale.set_ui_scale(theme::UI_SCALE);
     }
 }
 

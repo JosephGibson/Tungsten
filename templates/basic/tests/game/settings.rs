@@ -20,7 +20,7 @@ use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::settings::{self, SETTINGS};
 use tungsten_template_basic::shell::title::TitleState;
-use tungsten_template_basic::shell::{AUTOSAVES, Difficulty, theme};
+use tungsten_template_basic::shell::{AUTOSAVES, Difficulty};
 
 use super::{
     click, harness, harness_with, health, player_entity, press, settle, start, tap, top,
@@ -568,7 +568,7 @@ fn every_slider_shows_its_value_as_it_moves() {
     assert_eq!(readout(&harness, "UI scale"), "200%", "the most");
     assert_eq!(
         harness.world().resource::<ScaleFactor>().ui_scale(),
-        theme::UI_SCALE
+        super::shipped_ui_scale()
     );
     harness.pointer_up();
     harness.step(1);
@@ -666,8 +666,9 @@ fn window_sizes_follow_the_monitor() {
 fn ui_scale_follows_the_window_height_with_a_floor() {
     let mut harness = harness();
     let scale = *harness.world().resource::<ScaleFactor>();
-    assert_eq!(scale.reference_height(), Some(theme::REFERENCE_HEIGHT));
-    assert_eq!(scale.min_viewport(), Some(theme::MIN_VIEWPORT.into()));
+    let ui = super::config(UserFolder::Off).ui;
+    assert_eq!(scale.reference_height(), ui.reference_height);
+    assert_eq!(scale.min_viewport(), ui.min_viewport.map(Into::into));
     let viewport = |harness: &mut UiHarness, window: [u32; 2]| {
         harness.world_mut().insert_resource(WindowSize {
             width: window[0],
@@ -678,7 +679,7 @@ fn ui_scale_follows_the_window_height_with_a_floor() {
         [window[0] as f32 / get, window[1] as f32 / get]
     };
     // At the shell's 75 %: 4K at 3 × 0.75, and 1280 × 720 at 0.75.
-    let default = [1280.0, 720.0].map(|side| side / theme::UI_SCALE);
+    let default = [1280.0, 720.0].map(|side| side / super::shipped_ui_scale());
     for window in [[3840, 2160], [1280, 720]] {
         let [width, height] = viewport(&mut harness, window);
         assert!(
@@ -761,7 +762,7 @@ fn the_ui_scale_defaults_to_75_percent() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     let scale = |harness: &UiHarness| *harness.world().resource::<ScaleFactor>();
     assert_eq!(settings(&harness).ui_scale(), None, "unset");
-    assert_eq!(theme::UI_SCALE, 0.75);
+    assert_eq!(super::shipped_ui_scale(), 0.75);
     assert_eq!(scale(&harness).ui_scale(), 0.75, "from the first frame");
     let mut set = super::harness();
     settings::set_scale(set.world_mut(), false, 0.75);

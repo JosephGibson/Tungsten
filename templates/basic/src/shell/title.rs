@@ -179,7 +179,6 @@ impl GameState for TitleState {
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let world = &mut *ctx.world;
         world.remove_resource::<RunState>();
-        theme::apply(world);
         let (slots, warnings) = read_slots(world);
         self.newest = newest(&slots);
         let ready = |(slot, state): &(&str, SlotState)| {
