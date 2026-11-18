@@ -26,8 +26,10 @@ cd examples/01_platformer && cargo run
 ```
 
 The local Python tests are separate from `just script-test`. `just level-check` runs
-`--check` and them together; it needs Pillow, so CI and the standard-library-only
-recipes leave it out. `--check` regenerates
+`--check`, then `tungsten check` from the game's folder (a clip's, a particle
+config's and a tile's sprite, a material's shader, the map's layers and GIDs,
+which the generator leaves to it), then them; it needs Pillow, so CI and the
+standard-library-only recipes leave it out. `--check` regenerates
 into a temporary directory, compares every owned byte, and fails on missing,
 stale or uncovered output. It does not rewrite the working tree. PNG compression
 is fixed with no timestamps, and JSON is sorted.

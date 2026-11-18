@@ -723,13 +723,7 @@ def validate_level(source,tiled,sprite_ids):
     # Sparse local IDs, ascending, each once.
     local=[t['id'] for t in ts['tiles']]
     if ts['firstgid']!=1 or local!=sorted(set(local)) or ts['tilecount']!=len(local):raise ValueError('malformed tileset')
-    for t in ts['tiles']:
-        if t['properties'][0]['value'] not in sprite_ids:raise ValueError('unknown sprite reference')
-    gids={ts['firstgid']+i for i in local}
-    for layer in tiled['layers']:
-        if layer['type']!='tilelayer':continue
-        if len(layer['data'])!=cols*rows:raise ValueError('wrong layer length')
-        if any(not isinstance(g,int) or (g and g not in gids) for g in layer['data']):raise ValueError('invalid GID')
+    # A tile's sprite, a layer's length and its GIDs are `tungsten check`'s.
     collision=next(l['data'] for l in tiled['layers'] if l['name']=='collision')
     terrain=next(l['data'] for l in tiled['layers'] if l['name']=='terrain')
     shallow={(int(x/source['tile']),int(y/source['tile'])) for x,y,w,h,_ in source.get('slab_colliders',[])}

@@ -1032,19 +1032,18 @@ def manifest_of(entries):
 
 
 def kept(base,manifest):
-    """The sprites, lit names, clips and particle configs `manifest` lists
-    under `base`, by name, which a family run reads for the families it
-    leaves out."""
+    """The sprites, lit names and particle configs `manifest` lists under
+    `base`, by name, which a family run reads for the families it leaves
+    out."""
     from PIL import Image
-    sprites,lit,animations,configs={},set(),{},{}
+    sprites,lit,configs={},set(),{}
     for key,entry in manifest.get('sprites',{}).items():
         name=key.removeprefix('ex10_')
         with Image.open(base/'assets'/entry['path']) as im:sprites[name]=im.copy()
         if 'normal_map' in entry:lit.add(name)
-    for section,into in (('animations',animations),('particles',configs)):
-        for key,entry in manifest.get(section,{}).items():
-            into[key.removeprefix('ex10_')]=json.loads((base/'assets'/entry['path']).read_text())
-    return sprites,lit,animations,configs
+    for key,entry in manifest.get('particles',{}).items():
+        configs[key.removeprefix('ex10_')]=json.loads((base/'assets'/entry['path']).read_text())
+    return sprites,lit,configs
 
 
 def sprite_files(made):
@@ -1095,12 +1094,12 @@ def generate(dest,families=None,base=ROOT):
     if families is not None:
         manifest=json.loads((base/'assets/manifest.json').read_text())
         previous=json.loads((base/'tools/outputs.json').read_text())
-    sprites,lit,animations,configs=kept(base,manifest)
+    sprites,lit,configs=kept(base,manifest)
     made={}
     for name in run:
         made[name]=m=Made();FAMILIES[name].build(m,sprites,lit)
         sprites.update(m.images);lit.difference_update(m.images);lit.update(m.lit)
-        animations.update(m.animations);configs.update(m.configs)
+        configs.update(m.configs)
     validate_sets(sprites);check_ice_fits(sprites);check_frost_fits(sprites);check_bodies(bodies())
     entries=entries_of(manifest);fresh={}
     for name,m in made.items():
@@ -1111,7 +1110,7 @@ def generate(dest,families=None,base=ROOT):
         entries.update(m.entries)
     if families is None:check_level_uses(made)
     manifest=manifest_of(entries)
-    validate_references(manifest,animations,configs,made['level'].source if 'level' in made else None)
+    validate_references(manifest,configs,made['level'].source if 'level' in made else None)
     for m in made.values():
         for path,data in m.files.items():
             out=dest/path;out.parent.mkdir(parents=True,exist_ok=True);out.write_bytes(data)
@@ -1171,19 +1170,13 @@ def lock(names,unlock):
     print(f'Locked {", ".join(names) or "none"}; unlocked {", ".join(unlock) or "none"}')
 
 
-def validate_references(manifest,animations,configs,source):
+def validate_references(manifest,configs,source):
     # 01 loads its manifest as its only root, so IDs need only be unique in
-    # it; the art's keep their `ex10_` prefix, the shell's take theirs.
+    # it; the art's keep their `ex10_` prefix, the shell's take theirs. A
+    # clip's, a particle config's and a tile's sprite and a material's shader
+    # are `tungsten check`'s, which `just level-check` runs after this.
     for section in ('sprites','animations','particles'):
         if any(not s.startswith('ex10_') for s in manifest[section]):raise ValueError('unprefixed '+section+' ID')
-    sprites=set(manifest['sprites'])
-    for clip in animations.values():
-        for frame in clip['frames']:
-            if frame['sprite'] not in sprites:raise ValueError('unknown animation sprite')
-    for cfg in configs.values():
-        if cfg['sprite'] not in sprites:raise ValueError('unknown particle sprite')
-    for material in manifest['materials'].values():
-        if material['shader'] not in manifest['shaders']:raise ValueError('unknown material shader')
     # The level's own, when it is built.
     if source is None:return
     for p in source['props']:
