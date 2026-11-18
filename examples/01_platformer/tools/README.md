@@ -1186,7 +1186,7 @@ Each take (`tome_<kind>_take_<f>`, 64 pixels, six at 80 ms, unlit) flares the
 book, breaks it into shards of light and opens a ring behind them. The bound's
 ring (`bound_ring_<f>`, 64 × 32, six at 50 ms, unlit) is centred on the feet.
 `TOME_CLIPS` lists the three clips of each kind and the ring's, which
-`generate.spray_clips` registers. The tome tiles (`icon_tome_<kind>`) are each
+`effects.build_tome_art` records through `art.clip`. The tome tiles (`icon_tome_<kind>`) are each
 book's first frame on a square tile in its own metal with a bracket on each
 corner, apart from the spells' bevels; `hud_liquid_shield` is the shield's light,
 cool blue strip. `generate.particle_configs` adds each book's motes

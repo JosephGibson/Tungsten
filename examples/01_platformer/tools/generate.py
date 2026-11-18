@@ -693,7 +693,8 @@ def mirror_facing(images,lit,animations):
     fire missile's, the enemies' and the beetle's charge streaks: nothing flips
     a sprite in place, so the kit's animator, and 01's fireballs, missiles and
     enemies, show mirrored art by facing. Their maps derive from the mirrored
-    silhouettes. After `spray_clips`, which makes the streaks' clip."""
+    silhouettes. After the builders, `effects.build_foe_art` making the
+    streaks' clip."""
     from PIL import ImageOps
     from actors import ENEMY_CLIPS
     from effects import FACING_CLIPS
@@ -706,24 +707,6 @@ def mirror_facing(images,lit,animations):
             if name in lit:lit.add(left)
             frames.append(dict(frame,sprite='ex10_'+left))
         animations[clip+'_left']=dict(animations[clip],frames=frames)
-
-
-def spray_clips(animations,families=('effects','tomes')):
-    """The sprays' clips (`effects.SPRAY_CLIPS`) and the force push's wave and
-    dust (`effects.PUSH_CLIPS`), unmirrored: `toys` turns each to its aim and
-    flips it top to bottom when the aim faces left, and mirrors the dust.
-    And e01tomes' (`effects.TOME_CLIPS`): each book's idle loop and take,
-    and the bound's ring, which nothing turns; e01foes' (`effects.FOE_CLIPS`):
-    the snowball's, its burst's and the beetle's streaks, which
-    `mirror_facing` then twins; e01flask's (`effects.FLASK_CLIPS`,
-    `effects.CORRODE_CLIPS`): the flask's tumble and its burst, and
-    Corrosive's reaction. The tomes' are the tomes family's, the rest the
-    effects'; `families` names whose."""
-    from effects import CORRODE_CLIPS, FLASK_CLIPS, FOE_CLIPS, PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
-    tables={'effects':{**SPRAY_CLIPS,**PUSH_CLIPS,**FOE_CLIPS,**FLASK_CLIPS,**CORRODE_CLIPS},'tomes':TOME_CLIPS}
-    for family in families:
-        for clip,(_,frames,ms,looping) in tables[family].items():
-            animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
 
 
 def mirror_anchors(anchors,images):
@@ -855,11 +838,9 @@ class Watched(dict):
 
 def art(family):
     """Art family `family`'s builder: its drawing (`art.art_families`), then
-    its sprays' clips (`spray_clips`), its left-facing twins and the staff
-    light's anchors."""
+    its left-facing twins and the staff light's anchors."""
     def build(made,sprites,lit):
         made.anchors=art_families()[family](made.images,made.lit,made.animations) or {}
-        if family in ('effects','tomes'):spray_clips(made.animations,(family,))
         mirror_facing(made.images,made.lit,made.animations);mirror_anchors(made.anchors,made.images)
     return build
 
@@ -1214,7 +1195,7 @@ def validate_references(manifest,animations,configs,source):
 def floating_report():
     """`--floating`: the level built in memory, every piece that floats
     (`placement.floating`) and a total; exit 1 on any."""
-    images,lit,animations,anchors=build_art();spray_clips(animations);mirror_facing(images,lit,animations)
+    images,lit,animations,anchors=build_art();mirror_facing(images,lit,animations)
     tiled,source,_=build_level(images,lit,check=False)
     lines=floating(source,tiled,images)
     for line in lines:print(line)

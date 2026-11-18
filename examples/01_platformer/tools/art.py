@@ -144,6 +144,23 @@ def canvas(size=(64, 64), color='.'):
     return im, ImageDraw.Draw(im)
 
 
+def clip(images, animations, name, frames, durations, looping=True, names=None, lit=None):
+    """Clip `name`: `frames` stored under `names` (`<name>_<i>` by default)
+    and added to `lit` when given, and its record in `animations`, the
+    milliseconds a frame `durations`, one for every frame or one each;
+    returns the frames' names."""
+    names = [f'{name}_{i}' for i in range(len(frames))] if names is None else list(names)
+    if isinstance(durations, int):
+        durations = [durations] * len(names)
+    for n, im in zip(names, frames, strict=True):
+        images[n] = im
+    if lit is not None:
+        lit.update(names)
+    animations[name] = {'looping': looping, 'frames': [
+        {'sprite': 'ex10_' + n, 'duration_ms': ms} for n, ms in zip(names, durations, strict=True)]}
+    return names
+
+
 def relief(name):
     """Tiling terrain and multi-tile scenery take normals from their shading."""
     from terrain import RELIEF_PREFIXES
@@ -241,12 +258,12 @@ def art_families():
         build_icons(images, 'props')
 
     def effects(images, lit, animations):
-        build_effects(images)
+        build_effects(images, animations)
         enrich_art(images, lit, animations)
         build_sfx_art(images, lit)
 
     def tomes(images, lit, animations):
-        build_tome_art(images, lit)
+        build_tome_art(images, lit, animations)
         build_icons(images, 'tomes')
 
     return {

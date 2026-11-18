@@ -17,7 +17,7 @@ from functools import partial
 
 from PIL import Image
 
-from art import PALETTE
+from art import PALETTE, clip
 from effects import fire_symbol
 from pixels import (
     BAYER, NEIGHBOURS, Part, add, compose, despeckle, fbm, grade, outline, point, ramp, shade, smoothstep,
@@ -982,19 +982,15 @@ def posed(poses_for):
 def build_player(images, lit, animations):
     """The wizard's clips, every frame lit; returns each right-facing
     frame's staff light anchor, the orb's centre, by sprite name."""
-    clips = [(clip, posed(poses_for), looping) for clip, (poses_for, looping) in POSED_CLIPS.items()]
-    clips += [(clip, frames_for(), looping) for clip, (frames_for, looping) in DRAWN_CLIPS.items()]
+    clips = [(name, posed(poses_for), looping) for name, (poses_for, looping) in POSED_CLIPS.items()]
+    clips += [(name, frames_for(), looping) for name, (frames_for, looping) in DRAWN_CLIPS.items()]
     anchors = {}
-    for clip, (rendered, durations), looping in clips:
-        frames = []
-        for i, ((im, anchor), duration) in enumerate(zip(rendered, durations, strict=True)):
-            name = frame_name(clip, i)
-            check_frame(name, im, anchor)
-            images[name] = im
-            lit.add(name)
-            anchors[name] = list(anchor)
-            frames.append({'sprite': 'ex10_' + name, 'duration_ms': duration})
-        animations[clip] = {'looping': looping, 'frames': frames}
+    for name, (rendered, durations), looping in clips:
+        names = [frame_name(name, i) for i in range(len(rendered))]
+        for frame, (im, anchor) in zip(names, rendered):
+            check_frame(frame, im, anchor)
+            anchors[frame] = list(anchor)
+        clip(images, animations, name, [im for im, _ in rendered], durations, looping, names, lit)
     return anchors
 
 
@@ -1051,12 +1047,7 @@ def fireball_frame(index):
 
 def build_fireball(images, animations):
     # Self-lit: drawn unlit at its authored colours, so no normal/emissive maps.
-    frames = []
-    for i in range(FIREBALL_FRAMES):
-        name = f'fireball_{i}'
-        images[name] = fireball_frame(i)
-        frames.append({'sprite': 'ex10_' + name, 'duration_ms': 60})
-    animations['fireball'] = {'looping': True, 'frames': frames}
+    clip(images, animations, 'fireball', [fireball_frame(i) for i in range(FIREBALL_FRAMES)], 60)
 
 
 # The fire missile (01 (h)): a rocket of fire facing +x, its own clip apart
@@ -1145,12 +1136,7 @@ def missile_frame(index):
 
 def build_fire_missile(images, animations):
     # Self-lit, as the fireball is: no normal or emissive maps.
-    frames = []
-    for i in range(MISSILE_FRAMES):
-        name = f'fire_missile_{i}'
-        images[name] = missile_frame(i)
-        frames.append({'sprite': 'ex10_' + name, 'duration_ms': 60})
-    animations['fire_missile'] = {'looping': True, 'frames': frames}
+    clip(images, animations, 'fire_missile', [missile_frame(i) for i in range(MISSILE_FRAMES)], 60)
 
 
 BALL_FRAMES = 6
@@ -1259,15 +1245,11 @@ def bowling_ball(frame):
 
 
 def build_balls(images, lit, animations):
-    for clip, first, draw, duration in (('ball_spin', 'ball', rune_orb, 90),
+    for name, first, draw, duration in (('ball_spin', 'ball', rune_orb, 90),
                                         ('ball_small_spin', 'ball_small', glass_marble, 65),
                                         ('bowling_roll', 'bowling_ball', bowling_ball, 80)):
-        names = [first if i == 0 else f'{first}_{i}' for i in range(BALL_FRAMES)]
-        for i, name in enumerate(names):
-            images[name] = draw(i)
-            lit.add(name)
-        animations[clip] = {'looping': True, 'frames': [
-            {'sprite': 'ex10_' + name, 'duration_ms': duration} for name in names]}
+        clip(images, animations, name, [draw(i) for i in range(BALL_FRAMES)], duration,
+             names=[first if i == 0 else f'{first}_{i}' for i in range(BALL_FRAMES)], lit=lit)
 
 
 # The training dummy stands on the courier's baseline: its base's lowest
@@ -3468,16 +3450,11 @@ def build_enemies(images, animations, enemy=None):
     """The six enemies' clips, and the goblin's rock and bomb, unlit: no
     normal or emissive map; or only `enemy`'s, its clips those its name
     prefixes."""
-    for clip, (frames_for, looping) in ENEMY_CLIPS.items():
-        if enemy and clip.split('_')[0] != enemy:
+    for name, (frames_for, looping) in ENEMY_CLIPS.items():
+        if enemy and name.split('_')[0] != enemy:
             continue
         rendered, durations = frames_for()
-        frames = []
-        for i, (im, duration) in enumerate(zip(rendered, durations, strict=True)):
-            name = f'{clip}_{i}'
-            images[name] = im
-            frames.append({'sprite': 'ex10_' + name, 'duration_ms': duration})
-        animations[clip] = {'looping': looping, 'frames': frames}
+        clip(images, animations, name, rendered, durations, looping)
     for i in range(2 if enemy in (None, 'goblin') else 0):
         images[f'goblin_rock_{i}'] = goblin_rock(i)
         images[f'goblin_bomb_{i}'] = goblin_bomb(i)

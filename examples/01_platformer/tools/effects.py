@@ -10,7 +10,7 @@ import math
 
 from PIL import Image
 
-from art import EFFECT_SIZES, ELEMENT_SIZES, ICON_SIZES, PALETTE, STATUS_CLASSES, canvas
+from art import EFFECT_SIZES, ELEMENT_SIZES, ICON_SIZES, PALETTE, STATUS_CLASSES, canvas, clip
 from pixels import BAYER, NEIGHBOURS, Part, compose, dither, fbm, outline, point, ramp, shade, smoothstep, to_image, unit
 
 HALO_STEPS = '!@#$%^&*'  # white at alpha 1, 2, 3, 5, 8, 12, 17, 24
@@ -1782,11 +1782,10 @@ def build_frost_art(images):
             images[f'frost_{name}_{stage}'] = frost(size, status_box(size), ('frost', name), stage)
 
 
-def build_spray_art(images):
-    """Every frame of the sprays' clips, unlit: `<clip>_<n>`."""
-    for clip, (_, frames, _, _) in SPRAY_CLIPS.items():
-        for f in range(frames):
-            images[f'{clip}_{f}'] = SPRAY_DRAW[clip](f, frames)
+def build_spray_art(images, animations):
+    """The sprays' clips, every frame unlit: `<clip>_<n>`."""
+    for name, (_, frames, ms, looping) in SPRAY_CLIPS.items():
+        clip(images, animations, name, [SPRAY_DRAW[name](f, frames) for f in range(frames)], ms, looping)
 
 
 # The force push's wave (01 (j)): a front of bent air flying from the wizard
@@ -1911,11 +1910,10 @@ def push_dust(f, n):
 PUSH_DRAW = {'push_wave': push_wave, 'push_dust': push_dust}
 
 
-def build_push_art(images):
-    """Every frame of the force push's clips, unlit: `<clip>_<n>`."""
-    for clip, (_, frames, _, _) in PUSH_CLIPS.items():
-        for f in range(frames):
-            images[f'{clip}_{f}'] = PUSH_DRAW[clip](f, frames)
+def build_push_art(images, animations):
+    """The force push's clips, every frame unlit: `<clip>_<n>`."""
+    for name, (_, frames, ms, looping) in PUSH_CLIPS.items():
+        clip(images, animations, name, [PUSH_DRAW[name](f, frames) for f in range(frames)], ms, looping)
 
 
 # The HUD's art (01 (h)): the bars' liquids, palette strips tileable
@@ -2503,19 +2501,17 @@ TOME_CLIPS = {
 }
 
 
-def build_tome_art(images, lit):
-    """Every book's idle frames, lit, its take's frames and the bound's
-    ring's, unlit: `tome_<kind>_idle_<f>`, `tome_<kind>_take_<f>` and
+def build_tome_art(images, lit, animations):
+    """`TOME_CLIPS`: every book's idle clip, its frames lit, its take and the
+    bound's ring, unlit: `tome_<kind>_idle_<f>`, `tome_<kind>_take_<f>` and
     `bound_ring_<f>`."""
+    def table(name, frames, lit=None):
+        _, _, ms, looping = TOME_CLIPS[name]
+        clip(images, animations, name, frames, ms, looping, lit=lit)
     for kind, draw in TOME_DRAW.items():
-        for f in range(TOME_FRAMES):
-            name = f'tome_{kind}_idle_{f}'
-            images[name] = to_image(draw(f), TOME_SIZE)
-            lit.add(name)
-        for f in range(TAKE_FRAMES):
-            images[f'tome_{kind}_take_{f}'] = tome_take(kind, f)
-    for f in range(BOUND_FRAMES):
-        images[f'bound_ring_{f}'] = bound_ring(f)
+        table(f'tome_{kind}_idle', [to_image(draw(f), TOME_SIZE) for f in range(TOME_FRAMES)], lit)
+        table(f'tome_{kind}_take', [tome_take(kind, f) for f in range(TAKE_FRAMES)])
+    table('bound_ring', [bound_ring(f) for f in range(BOUND_FRAMES)])
 
 
 # e01foes' effects: the crawler's snowball turning and its burst, and the
@@ -2642,11 +2638,11 @@ def charge_streak(f):
     return to_image(px, (w, h))
 
 
-def build_foe_art(images):
-    """The foes' effects' frames, unlit: `<clip>_<f>`."""
+def build_foe_art(images, animations):
+    """The foes' effects' clips, every frame unlit: `<clip>_<f>`."""
     for name, draw in (('snowball', snowball), ('snowball_burst', snowball_burst), ('charge_streak', charge_streak)):
-        for f in range(FOE_CLIPS[name][1]):
-            images[f'{name}_{f}'] = draw(f)
+        _, frames, ms, looping = FOE_CLIPS[name]
+        clip(images, animations, name, [draw(f) for f in range(frames)], ms, looping)
 
 
 # e01flask's effects: the toxic flask tumbling through its flight and its
@@ -3081,15 +3077,15 @@ def corrode_reaction(name, f):
     return to_image({q: s for q, s in px.items() if 0 <= q[0] < size[0] and 0 <= q[1] < size[1]}, size)
 
 
-def build_flask_art(images):
-    """The flask's frames and its burst's, unlit; Corrosive's reaction's."""
-    for f in range(FLASK_CLIPS['toxic_flask'][1]):
-        images[f'toxic_flask_{f}'] = toxic_flask(f)
-    for f in range(FLASK_CLIPS['toxic_flask_burst'][1]):
-        images[f'toxic_flask_burst_{f}'] = toxic_flask_burst(f)
-    for name in ('medium', 'large'):
-        for f in range(CORRODE_CLIPS[f'corrode_reaction_{name}'][1]):
-            images[f'corrode_reaction_{name}_{f}'] = corrode_reaction(name, f)
+def build_flask_art(images, animations):
+    """The flask's clip and its burst's, unlit; Corrosive's reaction's."""
+    for name, draw in (('toxic_flask', toxic_flask), ('toxic_flask_burst', toxic_flask_burst)):
+        _, frames, ms, looping = FLASK_CLIPS[name]
+        clip(images, animations, name, [draw(f) for f in range(frames)], ms, looping)
+    for size in ('medium', 'large'):
+        _, frames, ms, looping = CORRODE_CLIPS[f'corrode_reaction_{size}']
+        clip(images, animations, f'corrode_reaction_{size}', [corrode_reaction(size, f) for f in range(frames)],
+             ms, looping)
 
 
 # e01sfx (V27): the ground strike's scorch, its bottom row's middle on the
@@ -3197,7 +3193,7 @@ def build_sfx_art(images, lit):
     images['hurt_edge'] = hurt_edge()
 
 
-def build_effects(images):
+def build_effects(images, animations):
     images['halo'] = radial_glow(HALO_STEPS, 1.8)
     images['flame_glow'] = radial_glow(FLAME_STEPS, 2.2)
     images['dust'] = puff()
@@ -3209,7 +3205,7 @@ def build_effects(images):
     build_element_art(images)
     build_hud_art(images)
     build_frost_art(images)
-    build_spray_art(images)
-    build_push_art(images)
-    build_foe_art(images)
-    build_flask_art(images)
+    build_spray_art(images, animations)
+    build_push_art(images, animations)
+    build_foe_art(images, animations)
+    build_flask_art(images, animations)

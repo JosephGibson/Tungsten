@@ -10,7 +10,7 @@ import math
 
 from PIL import Image
 
-from art import PALETTE, rng_for
+from art import PALETTE, clip, rng_for
 from pixels import (Part, compose, despeckle, dither, fbm, grade, outline, packed_stones, ramp, shade, smoothstep,
                     to_image, unit)
 from terrain import (BREAK_LIPS, COPING_TOP, DECK, FROND, LEAF, TILE, coursed, darker, ellipse, from_image,
@@ -493,15 +493,10 @@ def spikes():
 
 
 def build_scenery(images, lit, animations):
-    frames = [lamp_post(i) for i in range(6)]
-    for i, im in enumerate(frames):
-        images['lantern' if i == 0 else f'lantern_{i}'] = im
-    animations['torch_flicker'] = {'looping': True, 'frames': [
-        {'sprite': 'ex10_' + ('lantern' if i == 0 else f'lantern_{i}'), 'duration_ms': 100} for i in range(6)]}
-    for i in range(4):
-        images['vines' if i == 0 else f'vines_{i}'] = ivy(i)
-    animations['vines_sway'] = {'looping': True, 'frames': [
-        {'sprite': 'ex10_' + ('vines' if i == 0 else f'vines_{i}'), 'duration_ms': 200} for i in (0, 1, 2, 3)]}
+    clip(images, animations, 'torch_flicker', [lamp_post(i) for i in range(6)], 100,
+         names=['lantern' if i == 0 else f'lantern_{i}' for i in range(6)])
+    clip(images, animations, 'vines_sway', [ivy(i) for i in range(4)], 200,
+         names=['vines' if i == 0 else f'vines_{i}' for i in range(4)])
     images['marker'] = waystone()
     cut(images, 'gate', summit_gate(), 3, 3)
     cut(images, 'oak', oak(), 3, 3)
@@ -511,10 +506,7 @@ def build_scenery(images, lit, animations):
                        ('rubble', rubble), ('crystal', crystal), ('hanging_moss', hanging_moss),
                        ('spikes', spikes)):
         images[name] = draw()
-    for i, im in enumerate(waterfall_frames()):
-        images[f'waterfall_flow_{i}'] = im
-    animations['waterfall_flow'] = {'looping': True, 'frames': [
-        {'sprite': f'ex10_waterfall_flow_{i}', 'duration_ms': 100} for i in range(4)]}
+    clip(images, animations, 'waterfall_flow', waterfall_frames(), 100)
     for name in images:
         if name.startswith(('lantern', 'vines', 'marker', 'gate_big', 'oak_big', 'arch_big', 'roots_big',
                             'fern', 'grass', 'flowers', 'rubble', 'hanging_moss', 'spikes')):
@@ -4103,16 +4095,6 @@ def placed(images, name, im, hang=False):
             piece = f'{name}_big_{row}_{col}'
             images[piece] = canvas.crop((col * TILE, row * TILE, (col + 1) * TILE, (row + 1) * TILE))
             names.append(piece)
-    return names
-
-
-def clip(images, animations, name, frames, duration):
-    """Frames `<name>_<i>` and their looping animation `<name>`."""
-    names = []
-    for i, im in enumerate(frames):
-        images[f'{name}_{i}'] = im
-        names.append(f'{name}_{i}')
-    animations[name] = {'looping': True, 'frames': [{'sprite': 'ex10_' + n, 'duration_ms': duration} for n in names]}
     return names
 
 
