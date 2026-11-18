@@ -157,8 +157,12 @@ pub fn sky(world: &mut World) {
     }
     let dt = world.resource::<Time>().real_delta();
     let mut sky = world.remove_resource::<TitleSky>().unwrap_or_default();
-    sky.clock += dt;
     let on_top = shell::top(world) == Some(TITLE);
+    // The stars' clock counts while the title is on top, so a cover leaves
+    // none owed.
+    if on_top {
+        sky.clock += dt;
+    }
     if on_top && !sky.camera.is_some_and(|camera| world.is_alive(camera)) {
         sky.camera = world
             .prepare_prefab(TITLE_CAMERA, Vec2::ZERO)

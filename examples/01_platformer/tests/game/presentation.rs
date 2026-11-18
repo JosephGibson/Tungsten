@@ -1591,6 +1591,41 @@ fn star_flight(
 }
 
 #[test]
+fn the_titles_stars_keep_their_pace_after_a_cover() {
+    use example_01_platformer::features::level::title::{METEOR_EVERY, METEOR_SECS};
+    use example_01_platformer::shell::settings::SETTINGS;
+    use example_01_platformer::shell::title::TITLE;
+    let dt = 1.0 / 60.0;
+    let longest = (METEOR_SECS / dt).round() as usize + 3;
+    let mut harness = super::harness();
+    harness.harness_mut().set_dt(dt);
+    // The first star, then Settings over the title for three stars' time.
+    star_flight(&mut harness, longest, |_, _| {});
+    press(&mut harness, "Settings");
+    assert_eq!(super::top(&harness), Some(SETTINGS));
+    for frame in 0..(3.0 * METEOR_EVERY / dt) as u32 {
+        harness.step(1);
+        assert!(
+            shooting_star(&harness).is_none(),
+            "a star under the cover, frame {frame}"
+        );
+    }
+    super::tap(&mut harness, "ui_cancel");
+    assert_eq!(super::top(&harness), Some(TITLE));
+    // Back on top, the next comes within a star's time and the one after
+    // a star's time later: none is owed for the cover.
+    let (waited, track) = star_flight(&mut harness, longest, |_, _| {});
+    let next = waited as f32 * dt;
+    assert!(next <= METEOR_EVERY + 2.0 * dt, "the next after {next} s");
+    let (waited, _) = star_flight(&mut harness, longest, |_, _| {});
+    let apart = (track.len() as u32 + waited) as f32 * dt;
+    assert!(
+        apart >= METEOR_EVERY - 2.0 * dt,
+        "the one after {apart} s on"
+    );
+}
+
+#[test]
 fn the_titles_shooting_star_crosses_on_the_kit_and_goes() {
     use example_01_platformer::features::level::title::{
         METEOR_EVERY, METEOR_HEADING, METEOR_SECS, METEOR_SPEED,
