@@ -1330,11 +1330,13 @@ def ordered(x, y):
     return BAYER[y % 4][x % 4] / 16 - 0.5
 
 
-def fire_symbol(heat, x, y, spread=0.08):
+def fire_symbol(heat, x, y, spread=0.08, cutoff=0.1, limits=(0.24, 0.40, 0.56, 0.72, 0.86)):
+    """`heat` dithered by `spread` onto the fire ramp: `M L K J Y` under each
+    of `limits`, `Z` past them; None under `cutoff` (never, when None)."""
     h = heat + ordered(x, y) * spread
-    if h < 0.1:
+    if cutoff is not None and h < cutoff:
         return None
-    for limit, s in ((0.24, 'M'), (0.40, 'L'), (0.56, 'K'), (0.72, 'J'), (0.86, 'Y')):
+    for limit, s in zip(limits, 'MLKJY'):
         if h < limit:
             return s
     return 'Z'

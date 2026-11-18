@@ -18,6 +18,7 @@ from functools import partial
 from PIL import Image
 
 from art import PALETTE
+from effects import fire_symbol
 from pixels import (
     BAYER, NEIGHBOURS, Part, add, compose, despeckle, fbm, grade, outline, point, ramp, shade, smoothstep,
     to_image, unit,
@@ -997,12 +998,14 @@ def build_player(images, lit, animations):
     return anchors
 
 
-def fireball_frame(index):
-    """Ball of flame for a right-moving hazard; tongues stream up and behind."""
-    t = index / FIREBALL_FRAMES
-    cx, cy, radius = 32.0, 35.0, 14.0
-    trail = math.atan2(-0.86, -0.5)
-    canvas = {}
+def flame_ball(t, centre, radius, reach, trail, bend, side, swirls):
+    """A ball of flame's heat by pixel on a 64 px frame at time `t` of its
+    loop, its dither left to `fire_symbol`: tongues up to `reach` long
+    streaming toward `trail` (`bend` the power of their bulge), a `side`
+    ripple ahead, and within `radius` the plasma's `swirls`, `(amplitude,
+    lobes, twist, turns)` bands about the core."""
+    cx, cy = centre
+    heat = {}
     for y in range(SIZE):
         for x in range(SIZE):
             dx, dy = x + 0.5 - cx, y + 0.5 - cy
@@ -1013,22 +1016,28 @@ def fireball_frame(index):
             wave_a = 0.5 + 0.5 * math.sin(5 * theta - math.tau * 2 * t)
             wave_b = 0.5 + 0.5 * math.sin(8 * theta + math.tau * 3 * t + 1.3)
             tongues = 0.75 * wave_a ** 5 + 0.25 * wave_b ** 6
-            envelope = (radius + 1.0 + behind ** 1.3 * (2 + 17 * tongues)
-                        + (1 - behind) * 0.9 * wave_b)
+            envelope = radius + 1.0 + behind ** bend * (2 + reach * tongues) + (1 - behind) * side * wave_b
             if r > envelope:
                 continue
-            heat = 1 - r / envelope
+            h = 1 - r / envelope
             if r < radius:
-                # Plasma bands swirl around the core.
-                heat += 0.07 * math.sin(3 * theta + 0.4 * r - math.tau * t)
-                heat += 0.04 * math.sin(5 * theta - 0.3 * r + math.tau * 2 * t)
-            heat += (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.05
-            for limit, symbol in ((0.08, 'M'), (0.2, 'L'), (0.37, 'K'), (0.54, 'J'), (0.7, 'Y')):
-                if heat < limit:
-                    canvas[(x, y)] = symbol
-                    break
-            else:
-                canvas[(x, y)] = 'Z'
+                for amplitude, lobes, twist, turns in swirls:
+                    h += amplitude * math.sin(lobes * theta + twist * r + turns * math.tau * t)
+            heat[(x, y)] = h
+    return heat
+
+
+# A flame ball's fire ramp: `M L K J Y` under each limit, `Z` past them.
+FLAME_BALL = (0.08, 0.2, 0.37, 0.54, 0.7)
+
+
+def fireball_frame(index):
+    """Ball of flame for a right-moving hazard; tongues stream up and behind."""
+    t = index / FIREBALL_FRAMES
+    cx, cy, radius = 32.0, 35.0, 14.0
+    trail = math.atan2(-0.86, -0.5)
+    heat = flame_ball(t, (cx, cy), radius, 17, trail, 1.3, 0.9, ((0.07, 3, 0.4, -1), (0.04, 5, -0.3, 2)))
+    canvas = {(x, y): fire_symbol(h, x, y, 0.05, None, FLAME_BALL) for (x, y), h in heat.items()}
     # Loose embers peel off the trailing side and cool as they climb.
     for k in range(5):
         age = (t + k * 0.21) % 1
@@ -1111,13 +1120,7 @@ def missile_symbol(heat, x, y):
         return None
     if isinstance(heat, str):
         return heat
-    heat = heat[1] + (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.12
-    if heat < 0.06:
-        return None
-    for limit, s in ((0.18, 'M'), (0.34, 'L'), (0.52, 'K'), (0.7, 'J'), (0.86, 'Y')):
-        if heat < limit:
-            return s
-    return 'Z'
+    return fire_symbol(heat[1], x, y, 0.12, 0.06, (0.18, 0.34, 0.52, 0.7, 0.86))
 
 
 def missile_frame(index):
@@ -1389,28 +1392,8 @@ def wisp_canvas(t=0.0, flare=False, bob=0.0):
     radius = 15.0 if flare else 12.0
     reach = 15.0 if flare else 8.0
     trail = math.atan2(-0.95, -0.3)
-    canvas = {}
-    for y in range(SIZE):
-        for x in range(SIZE):
-            dx, dy = x + 0.5 - cx, y + 0.5 - cy
-            r = math.hypot(dx, dy)
-            theta = math.atan2(dy, dx)
-            behind = max(0.0, math.cos(theta - trail))
-            wave_a = 0.5 + 0.5 * math.sin(5 * theta - math.tau * 2 * t)
-            wave_b = 0.5 + 0.5 * math.sin(8 * theta + math.tau * 3 * t + 1.3)
-            tongues = 0.75 * wave_a ** 5 + 0.25 * wave_b ** 6
-            envelope = radius + 1.0 + behind ** 1.2 * (2 + reach * tongues) + (1 - behind) * 0.6 * wave_b
-            if r > envelope:
-                continue
-            heat = 1 - r / envelope + (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.05
-            if r < radius:  # plasma swirling about the core
-                heat += 0.05 * math.sin(3 * theta + 0.4 * r - math.tau * t)
-            for limit, symbol in ((0.08, 'M'), (0.2, 'L'), (0.37, 'K'), (0.54, 'J'), (0.7, 'Y')):
-                if heat < limit:
-                    canvas[(x, y)] = symbol
-                    break
-            else:
-                canvas[(x, y)] = 'Z'
+    heat = flame_ball(t, (cx, cy), radius, reach, trail, 1.2, 0.6, ((0.05, 3, 0.4, -1),))
+    canvas = {(x, y): fire_symbol(h, x, y, 0.05, None, FLAME_BALL) for (x, y), h in heat.items()}
     top = round(cy) - 3 - (1 if flare else 0)
     for ex in (37, 44):  # dark eyes with a hot glint; wider in a flare
         for y in range(top, round(cy) + 2):
