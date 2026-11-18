@@ -199,8 +199,6 @@ enum Change {
 #[derive(Default)]
 pub(crate) struct Shell {
     unfocused: bool,
-    /// The window lost focus with "Mute when unfocused" on.
-    focus_muted: bool,
     /// The window lost focus with "Pause when unfocused" on: pause opens
     /// once gameplay is on top with no screen change running.
     pause_due: bool,
@@ -222,16 +220,11 @@ pub(crate) struct Shell {
     died: Option<f32>,
 }
 
-/// The shell's edits of `PostStack`, which [`post`] makes.
+/// The shell's edit of `PostStack`, which [`post`] makes.
 #[derive(Default)]
 struct Post {
-    /// The game's Bloom passes taken out while the option is off, each with
-    /// its index in the game's stack.
-    kept: Vec<(usize, PostPass)>,
     /// The passes the shell appended last frame.
     tail: Vec<PostPass>,
-    /// The stack as the shell left it last frame.
-    left: Vec<PostPass>,
 }
 
 /// The shell as a plugin: the title first, the run's systems, the options
@@ -431,7 +424,7 @@ fn curtain(world: &mut World, root: WidgetId, secs: f32, mut flow: Option<Flow>)
     {
         tree.animate(root, UiTrack::opacity(1.0, 0.0, theme::CURTAIN_OUT_SECS));
         // The game's stack back as it built it, before its run leaves.
-        post(world, Vec::new(), true);
+        post(world, Vec::new());
         let stack = stack(world);
         for _ in 1..stack.depth() {
             stack.request_pop();
@@ -481,22 +474,6 @@ pub fn enter(world: &mut World, root: WidgetId) {
 pub fn game_over(world: &mut World) {
     if !transitioning(world) && matches!(top(world), None | Some(game::GAMEPLAY)) {
         push(world, game_over::GameOverState::default());
-    }
-}
-
-/// Applies `Settings` through the engine, keeping the focus mute: while it
-/// holds, the engine sees a copy at volume 0, so no other master volume is
-/// queued.
-pub fn apply_settings(world: &mut World) {
-    if world.resource::<Shell>().focus_muted {
-        let saved = world.resource::<Settings>().clone();
-        let mut quiet = saved.clone();
-        quiet.set_master_volume(Some(0.0));
-        world.insert_resource(quiet);
-        tungsten::apply_settings(world);
-        world.insert_resource(saved);
-    } else {
-        tungsten::apply_settings(world);
     }
 }
 
@@ -822,38 +799,17 @@ fn save_due(world: &mut World) {
     }
 }
 
-/// The shell's one edit of `PostStack` a frame. A stack as the shell left it
-/// loses the passes the shell appended; one the game rebuilt drops the
-/// Bloom the shell took, and those passes only if it still ends with them.
-/// While the Bloom option is off the game's Bloom passes are taken out,
-/// each with its index, and put back at it when the option comes on;
-/// then `tail` goes at the end. At a change of run (`swap`) the stack goes
-/// back to the game's own, as it built it.
-fn post(world: &mut World, tail: Vec<PostPass>, swap: bool) {
-    let bloom = swap || world.resource::<options::GameOptions>().bloom;
-    let mut post = std::mem::take(&mut world.resource_mut::<Shell>().post);
+/// The shell's one edit of `PostStack` a frame: a stack that still ends
+/// with the passes the shell appended last frame loses them, then `tail`
+/// goes at the end. Bloom is the engine's switch (`Settings::bloom`).
+fn post(world: &mut World, tail: Vec<PostPass>) {
+    let last = std::mem::take(&mut world.resource_mut::<Shell>().post.tail);
     let stack = &mut world.resource_mut::<PostStack>().0;
-    if *stack != post.left {
-        post.kept.clear();
-    }
-    if stack.ends_with(&post.tail) {
-        stack.truncate(stack.len() - post.tail.len());
-    }
-    if bloom {
-        for (at, pass) in std::mem::take(&mut post.kept) {
-            stack.insert(at.min(stack.len()), pass);
-        }
-    } else {
-        for (at, pass) in std::mem::take(stack).into_iter().enumerate() {
-            match pass {
-                PostPass::Bloom(_) => post.kept.push((at, pass)),
-                pass => stack.push(pass),
-            }
-        }
+    if stack.ends_with(&last) {
+        stack.truncate(stack.len() - last.len());
     }
     stack.extend(tail.iter().copied());
-    (post.tail, post.left) = (tail, stack.clone());
-    world.resource_mut::<Shell>().post = post;
+    world.resource_mut::<Shell>().post.tail = tail;
 }
 
 /// `shell_frame`: the F11 and F9 keys, the run's playtime, the exit's save
@@ -866,7 +822,7 @@ fn frame(world: &mut World) {
         *secs += real;
         *secs
     });
-    post(world, died.map_or_else(Vec::new, game_over::passes), false);
+    post(world, died.map_or_else(Vec::new, game_over::passes));
     let delta = f64::from(world.resource::<Time>().delta());
     if let Some(run) = world.get_resource_mut::<RunState>() {
         run.playtime_secs += delta;
@@ -904,7 +860,7 @@ fn display_keys(world: &mut World) {
     }
     // Applied again, since an apply earlier this frame, a slider's, replaces
     // the engine's request; the Settings screen saves when it closes.
-    apply_settings(world);
+    tungsten::apply_settings(world);
     if !world.resource::<Shell>().settings_open {
         settings::save(world);
     }
@@ -916,19 +872,16 @@ pub fn play(world: &mut World, id: &str, fade: f32) -> Option<Voice> {
     tungsten::core::audio::play(world, id, fade)
 }
 
-/// Focus loss: mutes when the options say so, and pauses gameplay once
-/// `open` (gameplay on top, no screen change), so a loss during a change
-/// pauses after it; focus back unmutes and drops a pause still due.
+/// Focus loss: pauses gameplay when the options say so, once `open`
+/// (gameplay on top, no screen change), so a loss during a change pauses
+/// after it; focus back drops a pause still due. The mute while unfocused
+/// is the engine's (`Settings::mute_unfocused`).
 fn focus(world: &mut World, open: bool) {
     let unfocused = !world.resource::<InputState>().focused();
-    let options = *world.resource::<options::GameOptions>();
+    let pause = world.resource::<options::GameOptions>().pause_unfocused;
     let shell = world.resource_mut::<Shell>();
     if std::mem::replace(&mut shell.unfocused, unfocused) != unfocused {
-        shell.pause_due = unfocused && options.pause_unfocused;
-        let muted = unfocused && options.mute_unfocused;
-        if std::mem::replace(&mut shell.focus_muted, muted) != muted {
-            apply_settings(world);
-        }
+        shell.pause_due = unfocused && pause;
     }
     if open && std::mem::take(&mut world.resource_mut::<Shell>().pause_due) {
         push(world, pause::PauseState::default());

@@ -19,7 +19,6 @@ use tungsten_template_basic::save::SaveGame;
 use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::settings::{self, SETTINGS};
-use tungsten_template_basic::shell::title::TitleState;
 use tungsten_template_basic::shell::{AUTOSAVES, Difficulty};
 
 use super::{
@@ -97,10 +96,10 @@ fn from_title(harness: &mut UiHarness) {
 #[test]
 fn a_display_revert_keeps_the_focus_mute() {
     let mut harness = harness();
-    harness
-        .world_mut()
-        .resource_mut::<GameOptions>()
-        .mute_unfocused = true;
+    let world = harness.world_mut();
+    world
+        .resource_mut::<Settings>()
+        .set_mute_unfocused(Some(true));
     from_title(&mut harness);
     press(&mut harness, "Window mode");
     press(&mut harness, "Apply");
@@ -337,11 +336,11 @@ fn applied(harness: &UiHarness, name: &str) -> bool {
             .map_or(live.frame_rate_cap.is_none(), |cap| {
                 cap == FrameRateCap::Uncapped
             }),
-        "Mute when unfocused" => options.mute_unfocused,
+        "Mute when unfocused" => settings.mute_unfocused() == Some(true),
         "Damage numbers" => options.damage_numbers,
         "Pause when unfocused" => options.pause_unfocused,
         "Autosave" => options.autosave,
-        "Bloom" => options.bloom,
+        "Bloom" => settings.bloom() != Some(false),
         other => panic!("a toggle this test does not know: '{other}'"),
     }
 }
@@ -870,10 +869,10 @@ fn difficulty_is_off_outside_a_run_and_saved_with_it() {
 #[test]
 fn mute_when_unfocused_mutes_and_restores() {
     let mut harness = harness();
-    harness
-        .world_mut()
-        .resource_mut::<GameOptions>()
-        .mute_unfocused = true;
+    let world = harness.world_mut();
+    world
+        .resource_mut::<Settings>()
+        .set_mute_unfocused(Some(true));
     start(&mut harness);
     set_focus(&mut harness, false);
     harness.harness_mut().clear_audio_log();
@@ -1038,28 +1037,33 @@ fn post_stack(harness: &UiHarness) -> Vec<PostPass> {
     harness.world().resource::<PostStack>().0.clone()
 }
 
-/// Sets the Bloom option and runs a frame.
+/// The post stack the last frame drew with.
+fn drawn_post(harness: &UiHarness) -> Vec<PostPass> {
+    let draw = harness.harness().draw().expect("a frame drew");
+    draw.post.clone()
+}
+
+/// Sets the engine's Bloom switch and runs a frame.
 fn set_bloom(harness: &mut UiHarness, on: bool) {
-    harness.world_mut().resource_mut::<GameOptions>().bloom = on;
+    let settings = harness.world_mut().resource_mut::<Settings>();
+    settings.set_bloom(Some(on));
     harness.step(1);
 }
 
 #[test]
-fn the_bloom_option_strips_and_restores_the_games_bloom() {
+fn the_bloom_option_writes_the_engine_switch() {
     let dir = user_folder("bloom-option");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     let game = game_stack();
     harness.world_mut().insert_resource(PostStack(game.clone()));
     harness.step(1);
-    assert_eq!(post_stack(&harness), game, "on: the game's stack");
+    assert_eq!(drawn_post(&harness), game, "on: the game's stack");
     set_bloom(&mut harness, false);
-    assert_eq!(post_stack(&harness), game[1..], "off: the vignette alone");
+    assert_eq!(drawn_post(&harness), game[1..], "off: the vignette alone");
+    assert_eq!(post_stack(&harness), game, "the game's stack stays its own");
     set_bloom(&mut harness, true);
-    assert_eq!(post_stack(&harness), game, "on: exactly the original");
+    assert_eq!(drawn_post(&harness), game, "on: exactly the original");
     set_bloom(&mut harness, false);
-    harness.world_mut().insert_resource(PostStack(game.clone()));
-    harness.step(1);
-    assert_eq!(post_stack(&harness), game[1..], "inserted while off");
     from_title(&mut harness);
     assert_eq!(
         toggled(&harness, "Bloom"),
@@ -1067,68 +1071,37 @@ fn the_bloom_option_strips_and_restores_the_games_bloom() {
         "on the Display tab"
     );
     press(&mut harness, "Reset tab");
-    assert!(options(&harness).bloom, "Display's Reset turns it on");
-    assert_eq!(post_stack(&harness), game);
+    assert_eq!(
+        settings(&harness).bloom(),
+        None,
+        "Display's Reset unsets it"
+    );
+    harness.step(1);
+    assert_eq!(drawn_post(&harness), game);
     press(&mut harness, "Bloom");
-    assert!(!options(&harness).bloom);
+    assert_eq!(settings(&harness).bloom(), Some(false));
     press(&mut harness, "Back");
     let restarted = harness_with(UserFolder::At(dir.clone()));
-    assert!(!options(&restarted).bloom, "kept across a restart");
+    assert_eq!(
+        settings(&restarted).bloom(),
+        Some(false),
+        "kept across a restart"
+    );
     let _ = std::fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn bloom_off_then_a_run_change_restores_nothing_the_game_dropped() {
-    let mut harness = harness();
-    set_bloom(&mut harness, false);
-    start(&mut harness);
-    assert_eq!(post_stack(&harness), [], "the sample's Bloom taken out");
-    tap(&mut harness, "state_pause");
-    press(&mut harness, "Quit to Title");
-    press(&mut harness, "Quit");
-    set_bloom(&mut harness, true);
-    assert_eq!(post_stack(&harness), [], "the title's stays empty");
-}
-
-#[test]
-fn a_stack_that_outlives_its_run_keeps_its_bloom() {
-    let mut harness = harness();
-    let game = game_stack();
-    harness.world_mut().insert_resource(PostStack(game.clone()));
-    set_bloom(&mut harness, false);
-    assert_eq!(post_stack(&harness), game[1..]);
-    // A change of run that leaves the stack alone, through the curtain.
-    tungsten_template_basic::shell::goto(harness.world_mut(), TitleState::default());
-    settle(&mut harness);
-    assert_eq!(post_stack(&harness), game[1..], "taken out again");
-    set_bloom(&mut harness, true);
-    assert_eq!(post_stack(&harness), game, "back exactly");
-}
-
-#[test]
-fn a_stack_set_to_its_stripped_value_keeps_its_withheld_bloom() {
-    let mut harness = harness();
-    let game = game_stack();
-    harness.world_mut().insert_resource(PostStack(game.clone()));
-    set_bloom(&mut harness, false);
-    // The game sets what the shell left; passes carry no identity, so the
-    // shell cannot tell, and its withheld Bloom comes back when on (Q23).
-    harness
-        .world_mut()
-        .insert_resource(PostStack(game[1..].to_vec()));
-    harness.step(1);
-    set_bloom(&mut harness, true);
-    assert_eq!(post_stack(&harness), game);
 }
 
 #[test]
 fn each_tabs_reset_keeps_the_other_tabs_options() {
     let mut harness = harness();
     let both_off = |harness: &mut UiHarness| {
-        let options = harness.world_mut().resource_mut::<GameOptions>();
-        (options.bloom, options.autosave) = (false, false);
+        let world = harness.world_mut();
+        world.resource_mut::<Settings>().set_bloom(Some(false));
+        world.resource_mut::<GameOptions>().autosave = false;
     };
-    let both = |harness: &UiHarness| (options(harness).bloom, options(harness).autosave);
+    let both = |harness: &UiHarness| {
+        let bloom = settings(harness).bloom() != Some(false);
+        (bloom, options(harness).autosave)
+    };
     from_title(&mut harness);
     for (tab, after) in [
         ("Gameplay", (false, true)),

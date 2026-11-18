@@ -1,5 +1,5 @@
 //! Tabbed settings: Display, Audio, Interface, Controls and Gameplay. Every
-//! change applies at once through `shell::apply_settings`, a scale slider's
+//! change applies at once through `tungsten::apply_settings`, a scale slider's
 //! at its release, and is written when the screen closes (Back or
 //! `ui_cancel` save `Settings` and the gameplay options) or the game exits
 //! with it open; a tab's Reset returns its values to unset or default.
@@ -16,7 +16,6 @@
 
 use std::num::NonZeroU32;
 
-use tungsten::core::settings::SettingsError;
 use tungsten::core::ui::{
     UiBindings, UiEvent, UiKey, UiRouter, UiTree, UiValue, WidgetId, screen_build,
 };
@@ -24,14 +23,13 @@ use tungsten::core::{
     AudioBus, DisplayMode, DisplayState, FrameRateCap, MonitorInfo, Resolution, ScaleFactor,
     Settings, World,
 };
-use tungsten::{GameState, StateContext, StateId, shipped_volume};
+use tungsten::{GameState, StateContext, StateId, apply_settings, shipped_volume};
 
 use super::confirm::{self, ConfirmState};
 use super::keybindings::{self, KeybindingsState};
 use super::options::{self, GameOptions};
 use super::{
-    BACK, Difficulty, Menu, RunState, Shell, apply_settings, enter, events, idle, pop, pressed,
-    push, stack, toast,
+    BACK, Difficulty, Menu, RunState, Shell, enter, events, idle, pop, pressed, push, stack, toast,
 };
 
 pub const SETTINGS: StateId = "settings";
@@ -272,7 +270,9 @@ pub(super) fn bind(bindings: &mut UiBindings) {
         })
         .enabled("capped", |w| display(w).frame_rate_cap.is_some())
         .value("uncapped", |w| on(display(w).frame_rate_cap.is_none()))
-        .value("bloom", |w| on(options(w).bloom))
+        .value("bloom", |w| {
+            on(w.resource::<Settings>().bloom() != Some(false))
+        })
         .enabled("pending", |w| view(w).pending != (None, None))
         .value("master", |w| number(volume(w, None)))
         .value("music", |w| number(volume(w, Some(AudioBus::Music))))
@@ -284,7 +284,9 @@ pub(super) fn bind(bindings: &mut UiBindings) {
         .text("effects_text", |w| {
             format!("{:.0}%", volume(w, Some(AudioBus::Effects)))
         })
-        .value("mute_unfocused", |w| on(options(w).mute_unfocused))
+        .value("mute_unfocused", |w| {
+            on(w.resource::<Settings>().mute_unfocused() == Some(true))
+        })
         .value("ui_scale", |w| {
             let applied = w.resource::<ScaleFactor>().ui_scale();
             number(w.resource::<Settings>().ui_scale().unwrap_or(applied))
@@ -421,15 +423,14 @@ impl SettingsState {
             "music" => set_volume(world, Some(AudioBus::Music), number),
             "effects" => set_volume(world, Some(AudioBus::Effects), number),
             "ui_scale" | "text_scale" => set_scale(world, key == "text_scale", number),
-            "mute_unfocused" | "damage_numbers" | "pause_unfocused" | "autosave" | "bloom"
-            | "screen_shake" => {
+            "bloom" => change(world, |settings| settings.set_bloom(Some(on))),
+            "mute_unfocused" => change(world, |settings| settings.set_mute_unfocused(Some(on))),
+            "damage_numbers" | "pause_unfocused" | "autosave" | "screen_shake" => {
                 let options = world.resource_mut::<GameOptions>();
                 match key {
-                    "mute_unfocused" => options.mute_unfocused = on,
                     "damage_numbers" => options.damage_numbers = on,
                     "pause_unfocused" => options.pause_unfocused = on,
                     "autosave" => options.autosave = on,
-                    "bloom" => options.bloom = on,
                     _ => options.set_screen_shake(number / 100.0),
                 }
                 options::apply(world);
@@ -445,19 +446,22 @@ impl SettingsState {
         if tab == 0 {
             view_mut(world).pending = (None, None);
         }
-        let defaults = GameOptions::default();
+        // Each tab's own values only: Display's with Bloom, Audio's with the
+        // mute, and Gameplay's options.
         change(world, |settings| match tab {
             0 => {
                 settings.set_display_mode(None);
                 settings.set_resolution(None);
                 settings.set_vsync(None);
                 settings.set_frame_rate_cap(None);
+                settings.set_bloom(None);
             }
             1 => {
                 settings.set_master_volume(None);
                 AudioBus::ALL
                     .iter()
                     .for_each(|bus| settings.set_bus_volume(*bus, None));
+                settings.set_mute_unfocused(None);
             }
             2 => {
                 settings.set_ui_scale(None);
@@ -465,17 +469,10 @@ impl SettingsState {
             }
             _ => {}
         });
-        // Each tab's own options only: Display's Bloom, Audio's mute, and
-        // Gameplay's rest.
-        let options = world.resource_mut::<GameOptions>();
-        let (mute_unfocused, bloom) = (options.mute_unfocused, options.bloom);
         match tab {
-            0 => options.bloom = defaults.bloom,
-            1 => options.mute_unfocused = defaults.mute_unfocused,
             3 => keybindings::reset(world, None),
             GAMEPLAY_TAB => {
-                *options = defaults;
-                (options.mute_unfocused, options.bloom) = (mute_unfocused, bloom);
+                *world.resource_mut::<GameOptions>() = GameOptions::default();
                 options::apply(world);
             }
             _ => {}
@@ -489,14 +486,10 @@ impl SettingsState {
     }
 }
 
-/// Writes `Settings` and the gameplay options; a failure logs, and no user
-/// folder saves nothing. The exit's last frame calls it while the screen is
-/// open, and the F11 and F9 keys while it is not.
-pub(crate) fn save(world: &World) {
-    match world.resource::<Settings>().save() {
-        Ok(()) | Err(SettingsError::NoFolder) => {}
-        Err(error) => log::warn!("Settings not saved: {error}"),
-    }
+/// Writes `Settings`, the gameplay options in their game section; a failure
+/// logs, and no user folder saves nothing. The exit's last frame calls it
+/// while the screen is open, and the F11 and F9 keys while it is not.
+pub(crate) fn save(world: &mut World) {
     options::save(world);
 }
 

@@ -5,7 +5,7 @@ use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
 use tungsten::core::{
     AmbientLight, AssetRegistry, CameraRig, Collider, Entity, Light, LightKind, MaterialRegistry,
-    Position, Shape, Sprite, Time, Transform, Visibility, World,
+    Position, Settings, Shape, Sprite, Time, Transform, Visibility, World,
 };
 use tungsten::kit::{LocalOffset, spawn_child};
 
@@ -13,7 +13,6 @@ use super::components::{Area, AreaLight, Glow, GlowParts, Zoom};
 use super::{AMBIENT, AMBIENT_INDOOR, AREA_FADE, LIGHT_EASE, MOONLIGHT_INTENSITY, TILE};
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shell::options::GameOptions;
 
 /// The halo's sprite and material, and the hot core's.
 pub const HALO: &str = "ex10_halo";
@@ -63,8 +62,8 @@ pub fn drawn_time(world: &World) -> f32 {
 #[must_use]
 pub fn bloom_on(world: &World) -> bool {
     world
-        .get_resource::<GameOptions>()
-        .is_none_or(|options| options.bloom)
+        .get_resource::<Settings>()
+        .is_none_or(|settings| settings.bloom() != Some(false))
 }
 
 /// `level_glows`: each glow's halo, its core and its light, spawned as its

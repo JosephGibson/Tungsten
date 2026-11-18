@@ -1313,7 +1313,7 @@ fn autosave_off_writes_no_automatic_or_requested_save() {
     assert_eq!(harness.step(1), 1, "the last frame runs");
     assert_eq!(autosave_bytes(&dir), paused, "the exit");
     // New Game asks over a ready autosave only while the option is on.
-    tungsten_template_basic::shell::options::save(harness.world());
+    tungsten_template_basic::shell::options::save(harness.world_mut());
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     assert!(!harness.world().resource::<GameOptions>().autosave);
     press(&mut harness, "New Game");

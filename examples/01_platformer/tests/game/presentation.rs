@@ -17,7 +17,6 @@ use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{BURST_CAP, Burst, Saved, despawn_tree, spawn_burst};
-use example_01_platformer::shell::options::GameOptions;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, ResolvedManifest, TilemapData, TilemapLayer};
 use tungsten::core::post::{PostPass, PostStack};
@@ -25,8 +24,8 @@ use tungsten::core::ui::contrast_ratio;
 use tungsten::core::{
     AnimationRegistry, AnimationState, AssetRegistry, CameraState, DataRegistry, Entity,
     InputState, Light, MaterialRegistry, Particle, ParticleBudget, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Sprite, TilemapInstance,
-    TilemapRegistry, Transform, Visibility,
+    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Settings, Sprite,
+    TilemapInstance, TilemapRegistry, Transform, Visibility,
 };
 use tungsten::kit::{Children, Facing, Parent, PlatformerController, Tags, damage};
 use tungsten::testing::UiHarness;
@@ -685,9 +684,11 @@ fn bloom_and_vignette_survive_game_over_and_retry() {
 fn the_bloom_option_keeps_the_vignette() {
     let (mut harness, _) = run();
     let set = |harness: &mut UiHarness, on: bool| {
-        harness.world_mut().resource_mut::<GameOptions>().bloom = on;
+        let settings = harness.world_mut().resource_mut::<Settings>();
+        settings.set_bloom(Some(on));
         harness.step(1);
-        harness.world().resource::<PostStack>().0.clone()
+        let draw = harness.harness().draw().expect("a frame drew");
+        draw.post.clone()
     };
     let off = set(&mut harness, false);
     assert!(matches!(off.as_slice(), [PostPass::Vignette(_)]), "{off:?}");
@@ -707,7 +708,8 @@ fn the_bloom_option_hides_the_halos_and_the_moons_glow() {
     mock_sprite(assets, "ex10_halo", 702, false);
     mock_sprite(assets, "ex10_flame_glow", 703, false);
     let shown = |harness: &mut UiHarness, on: bool| {
-        harness.world_mut().resource_mut::<GameOptions>().bloom = on;
+        let settings = harness.world_mut().resource_mut::<Settings>();
+        settings.set_bloom(Some(on));
         harness.step(1);
         let world = harness.world();
         let parts = *world.get::<GlowParts>(player).unwrap();
