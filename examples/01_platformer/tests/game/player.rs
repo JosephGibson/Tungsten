@@ -370,7 +370,7 @@ fn a_fall_is_fatal_during_immunity_and_the_screen_advances_while_game_time_is_pa
     );
     fall_dead(&mut harness);
     assert_eq!(top(&harness), Some(GAME_OVER));
-    assert!(harness.world().resource::<Time>().is_paused());
+    assert!(harness.world().resource::<Time>().is_held());
     harness.step(60);
     assert_eq!(top(&harness), Some(GAME_OVER));
     assert!(health(&harness, player).is_dead());

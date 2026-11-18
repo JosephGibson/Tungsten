@@ -5744,3 +5744,31 @@ fn an_older_saves_foes_keep_their_rests() {
     }
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn a_load_from_pause_runs_the_game_clock() {
+    let (mut harness, _) = run();
+    harness.step(10);
+    let save = capture(&harness);
+    super::tap(&mut harness, "state_pause");
+    assert_eq!(
+        top(&harness),
+        Some(example_01_platformer::shell::pause::PAUSE)
+    );
+    assert!(
+        harness.world().resource::<Time>().is_held(),
+        "held under pause"
+    );
+    game_shell::start_run(harness.world_mut(), RunStart::from(save), None);
+    settle(&mut harness);
+    assert_eq!(top(&harness), Some(game::GAMEPLAY));
+    let time = harness.world().resource::<Time>();
+    assert!(
+        !time.is_held() && !time.is_paused(),
+        "a change of run leaves none"
+    );
+    let at = time.elapsed();
+    harness.step(10);
+    let now = harness.world().resource::<Time>().elapsed();
+    assert!(now > at, "the loaded run's clock runs");
+}

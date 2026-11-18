@@ -163,12 +163,10 @@ impl GameState for GameplayState {
         spells::stop(ctx.world);
     }
 
-    fn on_pause(&mut self, ctx: &mut StateContext) {
-        ctx.world.resource_mut::<Time>().pause();
-    }
-
-    fn on_resume(&mut self, ctx: &mut StateContext) {
-        ctx.world.resource_mut::<Time>().resume();
+    /// The game clock holds while a screen covers the run, beside any pause
+    /// of the game's own; a reset, which exits every state, leaves none.
+    fn holds_clock(&self) -> bool {
+        true
     }
 
     fn update(&mut self, world: &mut World) {
