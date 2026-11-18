@@ -2,8 +2,7 @@
 and check that nothing in the built level floats (01 (k))."""
 import json
 import re
-from PIL import Image
-from art import TOOLS
+from art import BIG, TOOLS
 
 # How far a prop hung under a platform (`anchor` `under`) tucks its top
 # opaque row up into the underside's ragged lip, in pixels.
@@ -40,11 +39,32 @@ def settle(solid, pts, anchor):
     return 0
 
 
+def whole_y(p, support, im, drawn, images, tile):
+    """Where prop `p`, drawn whole as `im`, lands on `support`, in tiles:
+    its opaque box's top on the support's row (`wall`), tucked `UNDER_TUCK`
+    px into its underside (`under`) or its box's bottom on its row
+    (`ground`, both feet within the support), then settled onto what the
+    tiles draw."""
+    x=p['x'];box=im.getbbox();edge=box[1] if p['anchor'] in ('wall','under') else box[3]
+    y=support['row']-edge/tile
+    if p['anchor']=='under':y=underside(support,images,tile)-(UNDER_TUCK+box[1])/tile
+    # Ground both feet/trunk, not merely the center of a wide composition.
+    if p['anchor']=='ground':
+        foot=im.getchannel('A').crop((0,box[3]-1,im.width,box[3])).getbbox()
+        if x+foot[0]/tile<support['left'] or x+foot[2]/tile>support['right']:raise ValueError('composite feet outside support: '+p['sprite'])
+    if p['anchor'] in ('ground','under'):
+        a=im.getchannel('A').tobytes()
+        pts=[(round(x*tile)+i%im.width,round(y*tile)+i//im.width) for i,v in enumerate(a) if v>=128]
+        y+=settle(drawn.hit,pts,p['anchor'])/tile
+    return y
+
+
 def prepare(source, images, tiles):
-    """Places the level's supported props, groups, pickups, crates, kegs and
+    """Places the level's supported props, pickups, crates, kegs and
     supports and derives the slab colliders. `tiles` maps each terrain cell
-    to its sprite: a supported prop or group stands or hangs on what they
-    draw, by the floating check's own test (01 (k))."""
+    to its sprite: a supported prop stands or hangs on what they draw, by
+    the floating check's own test (01 (k)), one drawn whole (`art.BIG`) as
+    its own composite (`whole_y`)."""
     tile=source['tile'];platforms={p['name']:p for p in source['platforms']}
     drawn=Placed(images,tile)
     for (x,y),name in tiles.items():drawn.add(name,x*tile,y*tile)
@@ -63,6 +83,8 @@ def prepare(source, images, tiles):
     for p in source['props']:
         if 'support' not in p:continue
         support=platforms[p['support']];im=images[p['sprite'].removeprefix('ex10_')];box=im.getbbox()
+        if BIG.search(p['sprite']):
+            p['y']=whole_y(p,support,im,drawn,images,tile);continue
         center=p['x']+(box[0]+box[2])/2/tile
         if not support['left']<=center<support['right']:raise ValueError(f"prop outside support: {p['sprite']} at {p['x']} on {support['name']}")
         if p['anchor']=='ground':
@@ -132,35 +154,6 @@ def prepare(source, images, tiles):
         if not support['left'] <= p['x'] - hx <= p['x'] + hx <= support['right']:
             raise ValueError(f"stone outside support: {p['x']} on {support['name']}")
         p['y'] = support['row'] - hy - 0.5 / tile
-    # Each group's own pieces: those inside its box where they are written,
-    # none inside two groups' boxes.
-    owners={}
-    for k,group in enumerate(source['groups']):
-        for i,p in enumerate(source['props']):
-            if p['sprite'].startswith(group['sprite']+'_big_') and group['x']<=p['x']<group['x']+group['width'] and group['y']<=p['y']<group['y']+group['height']:
-                owners.setdefault(i,[]).append(k)
-    for i,ks in owners.items():
-        if len(ks)>1:raise ValueError(f"a piece inside two groups' boxes: {source['props'][i]['sprite']} at {source['props'][i]['x']}, {source['props'][i]['y']}")
-    for k,group in enumerate(source['groups']):
-        name=group['sprite'];x=group['x'];y=group['y'];w=group['width'];h=group['height'];support=platforms[group['support']]
-        composite=Image.new('RGBA',(w*tile,h*tile))
-        for r in range(h):
-            for c in range(w):composite.paste(images[f'{name.removeprefix("ex10_")}_big_{r}_{c}'],(c*tile,r*tile))
-        box=composite.getbbox();edge=box[1] if group['anchor'] in ('wall','under') else box[3]
-        target_y=support['row']-edge/tile
-        if group['anchor']=='under':target_y=underside(support,images,tile)-(UNDER_TUCK+box[1])/tile
-        # Ground both feet/trunk, not merely the center of a wide composition.
-        if group['anchor']=='ground':
-            foot=composite.getchannel('A').crop((0,box[3]-1,w*tile,box[3])).getbbox()
-            if x+foot[0]/tile<support['left'] or x+foot[2]/tile>support['right']:raise ValueError('composite feet outside support: '+name)
-        if group['anchor'] in ('ground','under'):
-            a=composite.getchannel('A').tobytes()
-            pts=[(round(x*tile)+i%(w*tile),round(target_y*tile)+i//(w*tile)) for i,v in enumerate(a) if v>=128]
-            target_y+=settle(drawn.hit,pts,group['anchor'])/tile
-        # Its pieces and where its box's top lands, which the floating
-        # check reads.
-        group['pieces'],group['top']=sorted(i for i,ks in owners.items() if ks==[k]),target_y
-        for i in group['pieces']:source['props'][i]['y']+=target_y-y
     # Attached supports: start exactly at the visible deck underside, extend
     # into solid ground at the base, and render behind the collision surfaces.
     for support in source['supports']:
@@ -288,8 +281,8 @@ def judge(anchor, solid, back, pts):
 def floating(source, tiled, images):
     """Every piece of the built level that floats, sinks or states no way
     it stands, as lines `kind name x y detail` sorted by x (tiles): props by
-    their `anchor`, else their sprite's list in scenery.py; each group's
-    composite; streams as stacks; supports; decorations by structure. Reads
+    their `anchor`, else their sprite's list in scenery.py, a whole one as
+    any; streams as stacks; supports; decorations by structure. Reads
     `tiled`'s terrain and background layers and `prepare`'s placements; the
     rules are in tools/README.md (Final placement)."""
     import scenery
@@ -310,14 +303,14 @@ def floating(source, tiled, images):
     standing = {name for name, _ in scenery.LEVEL_PROPS}
     hung = {name for name, _ in scenery.HUNG_PROPS}
     exempt = {name for name, _ in scenery.MISTS + scenery.RISING + scenery.FAR_PROPS}
-    props, groups = source['props'], source['groups']
+    props = source['props']
 
     def clip(p):
         """A prop's drawing: its clip's name, else its sprite's."""
         return (p['animation'] or p['sprite']).removeprefix('ex10_')
 
     def kind(name):
-        return re.sub(r'_big_\d+_\d+$', '', name)
+        return BIG.sub('', name)
 
     def at(p):
         return round(p['x'] * tile), round(p['y'] * tile)
@@ -337,37 +330,13 @@ def floating(source, tiled, images):
         name = kind(clip(p))
         if name.startswith(LIQUIDS) and name not in standing:
             liquid.add(p['sprite'].removeprefix('ex10_'), *at(p))
-        if name.startswith(SOURCES) or (stream_kind(name) and '_big_' not in p['sprite']):
+        if name.startswith(SOURCES) or (stream_kind(name) and not BIG.search(p['sprite'])):
             sources.add(p['sprite'].removeprefix('ex10_'), *at(p), tag=(stream_kind(name), p['x']))
-
-    # Groups: each one's own pieces, where they landed, as its anchor says;
-    # a piece inside two groups' boxes where it was written, or in none.
-    owner = {i: k for k, g in enumerate(groups) for i in g.get('pieces', [])}
-    for i, p in enumerate(props):
-        if '_big_' not in p['sprite']:
-            continue
-        k = owner.get(i)
-        y = round(p['y'] - (groups[k]['top'] - groups[k]['y']), 6) if k is not None else p['y']
-        boxes = [g for g in groups if p['sprite'].startswith(g['sprite'] + '_big_')
-                 and g['x'] <= p['x'] < g['x'] + g['width'] and g['y'] <= y < g['y'] + g['height']]
-        name = p['sprite'].removeprefix('ex10_')
-        if len(boxes) > 1:
-            fail('group', name, p['x'], p['y'], f"inside {len(boxes)} groups' boxes")
-        elif k is None and not kind(clip(p)).startswith(EXEMPT) and kind(clip(p)) not in exempt:
-            fail('unjudged', name, p['x'], p['y'], "in no group's box")
-    for g in groups:
-        name = g['sprite'].removeprefix('ex10_')
-        if not g.get('pieces'):
-            fail('group', name, g['x'], g['y'], 'moves no piece')
-            continue
-        why = judge(g['anchor'], solid, back, [pt for i in g['pieces'] for pt in pixels(props[i])])
-        if why:
-            fail('group-' + why[0], name, g['x'], g['top'], why[1])
 
     # Streams: each column of a stream's segments as a stack.
     columns = {}
     for p in props:
-        if stream_kind(clip(p)) and '_big_' not in p['sprite']:
+        if stream_kind(clip(p)) and not BIG.search(p['sprite']):
             columns.setdefault((stream_kind(clip(p)), p['x']), []).append(p)
     for (stream, x), parts in sorted(columns.items()):
         parts = [(p, pixels(p)) for p in sorted(parts, key=lambda p: p['y'])]
@@ -407,10 +376,10 @@ def floating(source, tiled, images):
         if share < MOST:
             fail('support', 'timber_support', x, last['y'], f'{share:.0%} of its foot on the drawn surface')
 
-    # Single props, by anchor, else by their sprite's list.
+    # Props, whole ones too, by anchor, else by their sprite's list.
     for p in props:
         name, sprite = kind(clip(p)), p['sprite'].removeprefix('ex10_')
-        if '_big_' in sprite or stream_kind(name) or name == 'timber_support':
+        if stream_kind(name) or name == 'timber_support':
             continue
         anchor = p.get('anchor') or ('ground' if {name, sprite} & standing else 'under' if {name, sprite} & hung else None)
         if anchor is None:

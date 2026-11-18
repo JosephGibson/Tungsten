@@ -1026,773 +1026,51 @@
       "ground": "cut_floor_3"
     }
   ],
-  "groups": [
+  "props": [
     {
-      "sprite": "ex10_oak",
+      "sprite": "ex10_oak_big",
       "x": 2,
       "y": 33,
-      "width": 3,
-      "height": 3,
+      "depth": "back",
+      "animation": null,
       "support": "clearing",
       "anchor": "ground"
     },
     {
-      "sprite": "ex10_oak",
+      "sprite": "ex10_oak_big",
       "x": 20,
       "y": 33,
-      "width": 3,
-      "height": 3,
+      "depth": "back",
+      "animation": null,
       "support": "terrace_b",
       "anchor": "ground"
     },
     {
-      "sprite": "ex10_roots",
+      "sprite": "ex10_roots_big",
       "x": 5,
       "y": 36,
-      "width": 3,
-      "height": 2,
+      "depth": "world",
+      "animation": null,
       "support": "clearing",
       "anchor": "wall"
     },
     {
-      "sprite": "ex10_roots",
+      "sprite": "ex10_roots_big",
       "x": 17,
       "y": 34,
-      "width": 3,
-      "height": 2,
+      "depth": "world",
+      "animation": null,
       "support": "terrace_a",
       "anchor": "wall"
     },
     {
-      "sprite": "ex10_roots",
+      "sprite": "ex10_roots_big",
       "x": 20,
       "y": 32,
-      "width": 3,
-      "height": 2,
+      "depth": "world",
+      "animation": null,
       "support": "terrace_b",
       "anchor": "wall"
-    },
-    {
-      "sprite": "ex10_oak",
-      "x": 25,
-      "y": 30,
-      "width": 3,
-      "height": 3,
-      "support": "meadow",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_arch",
-      "x": 88,
-      "y": 30,
-      "width": 4,
-      "height": 3,
-      "support": "east_rim",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_statue",
-      "x": 153.5,
-      "y": 37,
-      "width": 2,
-      "height": 3,
-      "support": "aqueduct_floor",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_vine_0",
-      "x": 100,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "channel_west",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_2",
-      "x": 117,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "channel_mid",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_splash_rocks_0",
-      "x": 179.5,
-      "y": 30,
-      "width": 2,
-      "height": 1,
-      "support": "pool_bed",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_splash_rocks_1",
-      "x": 177.2,
-      "y": 30,
-      "width": 2,
-      "height": 1,
-      "support": "pool_bed",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_lily_pads",
-      "x": 196.0,
-      "y": 30,
-      "width": 2,
-      "height": 1,
-      "support": "pool_bed",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_cliff_tree",
-      "x": 201,
-      "y": 30,
-      "width": 3,
-      "height": 2,
-      "support": "east_wall",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_vine_curtain_0",
-      "x": 159,
-      "y": 30,
-      "width": 1,
-      "height": 3,
-      "support": "rim_west",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_curtain_1",
-      "x": 165,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "rim_west",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_curtain_2",
-      "x": 170,
-      "y": 30,
-      "width": 1,
-      "height": 3,
-      "support": "rim_west",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_rope_ladder",
-      "x": 174.4,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "rim_west",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_1",
-      "x": 197.4,
-      "y": 30,
-      "width": 1,
-      "height": 3,
-      "support": "ravine_east_4",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_fern_clump_0",
-      "x": 162.5,
-      "y": 30,
-      "width": 2,
-      "height": 1,
-      "support": "ravine_step_1",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_cart",
-      "x": 273,
-      "y": 30,
-      "width": 2,
-      "height": 2,
-      "support": "gallery",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_chain",
-      "x": 294.3,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "scaffold_1",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_rope_bucket",
-      "x": 295.2,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "scaffold_3",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_headframe",
-      "x": 300,
-      "y": 30,
-      "width": 2,
-      "height": 3,
-      "support": "cut_floor_1",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_cart",
-      "x": 308,
-      "y": 30,
-      "width": 2,
-      "height": 2,
-      "support": "cut_floor_2",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_ore_heap",
-      "x": 318,
-      "y": 30,
-      "width": 2,
-      "height": 1,
-      "support": "cut_floor_2b",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_rubble_pile_0",
-      "x": 325,
-      "y": 30,
-      "width": 2,
-      "height": 1,
-      "support": "cut_floor_3",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_timber_stack",
-      "x": 337.6,
-      "y": 30,
-      "width": 2,
-      "height": 1,
-      "support": "cut_floor_3",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_spoil_heap",
-      "x": 351.5,
-      "y": 30,
-      "width": 2,
-      "height": 1,
-      "support": "ridge",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_cart_tipped",
-      "x": 354.6,
-      "y": 30,
-      "width": 3,
-      "height": 2,
-      "support": "ridge",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_rubble_pile_1",
-      "x": 357.5,
-      "y": 30,
-      "width": 2,
-      "height": 1,
-      "support": "ridge",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_guardian",
-      "x": 360.5,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "bridge_head",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_toll_sign",
-      "x": 364.4,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "bridge_head",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_banner_0",
-      "x": 370.3,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "troll_bridge",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_toll_boom",
-      "x": 390.5,
-      "y": 30,
-      "width": 2,
-      "height": 2,
-      "support": "troll_bridge",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_skull_pike",
-      "x": 395.6,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "troll_bridge",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_lean_to",
-      "x": 407.5,
-      "y": 30,
-      "width": 2,
-      "height": 2,
-      "support": "troll_bridge",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_banner_1",
-      "x": 416.2,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "troll_bridge",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_vine_0",
-      "x": 99.0,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "aq_ledge_1",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_curtain_0",
-      "x": 136,
-      "y": 30,
-      "width": 1,
-      "height": 3,
-      "support": "channel_east_a",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_0",
-      "x": 162.2,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "rim_west",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_2",
-      "x": 167.6,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "rim_west",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_0",
-      "x": 172.8,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "rim_west",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_2",
-      "x": 176.2,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "rim_west",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_2",
-      "x": 198.0,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "ravine_east_2",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_0",
-      "x": 201.4,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "ravine_east_3",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_2",
-      "x": 201.0,
-      "y": 30,
-      "width": 1,
-      "height": 2,
-      "support": "ravine_east_5",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_fern_clump_0",
-      "x": 201.6,
-      "y": 30,
-      "width": 2,
-      "height": 1,
-      "support": "ravine_east_1",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_vine_0",
-      "x": 183.0,
-      "y": 34,
-      "width": 1,
-      "height": 2,
-      "support": "rv_ledge_1",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_2",
-      "x": 189.4,
-      "y": 38,
-      "width": 1,
-      "height": 2,
-      "support": "rv_ledge_2",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_0",
-      "x": 183.6,
-      "y": 42,
-      "width": 1,
-      "height": 2,
-      "support": "rv_ledge_3",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_2",
-      "x": 190.0,
-      "y": 46,
-      "width": 1,
-      "height": 2,
-      "support": "rv_ledge_4",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_0",
-      "x": 184.4,
-      "y": 50,
-      "width": 1,
-      "height": 2,
-      "support": "rv_ledge_5",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_2",
-      "x": 189.0,
-      "y": 54,
-      "width": 1,
-      "height": 2,
-      "support": "rv_ledge_6",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_vine_0",
-      "x": 185.0,
-      "y": 58,
-      "width": 1,
-      "height": 2,
-      "support": "rv_ledge_7",
-      "anchor": "under"
-    },
-    {
-      "sprite": "ex10_lift_gantry",
-      "x": 316,
-      "y": 34,
-      "width": 3,
-      "height": 3,
-      "support": "mine_upper",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_broken_pillar",
-      "x": 93,
-      "y": 34,
-      "width": 2,
-      "height": 4,
-      "support": "aqueduct_step",
-      "anchor": "ground"
-    }
-  ],
-  "props": [
-    {
-      "sprite": "ex10_oak_big_0_0",
-      "x": 2,
-      "y": 33,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_0_1",
-      "x": 3,
-      "y": 33,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_0_2",
-      "x": 4,
-      "y": 33,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_1_0",
-      "x": 2,
-      "y": 34,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_1_1",
-      "x": 3,
-      "y": 34,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_1_2",
-      "x": 4,
-      "y": 34,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_2_0",
-      "x": 2,
-      "y": 35,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_2_1",
-      "x": 3,
-      "y": 35,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_2_2",
-      "x": 4,
-      "y": 35,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_0_0",
-      "x": 20,
-      "y": 33,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_0_1",
-      "x": 21,
-      "y": 33,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_0_2",
-      "x": 22,
-      "y": 33,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_1_0",
-      "x": 20,
-      "y": 34,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_1_1",
-      "x": 21,
-      "y": 34,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_1_2",
-      "x": 22,
-      "y": 34,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_2_0",
-      "x": 20,
-      "y": 35,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_2_1",
-      "x": 21,
-      "y": 35,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_2_2",
-      "x": 22,
-      "y": 35,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_0_0",
-      "x": 5,
-      "y": 36,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_0_1",
-      "x": 6,
-      "y": 36,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_0_2",
-      "x": 7,
-      "y": 36,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_1_0",
-      "x": 5,
-      "y": 37,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_1_1",
-      "x": 6,
-      "y": 37,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_1_2",
-      "x": 7,
-      "y": 37,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_0_0",
-      "x": 17,
-      "y": 34,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_0_1",
-      "x": 18,
-      "y": 34,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_0_2",
-      "x": 19,
-      "y": 34,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_1_0",
-      "x": 17,
-      "y": 35,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_1_1",
-      "x": 18,
-      "y": 35,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_1_2",
-      "x": 19,
-      "y": 35,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_0_0",
-      "x": 20,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_0_1",
-      "x": 21,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_0_2",
-      "x": 22,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_1_0",
-      "x": 20,
-      "y": 33,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_1_1",
-      "x": 21,
-      "y": 33,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_roots_big_1_2",
-      "x": 22,
-      "y": 33,
-      "depth": "world",
-      "animation": null
     },
     {
       "animation": "ex10_torch_flicker",
@@ -1894,67 +1172,13 @@
       "support": "clearing"
     },
     {
-      "sprite": "ex10_oak_big_0_0",
+      "sprite": "ex10_oak_big",
       "x": 25,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_0_1",
-      "x": 26,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_0_2",
-      "x": 27,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_1_0",
-      "x": 25,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_1_1",
-      "x": 26,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_1_2",
-      "x": 27,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_2_0",
-      "x": 25,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_2_1",
-      "x": 26,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_oak_big_2_2",
-      "x": 27,
-      "y": 32,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "meadow",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_fence_0",
@@ -2029,88 +1253,13 @@
       "support": "east_rim"
     },
     {
-      "sprite": "ex10_arch_big_0_0",
+      "sprite": "ex10_arch_big",
       "x": 88,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_0_1",
-      "x": 89,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_0_2",
-      "x": 90,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_0_3",
-      "x": 91,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_1_0",
-      "x": 88,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_1_1",
-      "x": 89,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_1_2",
-      "x": 90,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_1_3",
-      "x": 91,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_2_0",
-      "x": 88,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_2_1",
-      "x": 89,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_2_2",
-      "x": 90,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_arch_big_2_3",
-      "x": 91,
-      "y": 32,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "east_rim",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_water_0",
@@ -2745,32 +1894,22 @@
       "support": "aqueduct_floor"
     },
     {
-      "sprite": "ex10_vine_0_big_0_0",
+      "sprite": "ex10_vine_0_big",
       "x": 100,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "channel_west",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_0_big_1_0",
-      "x": 100,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_2_big_0_0",
+      "sprite": "ex10_vine_2_big",
       "x": 117,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_2_big_1_0",
-      "x": 117,
-      "y": 31,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "channel_mid",
+      "anchor": "under"
     },
     {
       "sprite": "ex10_hanging_moss",
@@ -3428,81 +2567,38 @@
       "animation": "ex10_pool"
     },
     {
-      "sprite": "ex10_pool_shore_big_0_1_0",
-      "x": 202,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_pool_shore_big_0_1"
-    },
-    {
-      "sprite": "ex10_pool_shore_big_0_2_0",
-      "x": 203,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_pool_shore_big_0_2"
-    },
-    {
-      "sprite": "ex10_pool_shore_big_1_0_0",
+      "sprite": "ex10_pool_shore_big_0",
       "x": 201,
-      "y": 62,
+      "y": 61,
       "depth": "world",
-      "animation": "ex10_pool_shore_big_1_0"
+      "animation": "ex10_pool_shore_big"
     },
     {
-      "sprite": "ex10_pool_shore_big_1_1_0",
-      "x": 202,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_pool_shore_big_1_1"
-    },
-    {
-      "sprite": "ex10_pool_shore_big_1_2_0",
-      "x": 203,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_pool_shore_big_1_2"
-    },
-    {
-      "sprite": "ex10_splash_rocks_0_big_0_0",
+      "sprite": "ex10_splash_rocks_0_big",
       "x": 179.5,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "pool_bed",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_splash_rocks_0_big_0_1",
-      "x": 180.5,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_splash_rocks_1_big_0_0",
+      "sprite": "ex10_splash_rocks_1_big",
       "x": 177.2,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "pool_bed",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_splash_rocks_1_big_0_1",
-      "x": 178.2,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lily_pads_big_0_0",
+      "sprite": "ex10_lily_pads_big",
       "x": 196.0,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lily_pads_big_0_1",
-      "x": 197.0,
-      "y": 30,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "pool_bed",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_reeds_3",
@@ -3514,137 +2610,58 @@
       "support": "pool_bed"
     },
     {
-      "sprite": "ex10_cliff_tree_big_0_0",
+      "sprite": "ex10_cliff_tree_big",
       "x": 201,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "east_wall",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_cliff_tree_big_0_1",
-      "x": 202,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cliff_tree_big_0_2",
-      "x": 203,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cliff_tree_big_1_0",
-      "x": 201,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cliff_tree_big_1_1",
-      "x": 202,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cliff_tree_big_1_2",
-      "x": 203,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_curtain_0_big_0_0",
+      "sprite": "ex10_vine_curtain_0_big",
       "x": 159,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rim_west",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_curtain_0_big_1_0",
-      "x": 159,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_curtain_0_big_2_0",
-      "x": 159,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_curtain_1_big_0_0",
+      "sprite": "ex10_vine_curtain_1_big",
       "x": 165,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rim_west",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_curtain_1_big_1_0",
-      "x": 165,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_curtain_2_big_0_0",
+      "sprite": "ex10_vine_curtain_2_big",
       "x": 170,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rim_west",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_curtain_2_big_1_0",
-      "x": 170,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_curtain_2_big_2_0",
-      "x": 170,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_rope_ladder_big_0_0",
+      "sprite": "ex10_rope_ladder_big",
       "x": 174.4,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rim_west",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_rope_ladder_big_1_0",
-      "x": 174.4,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_1_big_0_0",
+      "sprite": "ex10_vine_1_big",
       "x": 197.4,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_1_big_1_0",
-      "x": 197.4,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_1_big_2_0",
-      "x": 197.4,
-      "y": 32,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "ravine_east_4",
+      "anchor": "under"
     },
     {
       "sprite": "ex10_vine_curtain_3",
@@ -3656,18 +2673,13 @@
       "support": "ravine_east_3"
     },
     {
-      "sprite": "ex10_fern_clump_0_big_0_0",
+      "sprite": "ex10_fern_clump_0_big",
       "x": 162.5,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_fern_clump_0_big_0_1",
-      "x": 163.5,
-      "y": 30,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "ravine_step_1",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_grass_tuft_0",
@@ -4090,32 +3102,13 @@
       "support": "gallery"
     },
     {
-      "sprite": "ex10_cart_big_0_0",
+      "sprite": "ex10_cart_big",
       "x": 273,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_big_0_1",
-      "x": 274,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_big_1_0",
-      "x": 273,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_big_1_1",
-      "x": 274,
-      "y": 31,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "gallery",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_timber_support",
@@ -4183,74 +3176,31 @@
       "support": "scaffold_2"
     },
     {
-      "sprite": "ex10_chain_big_0_0",
+      "sprite": "ex10_chain_big",
       "x": 294.3,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "scaffold_1",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_chain_big_1_0",
-      "x": 294.3,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_rope_bucket_big_0_0",
+      "sprite": "ex10_rope_bucket_big",
       "x": 295.2,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "scaffold_3",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_rope_bucket_big_1_0",
-      "x": 295.2,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_headframe_big_0_0",
+      "sprite": "ex10_headframe_big",
       "x": 300,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_headframe_big_0_1",
-      "x": 301,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_headframe_big_1_0",
-      "x": 300,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_headframe_big_1_1",
-      "x": 301,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_headframe_big_2_0",
-      "x": 300,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_headframe_big_2_1",
-      "x": 301,
-      "y": 32,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "cut_floor_1",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_rail_1",
@@ -4415,32 +3365,13 @@
       "support": "cut_floor_2"
     },
     {
-      "sprite": "ex10_cart_big_0_0",
+      "sprite": "ex10_cart_big",
       "x": 308,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_big_0_1",
-      "x": 309,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_big_1_0",
-      "x": 308,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_big_1_1",
-      "x": 309,
-      "y": 31,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "cut_floor_2",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_crate_0",
@@ -4479,18 +3410,13 @@
       "support": "cut_floor_1"
     },
     {
-      "sprite": "ex10_ore_heap_big_0_0",
+      "sprite": "ex10_ore_heap_big",
       "x": 318,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_ore_heap_big_0_1",
-      "x": 319,
-      "y": 30,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "cut_floor_2b",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_pebbles_0",
@@ -4502,18 +3428,13 @@
       "support": "cut_floor_2b"
     },
     {
-      "sprite": "ex10_rubble_pile_0_big_0_0",
+      "sprite": "ex10_rubble_pile_0_big",
       "x": 325,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_rubble_pile_0_big_0_1",
-      "x": 326,
-      "y": 30,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "cut_floor_3",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_boulder_1",
@@ -4543,18 +3464,13 @@
       "support": "cut_floor_3"
     },
     {
-      "sprite": "ex10_timber_stack_big_0_0",
+      "sprite": "ex10_timber_stack_big",
       "x": 337.6,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_timber_stack_big_0_1",
-      "x": 338.6,
-      "y": 30,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "cut_floor_3",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_lantern",
@@ -4620,158 +3536,76 @@
       "support": "cut_floor_2b"
     },
     {
-      "sprite": "ex10_spoil_heap_big_0_0",
+      "sprite": "ex10_spoil_heap_big",
       "x": 351.5,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "ridge",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_spoil_heap_big_0_1",
-      "x": 352.5,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_tipped_big_0_0",
+      "sprite": "ex10_cart_tipped_big",
       "x": 354.6,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "ridge",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_cart_tipped_big_0_1",
-      "x": 355.6,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_tipped_big_0_2",
-      "x": 356.6,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_tipped_big_1_0",
-      "x": 354.6,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_tipped_big_1_1",
-      "x": 355.6,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_cart_tipped_big_1_2",
-      "x": 356.6,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_rubble_pile_1_big_0_0",
+      "sprite": "ex10_rubble_pile_1_big",
       "x": 357.5,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "ridge",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_rubble_pile_1_big_0_1",
-      "x": 358.5,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_guardian_big_0_0",
+      "sprite": "ex10_guardian_big",
       "x": 360.5,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "bridge_head",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_guardian_big_1_0",
-      "x": 360.5,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_toll_sign_big_0_0",
+      "sprite": "ex10_toll_sign_big",
       "x": 364.4,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "bridge_head",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_toll_sign_big_1_0",
-      "x": 364.4,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_banner_0_big_0_0",
+      "sprite": "ex10_banner_0_big",
       "x": 370.3,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "troll_bridge",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_banner_0_big_1_0",
-      "x": 370.3,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_toll_boom_big_0_0",
+      "sprite": "ex10_toll_boom_big",
       "x": 390.5,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "troll_bridge",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_toll_boom_big_0_1",
-      "x": 391.5,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_toll_boom_big_1_0",
-      "x": 390.5,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_toll_boom_big_1_1",
-      "x": 391.5,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_skull_pike_big_0_0",
+      "sprite": "ex10_skull_pike_big",
       "x": 395.6,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_skull_pike_big_1_0",
-      "x": 395.6,
-      "y": 31,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "troll_bridge",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_bones_0",
@@ -4810,46 +3644,22 @@
       "support": "troll_bridge"
     },
     {
-      "sprite": "ex10_lean_to_big_0_0",
+      "sprite": "ex10_lean_to_big",
       "x": 407.5,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "troll_bridge",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_lean_to_big_0_1",
-      "x": 408.5,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lean_to_big_1_0",
-      "x": 407.5,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lean_to_big_1_1",
-      "x": 408.5,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_banner_1_big_0_0",
+      "sprite": "ex10_banner_1_big",
       "x": 416.2,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_banner_1_big_1_0",
-      "x": 416.2,
-      "y": 31,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "troll_bridge",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_rubble",
@@ -4882,15 +3692,8 @@
       "animation": null
     },
     {
-      "sprite": "ex10_far_rubble_big_0_0",
+      "sprite": "ex10_far_rubble_big",
       "x": 330,
-      "y": 42.0625,
-      "depth": "back",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_far_rubble_big_0_1",
-      "x": 331,
       "y": 42.0625,
       "depth": "back",
       "animation": null
@@ -5083,39 +3886,22 @@
       "support": "channel_mid"
     },
     {
-      "sprite": "ex10_vine_0_big_0_0",
+      "sprite": "ex10_vine_0_big",
       "x": 99.0,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "aq_ledge_1",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_0_big_1_0",
-      "x": 99.0,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_curtain_0_big_0_0",
+      "sprite": "ex10_vine_curtain_0_big",
       "x": 136,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_curtain_0_big_1_0",
-      "x": 136,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_curtain_0_big_2_0",
-      "x": 136,
-      "y": 32,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "channel_east_a",
+      "anchor": "under"
     },
     {
       "sprite": "ex10_vine_curtain_3",
@@ -5127,102 +3913,67 @@
       "support": "channel_east_b"
     },
     {
-      "sprite": "ex10_vine_0_big_0_0",
+      "sprite": "ex10_vine_0_big",
       "x": 162.2,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rim_west",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_0_big_1_0",
-      "x": 162.2,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_2_big_0_0",
+      "sprite": "ex10_vine_2_big",
       "x": 167.6,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rim_west",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_2_big_1_0",
-      "x": 167.6,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_0_big_0_0",
+      "sprite": "ex10_vine_0_big",
       "x": 172.8,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rim_west",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_0_big_1_0",
-      "x": 172.8,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_2_big_0_0",
+      "sprite": "ex10_vine_2_big",
       "x": 176.2,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rim_west",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_2_big_1_0",
-      "x": 176.2,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_2_big_0_0",
+      "sprite": "ex10_vine_2_big",
       "x": 198.0,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "ravine_east_2",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_2_big_1_0",
-      "x": 198.0,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_0_big_0_0",
+      "sprite": "ex10_vine_0_big",
       "x": 201.4,
       "y": 30,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "ravine_east_3",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_0_big_1_0",
-      "x": 201.4,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_2_big_0_0",
+      "sprite": "ex10_vine_2_big",
       "x": 201.0,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_2_big_1_0",
-      "x": 201.0,
-      "y": 31,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "ravine_east_5",
+      "anchor": "under"
     },
     {
       "sprite": "ex10_fern_clump_1",
@@ -5261,18 +4012,13 @@
       "support": "ravine_step_4"
     },
     {
-      "sprite": "ex10_fern_clump_0_big_0_0",
+      "sprite": "ex10_fern_clump_0_big",
       "x": 201.6,
       "y": 30,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_fern_clump_0_big_0_1",
-      "x": 202.6,
-      "y": 30,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "ravine_east_1",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_glowcaps_2",
@@ -5698,102 +4444,67 @@
       "support": "east_rim"
     },
     {
-      "sprite": "ex10_vine_0_big_0_0",
+      "sprite": "ex10_vine_0_big",
       "x": 183.0,
       "y": 34,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rv_ledge_1",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_0_big_1_0",
-      "x": 183.0,
-      "y": 35,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_2_big_0_0",
+      "sprite": "ex10_vine_2_big",
       "x": 189.4,
       "y": 38,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rv_ledge_2",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_2_big_1_0",
-      "x": 189.4,
-      "y": 39,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_0_big_0_0",
+      "sprite": "ex10_vine_0_big",
       "x": 183.6,
       "y": 42,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rv_ledge_3",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_0_big_1_0",
-      "x": 183.6,
-      "y": 43,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_2_big_0_0",
+      "sprite": "ex10_vine_2_big",
       "x": 190.0,
       "y": 46,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rv_ledge_4",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_2_big_1_0",
-      "x": 190.0,
-      "y": 47,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_0_big_0_0",
+      "sprite": "ex10_vine_0_big",
       "x": 184.4,
       "y": 50,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rv_ledge_5",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_0_big_1_0",
-      "x": 184.4,
-      "y": 51,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_2_big_0_0",
+      "sprite": "ex10_vine_2_big",
       "x": 189.0,
       "y": 54,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rv_ledge_6",
+      "anchor": "under"
     },
     {
-      "sprite": "ex10_vine_2_big_1_0",
-      "x": 189.0,
-      "y": 55,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_0_big_0_0",
+      "sprite": "ex10_vine_0_big",
       "x": 185.0,
       "y": 58,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_vine_0_big_1_0",
-      "x": 185.0,
-      "y": 59,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "rv_ledge_7",
+      "anchor": "under"
     },
     {
       "sprite": "ex10_fern_clump_1",
@@ -5850,109 +4561,11 @@
       "support": "rv_ledge_7"
     },
     {
-      "sprite": "ex10_plume_big_0_0_0",
+      "sprite": "ex10_plume_big_0",
       "x": 177.0,
       "y": 60,
       "depth": "world",
-      "animation": "ex10_plume_big_0_0"
-    },
-    {
-      "sprite": "ex10_plume_big_0_1_0",
-      "x": 178.0,
-      "y": 60,
-      "depth": "world",
-      "animation": "ex10_plume_big_0_1"
-    },
-    {
-      "sprite": "ex10_plume_big_0_2_0",
-      "x": 179.0,
-      "y": 60,
-      "depth": "world",
-      "animation": "ex10_plume_big_0_2"
-    },
-    {
-      "sprite": "ex10_plume_big_0_3_0",
-      "x": 180.0,
-      "y": 60,
-      "depth": "world",
-      "animation": "ex10_plume_big_0_3"
-    },
-    {
-      "sprite": "ex10_plume_big_0_4_0",
-      "x": 181.0,
-      "y": 60,
-      "depth": "world",
-      "animation": "ex10_plume_big_0_4"
-    },
-    {
-      "sprite": "ex10_plume_big_1_0_0",
-      "x": 177.0,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_plume_big_1_0"
-    },
-    {
-      "sprite": "ex10_plume_big_1_1_0",
-      "x": 178.0,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_plume_big_1_1"
-    },
-    {
-      "sprite": "ex10_plume_big_1_2_0",
-      "x": 179.0,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_plume_big_1_2"
-    },
-    {
-      "sprite": "ex10_plume_big_1_3_0",
-      "x": 180.0,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_plume_big_1_3"
-    },
-    {
-      "sprite": "ex10_plume_big_1_4_0",
-      "x": 181.0,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_plume_big_1_4"
-    },
-    {
-      "sprite": "ex10_plume_big_2_0_0",
-      "x": 177.0,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_plume_big_2_0"
-    },
-    {
-      "sprite": "ex10_plume_big_2_1_0",
-      "x": 178.0,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_plume_big_2_1"
-    },
-    {
-      "sprite": "ex10_plume_big_2_2_0",
-      "x": 179.0,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_plume_big_2_2"
-    },
-    {
-      "sprite": "ex10_plume_big_2_3_0",
-      "x": 180.0,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_plume_big_2_3"
-    },
-    {
-      "sprite": "ex10_plume_big_2_4_0",
-      "x": 181.0,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_plume_big_2_4"
+      "animation": "ex10_plume_big"
     },
     {
       "sprite": "ex10_ember_pool_0_0",
@@ -5964,67 +4577,13 @@
       "support": "cleft"
     },
     {
-      "sprite": "ex10_lift_gantry_big_0_0",
+      "sprite": "ex10_lift_gantry_big",
       "x": 316,
       "y": 34,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lift_gantry_big_0_1",
-      "x": 317,
-      "y": 34,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lift_gantry_big_0_2",
-      "x": 318,
-      "y": 34,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lift_gantry_big_1_0",
-      "x": 316,
-      "y": 35,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lift_gantry_big_1_1",
-      "x": 317,
-      "y": 35,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lift_gantry_big_1_2",
-      "x": 318,
-      "y": 35,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lift_gantry_big_2_0",
-      "x": 316,
-      "y": 36,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lift_gantry_big_2_1",
-      "x": 317,
-      "y": 36,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_lift_gantry_big_2_2",
-      "x": 318,
-      "y": 36,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "mine_upper",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_glowcaps_2",
@@ -6824,81 +5383,20 @@
       "support": "aqueduct_floor"
     },
     {
-      "sprite": "ex10_broken_pillar_big_0_0",
+      "sprite": "ex10_broken_pillar_big",
       "x": 93,
       "y": 34,
       "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "aqueduct_step",
+      "anchor": "ground"
     },
     {
-      "sprite": "ex10_broken_pillar_big_0_1",
-      "x": 94,
-      "y": 34,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_broken_pillar_big_1_0",
-      "x": 93,
-      "y": 35,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_broken_pillar_big_1_1",
-      "x": 94,
-      "y": 35,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_broken_pillar_big_2_0",
-      "x": 93,
-      "y": 36,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_broken_pillar_big_2_1",
-      "x": 94,
-      "y": 36,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_broken_pillar_big_3_0",
-      "x": 93,
-      "y": 37,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_broken_pillar_big_3_1",
-      "x": 94,
-      "y": 37,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_pool_basin_big_0_0_0",
+      "sprite": "ex10_pool_basin_big_0",
       "x": 116,
       "y": 39,
       "depth": "back",
-      "animation": "ex10_pool_basin_big_0_0"
-    },
-    {
-      "sprite": "ex10_pool_basin_big_0_1_0",
-      "x": 117,
-      "y": 39,
-      "depth": "back",
-      "animation": "ex10_pool_basin_big_0_1"
-    },
-    {
-      "sprite": "ex10_pool_basin_big_0_2_0",
-      "x": 118,
-      "y": 39,
-      "depth": "back",
-      "animation": "ex10_pool_basin_big_0_2"
+      "animation": "ex10_pool_basin_big"
     },
     {
       "sprite": "ex10_pool_rocks_0",
@@ -7122,46 +5620,13 @@
       "anchor": "under"
     },
     {
-      "sprite": "ex10_statue_big_0_0",
+      "sprite": "ex10_statue_big",
       "x": 153.5,
       "y": 37,
       "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_statue_big_0_1",
-      "x": 154.5,
-      "y": 37,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_statue_big_1_0",
-      "x": 153.5,
-      "y": 38,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_statue_big_1_1",
-      "x": 154.5,
-      "y": 38,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_statue_big_2_0",
-      "x": 153.5,
-      "y": 39,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_statue_big_2_1",
-      "x": 154.5,
-      "y": 39,
-      "depth": "world",
-      "animation": null
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
     },
     {
       "sprite": "ex10_scree_left",
@@ -7324,256 +5789,18 @@
       "support": "hollow_roof"
     },
     {
-      "sprite": "ex10_haze_big_0_0_0",
+      "sprite": "ex10_haze_big_0",
       "x": 230,
       "y": 61,
       "depth": "world",
-      "animation": "ex10_haze_big_0_0"
+      "animation": "ex10_haze_big"
     },
     {
-      "sprite": "ex10_haze_big_0_1_0",
-      "x": 231,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_haze_big_0_1"
-    },
-    {
-      "sprite": "ex10_haze_big_0_2_0",
-      "x": 232,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_haze_big_0_2"
-    },
-    {
-      "sprite": "ex10_haze_big_0_3_0",
-      "x": 233,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_haze_big_0_3"
-    },
-    {
-      "sprite": "ex10_haze_big_0_4_0",
-      "x": 234,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_haze_big_0_4"
-    },
-    {
-      "sprite": "ex10_haze_big_0_5_0",
-      "x": 235,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_haze_big_0_5"
-    },
-    {
-      "sprite": "ex10_haze_big_0_6_0",
-      "x": 236,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_haze_big_0_6"
-    },
-    {
-      "sprite": "ex10_haze_big_0_7_0",
-      "x": 237,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_haze_big_0_7"
-    },
-    {
-      "sprite": "ex10_haze_big_0_8_0",
-      "x": 238,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_haze_big_0_8"
-    },
-    {
-      "sprite": "ex10_haze_big_0_9_0",
-      "x": 239,
-      "y": 61,
-      "depth": "world",
-      "animation": "ex10_haze_big_0_9"
-    },
-    {
-      "sprite": "ex10_haze_big_1_0_0",
-      "x": 230,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_haze_big_1_0"
-    },
-    {
-      "sprite": "ex10_haze_big_1_1_0",
-      "x": 231,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_haze_big_1_1"
-    },
-    {
-      "sprite": "ex10_haze_big_1_2_0",
-      "x": 232,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_haze_big_1_2"
-    },
-    {
-      "sprite": "ex10_haze_big_1_3_0",
-      "x": 233,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_haze_big_1_3"
-    },
-    {
-      "sprite": "ex10_haze_big_1_4_0",
-      "x": 234,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_haze_big_1_4"
-    },
-    {
-      "sprite": "ex10_haze_big_1_5_0",
-      "x": 235,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_haze_big_1_5"
-    },
-    {
-      "sprite": "ex10_haze_big_1_6_0",
-      "x": 236,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_haze_big_1_6"
-    },
-    {
-      "sprite": "ex10_haze_big_1_7_0",
-      "x": 237,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_haze_big_1_7"
-    },
-    {
-      "sprite": "ex10_haze_big_1_8_0",
-      "x": 238,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_haze_big_1_8"
-    },
-    {
-      "sprite": "ex10_haze_big_1_9_0",
-      "x": 239,
-      "y": 62,
-      "depth": "world",
-      "animation": "ex10_haze_big_1_9"
-    },
-    {
-      "sprite": "ex10_haze_big_2_0_0",
-      "x": 230,
-      "y": 63,
-      "depth": "world",
-      "animation": "ex10_haze_big_2_0"
-    },
-    {
-      "sprite": "ex10_haze_big_2_1_0",
-      "x": 231,
-      "y": 63,
-      "depth": "world",
-      "animation": "ex10_haze_big_2_1"
-    },
-    {
-      "sprite": "ex10_haze_big_2_2_0",
-      "x": 232,
-      "y": 63,
-      "depth": "world",
-      "animation": "ex10_haze_big_2_2"
-    },
-    {
-      "sprite": "ex10_haze_big_2_3_0",
-      "x": 233,
-      "y": 63,
-      "depth": "world",
-      "animation": "ex10_haze_big_2_3"
-    },
-    {
-      "sprite": "ex10_haze_big_2_4_0",
-      "x": 234,
-      "y": 63,
-      "depth": "world",
-      "animation": "ex10_haze_big_2_4"
-    },
-    {
-      "sprite": "ex10_haze_big_2_5_0",
-      "x": 235,
-      "y": 63,
-      "depth": "world",
-      "animation": "ex10_haze_big_2_5"
-    },
-    {
-      "sprite": "ex10_haze_big_2_6_0",
-      "x": 236,
-      "y": 63,
-      "depth": "world",
-      "animation": "ex10_haze_big_2_6"
-    },
-    {
-      "sprite": "ex10_haze_big_2_7_0",
-      "x": 237,
-      "y": 63,
-      "depth": "world",
-      "animation": "ex10_haze_big_2_7"
-    },
-    {
-      "sprite": "ex10_haze_big_2_8_0",
-      "x": 238,
-      "y": 63,
-      "depth": "world",
-      "animation": "ex10_haze_big_2_8"
-    },
-    {
-      "sprite": "ex10_haze_big_2_9_0",
-      "x": 239,
-      "y": 63,
-      "depth": "world",
-      "animation": "ex10_haze_big_2_9"
-    },
-    {
-      "sprite": "ex10_haze_small_big_0_0_0",
+      "sprite": "ex10_haze_small_big_0",
       "x": 260,
       "y": 55,
       "depth": "world",
-      "animation": "ex10_haze_small_big_0_0"
-    },
-    {
-      "sprite": "ex10_haze_small_big_0_1_0",
-      "x": 261,
-      "y": 55,
-      "depth": "world",
-      "animation": "ex10_haze_small_big_0_1"
-    },
-    {
-      "sprite": "ex10_haze_small_big_0_2_0",
-      "x": 262,
-      "y": 55,
-      "depth": "world",
-      "animation": "ex10_haze_small_big_0_2"
-    },
-    {
-      "sprite": "ex10_haze_small_big_1_0_0",
-      "x": 260,
-      "y": 56,
-      "depth": "world",
-      "animation": "ex10_haze_small_big_1_0"
-    },
-    {
-      "sprite": "ex10_haze_small_big_1_1_0",
-      "x": 261,
-      "y": 56,
-      "depth": "world",
-      "animation": "ex10_haze_small_big_1_1"
-    },
-    {
-      "sprite": "ex10_haze_small_big_1_2_0",
-      "x": 262,
-      "y": 56,
-      "depth": "world",
-      "animation": "ex10_haze_small_big_1_2"
+      "animation": "ex10_haze_small_big"
     }
   ],
   "decorations": [

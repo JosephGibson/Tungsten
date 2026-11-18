@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 import random
+import re
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -91,6 +92,9 @@ ELEMENT_SIZES = {
 # choked twin too) and plume, and its small and medium stones.
 SIZE_PREFIXES = {'troll_': (128, 128), 'player': (96, 96), 'geyser_vent': (64, 32), 'geyser_plume_': (64, 176),
                  'stone_small_': (32, 32), 'stone_medium_': (32, 32)}
+# A sprite larger than a tile drawn whole: a prop's `<name>_big`, a clip's
+# frame `<name>_big_<i>`, and a backdrop's cell `<name>_big_<row>_<col>`.
+BIG = re.compile(r'_big(_\d+)*$')
 # The wizard's frames keep their lowest pixel on his feet's row, 93, the
 # outline's row under his soles (`actors.WIZARD_FEET`), the lying ones too.
 PLAYER_FEET = 93
@@ -162,9 +166,10 @@ def clip(images, animations, name, frames, durations, looping=True, names=None, 
 
 
 def relief(name):
-    """Tiling terrain and multi-tile scenery take normals from their shading."""
+    """Tiling terrain and scenery larger than a tile take normals from their
+    shading, over each sprite whole."""
     from terrain import RELIEF_PREFIXES
-    return name.startswith(RELIEF_PREFIXES) or '_big_' in name
+    return name.startswith(RELIEF_PREFIXES) or BIG.search(name) is not None
 
 
 def relief_heights(im):
@@ -302,9 +307,10 @@ def validate_sprites(images,lit):
     from backdrops import BACKDROPS
     allowed=set(PALETTE.values())
     for name,im in images.items():
-        # A moving platform's deck is its width wide.
+        # A moving platform's deck is its width wide; a whole, whole tiles.
         wide=name.startswith('lift_deck_') and im.height==64
-        if name not in BACKDROPS and not wide and im.size!=expected_size(name):raise ValueError(f'{name}: wrong dimensions')
+        whole=BIG.search(name) and not im.width%64 and not im.height%64
+        if name not in BACKDROPS and not wide and not whole and im.size!=expected_size(name):raise ValueError(f'{name}: wrong dimensions')
         if not set(im.get_flattened_data())<=allowed:raise ValueError(f'{name}: outside palette')
         if name.startswith(('player', 'ball', 'lantern', 'vines')) or name == 'marker':
             box=im.getbbox()

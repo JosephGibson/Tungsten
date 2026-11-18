@@ -9,7 +9,7 @@ import wave
 from art import PALETTE, STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
 from generate import FAMILIES as ASSET_FAMILIES, TEMPLATE, generate, hashed, lock_breaks, users
 from level import FAMILIES, build_level, opaque_tiles, tiled_text, validate_level
-from placement import MOST, SINK, Placed, floating, hangs, stands, stream_kind
+from placement import MOST, SINK, Placed, floating, hangs, judge, stands, stream_kind
 
 
 def tiles(v):
@@ -79,13 +79,15 @@ class AuthoringTests(unittest.TestCase):
             pts=drawn.points(p['sprite'].removeprefix('ex10_'),round(p['x']*64),round(p['y']*64))
             if p['anchor']=='ground':
                 share,sink=stands(drawn.hit,pts);self.assertGreaterEqual(share,MOST,msg=str(p));self.assertLessEqual(sink,SINK,msg=str(p))
+            elif p['anchor']=='wall':
+                self.assertIsNone(judge('wall',drawn.hit,None,pts),msg=str(p))
             else:
                 self.assertEqual(p['anchor'],'under',msg=str(p));self.assertGreaterEqual(hangs(drawn.hit,pts),MOST,msg=str(p))
-        self.assertEqual(sum(g['sprite']=='ex10_arch' for g in self.source['groups']),1)
+        self.assertEqual(sum(p['sprite']=='ex10_arch_big' for p in self.source['props']),1)
 
     def test_floating_scenery_fails_the_build(self):
         source=json.loads((TOOLS/'level.json').read_text())
-        gargoyle=next(p for p in source['props'] if p.get('anchor')=='wall')
+        gargoyle=next(p for p in source['props'] if p.get('anchor')=='wall' and 'support' not in p)
         gargoyle['y']-=2
         with self.assertRaisesRegex(ValueError,'floating'):build_level(self.images,self.lit,source)
 
@@ -116,7 +118,7 @@ class AuthoringTests(unittest.TestCase):
     def layout(self, tiled, source, name):
         """`tiled`'s tile layers as `{layer: {cell: sprite}}`, its object
         layers without Tiled IDs, and the pixel points of what `prepare`
-        sets on platform `name`: its props and groups' pieces, orbs, tomes,
+        sets on platform `name`: its props, whole ones included, orbs, tomes,
         crates, kegs and stones."""
         tileset = tiled['tilesets'][0]
         catalog = {tileset['firstgid'] + t['id']: t['properties'][0]['value'] for t in tileset['tiles']}
@@ -126,7 +128,6 @@ class AuthoringTests(unittest.TestCase):
         objects = [(l['name'], [{k: v for k, v in o.items() if k != 'id'} for o in l['objects']])
                    for l in tiled['layers'] if l['type'] == 'objectgroup']
         props = [p for p in source['props'] if p.get('support') == name]
-        props += [source['props'][i] for g in source['groups'] if g['support'] == name for i in g['pieces']]
         spots = [(p['x'], p['y']) for p in props]
         spots += [(p['left'], p['top']) for k in ('pickups', 'tomes') for p in source.get(k, []) if p['support'] == name]
         spots += [(p['x'], p['y']) for k in ('crates', 'kegs', 'stones') for p in source.get(k, []) if p['support'] == name]
@@ -245,17 +246,14 @@ class AuthoringTests(unittest.TestCase):
             source['props'].append(dict(sprite='ex10_lantern', x=60, y=34, depth='world', animation=None))
         self.assertIn('unjudged lantern 60 34 no anchor and in no list of scenery.py', self.lines_after(add))
 
-    def test_floating_lists_a_vine_piece_inside_two_groups_boxes(self):
-        k, group = next((k, g) for k, g in enumerate(self.source['groups']) if g['sprite'] == 'ex10_vine_0')
-        def overlap(source):
-            # The group's top piece half a tile right, into a second vine
-            # group's box beside its own.
-            piece = source['props'][group['pieces'][0]]
-            piece['x'] += 0.5
-            source['groups'].append(dict(group, x=group['x'] + 0.5, pieces=[]))
-        lines = self.lines_after(overlap)
-        self.assertIn(f"group vine_0_big_0_0 {group['x'] + 0.5:g}", ' '.join(lines))
-        self.assertIn("inside 2 groups' boxes", ' '.join(lines))
+    def test_floating_lists_a_whole_vine_dropped_off_its_support(self):
+        # A vine drawn whole, dropped 16 px off the underside it hangs from:
+        # judged as a prop, by its anchor.
+        i, vine = next((i, p) for i, p in enumerate(self.source['props']) if p['sprite'] == 'ex10_vine_0_big')
+        self.assertEqual(vine['anchor'], 'under')
+        def drop(source):
+            source['props'][i]['y'] += 16 / 64
+        self.assertTrue(any(line.startswith(f"hang vine_0_big {tiles(vine['x'])} ") for line in self.lines_after(drop)))
 
     def test_floating_lists_a_parapet_moved_up_a_row(self):
         i, d = next((i, d) for i, d in enumerate(self.source['decorations']) if d['sprite'] == 'ex10_parapet_0')

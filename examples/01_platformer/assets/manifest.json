@@ -276,113 +276,11 @@
     "ex10_goblin_windup_left": {
       "path": "animations/goblin_windup_left.json"
     },
-    "ex10_haze_big_0_0": {
-      "path": "animations/haze_big_0_0.json"
+    "ex10_haze_big": {
+      "path": "animations/haze_big.json"
     },
-    "ex10_haze_big_0_1": {
-      "path": "animations/haze_big_0_1.json"
-    },
-    "ex10_haze_big_0_2": {
-      "path": "animations/haze_big_0_2.json"
-    },
-    "ex10_haze_big_0_3": {
-      "path": "animations/haze_big_0_3.json"
-    },
-    "ex10_haze_big_0_4": {
-      "path": "animations/haze_big_0_4.json"
-    },
-    "ex10_haze_big_0_5": {
-      "path": "animations/haze_big_0_5.json"
-    },
-    "ex10_haze_big_0_6": {
-      "path": "animations/haze_big_0_6.json"
-    },
-    "ex10_haze_big_0_7": {
-      "path": "animations/haze_big_0_7.json"
-    },
-    "ex10_haze_big_0_8": {
-      "path": "animations/haze_big_0_8.json"
-    },
-    "ex10_haze_big_0_9": {
-      "path": "animations/haze_big_0_9.json"
-    },
-    "ex10_haze_big_1_0": {
-      "path": "animations/haze_big_1_0.json"
-    },
-    "ex10_haze_big_1_1": {
-      "path": "animations/haze_big_1_1.json"
-    },
-    "ex10_haze_big_1_2": {
-      "path": "animations/haze_big_1_2.json"
-    },
-    "ex10_haze_big_1_3": {
-      "path": "animations/haze_big_1_3.json"
-    },
-    "ex10_haze_big_1_4": {
-      "path": "animations/haze_big_1_4.json"
-    },
-    "ex10_haze_big_1_5": {
-      "path": "animations/haze_big_1_5.json"
-    },
-    "ex10_haze_big_1_6": {
-      "path": "animations/haze_big_1_6.json"
-    },
-    "ex10_haze_big_1_7": {
-      "path": "animations/haze_big_1_7.json"
-    },
-    "ex10_haze_big_1_8": {
-      "path": "animations/haze_big_1_8.json"
-    },
-    "ex10_haze_big_1_9": {
-      "path": "animations/haze_big_1_9.json"
-    },
-    "ex10_haze_big_2_0": {
-      "path": "animations/haze_big_2_0.json"
-    },
-    "ex10_haze_big_2_1": {
-      "path": "animations/haze_big_2_1.json"
-    },
-    "ex10_haze_big_2_2": {
-      "path": "animations/haze_big_2_2.json"
-    },
-    "ex10_haze_big_2_3": {
-      "path": "animations/haze_big_2_3.json"
-    },
-    "ex10_haze_big_2_4": {
-      "path": "animations/haze_big_2_4.json"
-    },
-    "ex10_haze_big_2_5": {
-      "path": "animations/haze_big_2_5.json"
-    },
-    "ex10_haze_big_2_6": {
-      "path": "animations/haze_big_2_6.json"
-    },
-    "ex10_haze_big_2_7": {
-      "path": "animations/haze_big_2_7.json"
-    },
-    "ex10_haze_big_2_8": {
-      "path": "animations/haze_big_2_8.json"
-    },
-    "ex10_haze_big_2_9": {
-      "path": "animations/haze_big_2_9.json"
-    },
-    "ex10_haze_small_big_0_0": {
-      "path": "animations/haze_small_big_0_0.json"
-    },
-    "ex10_haze_small_big_0_1": {
-      "path": "animations/haze_small_big_0_1.json"
-    },
-    "ex10_haze_small_big_0_2": {
-      "path": "animations/haze_small_big_0_2.json"
-    },
-    "ex10_haze_small_big_1_0": {
-      "path": "animations/haze_small_big_1_0.json"
-    },
-    "ex10_haze_small_big_1_1": {
-      "path": "animations/haze_small_big_1_1.json"
-    },
-    "ex10_haze_small_big_1_2": {
-      "path": "animations/haze_small_big_1_2.json"
+    "ex10_haze_small_big": {
+      "path": "animations/haze_small_big.json"
     },
     "ex10_lava_deep": {
       "path": "animations/lava_deep.json"
@@ -480,62 +378,14 @@
     "ex10_player_walk_left": {
       "path": "animations/player_walk_left.json"
     },
-    "ex10_plume_big_0_0": {
-      "path": "animations/plume_big_0_0.json"
-    },
-    "ex10_plume_big_0_1": {
-      "path": "animations/plume_big_0_1.json"
-    },
-    "ex10_plume_big_0_2": {
-      "path": "animations/plume_big_0_2.json"
-    },
-    "ex10_plume_big_0_3": {
-      "path": "animations/plume_big_0_3.json"
-    },
-    "ex10_plume_big_0_4": {
-      "path": "animations/plume_big_0_4.json"
-    },
-    "ex10_plume_big_1_0": {
-      "path": "animations/plume_big_1_0.json"
-    },
-    "ex10_plume_big_1_1": {
-      "path": "animations/plume_big_1_1.json"
-    },
-    "ex10_plume_big_1_2": {
-      "path": "animations/plume_big_1_2.json"
-    },
-    "ex10_plume_big_1_3": {
-      "path": "animations/plume_big_1_3.json"
-    },
-    "ex10_plume_big_1_4": {
-      "path": "animations/plume_big_1_4.json"
-    },
-    "ex10_plume_big_2_0": {
-      "path": "animations/plume_big_2_0.json"
-    },
-    "ex10_plume_big_2_1": {
-      "path": "animations/plume_big_2_1.json"
-    },
-    "ex10_plume_big_2_2": {
-      "path": "animations/plume_big_2_2.json"
-    },
-    "ex10_plume_big_2_3": {
-      "path": "animations/plume_big_2_3.json"
-    },
-    "ex10_plume_big_2_4": {
-      "path": "animations/plume_big_2_4.json"
+    "ex10_plume_big": {
+      "path": "animations/plume_big.json"
     },
     "ex10_pool": {
       "path": "animations/pool.json"
     },
-    "ex10_pool_basin_big_0_0": {
-      "path": "animations/pool_basin_big_0_0.json"
-    },
-    "ex10_pool_basin_big_0_1": {
-      "path": "animations/pool_basin_big_0_1.json"
-    },
-    "ex10_pool_basin_big_0_2": {
-      "path": "animations/pool_basin_big_0_2.json"
+    "ex10_pool_basin_big": {
+      "path": "animations/pool_basin_big.json"
     },
     "ex10_pool_edge_left": {
       "path": "animations/pool_edge_left.json"
@@ -543,20 +393,8 @@
     "ex10_pool_foam": {
       "path": "animations/pool_foam.json"
     },
-    "ex10_pool_shore_big_0_1": {
-      "path": "animations/pool_shore_big_0_1.json"
-    },
-    "ex10_pool_shore_big_0_2": {
-      "path": "animations/pool_shore_big_0_2.json"
-    },
-    "ex10_pool_shore_big_1_0": {
-      "path": "animations/pool_shore_big_1_0.json"
-    },
-    "ex10_pool_shore_big_1_1": {
-      "path": "animations/pool_shore_big_1_1.json"
-    },
-    "ex10_pool_shore_big_1_2": {
-      "path": "animations/pool_shore_big_1_2.json"
+    "ex10_pool_shore_big": {
+      "path": "animations/pool_shore_big.json"
     },
     "ex10_pour_foot": {
       "path": "animations/pour_foot.json"
@@ -1732,53 +1570,14 @@
     "ex10_prop_aq_paving_3_back": {
       "path": "prefabs/ex10_prop_aq_paving_3_back.json"
     },
-    "ex10_prop_arch_big_0_0_world": {
-      "path": "prefabs/ex10_prop_arch_big_0_0_world.json"
+    "ex10_prop_arch_big_world": {
+      "path": "prefabs/ex10_prop_arch_big_world.json"
     },
-    "ex10_prop_arch_big_0_1_world": {
-      "path": "prefabs/ex10_prop_arch_big_0_1_world.json"
+    "ex10_prop_banner_0_big_world": {
+      "path": "prefabs/ex10_prop_banner_0_big_world.json"
     },
-    "ex10_prop_arch_big_0_2_world": {
-      "path": "prefabs/ex10_prop_arch_big_0_2_world.json"
-    },
-    "ex10_prop_arch_big_0_3_world": {
-      "path": "prefabs/ex10_prop_arch_big_0_3_world.json"
-    },
-    "ex10_prop_arch_big_1_0_world": {
-      "path": "prefabs/ex10_prop_arch_big_1_0_world.json"
-    },
-    "ex10_prop_arch_big_1_1_world": {
-      "path": "prefabs/ex10_prop_arch_big_1_1_world.json"
-    },
-    "ex10_prop_arch_big_1_2_world": {
-      "path": "prefabs/ex10_prop_arch_big_1_2_world.json"
-    },
-    "ex10_prop_arch_big_1_3_world": {
-      "path": "prefabs/ex10_prop_arch_big_1_3_world.json"
-    },
-    "ex10_prop_arch_big_2_0_world": {
-      "path": "prefabs/ex10_prop_arch_big_2_0_world.json"
-    },
-    "ex10_prop_arch_big_2_1_world": {
-      "path": "prefabs/ex10_prop_arch_big_2_1_world.json"
-    },
-    "ex10_prop_arch_big_2_2_world": {
-      "path": "prefabs/ex10_prop_arch_big_2_2_world.json"
-    },
-    "ex10_prop_arch_big_2_3_world": {
-      "path": "prefabs/ex10_prop_arch_big_2_3_world.json"
-    },
-    "ex10_prop_banner_0_big_0_0_world": {
-      "path": "prefabs/ex10_prop_banner_0_big_0_0_world.json"
-    },
-    "ex10_prop_banner_0_big_1_0_world": {
-      "path": "prefabs/ex10_prop_banner_0_big_1_0_world.json"
-    },
-    "ex10_prop_banner_1_big_0_0_world": {
-      "path": "prefabs/ex10_prop_banner_1_big_0_0_world.json"
-    },
-    "ex10_prop_banner_1_big_1_0_world": {
-      "path": "prefabs/ex10_prop_banner_1_big_1_0_world.json"
+    "ex10_prop_banner_1_big_world": {
+      "path": "prefabs/ex10_prop_banner_1_big_world.json"
     },
     "ex10_prop_barrel_0_world": {
       "path": "prefabs/ex10_prop_barrel_0_world.json"
@@ -1813,89 +1612,26 @@
     "ex10_prop_boulder_2_world": {
       "path": "prefabs/ex10_prop_boulder_2_world.json"
     },
-    "ex10_prop_broken_pillar_big_0_0_world": {
-      "path": "prefabs/ex10_prop_broken_pillar_big_0_0_world.json"
-    },
-    "ex10_prop_broken_pillar_big_0_1_world": {
-      "path": "prefabs/ex10_prop_broken_pillar_big_0_1_world.json"
-    },
-    "ex10_prop_broken_pillar_big_1_0_world": {
-      "path": "prefabs/ex10_prop_broken_pillar_big_1_0_world.json"
-    },
-    "ex10_prop_broken_pillar_big_1_1_world": {
-      "path": "prefabs/ex10_prop_broken_pillar_big_1_1_world.json"
-    },
-    "ex10_prop_broken_pillar_big_2_0_world": {
-      "path": "prefabs/ex10_prop_broken_pillar_big_2_0_world.json"
-    },
-    "ex10_prop_broken_pillar_big_2_1_world": {
-      "path": "prefabs/ex10_prop_broken_pillar_big_2_1_world.json"
-    },
-    "ex10_prop_broken_pillar_big_3_0_world": {
-      "path": "prefabs/ex10_prop_broken_pillar_big_3_0_world.json"
-    },
-    "ex10_prop_broken_pillar_big_3_1_world": {
-      "path": "prefabs/ex10_prop_broken_pillar_big_3_1_world.json"
+    "ex10_prop_broken_pillar_big_world": {
+      "path": "prefabs/ex10_prop_broken_pillar_big_world.json"
     },
     "ex10_prop_campfire_0_world": {
       "path": "prefabs/ex10_prop_campfire_0_world.json"
     },
-    "ex10_prop_cart_big_0_0_world": {
-      "path": "prefabs/ex10_prop_cart_big_0_0_world.json"
+    "ex10_prop_cart_big_world": {
+      "path": "prefabs/ex10_prop_cart_big_world.json"
     },
-    "ex10_prop_cart_big_0_1_world": {
-      "path": "prefabs/ex10_prop_cart_big_0_1_world.json"
+    "ex10_prop_cart_tipped_big_world": {
+      "path": "prefabs/ex10_prop_cart_tipped_big_world.json"
     },
-    "ex10_prop_cart_big_1_0_world": {
-      "path": "prefabs/ex10_prop_cart_big_1_0_world.json"
-    },
-    "ex10_prop_cart_big_1_1_world": {
-      "path": "prefabs/ex10_prop_cart_big_1_1_world.json"
-    },
-    "ex10_prop_cart_tipped_big_0_0_world": {
-      "path": "prefabs/ex10_prop_cart_tipped_big_0_0_world.json"
-    },
-    "ex10_prop_cart_tipped_big_0_1_world": {
-      "path": "prefabs/ex10_prop_cart_tipped_big_0_1_world.json"
-    },
-    "ex10_prop_cart_tipped_big_0_2_world": {
-      "path": "prefabs/ex10_prop_cart_tipped_big_0_2_world.json"
-    },
-    "ex10_prop_cart_tipped_big_1_0_world": {
-      "path": "prefabs/ex10_prop_cart_tipped_big_1_0_world.json"
-    },
-    "ex10_prop_cart_tipped_big_1_1_world": {
-      "path": "prefabs/ex10_prop_cart_tipped_big_1_1_world.json"
-    },
-    "ex10_prop_cart_tipped_big_1_2_world": {
-      "path": "prefabs/ex10_prop_cart_tipped_big_1_2_world.json"
-    },
-    "ex10_prop_chain_big_0_0_world": {
-      "path": "prefabs/ex10_prop_chain_big_0_0_world.json"
-    },
-    "ex10_prop_chain_big_1_0_world": {
-      "path": "prefabs/ex10_prop_chain_big_1_0_world.json"
+    "ex10_prop_chain_big_world": {
+      "path": "prefabs/ex10_prop_chain_big_world.json"
     },
     "ex10_prop_channel_drips_0_world": {
       "path": "prefabs/ex10_prop_channel_drips_0_world.json"
     },
-    "ex10_prop_cliff_tree_big_0_0_world": {
-      "path": "prefabs/ex10_prop_cliff_tree_big_0_0_world.json"
-    },
-    "ex10_prop_cliff_tree_big_0_1_world": {
-      "path": "prefabs/ex10_prop_cliff_tree_big_0_1_world.json"
-    },
-    "ex10_prop_cliff_tree_big_0_2_world": {
-      "path": "prefabs/ex10_prop_cliff_tree_big_0_2_world.json"
-    },
-    "ex10_prop_cliff_tree_big_1_0_world": {
-      "path": "prefabs/ex10_prop_cliff_tree_big_1_0_world.json"
-    },
-    "ex10_prop_cliff_tree_big_1_1_world": {
-      "path": "prefabs/ex10_prop_cliff_tree_big_1_1_world.json"
-    },
-    "ex10_prop_cliff_tree_big_1_2_world": {
-      "path": "prefabs/ex10_prop_cliff_tree_big_1_2_world.json"
+    "ex10_prop_cliff_tree_big_world": {
+      "path": "prefabs/ex10_prop_cliff_tree_big_world.json"
     },
     "ex10_prop_crate_0_world": {
       "path": "prefabs/ex10_prop_crate_0_world.json"
@@ -1957,11 +1693,8 @@
     "ex10_prop_far_lantern_back": {
       "path": "prefabs/ex10_prop_far_lantern_back.json"
     },
-    "ex10_prop_far_rubble_big_0_0_back": {
-      "path": "prefabs/ex10_prop_far_rubble_big_0_0_back.json"
-    },
-    "ex10_prop_far_rubble_big_0_1_back": {
-      "path": "prefabs/ex10_prop_far_rubble_big_0_1_back.json"
+    "ex10_prop_far_rubble_big_back": {
+      "path": "prefabs/ex10_prop_far_rubble_big_back.json"
     },
     "ex10_prop_far_trestle_back": {
       "path": "prefabs/ex10_prop_far_trestle_back.json"
@@ -1972,11 +1705,8 @@
     "ex10_prop_fence_1_world": {
       "path": "prefabs/ex10_prop_fence_1_world.json"
     },
-    "ex10_prop_fern_clump_0_big_0_0_world": {
-      "path": "prefabs/ex10_prop_fern_clump_0_big_0_0_world.json"
-    },
-    "ex10_prop_fern_clump_0_big_0_1_world": {
-      "path": "prefabs/ex10_prop_fern_clump_0_big_0_1_world.json"
+    "ex10_prop_fern_clump_0_big_world": {
+      "path": "prefabs/ex10_prop_fern_clump_0_big_world.json"
     },
     "ex10_prop_fern_clump_1_world": {
       "path": "prefabs/ex10_prop_fern_clump_1_world.json"
@@ -2029,11 +1759,8 @@
     "ex10_prop_grass_world": {
       "path": "prefabs/ex10_prop_grass_world.json"
     },
-    "ex10_prop_guardian_big_0_0_world": {
-      "path": "prefabs/ex10_prop_guardian_big_0_0_world.json"
-    },
-    "ex10_prop_guardian_big_1_0_world": {
-      "path": "prefabs/ex10_prop_guardian_big_1_0_world.json"
+    "ex10_prop_guardian_big_world": {
+      "path": "prefabs/ex10_prop_guardian_big_world.json"
     },
     "ex10_prop_hanging_lantern_world": {
       "path": "prefabs/ex10_prop_hanging_lantern_world.json"
@@ -2041,131 +1768,14 @@
     "ex10_prop_hanging_moss_world": {
       "path": "prefabs/ex10_prop_hanging_moss_world.json"
     },
-    "ex10_prop_haze_big_0_0_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_0_0_0_world.json"
+    "ex10_prop_haze_big_0_world": {
+      "path": "prefabs/ex10_prop_haze_big_0_world.json"
     },
-    "ex10_prop_haze_big_0_1_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_0_1_0_world.json"
+    "ex10_prop_haze_small_big_0_world": {
+      "path": "prefabs/ex10_prop_haze_small_big_0_world.json"
     },
-    "ex10_prop_haze_big_0_2_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_0_2_0_world.json"
-    },
-    "ex10_prop_haze_big_0_3_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_0_3_0_world.json"
-    },
-    "ex10_prop_haze_big_0_4_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_0_4_0_world.json"
-    },
-    "ex10_prop_haze_big_0_5_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_0_5_0_world.json"
-    },
-    "ex10_prop_haze_big_0_6_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_0_6_0_world.json"
-    },
-    "ex10_prop_haze_big_0_7_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_0_7_0_world.json"
-    },
-    "ex10_prop_haze_big_0_8_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_0_8_0_world.json"
-    },
-    "ex10_prop_haze_big_0_9_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_0_9_0_world.json"
-    },
-    "ex10_prop_haze_big_1_0_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_1_0_0_world.json"
-    },
-    "ex10_prop_haze_big_1_1_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_1_1_0_world.json"
-    },
-    "ex10_prop_haze_big_1_2_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_1_2_0_world.json"
-    },
-    "ex10_prop_haze_big_1_3_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_1_3_0_world.json"
-    },
-    "ex10_prop_haze_big_1_4_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_1_4_0_world.json"
-    },
-    "ex10_prop_haze_big_1_5_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_1_5_0_world.json"
-    },
-    "ex10_prop_haze_big_1_6_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_1_6_0_world.json"
-    },
-    "ex10_prop_haze_big_1_7_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_1_7_0_world.json"
-    },
-    "ex10_prop_haze_big_1_8_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_1_8_0_world.json"
-    },
-    "ex10_prop_haze_big_1_9_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_1_9_0_world.json"
-    },
-    "ex10_prop_haze_big_2_0_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_2_0_0_world.json"
-    },
-    "ex10_prop_haze_big_2_1_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_2_1_0_world.json"
-    },
-    "ex10_prop_haze_big_2_2_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_2_2_0_world.json"
-    },
-    "ex10_prop_haze_big_2_3_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_2_3_0_world.json"
-    },
-    "ex10_prop_haze_big_2_4_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_2_4_0_world.json"
-    },
-    "ex10_prop_haze_big_2_5_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_2_5_0_world.json"
-    },
-    "ex10_prop_haze_big_2_6_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_2_6_0_world.json"
-    },
-    "ex10_prop_haze_big_2_7_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_2_7_0_world.json"
-    },
-    "ex10_prop_haze_big_2_8_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_2_8_0_world.json"
-    },
-    "ex10_prop_haze_big_2_9_0_world": {
-      "path": "prefabs/ex10_prop_haze_big_2_9_0_world.json"
-    },
-    "ex10_prop_haze_small_big_0_0_0_world": {
-      "path": "prefabs/ex10_prop_haze_small_big_0_0_0_world.json"
-    },
-    "ex10_prop_haze_small_big_0_1_0_world": {
-      "path": "prefabs/ex10_prop_haze_small_big_0_1_0_world.json"
-    },
-    "ex10_prop_haze_small_big_0_2_0_world": {
-      "path": "prefabs/ex10_prop_haze_small_big_0_2_0_world.json"
-    },
-    "ex10_prop_haze_small_big_1_0_0_world": {
-      "path": "prefabs/ex10_prop_haze_small_big_1_0_0_world.json"
-    },
-    "ex10_prop_haze_small_big_1_1_0_world": {
-      "path": "prefabs/ex10_prop_haze_small_big_1_1_0_world.json"
-    },
-    "ex10_prop_haze_small_big_1_2_0_world": {
-      "path": "prefabs/ex10_prop_haze_small_big_1_2_0_world.json"
-    },
-    "ex10_prop_headframe_big_0_0_world": {
-      "path": "prefabs/ex10_prop_headframe_big_0_0_world.json"
-    },
-    "ex10_prop_headframe_big_0_1_world": {
-      "path": "prefabs/ex10_prop_headframe_big_0_1_world.json"
-    },
-    "ex10_prop_headframe_big_1_0_world": {
-      "path": "prefabs/ex10_prop_headframe_big_1_0_world.json"
-    },
-    "ex10_prop_headframe_big_1_1_world": {
-      "path": "prefabs/ex10_prop_headframe_big_1_1_world.json"
-    },
-    "ex10_prop_headframe_big_2_0_world": {
-      "path": "prefabs/ex10_prop_headframe_big_2_0_world.json"
-    },
-    "ex10_prop_headframe_big_2_1_world": {
-      "path": "prefabs/ex10_prop_headframe_big_2_1_world.json"
+    "ex10_prop_headframe_big_world": {
+      "path": "prefabs/ex10_prop_headframe_big_world.json"
     },
     "ex10_prop_lantern_world": {
       "path": "prefabs/ex10_prop_lantern_world.json"
@@ -2182,50 +1792,14 @@
     "ex10_prop_lavafall_0_world": {
       "path": "prefabs/ex10_prop_lavafall_0_world.json"
     },
-    "ex10_prop_lean_to_big_0_0_world": {
-      "path": "prefabs/ex10_prop_lean_to_big_0_0_world.json"
+    "ex10_prop_lean_to_big_world": {
+      "path": "prefabs/ex10_prop_lean_to_big_world.json"
     },
-    "ex10_prop_lean_to_big_0_1_world": {
-      "path": "prefabs/ex10_prop_lean_to_big_0_1_world.json"
+    "ex10_prop_lift_gantry_big_world": {
+      "path": "prefabs/ex10_prop_lift_gantry_big_world.json"
     },
-    "ex10_prop_lean_to_big_1_0_world": {
-      "path": "prefabs/ex10_prop_lean_to_big_1_0_world.json"
-    },
-    "ex10_prop_lean_to_big_1_1_world": {
-      "path": "prefabs/ex10_prop_lean_to_big_1_1_world.json"
-    },
-    "ex10_prop_lift_gantry_big_0_0_world": {
-      "path": "prefabs/ex10_prop_lift_gantry_big_0_0_world.json"
-    },
-    "ex10_prop_lift_gantry_big_0_1_world": {
-      "path": "prefabs/ex10_prop_lift_gantry_big_0_1_world.json"
-    },
-    "ex10_prop_lift_gantry_big_0_2_world": {
-      "path": "prefabs/ex10_prop_lift_gantry_big_0_2_world.json"
-    },
-    "ex10_prop_lift_gantry_big_1_0_world": {
-      "path": "prefabs/ex10_prop_lift_gantry_big_1_0_world.json"
-    },
-    "ex10_prop_lift_gantry_big_1_1_world": {
-      "path": "prefabs/ex10_prop_lift_gantry_big_1_1_world.json"
-    },
-    "ex10_prop_lift_gantry_big_1_2_world": {
-      "path": "prefabs/ex10_prop_lift_gantry_big_1_2_world.json"
-    },
-    "ex10_prop_lift_gantry_big_2_0_world": {
-      "path": "prefabs/ex10_prop_lift_gantry_big_2_0_world.json"
-    },
-    "ex10_prop_lift_gantry_big_2_1_world": {
-      "path": "prefabs/ex10_prop_lift_gantry_big_2_1_world.json"
-    },
-    "ex10_prop_lift_gantry_big_2_2_world": {
-      "path": "prefabs/ex10_prop_lift_gantry_big_2_2_world.json"
-    },
-    "ex10_prop_lily_pads_big_0_0_world": {
-      "path": "prefabs/ex10_prop_lily_pads_big_0_0_world.json"
-    },
-    "ex10_prop_lily_pads_big_0_1_world": {
-      "path": "prefabs/ex10_prop_lily_pads_big_0_1_world.json"
+    "ex10_prop_lily_pads_big_world": {
+      "path": "prefabs/ex10_prop_lily_pads_big_world.json"
     },
     "ex10_prop_log_pile_world": {
       "path": "prefabs/ex10_prop_log_pile_world.json"
@@ -2236,68 +1810,17 @@
     "ex10_prop_mushrooms_world": {
       "path": "prefabs/ex10_prop_mushrooms_world.json"
     },
-    "ex10_prop_oak_big_0_0_back": {
-      "path": "prefabs/ex10_prop_oak_big_0_0_back.json"
+    "ex10_prop_oak_big_back": {
+      "path": "prefabs/ex10_prop_oak_big_back.json"
     },
-    "ex10_prop_oak_big_0_0_world": {
-      "path": "prefabs/ex10_prop_oak_big_0_0_world.json"
-    },
-    "ex10_prop_oak_big_0_1_back": {
-      "path": "prefabs/ex10_prop_oak_big_0_1_back.json"
-    },
-    "ex10_prop_oak_big_0_1_world": {
-      "path": "prefabs/ex10_prop_oak_big_0_1_world.json"
-    },
-    "ex10_prop_oak_big_0_2_back": {
-      "path": "prefabs/ex10_prop_oak_big_0_2_back.json"
-    },
-    "ex10_prop_oak_big_0_2_world": {
-      "path": "prefabs/ex10_prop_oak_big_0_2_world.json"
-    },
-    "ex10_prop_oak_big_1_0_back": {
-      "path": "prefabs/ex10_prop_oak_big_1_0_back.json"
-    },
-    "ex10_prop_oak_big_1_0_world": {
-      "path": "prefabs/ex10_prop_oak_big_1_0_world.json"
-    },
-    "ex10_prop_oak_big_1_1_back": {
-      "path": "prefabs/ex10_prop_oak_big_1_1_back.json"
-    },
-    "ex10_prop_oak_big_1_1_world": {
-      "path": "prefabs/ex10_prop_oak_big_1_1_world.json"
-    },
-    "ex10_prop_oak_big_1_2_back": {
-      "path": "prefabs/ex10_prop_oak_big_1_2_back.json"
-    },
-    "ex10_prop_oak_big_1_2_world": {
-      "path": "prefabs/ex10_prop_oak_big_1_2_world.json"
-    },
-    "ex10_prop_oak_big_2_0_back": {
-      "path": "prefabs/ex10_prop_oak_big_2_0_back.json"
-    },
-    "ex10_prop_oak_big_2_0_world": {
-      "path": "prefabs/ex10_prop_oak_big_2_0_world.json"
-    },
-    "ex10_prop_oak_big_2_1_back": {
-      "path": "prefabs/ex10_prop_oak_big_2_1_back.json"
-    },
-    "ex10_prop_oak_big_2_1_world": {
-      "path": "prefabs/ex10_prop_oak_big_2_1_world.json"
-    },
-    "ex10_prop_oak_big_2_2_back": {
-      "path": "prefabs/ex10_prop_oak_big_2_2_back.json"
-    },
-    "ex10_prop_oak_big_2_2_world": {
-      "path": "prefabs/ex10_prop_oak_big_2_2_world.json"
+    "ex10_prop_oak_big_world": {
+      "path": "prefabs/ex10_prop_oak_big_world.json"
     },
     "ex10_prop_obsidian_rubble_world": {
       "path": "prefabs/ex10_prop_obsidian_rubble_world.json"
     },
-    "ex10_prop_ore_heap_big_0_0_world": {
-      "path": "prefabs/ex10_prop_ore_heap_big_0_0_world.json"
-    },
-    "ex10_prop_ore_heap_big_0_1_world": {
-      "path": "prefabs/ex10_prop_ore_heap_big_0_1_world.json"
+    "ex10_prop_ore_heap_big_world": {
+      "path": "prefabs/ex10_prop_ore_heap_big_world.json"
     },
     "ex10_prop_pebbles_0_world": {
       "path": "prefabs/ex10_prop_pebbles_0_world.json"
@@ -2317,62 +1840,14 @@
     "ex10_prop_pillar_stump_1_world": {
       "path": "prefabs/ex10_prop_pillar_stump_1_world.json"
     },
-    "ex10_prop_plume_big_0_0_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_0_0_0_world.json"
-    },
-    "ex10_prop_plume_big_0_1_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_0_1_0_world.json"
-    },
-    "ex10_prop_plume_big_0_2_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_0_2_0_world.json"
-    },
-    "ex10_prop_plume_big_0_3_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_0_3_0_world.json"
-    },
-    "ex10_prop_plume_big_0_4_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_0_4_0_world.json"
-    },
-    "ex10_prop_plume_big_1_0_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_1_0_0_world.json"
-    },
-    "ex10_prop_plume_big_1_1_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_1_1_0_world.json"
-    },
-    "ex10_prop_plume_big_1_2_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_1_2_0_world.json"
-    },
-    "ex10_prop_plume_big_1_3_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_1_3_0_world.json"
-    },
-    "ex10_prop_plume_big_1_4_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_1_4_0_world.json"
-    },
-    "ex10_prop_plume_big_2_0_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_2_0_0_world.json"
-    },
-    "ex10_prop_plume_big_2_1_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_2_1_0_world.json"
-    },
-    "ex10_prop_plume_big_2_2_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_2_2_0_world.json"
-    },
-    "ex10_prop_plume_big_2_3_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_2_3_0_world.json"
-    },
-    "ex10_prop_plume_big_2_4_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_2_4_0_world.json"
+    "ex10_prop_plume_big_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_0_world.json"
     },
     "ex10_prop_pool_0_world": {
       "path": "prefabs/ex10_prop_pool_0_world.json"
     },
-    "ex10_prop_pool_basin_big_0_0_0_back": {
-      "path": "prefabs/ex10_prop_pool_basin_big_0_0_0_back.json"
-    },
-    "ex10_prop_pool_basin_big_0_1_0_back": {
-      "path": "prefabs/ex10_prop_pool_basin_big_0_1_0_back.json"
-    },
-    "ex10_prop_pool_basin_big_0_2_0_back": {
-      "path": "prefabs/ex10_prop_pool_basin_big_0_2_0_back.json"
+    "ex10_prop_pool_basin_big_0_back": {
+      "path": "prefabs/ex10_prop_pool_basin_big_0_back.json"
     },
     "ex10_prop_pool_edge_left_0_world": {
       "path": "prefabs/ex10_prop_pool_edge_left_0_world.json"
@@ -2386,20 +1861,8 @@
     "ex10_prop_pool_rocks_1_world": {
       "path": "prefabs/ex10_prop_pool_rocks_1_world.json"
     },
-    "ex10_prop_pool_shore_big_0_1_0_world": {
-      "path": "prefabs/ex10_prop_pool_shore_big_0_1_0_world.json"
-    },
-    "ex10_prop_pool_shore_big_0_2_0_world": {
-      "path": "prefabs/ex10_prop_pool_shore_big_0_2_0_world.json"
-    },
-    "ex10_prop_pool_shore_big_1_0_0_world": {
-      "path": "prefabs/ex10_prop_pool_shore_big_1_0_0_world.json"
-    },
-    "ex10_prop_pool_shore_big_1_1_0_world": {
-      "path": "prefabs/ex10_prop_pool_shore_big_1_1_0_world.json"
-    },
-    "ex10_prop_pool_shore_big_1_2_0_world": {
-      "path": "prefabs/ex10_prop_pool_shore_big_1_2_0_world.json"
+    "ex10_prop_pool_shore_big_0_world": {
+      "path": "prefabs/ex10_prop_pool_shore_big_0_world.json"
     },
     "ex10_prop_pour_foot_0_world": {
       "path": "prefabs/ex10_prop_pour_foot_0_world.json"
@@ -2437,47 +1900,20 @@
     "ex10_prop_river_rock_0_world": {
       "path": "prefabs/ex10_prop_river_rock_0_world.json"
     },
-    "ex10_prop_roots_big_0_0_world": {
-      "path": "prefabs/ex10_prop_roots_big_0_0_world.json"
+    "ex10_prop_roots_big_world": {
+      "path": "prefabs/ex10_prop_roots_big_world.json"
     },
-    "ex10_prop_roots_big_0_1_world": {
-      "path": "prefabs/ex10_prop_roots_big_0_1_world.json"
+    "ex10_prop_rope_bucket_big_world": {
+      "path": "prefabs/ex10_prop_rope_bucket_big_world.json"
     },
-    "ex10_prop_roots_big_0_2_world": {
-      "path": "prefabs/ex10_prop_roots_big_0_2_world.json"
+    "ex10_prop_rope_ladder_big_world": {
+      "path": "prefabs/ex10_prop_rope_ladder_big_world.json"
     },
-    "ex10_prop_roots_big_1_0_world": {
-      "path": "prefabs/ex10_prop_roots_big_1_0_world.json"
+    "ex10_prop_rubble_pile_0_big_world": {
+      "path": "prefabs/ex10_prop_rubble_pile_0_big_world.json"
     },
-    "ex10_prop_roots_big_1_1_world": {
-      "path": "prefabs/ex10_prop_roots_big_1_1_world.json"
-    },
-    "ex10_prop_roots_big_1_2_world": {
-      "path": "prefabs/ex10_prop_roots_big_1_2_world.json"
-    },
-    "ex10_prop_rope_bucket_big_0_0_world": {
-      "path": "prefabs/ex10_prop_rope_bucket_big_0_0_world.json"
-    },
-    "ex10_prop_rope_bucket_big_1_0_world": {
-      "path": "prefabs/ex10_prop_rope_bucket_big_1_0_world.json"
-    },
-    "ex10_prop_rope_ladder_big_0_0_world": {
-      "path": "prefabs/ex10_prop_rope_ladder_big_0_0_world.json"
-    },
-    "ex10_prop_rope_ladder_big_1_0_world": {
-      "path": "prefabs/ex10_prop_rope_ladder_big_1_0_world.json"
-    },
-    "ex10_prop_rubble_pile_0_big_0_0_world": {
-      "path": "prefabs/ex10_prop_rubble_pile_0_big_0_0_world.json"
-    },
-    "ex10_prop_rubble_pile_0_big_0_1_world": {
-      "path": "prefabs/ex10_prop_rubble_pile_0_big_0_1_world.json"
-    },
-    "ex10_prop_rubble_pile_1_big_0_0_world": {
-      "path": "prefabs/ex10_prop_rubble_pile_1_big_0_0_world.json"
-    },
-    "ex10_prop_rubble_pile_1_big_0_1_world": {
-      "path": "prefabs/ex10_prop_rubble_pile_1_big_0_1_world.json"
+    "ex10_prop_rubble_pile_1_big_world": {
+      "path": "prefabs/ex10_prop_rubble_pile_1_big_world.json"
     },
     "ex10_prop_rubble_world": {
       "path": "prefabs/ex10_prop_rubble_world.json"
@@ -2491,11 +1927,8 @@
     "ex10_prop_signpost_world": {
       "path": "prefabs/ex10_prop_signpost_world.json"
     },
-    "ex10_prop_skull_pike_big_0_0_world": {
-      "path": "prefabs/ex10_prop_skull_pike_big_0_0_world.json"
-    },
-    "ex10_prop_skull_pike_big_1_0_world": {
-      "path": "prefabs/ex10_prop_skull_pike_big_1_0_world.json"
+    "ex10_prop_skull_pike_big_world": {
+      "path": "prefabs/ex10_prop_skull_pike_big_world.json"
     },
     "ex10_prop_spill_left_0_0_world": {
       "path": "prefabs/ex10_prop_spill_left_0_0_world.json"
@@ -2515,23 +1948,14 @@
     "ex10_prop_spill_right_2_0_world": {
       "path": "prefabs/ex10_prop_spill_right_2_0_world.json"
     },
-    "ex10_prop_splash_rocks_0_big_0_0_world": {
-      "path": "prefabs/ex10_prop_splash_rocks_0_big_0_0_world.json"
+    "ex10_prop_splash_rocks_0_big_world": {
+      "path": "prefabs/ex10_prop_splash_rocks_0_big_world.json"
     },
-    "ex10_prop_splash_rocks_0_big_0_1_world": {
-      "path": "prefabs/ex10_prop_splash_rocks_0_big_0_1_world.json"
+    "ex10_prop_splash_rocks_1_big_world": {
+      "path": "prefabs/ex10_prop_splash_rocks_1_big_world.json"
     },
-    "ex10_prop_splash_rocks_1_big_0_0_world": {
-      "path": "prefabs/ex10_prop_splash_rocks_1_big_0_0_world.json"
-    },
-    "ex10_prop_splash_rocks_1_big_0_1_world": {
-      "path": "prefabs/ex10_prop_splash_rocks_1_big_0_1_world.json"
-    },
-    "ex10_prop_spoil_heap_big_0_0_world": {
-      "path": "prefabs/ex10_prop_spoil_heap_big_0_0_world.json"
-    },
-    "ex10_prop_spoil_heap_big_0_1_world": {
-      "path": "prefabs/ex10_prop_spoil_heap_big_0_1_world.json"
+    "ex10_prop_spoil_heap_big_world": {
+      "path": "prefabs/ex10_prop_spoil_heap_big_world.json"
     },
     "ex10_prop_stalactite_0_world": {
       "path": "prefabs/ex10_prop_stalactite_0_world.json"
@@ -2566,101 +1990,44 @@
     "ex10_prop_stalagmite_2_world": {
       "path": "prefabs/ex10_prop_stalagmite_2_world.json"
     },
-    "ex10_prop_statue_big_0_0_world": {
-      "path": "prefabs/ex10_prop_statue_big_0_0_world.json"
-    },
-    "ex10_prop_statue_big_0_1_world": {
-      "path": "prefabs/ex10_prop_statue_big_0_1_world.json"
-    },
-    "ex10_prop_statue_big_1_0_world": {
-      "path": "prefabs/ex10_prop_statue_big_1_0_world.json"
-    },
-    "ex10_prop_statue_big_1_1_world": {
-      "path": "prefabs/ex10_prop_statue_big_1_1_world.json"
-    },
-    "ex10_prop_statue_big_2_0_world": {
-      "path": "prefabs/ex10_prop_statue_big_2_0_world.json"
-    },
-    "ex10_prop_statue_big_2_1_world": {
-      "path": "prefabs/ex10_prop_statue_big_2_1_world.json"
+    "ex10_prop_statue_big_world": {
+      "path": "prefabs/ex10_prop_statue_big_world.json"
     },
     "ex10_prop_stump_world": {
       "path": "prefabs/ex10_prop_stump_world.json"
     },
-    "ex10_prop_timber_stack_big_0_0_world": {
-      "path": "prefabs/ex10_prop_timber_stack_big_0_0_world.json"
-    },
-    "ex10_prop_timber_stack_big_0_1_world": {
-      "path": "prefabs/ex10_prop_timber_stack_big_0_1_world.json"
+    "ex10_prop_timber_stack_big_world": {
+      "path": "prefabs/ex10_prop_timber_stack_big_world.json"
     },
     "ex10_prop_timber_support_back": {
       "path": "prefabs/ex10_prop_timber_support_back.json"
     },
-    "ex10_prop_toll_boom_big_0_0_world": {
-      "path": "prefabs/ex10_prop_toll_boom_big_0_0_world.json"
+    "ex10_prop_toll_boom_big_world": {
+      "path": "prefabs/ex10_prop_toll_boom_big_world.json"
     },
-    "ex10_prop_toll_boom_big_0_1_world": {
-      "path": "prefabs/ex10_prop_toll_boom_big_0_1_world.json"
-    },
-    "ex10_prop_toll_boom_big_1_0_world": {
-      "path": "prefabs/ex10_prop_toll_boom_big_1_0_world.json"
-    },
-    "ex10_prop_toll_boom_big_1_1_world": {
-      "path": "prefabs/ex10_prop_toll_boom_big_1_1_world.json"
-    },
-    "ex10_prop_toll_sign_big_0_0_world": {
-      "path": "prefabs/ex10_prop_toll_sign_big_0_0_world.json"
-    },
-    "ex10_prop_toll_sign_big_1_0_world": {
-      "path": "prefabs/ex10_prop_toll_sign_big_1_0_world.json"
+    "ex10_prop_toll_sign_big_world": {
+      "path": "prefabs/ex10_prop_toll_sign_big_world.json"
     },
     "ex10_prop_tool_rack_world": {
       "path": "prefabs/ex10_prop_tool_rack_world.json"
     },
-    "ex10_prop_vine_0_big_0_0_world": {
-      "path": "prefabs/ex10_prop_vine_0_big_0_0_world.json"
+    "ex10_prop_vine_0_big_world": {
+      "path": "prefabs/ex10_prop_vine_0_big_world.json"
     },
-    "ex10_prop_vine_0_big_1_0_world": {
-      "path": "prefabs/ex10_prop_vine_0_big_1_0_world.json"
+    "ex10_prop_vine_1_big_world": {
+      "path": "prefabs/ex10_prop_vine_1_big_world.json"
     },
-    "ex10_prop_vine_1_big_0_0_world": {
-      "path": "prefabs/ex10_prop_vine_1_big_0_0_world.json"
+    "ex10_prop_vine_2_big_world": {
+      "path": "prefabs/ex10_prop_vine_2_big_world.json"
     },
-    "ex10_prop_vine_1_big_1_0_world": {
-      "path": "prefabs/ex10_prop_vine_1_big_1_0_world.json"
+    "ex10_prop_vine_curtain_0_big_world": {
+      "path": "prefabs/ex10_prop_vine_curtain_0_big_world.json"
     },
-    "ex10_prop_vine_1_big_2_0_world": {
-      "path": "prefabs/ex10_prop_vine_1_big_2_0_world.json"
+    "ex10_prop_vine_curtain_1_big_world": {
+      "path": "prefabs/ex10_prop_vine_curtain_1_big_world.json"
     },
-    "ex10_prop_vine_2_big_0_0_world": {
-      "path": "prefabs/ex10_prop_vine_2_big_0_0_world.json"
-    },
-    "ex10_prop_vine_2_big_1_0_world": {
-      "path": "prefabs/ex10_prop_vine_2_big_1_0_world.json"
-    },
-    "ex10_prop_vine_curtain_0_big_0_0_world": {
-      "path": "prefabs/ex10_prop_vine_curtain_0_big_0_0_world.json"
-    },
-    "ex10_prop_vine_curtain_0_big_1_0_world": {
-      "path": "prefabs/ex10_prop_vine_curtain_0_big_1_0_world.json"
-    },
-    "ex10_prop_vine_curtain_0_big_2_0_world": {
-      "path": "prefabs/ex10_prop_vine_curtain_0_big_2_0_world.json"
-    },
-    "ex10_prop_vine_curtain_1_big_0_0_world": {
-      "path": "prefabs/ex10_prop_vine_curtain_1_big_0_0_world.json"
-    },
-    "ex10_prop_vine_curtain_1_big_1_0_world": {
-      "path": "prefabs/ex10_prop_vine_curtain_1_big_1_0_world.json"
-    },
-    "ex10_prop_vine_curtain_2_big_0_0_world": {
-      "path": "prefabs/ex10_prop_vine_curtain_2_big_0_0_world.json"
-    },
-    "ex10_prop_vine_curtain_2_big_1_0_world": {
-      "path": "prefabs/ex10_prop_vine_curtain_2_big_1_0_world.json"
-    },
-    "ex10_prop_vine_curtain_2_big_2_0_world": {
-      "path": "prefabs/ex10_prop_vine_curtain_2_big_2_0_world.json"
+    "ex10_prop_vine_curtain_2_big_world": {
+      "path": "prefabs/ex10_prop_vine_curtain_2_big_world.json"
     },
     "ex10_prop_vine_curtain_3_world": {
       "path": "prefabs/ex10_prop_vine_curtain_3_world.json"
@@ -3734,77 +3101,11 @@
       "normal_map": "sprites/arcade_spring_right_n.png",
       "path": "sprites/arcade_spring_right.png"
     },
-    "ex10_arch_big_0_0": {
-      "emissive_mask": "sprites/arch_big_0_0_e.png",
+    "ex10_arch_big": {
+      "emissive_mask": "sprites/arch_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/arch_big_0_0_n.png",
-      "path": "sprites/arch_big_0_0.png"
-    },
-    "ex10_arch_big_0_1": {
-      "emissive_mask": "sprites/arch_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_0_1_n.png",
-      "path": "sprites/arch_big_0_1.png"
-    },
-    "ex10_arch_big_0_2": {
-      "emissive_mask": "sprites/arch_big_0_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_0_2_n.png",
-      "path": "sprites/arch_big_0_2.png"
-    },
-    "ex10_arch_big_0_3": {
-      "emissive_mask": "sprites/arch_big_0_3_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_0_3_n.png",
-      "path": "sprites/arch_big_0_3.png"
-    },
-    "ex10_arch_big_1_0": {
-      "emissive_mask": "sprites/arch_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_1_0_n.png",
-      "path": "sprites/arch_big_1_0.png"
-    },
-    "ex10_arch_big_1_1": {
-      "emissive_mask": "sprites/arch_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_1_1_n.png",
-      "path": "sprites/arch_big_1_1.png"
-    },
-    "ex10_arch_big_1_2": {
-      "emissive_mask": "sprites/arch_big_1_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_1_2_n.png",
-      "path": "sprites/arch_big_1_2.png"
-    },
-    "ex10_arch_big_1_3": {
-      "emissive_mask": "sprites/arch_big_1_3_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_1_3_n.png",
-      "path": "sprites/arch_big_1_3.png"
-    },
-    "ex10_arch_big_2_0": {
-      "emissive_mask": "sprites/arch_big_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_2_0_n.png",
-      "path": "sprites/arch_big_2_0.png"
-    },
-    "ex10_arch_big_2_1": {
-      "emissive_mask": "sprites/arch_big_2_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_2_1_n.png",
-      "path": "sprites/arch_big_2_1.png"
-    },
-    "ex10_arch_big_2_2": {
-      "emissive_mask": "sprites/arch_big_2_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_2_2_n.png",
-      "path": "sprites/arch_big_2_2.png"
-    },
-    "ex10_arch_big_2_3": {
-      "emissive_mask": "sprites/arch_big_2_3_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/arch_big_2_3_n.png",
-      "path": "sprites/arch_big_2_3.png"
+      "normal_map": "sprites/arch_big_n.png",
+      "path": "sprites/arch_big.png"
     },
     "ex10_ball": {
       "emissive_mask": "sprites/ball_e.png",
@@ -3878,29 +3179,17 @@
       "normal_map": "sprites/ball_small_5_n.png",
       "path": "sprites/ball_small_5.png"
     },
-    "ex10_banner_0_big_0_0": {
-      "emissive_mask": "sprites/banner_0_big_0_0_e.png",
+    "ex10_banner_0_big": {
+      "emissive_mask": "sprites/banner_0_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/banner_0_big_0_0_n.png",
-      "path": "sprites/banner_0_big_0_0.png"
+      "normal_map": "sprites/banner_0_big_n.png",
+      "path": "sprites/banner_0_big.png"
     },
-    "ex10_banner_0_big_1_0": {
-      "emissive_mask": "sprites/banner_0_big_1_0_e.png",
+    "ex10_banner_1_big": {
+      "emissive_mask": "sprites/banner_1_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/banner_0_big_1_0_n.png",
-      "path": "sprites/banner_0_big_1_0.png"
-    },
-    "ex10_banner_1_big_0_0": {
-      "emissive_mask": "sprites/banner_1_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/banner_1_big_0_0_n.png",
-      "path": "sprites/banner_1_big_0_0.png"
-    },
-    "ex10_banner_1_big_1_0": {
-      "emissive_mask": "sprites/banner_1_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/banner_1_big_1_0_n.png",
-      "path": "sprites/banner_1_big_1_0.png"
+      "normal_map": "sprites/banner_1_big_n.png",
+      "path": "sprites/banner_1_big.png"
     },
     "ex10_barrel_0": {
       "emissive_mask": "sprites/barrel_0_e.png",
@@ -4722,53 +4011,11 @@
       "normal_map": "sprites/bridge_weathered_n.png",
       "path": "sprites/bridge_weathered.png"
     },
-    "ex10_broken_pillar_big_0_0": {
-      "emissive_mask": "sprites/broken_pillar_big_0_0_e.png",
+    "ex10_broken_pillar_big": {
+      "emissive_mask": "sprites/broken_pillar_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/broken_pillar_big_0_0_n.png",
-      "path": "sprites/broken_pillar_big_0_0.png"
-    },
-    "ex10_broken_pillar_big_0_1": {
-      "emissive_mask": "sprites/broken_pillar_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/broken_pillar_big_0_1_n.png",
-      "path": "sprites/broken_pillar_big_0_1.png"
-    },
-    "ex10_broken_pillar_big_1_0": {
-      "emissive_mask": "sprites/broken_pillar_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/broken_pillar_big_1_0_n.png",
-      "path": "sprites/broken_pillar_big_1_0.png"
-    },
-    "ex10_broken_pillar_big_1_1": {
-      "emissive_mask": "sprites/broken_pillar_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/broken_pillar_big_1_1_n.png",
-      "path": "sprites/broken_pillar_big_1_1.png"
-    },
-    "ex10_broken_pillar_big_2_0": {
-      "emissive_mask": "sprites/broken_pillar_big_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/broken_pillar_big_2_0_n.png",
-      "path": "sprites/broken_pillar_big_2_0.png"
-    },
-    "ex10_broken_pillar_big_2_1": {
-      "emissive_mask": "sprites/broken_pillar_big_2_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/broken_pillar_big_2_1_n.png",
-      "path": "sprites/broken_pillar_big_2_1.png"
-    },
-    "ex10_broken_pillar_big_3_0": {
-      "emissive_mask": "sprites/broken_pillar_big_3_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/broken_pillar_big_3_0_n.png",
-      "path": "sprites/broken_pillar_big_3_0.png"
-    },
-    "ex10_broken_pillar_big_3_1": {
-      "emissive_mask": "sprites/broken_pillar_big_3_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/broken_pillar_big_3_1_n.png",
-      "path": "sprites/broken_pillar_big_3_1.png"
+      "normal_map": "sprites/broken_pillar_big_n.png",
+      "path": "sprites/broken_pillar_big.png"
     },
     "ex10_campfire_0": {
       "filter": "nearest",
@@ -4786,65 +4033,17 @@
       "filter": "nearest",
       "path": "sprites/campfire_3.png"
     },
-    "ex10_cart_big_0_0": {
-      "emissive_mask": "sprites/cart_big_0_0_e.png",
+    "ex10_cart_big": {
+      "emissive_mask": "sprites/cart_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cart_big_0_0_n.png",
-      "path": "sprites/cart_big_0_0.png"
+      "normal_map": "sprites/cart_big_n.png",
+      "path": "sprites/cart_big.png"
     },
-    "ex10_cart_big_0_1": {
-      "emissive_mask": "sprites/cart_big_0_1_e.png",
+    "ex10_cart_tipped_big": {
+      "emissive_mask": "sprites/cart_tipped_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cart_big_0_1_n.png",
-      "path": "sprites/cart_big_0_1.png"
-    },
-    "ex10_cart_big_1_0": {
-      "emissive_mask": "sprites/cart_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cart_big_1_0_n.png",
-      "path": "sprites/cart_big_1_0.png"
-    },
-    "ex10_cart_big_1_1": {
-      "emissive_mask": "sprites/cart_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cart_big_1_1_n.png",
-      "path": "sprites/cart_big_1_1.png"
-    },
-    "ex10_cart_tipped_big_0_0": {
-      "emissive_mask": "sprites/cart_tipped_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cart_tipped_big_0_0_n.png",
-      "path": "sprites/cart_tipped_big_0_0.png"
-    },
-    "ex10_cart_tipped_big_0_1": {
-      "emissive_mask": "sprites/cart_tipped_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cart_tipped_big_0_1_n.png",
-      "path": "sprites/cart_tipped_big_0_1.png"
-    },
-    "ex10_cart_tipped_big_0_2": {
-      "emissive_mask": "sprites/cart_tipped_big_0_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cart_tipped_big_0_2_n.png",
-      "path": "sprites/cart_tipped_big_0_2.png"
-    },
-    "ex10_cart_tipped_big_1_0": {
-      "emissive_mask": "sprites/cart_tipped_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cart_tipped_big_1_0_n.png",
-      "path": "sprites/cart_tipped_big_1_0.png"
-    },
-    "ex10_cart_tipped_big_1_1": {
-      "emissive_mask": "sprites/cart_tipped_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cart_tipped_big_1_1_n.png",
-      "path": "sprites/cart_tipped_big_1_1.png"
-    },
-    "ex10_cart_tipped_big_1_2": {
-      "emissive_mask": "sprites/cart_tipped_big_1_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cart_tipped_big_1_2_n.png",
-      "path": "sprites/cart_tipped_big_1_2.png"
+      "normal_map": "sprites/cart_tipped_big_n.png",
+      "path": "sprites/cart_tipped_big.png"
     },
     "ex10_cave_back_ember_0": {
       "emissive_mask": "sprites/cave_back_ember_0_e.png",
@@ -6298,17 +5497,11 @@
       "normal_map": "sprites/cave_wall_0_big_6_2_n.png",
       "path": "sprites/cave_wall_0_big_6_2.png"
     },
-    "ex10_chain_big_0_0": {
-      "emissive_mask": "sprites/chain_big_0_0_e.png",
+    "ex10_chain_big": {
+      "emissive_mask": "sprites/chain_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/chain_big_0_0_n.png",
-      "path": "sprites/chain_big_0_0.png"
-    },
-    "ex10_chain_big_1_0": {
-      "emissive_mask": "sprites/chain_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/chain_big_1_0_n.png",
-      "path": "sprites/chain_big_1_0.png"
+      "normal_map": "sprites/chain_big_n.png",
+      "path": "sprites/chain_big.png"
     },
     "ex10_channel_0": {
       "emissive_mask": "sprites/channel_0_e.png",
@@ -6484,41 +5677,11 @@
       "normal_map": "sprites/cliff_right_n.png",
       "path": "sprites/cliff_right.png"
     },
-    "ex10_cliff_tree_big_0_0": {
-      "emissive_mask": "sprites/cliff_tree_big_0_0_e.png",
+    "ex10_cliff_tree_big": {
+      "emissive_mask": "sprites/cliff_tree_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cliff_tree_big_0_0_n.png",
-      "path": "sprites/cliff_tree_big_0_0.png"
-    },
-    "ex10_cliff_tree_big_0_1": {
-      "emissive_mask": "sprites/cliff_tree_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cliff_tree_big_0_1_n.png",
-      "path": "sprites/cliff_tree_big_0_1.png"
-    },
-    "ex10_cliff_tree_big_0_2": {
-      "emissive_mask": "sprites/cliff_tree_big_0_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cliff_tree_big_0_2_n.png",
-      "path": "sprites/cliff_tree_big_0_2.png"
-    },
-    "ex10_cliff_tree_big_1_0": {
-      "emissive_mask": "sprites/cliff_tree_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cliff_tree_big_1_0_n.png",
-      "path": "sprites/cliff_tree_big_1_0.png"
-    },
-    "ex10_cliff_tree_big_1_1": {
-      "emissive_mask": "sprites/cliff_tree_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cliff_tree_big_1_1_n.png",
-      "path": "sprites/cliff_tree_big_1_1.png"
-    },
-    "ex10_cliff_tree_big_1_2": {
-      "emissive_mask": "sprites/cliff_tree_big_1_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/cliff_tree_big_1_2_n.png",
-      "path": "sprites/cliff_tree_big_1_2.png"
+      "normal_map": "sprites/cliff_tree_big_n.png",
+      "path": "sprites/cliff_tree_big.png"
     },
     "ex10_clouds_far": {
       "filter": "nearest",
@@ -8122,13 +7285,9 @@
       "filter": "nearest",
       "path": "sprites/far_mist_4_big_1_9.png"
     },
-    "ex10_far_rubble_big_0_0": {
+    "ex10_far_rubble_big": {
       "filter": "nearest",
-      "path": "sprites/far_rubble_big_0_0.png"
-    },
-    "ex10_far_rubble_big_0_1": {
-      "filter": "nearest",
-      "path": "sprites/far_rubble_big_0_1.png"
+      "path": "sprites/far_rubble_big.png"
     },
     "ex10_far_tower": {
       "filter": "nearest",
@@ -8160,17 +7319,11 @@
       "normal_map": "sprites/fern_n.png",
       "path": "sprites/fern.png"
     },
-    "ex10_fern_clump_0_big_0_0": {
-      "emissive_mask": "sprites/fern_clump_0_big_0_0_e.png",
+    "ex10_fern_clump_0_big": {
+      "emissive_mask": "sprites/fern_clump_0_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/fern_clump_0_big_0_0_n.png",
-      "path": "sprites/fern_clump_0_big_0_0.png"
-    },
-    "ex10_fern_clump_0_big_0_1": {
-      "emissive_mask": "sprites/fern_clump_0_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/fern_clump_0_big_0_1_n.png",
-      "path": "sprites/fern_clump_0_big_0_1.png"
+      "normal_map": "sprites/fern_clump_0_big_n.png",
+      "path": "sprites/fern_clump_0_big.png"
     },
     "ex10_fern_clump_1": {
       "emissive_mask": "sprites/fern_clump_1_e.png",
@@ -8828,59 +7981,11 @@
       "normal_map": "sprites/gargoyle_drake_3_n.png",
       "path": "sprites/gargoyle_drake_3.png"
     },
-    "ex10_gate_big_0_0": {
-      "emissive_mask": "sprites/gate_big_0_0_e.png",
+    "ex10_gate_big": {
+      "emissive_mask": "sprites/gate_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/gate_big_0_0_n.png",
-      "path": "sprites/gate_big_0_0.png"
-    },
-    "ex10_gate_big_0_1": {
-      "emissive_mask": "sprites/gate_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/gate_big_0_1_n.png",
-      "path": "sprites/gate_big_0_1.png"
-    },
-    "ex10_gate_big_0_2": {
-      "emissive_mask": "sprites/gate_big_0_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/gate_big_0_2_n.png",
-      "path": "sprites/gate_big_0_2.png"
-    },
-    "ex10_gate_big_1_0": {
-      "emissive_mask": "sprites/gate_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/gate_big_1_0_n.png",
-      "path": "sprites/gate_big_1_0.png"
-    },
-    "ex10_gate_big_1_1": {
-      "emissive_mask": "sprites/gate_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/gate_big_1_1_n.png",
-      "path": "sprites/gate_big_1_1.png"
-    },
-    "ex10_gate_big_1_2": {
-      "emissive_mask": "sprites/gate_big_1_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/gate_big_1_2_n.png",
-      "path": "sprites/gate_big_1_2.png"
-    },
-    "ex10_gate_big_2_0": {
-      "emissive_mask": "sprites/gate_big_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/gate_big_2_0_n.png",
-      "path": "sprites/gate_big_2_0.png"
-    },
-    "ex10_gate_big_2_1": {
-      "emissive_mask": "sprites/gate_big_2_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/gate_big_2_1_n.png",
-      "path": "sprites/gate_big_2_1.png"
-    },
-    "ex10_gate_big_2_2": {
-      "emissive_mask": "sprites/gate_big_2_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/gate_big_2_2_n.png",
-      "path": "sprites/gate_big_2_2.png"
+      "normal_map": "sprites/gate_big_n.png",
+      "path": "sprites/gate_big.png"
     },
     "ex10_geyser_plume_0": {
       "filter": "nearest",
@@ -9322,17 +8427,11 @@
       "normal_map": "sprites/ground_right_n.png",
       "path": "sprites/ground_right.png"
     },
-    "ex10_guardian_big_0_0": {
-      "emissive_mask": "sprites/guardian_big_0_0_e.png",
+    "ex10_guardian_big": {
+      "emissive_mask": "sprites/guardian_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/guardian_big_0_0_n.png",
-      "path": "sprites/guardian_big_0_0.png"
-    },
-    "ex10_guardian_big_1_0": {
-      "emissive_mask": "sprites/guardian_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/guardian_big_1_0_n.png",
-      "path": "sprites/guardian_big_1_0.png"
+      "normal_map": "sprites/guardian_big_n.png",
+      "path": "sprites/guardian_big.png"
     },
     "ex10_halo": {
       "filter": "linear",
@@ -9350,905 +8449,59 @@
       "normal_map": "sprites/hanging_moss_n.png",
       "path": "sprites/hanging_moss.png"
     },
-    "ex10_haze_big_0_0_0": {
+    "ex10_haze_big_0": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_0_0.png"
+      "path": "sprites/haze_big_0.png"
     },
-    "ex10_haze_big_0_0_1": {
+    "ex10_haze_big_1": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_0_1.png"
+      "path": "sprites/haze_big_1.png"
     },
-    "ex10_haze_big_0_0_2": {
+    "ex10_haze_big_2": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_0_2.png"
+      "path": "sprites/haze_big_2.png"
     },
-    "ex10_haze_big_0_0_3": {
+    "ex10_haze_big_3": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_0_3.png"
+      "path": "sprites/haze_big_3.png"
     },
-    "ex10_haze_big_0_0_4": {
+    "ex10_haze_big_4": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_0_4.png"
+      "path": "sprites/haze_big_4.png"
     },
-    "ex10_haze_big_0_0_5": {
+    "ex10_haze_big_5": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_0_5.png"
+      "path": "sprites/haze_big_5.png"
     },
-    "ex10_haze_big_0_1_0": {
+    "ex10_haze_small_big_0": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_1_0.png"
+      "path": "sprites/haze_small_big_0.png"
     },
-    "ex10_haze_big_0_1_1": {
+    "ex10_haze_small_big_1": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_1_1.png"
+      "path": "sprites/haze_small_big_1.png"
     },
-    "ex10_haze_big_0_1_2": {
+    "ex10_haze_small_big_2": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_1_2.png"
+      "path": "sprites/haze_small_big_2.png"
     },
-    "ex10_haze_big_0_1_3": {
+    "ex10_haze_small_big_3": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_1_3.png"
+      "path": "sprites/haze_small_big_3.png"
     },
-    "ex10_haze_big_0_1_4": {
+    "ex10_haze_small_big_4": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_1_4.png"
+      "path": "sprites/haze_small_big_4.png"
     },
-    "ex10_haze_big_0_1_5": {
+    "ex10_haze_small_big_5": {
       "filter": "nearest",
-      "path": "sprites/haze_big_0_1_5.png"
+      "path": "sprites/haze_small_big_5.png"
     },
-    "ex10_haze_big_0_2_0": {
+    "ex10_headframe_big": {
+      "emissive_mask": "sprites/headframe_big_e.png",
       "filter": "nearest",
-      "path": "sprites/haze_big_0_2_0.png"
-    },
-    "ex10_haze_big_0_2_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_2_1.png"
-    },
-    "ex10_haze_big_0_2_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_2_2.png"
-    },
-    "ex10_haze_big_0_2_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_2_3.png"
-    },
-    "ex10_haze_big_0_2_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_2_4.png"
-    },
-    "ex10_haze_big_0_2_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_2_5.png"
-    },
-    "ex10_haze_big_0_3_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_3_0.png"
-    },
-    "ex10_haze_big_0_3_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_3_1.png"
-    },
-    "ex10_haze_big_0_3_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_3_2.png"
-    },
-    "ex10_haze_big_0_3_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_3_3.png"
-    },
-    "ex10_haze_big_0_3_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_3_4.png"
-    },
-    "ex10_haze_big_0_3_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_3_5.png"
-    },
-    "ex10_haze_big_0_4_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_4_0.png"
-    },
-    "ex10_haze_big_0_4_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_4_1.png"
-    },
-    "ex10_haze_big_0_4_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_4_2.png"
-    },
-    "ex10_haze_big_0_4_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_4_3.png"
-    },
-    "ex10_haze_big_0_4_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_4_4.png"
-    },
-    "ex10_haze_big_0_4_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_4_5.png"
-    },
-    "ex10_haze_big_0_5_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_5_0.png"
-    },
-    "ex10_haze_big_0_5_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_5_1.png"
-    },
-    "ex10_haze_big_0_5_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_5_2.png"
-    },
-    "ex10_haze_big_0_5_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_5_3.png"
-    },
-    "ex10_haze_big_0_5_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_5_4.png"
-    },
-    "ex10_haze_big_0_5_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_5_5.png"
-    },
-    "ex10_haze_big_0_6_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_6_0.png"
-    },
-    "ex10_haze_big_0_6_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_6_1.png"
-    },
-    "ex10_haze_big_0_6_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_6_2.png"
-    },
-    "ex10_haze_big_0_6_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_6_3.png"
-    },
-    "ex10_haze_big_0_6_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_6_4.png"
-    },
-    "ex10_haze_big_0_6_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_6_5.png"
-    },
-    "ex10_haze_big_0_7_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_7_0.png"
-    },
-    "ex10_haze_big_0_7_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_7_1.png"
-    },
-    "ex10_haze_big_0_7_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_7_2.png"
-    },
-    "ex10_haze_big_0_7_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_7_3.png"
-    },
-    "ex10_haze_big_0_7_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_7_4.png"
-    },
-    "ex10_haze_big_0_7_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_7_5.png"
-    },
-    "ex10_haze_big_0_8_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_8_0.png"
-    },
-    "ex10_haze_big_0_8_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_8_1.png"
-    },
-    "ex10_haze_big_0_8_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_8_2.png"
-    },
-    "ex10_haze_big_0_8_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_8_3.png"
-    },
-    "ex10_haze_big_0_8_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_8_4.png"
-    },
-    "ex10_haze_big_0_8_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_8_5.png"
-    },
-    "ex10_haze_big_0_9_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_9_0.png"
-    },
-    "ex10_haze_big_0_9_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_9_1.png"
-    },
-    "ex10_haze_big_0_9_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_9_2.png"
-    },
-    "ex10_haze_big_0_9_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_9_3.png"
-    },
-    "ex10_haze_big_0_9_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_9_4.png"
-    },
-    "ex10_haze_big_0_9_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_0_9_5.png"
-    },
-    "ex10_haze_big_1_0_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_0_0.png"
-    },
-    "ex10_haze_big_1_0_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_0_1.png"
-    },
-    "ex10_haze_big_1_0_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_0_2.png"
-    },
-    "ex10_haze_big_1_0_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_0_3.png"
-    },
-    "ex10_haze_big_1_0_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_0_4.png"
-    },
-    "ex10_haze_big_1_0_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_0_5.png"
-    },
-    "ex10_haze_big_1_1_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_1_0.png"
-    },
-    "ex10_haze_big_1_1_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_1_1.png"
-    },
-    "ex10_haze_big_1_1_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_1_2.png"
-    },
-    "ex10_haze_big_1_1_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_1_3.png"
-    },
-    "ex10_haze_big_1_1_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_1_4.png"
-    },
-    "ex10_haze_big_1_1_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_1_5.png"
-    },
-    "ex10_haze_big_1_2_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_2_0.png"
-    },
-    "ex10_haze_big_1_2_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_2_1.png"
-    },
-    "ex10_haze_big_1_2_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_2_2.png"
-    },
-    "ex10_haze_big_1_2_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_2_3.png"
-    },
-    "ex10_haze_big_1_2_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_2_4.png"
-    },
-    "ex10_haze_big_1_2_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_2_5.png"
-    },
-    "ex10_haze_big_1_3_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_3_0.png"
-    },
-    "ex10_haze_big_1_3_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_3_1.png"
-    },
-    "ex10_haze_big_1_3_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_3_2.png"
-    },
-    "ex10_haze_big_1_3_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_3_3.png"
-    },
-    "ex10_haze_big_1_3_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_3_4.png"
-    },
-    "ex10_haze_big_1_3_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_3_5.png"
-    },
-    "ex10_haze_big_1_4_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_4_0.png"
-    },
-    "ex10_haze_big_1_4_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_4_1.png"
-    },
-    "ex10_haze_big_1_4_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_4_2.png"
-    },
-    "ex10_haze_big_1_4_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_4_3.png"
-    },
-    "ex10_haze_big_1_4_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_4_4.png"
-    },
-    "ex10_haze_big_1_4_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_4_5.png"
-    },
-    "ex10_haze_big_1_5_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_5_0.png"
-    },
-    "ex10_haze_big_1_5_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_5_1.png"
-    },
-    "ex10_haze_big_1_5_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_5_2.png"
-    },
-    "ex10_haze_big_1_5_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_5_3.png"
-    },
-    "ex10_haze_big_1_5_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_5_4.png"
-    },
-    "ex10_haze_big_1_5_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_5_5.png"
-    },
-    "ex10_haze_big_1_6_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_6_0.png"
-    },
-    "ex10_haze_big_1_6_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_6_1.png"
-    },
-    "ex10_haze_big_1_6_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_6_2.png"
-    },
-    "ex10_haze_big_1_6_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_6_3.png"
-    },
-    "ex10_haze_big_1_6_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_6_4.png"
-    },
-    "ex10_haze_big_1_6_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_6_5.png"
-    },
-    "ex10_haze_big_1_7_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_7_0.png"
-    },
-    "ex10_haze_big_1_7_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_7_1.png"
-    },
-    "ex10_haze_big_1_7_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_7_2.png"
-    },
-    "ex10_haze_big_1_7_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_7_3.png"
-    },
-    "ex10_haze_big_1_7_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_7_4.png"
-    },
-    "ex10_haze_big_1_7_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_7_5.png"
-    },
-    "ex10_haze_big_1_8_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_8_0.png"
-    },
-    "ex10_haze_big_1_8_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_8_1.png"
-    },
-    "ex10_haze_big_1_8_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_8_2.png"
-    },
-    "ex10_haze_big_1_8_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_8_3.png"
-    },
-    "ex10_haze_big_1_8_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_8_4.png"
-    },
-    "ex10_haze_big_1_8_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_8_5.png"
-    },
-    "ex10_haze_big_1_9_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_9_0.png"
-    },
-    "ex10_haze_big_1_9_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_9_1.png"
-    },
-    "ex10_haze_big_1_9_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_9_2.png"
-    },
-    "ex10_haze_big_1_9_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_9_3.png"
-    },
-    "ex10_haze_big_1_9_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_9_4.png"
-    },
-    "ex10_haze_big_1_9_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_1_9_5.png"
-    },
-    "ex10_haze_big_2_0_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_0_0.png"
-    },
-    "ex10_haze_big_2_0_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_0_1.png"
-    },
-    "ex10_haze_big_2_0_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_0_2.png"
-    },
-    "ex10_haze_big_2_0_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_0_3.png"
-    },
-    "ex10_haze_big_2_0_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_0_4.png"
-    },
-    "ex10_haze_big_2_0_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_0_5.png"
-    },
-    "ex10_haze_big_2_1_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_1_0.png"
-    },
-    "ex10_haze_big_2_1_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_1_1.png"
-    },
-    "ex10_haze_big_2_1_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_1_2.png"
-    },
-    "ex10_haze_big_2_1_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_1_3.png"
-    },
-    "ex10_haze_big_2_1_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_1_4.png"
-    },
-    "ex10_haze_big_2_1_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_1_5.png"
-    },
-    "ex10_haze_big_2_2_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_2_0.png"
-    },
-    "ex10_haze_big_2_2_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_2_1.png"
-    },
-    "ex10_haze_big_2_2_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_2_2.png"
-    },
-    "ex10_haze_big_2_2_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_2_3.png"
-    },
-    "ex10_haze_big_2_2_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_2_4.png"
-    },
-    "ex10_haze_big_2_2_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_2_5.png"
-    },
-    "ex10_haze_big_2_3_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_3_0.png"
-    },
-    "ex10_haze_big_2_3_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_3_1.png"
-    },
-    "ex10_haze_big_2_3_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_3_2.png"
-    },
-    "ex10_haze_big_2_3_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_3_3.png"
-    },
-    "ex10_haze_big_2_3_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_3_4.png"
-    },
-    "ex10_haze_big_2_3_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_3_5.png"
-    },
-    "ex10_haze_big_2_4_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_4_0.png"
-    },
-    "ex10_haze_big_2_4_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_4_1.png"
-    },
-    "ex10_haze_big_2_4_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_4_2.png"
-    },
-    "ex10_haze_big_2_4_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_4_3.png"
-    },
-    "ex10_haze_big_2_4_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_4_4.png"
-    },
-    "ex10_haze_big_2_4_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_4_5.png"
-    },
-    "ex10_haze_big_2_5_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_5_0.png"
-    },
-    "ex10_haze_big_2_5_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_5_1.png"
-    },
-    "ex10_haze_big_2_5_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_5_2.png"
-    },
-    "ex10_haze_big_2_5_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_5_3.png"
-    },
-    "ex10_haze_big_2_5_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_5_4.png"
-    },
-    "ex10_haze_big_2_5_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_5_5.png"
-    },
-    "ex10_haze_big_2_6_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_6_0.png"
-    },
-    "ex10_haze_big_2_6_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_6_1.png"
-    },
-    "ex10_haze_big_2_6_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_6_2.png"
-    },
-    "ex10_haze_big_2_6_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_6_3.png"
-    },
-    "ex10_haze_big_2_6_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_6_4.png"
-    },
-    "ex10_haze_big_2_6_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_6_5.png"
-    },
-    "ex10_haze_big_2_7_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_7_0.png"
-    },
-    "ex10_haze_big_2_7_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_7_1.png"
-    },
-    "ex10_haze_big_2_7_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_7_2.png"
-    },
-    "ex10_haze_big_2_7_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_7_3.png"
-    },
-    "ex10_haze_big_2_7_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_7_4.png"
-    },
-    "ex10_haze_big_2_7_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_7_5.png"
-    },
-    "ex10_haze_big_2_8_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_8_0.png"
-    },
-    "ex10_haze_big_2_8_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_8_1.png"
-    },
-    "ex10_haze_big_2_8_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_8_2.png"
-    },
-    "ex10_haze_big_2_8_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_8_3.png"
-    },
-    "ex10_haze_big_2_8_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_8_4.png"
-    },
-    "ex10_haze_big_2_8_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_8_5.png"
-    },
-    "ex10_haze_big_2_9_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_9_0.png"
-    },
-    "ex10_haze_big_2_9_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_9_1.png"
-    },
-    "ex10_haze_big_2_9_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_9_2.png"
-    },
-    "ex10_haze_big_2_9_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_9_3.png"
-    },
-    "ex10_haze_big_2_9_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_9_4.png"
-    },
-    "ex10_haze_big_2_9_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_big_2_9_5.png"
-    },
-    "ex10_haze_small_big_0_0_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_0_0.png"
-    },
-    "ex10_haze_small_big_0_0_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_0_1.png"
-    },
-    "ex10_haze_small_big_0_0_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_0_2.png"
-    },
-    "ex10_haze_small_big_0_0_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_0_3.png"
-    },
-    "ex10_haze_small_big_0_0_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_0_4.png"
-    },
-    "ex10_haze_small_big_0_0_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_0_5.png"
-    },
-    "ex10_haze_small_big_0_1_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_1_0.png"
-    },
-    "ex10_haze_small_big_0_1_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_1_1.png"
-    },
-    "ex10_haze_small_big_0_1_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_1_2.png"
-    },
-    "ex10_haze_small_big_0_1_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_1_3.png"
-    },
-    "ex10_haze_small_big_0_1_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_1_4.png"
-    },
-    "ex10_haze_small_big_0_1_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_1_5.png"
-    },
-    "ex10_haze_small_big_0_2_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_2_0.png"
-    },
-    "ex10_haze_small_big_0_2_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_2_1.png"
-    },
-    "ex10_haze_small_big_0_2_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_2_2.png"
-    },
-    "ex10_haze_small_big_0_2_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_2_3.png"
-    },
-    "ex10_haze_small_big_0_2_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_2_4.png"
-    },
-    "ex10_haze_small_big_0_2_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_0_2_5.png"
-    },
-    "ex10_haze_small_big_1_0_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_0_0.png"
-    },
-    "ex10_haze_small_big_1_0_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_0_1.png"
-    },
-    "ex10_haze_small_big_1_0_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_0_2.png"
-    },
-    "ex10_haze_small_big_1_0_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_0_3.png"
-    },
-    "ex10_haze_small_big_1_0_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_0_4.png"
-    },
-    "ex10_haze_small_big_1_0_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_0_5.png"
-    },
-    "ex10_haze_small_big_1_1_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_1_0.png"
-    },
-    "ex10_haze_small_big_1_1_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_1_1.png"
-    },
-    "ex10_haze_small_big_1_1_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_1_2.png"
-    },
-    "ex10_haze_small_big_1_1_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_1_3.png"
-    },
-    "ex10_haze_small_big_1_1_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_1_4.png"
-    },
-    "ex10_haze_small_big_1_1_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_1_5.png"
-    },
-    "ex10_haze_small_big_1_2_0": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_2_0.png"
-    },
-    "ex10_haze_small_big_1_2_1": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_2_1.png"
-    },
-    "ex10_haze_small_big_1_2_2": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_2_2.png"
-    },
-    "ex10_haze_small_big_1_2_3": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_2_3.png"
-    },
-    "ex10_haze_small_big_1_2_4": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_2_4.png"
-    },
-    "ex10_haze_small_big_1_2_5": {
-      "filter": "nearest",
-      "path": "sprites/haze_small_big_1_2_5.png"
-    },
-    "ex10_headframe_big_0_0": {
-      "emissive_mask": "sprites/headframe_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/headframe_big_0_0_n.png",
-      "path": "sprites/headframe_big_0_0.png"
-    },
-    "ex10_headframe_big_0_1": {
-      "emissive_mask": "sprites/headframe_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/headframe_big_0_1_n.png",
-      "path": "sprites/headframe_big_0_1.png"
-    },
-    "ex10_headframe_big_1_0": {
-      "emissive_mask": "sprites/headframe_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/headframe_big_1_0_n.png",
-      "path": "sprites/headframe_big_1_0.png"
-    },
-    "ex10_headframe_big_1_1": {
-      "emissive_mask": "sprites/headframe_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/headframe_big_1_1_n.png",
-      "path": "sprites/headframe_big_1_1.png"
-    },
-    "ex10_headframe_big_2_0": {
-      "emissive_mask": "sprites/headframe_big_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/headframe_big_2_0_n.png",
-      "path": "sprites/headframe_big_2_0.png"
-    },
-    "ex10_headframe_big_2_1": {
-      "emissive_mask": "sprites/headframe_big_2_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/headframe_big_2_1_n.png",
-      "path": "sprites/headframe_big_2_1.png"
+      "normal_map": "sprites/headframe_big_n.png",
+      "path": "sprites/headframe_big.png"
     },
     "ex10_health_orb": {
       "filter": "nearest",
@@ -11414,29 +9667,11 @@
       "normal_map": "sprites/lavafall_3_n.png",
       "path": "sprites/lavafall_3.png"
     },
-    "ex10_lean_to_big_0_0": {
-      "emissive_mask": "sprites/lean_to_big_0_0_e.png",
+    "ex10_lean_to_big": {
+      "emissive_mask": "sprites/lean_to_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/lean_to_big_0_0_n.png",
-      "path": "sprites/lean_to_big_0_0.png"
-    },
-    "ex10_lean_to_big_0_1": {
-      "emissive_mask": "sprites/lean_to_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lean_to_big_0_1_n.png",
-      "path": "sprites/lean_to_big_0_1.png"
-    },
-    "ex10_lean_to_big_1_0": {
-      "emissive_mask": "sprites/lean_to_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lean_to_big_1_0_n.png",
-      "path": "sprites/lean_to_big_1_0.png"
-    },
-    "ex10_lean_to_big_1_1": {
-      "emissive_mask": "sprites/lean_to_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lean_to_big_1_1_n.png",
-      "path": "sprites/lean_to_big_1_1.png"
+      "normal_map": "sprites/lean_to_big_n.png",
+      "path": "sprites/lean_to_big.png"
     },
     "ex10_ledge": {
       "emissive_mask": "sprites/ledge_e.png",
@@ -11486,71 +9721,17 @@
       "normal_map": "sprites/lift_deck_elevator_n.png",
       "path": "sprites/lift_deck_elevator.png"
     },
-    "ex10_lift_gantry_big_0_0": {
-      "emissive_mask": "sprites/lift_gantry_big_0_0_e.png",
+    "ex10_lift_gantry_big": {
+      "emissive_mask": "sprites/lift_gantry_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/lift_gantry_big_0_0_n.png",
-      "path": "sprites/lift_gantry_big_0_0.png"
+      "normal_map": "sprites/lift_gantry_big_n.png",
+      "path": "sprites/lift_gantry_big.png"
     },
-    "ex10_lift_gantry_big_0_1": {
-      "emissive_mask": "sprites/lift_gantry_big_0_1_e.png",
+    "ex10_lily_pads_big": {
+      "emissive_mask": "sprites/lily_pads_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/lift_gantry_big_0_1_n.png",
-      "path": "sprites/lift_gantry_big_0_1.png"
-    },
-    "ex10_lift_gantry_big_0_2": {
-      "emissive_mask": "sprites/lift_gantry_big_0_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lift_gantry_big_0_2_n.png",
-      "path": "sprites/lift_gantry_big_0_2.png"
-    },
-    "ex10_lift_gantry_big_1_0": {
-      "emissive_mask": "sprites/lift_gantry_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lift_gantry_big_1_0_n.png",
-      "path": "sprites/lift_gantry_big_1_0.png"
-    },
-    "ex10_lift_gantry_big_1_1": {
-      "emissive_mask": "sprites/lift_gantry_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lift_gantry_big_1_1_n.png",
-      "path": "sprites/lift_gantry_big_1_1.png"
-    },
-    "ex10_lift_gantry_big_1_2": {
-      "emissive_mask": "sprites/lift_gantry_big_1_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lift_gantry_big_1_2_n.png",
-      "path": "sprites/lift_gantry_big_1_2.png"
-    },
-    "ex10_lift_gantry_big_2_0": {
-      "emissive_mask": "sprites/lift_gantry_big_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lift_gantry_big_2_0_n.png",
-      "path": "sprites/lift_gantry_big_2_0.png"
-    },
-    "ex10_lift_gantry_big_2_1": {
-      "emissive_mask": "sprites/lift_gantry_big_2_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lift_gantry_big_2_1_n.png",
-      "path": "sprites/lift_gantry_big_2_1.png"
-    },
-    "ex10_lift_gantry_big_2_2": {
-      "emissive_mask": "sprites/lift_gantry_big_2_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lift_gantry_big_2_2_n.png",
-      "path": "sprites/lift_gantry_big_2_2.png"
-    },
-    "ex10_lily_pads_big_0_0": {
-      "emissive_mask": "sprites/lily_pads_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lily_pads_big_0_0_n.png",
-      "path": "sprites/lily_pads_big_0_0.png"
-    },
-    "ex10_lily_pads_big_0_1": {
-      "emissive_mask": "sprites/lily_pads_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/lily_pads_big_0_1_n.png",
-      "path": "sprites/lily_pads_big_0_1.png"
+      "normal_map": "sprites/lily_pads_big_n.png",
+      "path": "sprites/lily_pads_big.png"
     },
     "ex10_log_pile": {
       "emissive_mask": "sprites/log_pile_e.png",
@@ -12040,59 +10221,11 @@
       "filter": "nearest",
       "path": "sprites/near_woodland.png"
     },
-    "ex10_oak_big_0_0": {
-      "emissive_mask": "sprites/oak_big_0_0_e.png",
+    "ex10_oak_big": {
+      "emissive_mask": "sprites/oak_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/oak_big_0_0_n.png",
-      "path": "sprites/oak_big_0_0.png"
-    },
-    "ex10_oak_big_0_1": {
-      "emissive_mask": "sprites/oak_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/oak_big_0_1_n.png",
-      "path": "sprites/oak_big_0_1.png"
-    },
-    "ex10_oak_big_0_2": {
-      "emissive_mask": "sprites/oak_big_0_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/oak_big_0_2_n.png",
-      "path": "sprites/oak_big_0_2.png"
-    },
-    "ex10_oak_big_1_0": {
-      "emissive_mask": "sprites/oak_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/oak_big_1_0_n.png",
-      "path": "sprites/oak_big_1_0.png"
-    },
-    "ex10_oak_big_1_1": {
-      "emissive_mask": "sprites/oak_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/oak_big_1_1_n.png",
-      "path": "sprites/oak_big_1_1.png"
-    },
-    "ex10_oak_big_1_2": {
-      "emissive_mask": "sprites/oak_big_1_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/oak_big_1_2_n.png",
-      "path": "sprites/oak_big_1_2.png"
-    },
-    "ex10_oak_big_2_0": {
-      "emissive_mask": "sprites/oak_big_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/oak_big_2_0_n.png",
-      "path": "sprites/oak_big_2_0.png"
-    },
-    "ex10_oak_big_2_1": {
-      "emissive_mask": "sprites/oak_big_2_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/oak_big_2_1_n.png",
-      "path": "sprites/oak_big_2_1.png"
-    },
-    "ex10_oak_big_2_2": {
-      "emissive_mask": "sprites/oak_big_2_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/oak_big_2_2_n.png",
-      "path": "sprites/oak_big_2_2.png"
+      "normal_map": "sprites/oak_big_n.png",
+      "path": "sprites/oak_big.png"
     },
     "ex10_obsidian": {
       "emissive_mask": "sprites/obsidian_e.png",
@@ -12106,17 +10239,11 @@
       "normal_map": "sprites/obsidian_rubble_n.png",
       "path": "sprites/obsidian_rubble.png"
     },
-    "ex10_ore_heap_big_0_0": {
-      "emissive_mask": "sprites/ore_heap_big_0_0_e.png",
+    "ex10_ore_heap_big": {
+      "emissive_mask": "sprites/ore_heap_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/ore_heap_big_0_0_n.png",
-      "path": "sprites/ore_heap_big_0_0.png"
-    },
-    "ex10_ore_heap_big_0_1": {
-      "emissive_mask": "sprites/ore_heap_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/ore_heap_big_0_1_n.png",
-      "path": "sprites/ore_heap_big_0_1.png"
+      "normal_map": "sprites/ore_heap_big_n.png",
+      "path": "sprites/ore_heap_big.png"
     },
     "ex10_parapet_0": {
       "emissive_mask": "sprites/parapet_0_e.png",
@@ -13232,365 +11359,29 @@
       "normal_map": "sprites/player_walk_9_left_n.png",
       "path": "sprites/player_walk_9_left.png"
     },
-    "ex10_plume_big_0_0_0": {
+    "ex10_plume_big_0": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_0_0.png"
+      "path": "sprites/plume_big_0.png"
     },
-    "ex10_plume_big_0_0_1": {
+    "ex10_plume_big_1": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_0_1.png"
+      "path": "sprites/plume_big_1.png"
     },
-    "ex10_plume_big_0_0_2": {
+    "ex10_plume_big_2": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_0_2.png"
+      "path": "sprites/plume_big_2.png"
     },
-    "ex10_plume_big_0_0_3": {
+    "ex10_plume_big_3": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_0_3.png"
+      "path": "sprites/plume_big_3.png"
     },
-    "ex10_plume_big_0_0_4": {
+    "ex10_plume_big_4": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_0_4.png"
+      "path": "sprites/plume_big_4.png"
     },
-    "ex10_plume_big_0_0_5": {
+    "ex10_plume_big_5": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_0_5.png"
-    },
-    "ex10_plume_big_0_1_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_1_0.png"
-    },
-    "ex10_plume_big_0_1_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_1_1.png"
-    },
-    "ex10_plume_big_0_1_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_1_2.png"
-    },
-    "ex10_plume_big_0_1_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_1_3.png"
-    },
-    "ex10_plume_big_0_1_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_1_4.png"
-    },
-    "ex10_plume_big_0_1_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_1_5.png"
-    },
-    "ex10_plume_big_0_2_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_2_0.png"
-    },
-    "ex10_plume_big_0_2_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_2_1.png"
-    },
-    "ex10_plume_big_0_2_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_2_2.png"
-    },
-    "ex10_plume_big_0_2_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_2_3.png"
-    },
-    "ex10_plume_big_0_2_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_2_4.png"
-    },
-    "ex10_plume_big_0_2_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_2_5.png"
-    },
-    "ex10_plume_big_0_3_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_3_0.png"
-    },
-    "ex10_plume_big_0_3_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_3_1.png"
-    },
-    "ex10_plume_big_0_3_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_3_2.png"
-    },
-    "ex10_plume_big_0_3_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_3_3.png"
-    },
-    "ex10_plume_big_0_3_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_3_4.png"
-    },
-    "ex10_plume_big_0_3_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_3_5.png"
-    },
-    "ex10_plume_big_0_4_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_4_0.png"
-    },
-    "ex10_plume_big_0_4_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_4_1.png"
-    },
-    "ex10_plume_big_0_4_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_4_2.png"
-    },
-    "ex10_plume_big_0_4_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_4_3.png"
-    },
-    "ex10_plume_big_0_4_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_4_4.png"
-    },
-    "ex10_plume_big_0_4_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_0_4_5.png"
-    },
-    "ex10_plume_big_1_0_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_0_0.png"
-    },
-    "ex10_plume_big_1_0_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_0_1.png"
-    },
-    "ex10_plume_big_1_0_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_0_2.png"
-    },
-    "ex10_plume_big_1_0_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_0_3.png"
-    },
-    "ex10_plume_big_1_0_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_0_4.png"
-    },
-    "ex10_plume_big_1_0_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_0_5.png"
-    },
-    "ex10_plume_big_1_1_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_1_0.png"
-    },
-    "ex10_plume_big_1_1_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_1_1.png"
-    },
-    "ex10_plume_big_1_1_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_1_2.png"
-    },
-    "ex10_plume_big_1_1_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_1_3.png"
-    },
-    "ex10_plume_big_1_1_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_1_4.png"
-    },
-    "ex10_plume_big_1_1_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_1_5.png"
-    },
-    "ex10_plume_big_1_2_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_2_0.png"
-    },
-    "ex10_plume_big_1_2_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_2_1.png"
-    },
-    "ex10_plume_big_1_2_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_2_2.png"
-    },
-    "ex10_plume_big_1_2_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_2_3.png"
-    },
-    "ex10_plume_big_1_2_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_2_4.png"
-    },
-    "ex10_plume_big_1_2_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_2_5.png"
-    },
-    "ex10_plume_big_1_3_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_3_0.png"
-    },
-    "ex10_plume_big_1_3_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_3_1.png"
-    },
-    "ex10_plume_big_1_3_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_3_2.png"
-    },
-    "ex10_plume_big_1_3_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_3_3.png"
-    },
-    "ex10_plume_big_1_3_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_3_4.png"
-    },
-    "ex10_plume_big_1_3_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_3_5.png"
-    },
-    "ex10_plume_big_1_4_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_4_0.png"
-    },
-    "ex10_plume_big_1_4_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_4_1.png"
-    },
-    "ex10_plume_big_1_4_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_4_2.png"
-    },
-    "ex10_plume_big_1_4_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_4_3.png"
-    },
-    "ex10_plume_big_1_4_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_4_4.png"
-    },
-    "ex10_plume_big_1_4_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_1_4_5.png"
-    },
-    "ex10_plume_big_2_0_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_0_0.png"
-    },
-    "ex10_plume_big_2_0_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_0_1.png"
-    },
-    "ex10_plume_big_2_0_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_0_2.png"
-    },
-    "ex10_plume_big_2_0_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_0_3.png"
-    },
-    "ex10_plume_big_2_0_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_0_4.png"
-    },
-    "ex10_plume_big_2_0_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_0_5.png"
-    },
-    "ex10_plume_big_2_1_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_1_0.png"
-    },
-    "ex10_plume_big_2_1_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_1_1.png"
-    },
-    "ex10_plume_big_2_1_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_1_2.png"
-    },
-    "ex10_plume_big_2_1_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_1_3.png"
-    },
-    "ex10_plume_big_2_1_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_1_4.png"
-    },
-    "ex10_plume_big_2_1_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_1_5.png"
-    },
-    "ex10_plume_big_2_2_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_2_0.png"
-    },
-    "ex10_plume_big_2_2_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_2_1.png"
-    },
-    "ex10_plume_big_2_2_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_2_2.png"
-    },
-    "ex10_plume_big_2_2_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_2_3.png"
-    },
-    "ex10_plume_big_2_2_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_2_4.png"
-    },
-    "ex10_plume_big_2_2_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_2_5.png"
-    },
-    "ex10_plume_big_2_3_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_3_0.png"
-    },
-    "ex10_plume_big_2_3_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_3_1.png"
-    },
-    "ex10_plume_big_2_3_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_3_2.png"
-    },
-    "ex10_plume_big_2_3_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_3_3.png"
-    },
-    "ex10_plume_big_2_3_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_3_4.png"
-    },
-    "ex10_plume_big_2_3_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_3_5.png"
-    },
-    "ex10_plume_big_2_4_0": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_4_0.png"
-    },
-    "ex10_plume_big_2_4_1": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_4_1.png"
-    },
-    "ex10_plume_big_2_4_2": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_4_2.png"
-    },
-    "ex10_plume_big_2_4_3": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_4_3.png"
-    },
-    "ex10_plume_big_2_4_4": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_4_4.png"
-    },
-    "ex10_plume_big_2_4_5": {
-      "filter": "nearest",
-      "path": "sprites/plume_big_2_4_5.png"
+      "path": "sprites/plume_big_5.png"
     },
     "ex10_pool_0": {
       "emissive_mask": "sprites/pool_0_e.png",
@@ -13616,77 +11407,29 @@
       "normal_map": "sprites/pool_3_n.png",
       "path": "sprites/pool_3.png"
     },
-    "ex10_pool_basin_big_0_0_0": {
-      "emissive_mask": "sprites/pool_basin_big_0_0_0_e.png",
+    "ex10_pool_basin_big_0": {
+      "emissive_mask": "sprites/pool_basin_big_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_0_0_n.png",
-      "path": "sprites/pool_basin_big_0_0_0.png"
+      "normal_map": "sprites/pool_basin_big_0_n.png",
+      "path": "sprites/pool_basin_big_0.png"
     },
-    "ex10_pool_basin_big_0_0_1": {
-      "emissive_mask": "sprites/pool_basin_big_0_0_1_e.png",
+    "ex10_pool_basin_big_1": {
+      "emissive_mask": "sprites/pool_basin_big_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_0_1_n.png",
-      "path": "sprites/pool_basin_big_0_0_1.png"
+      "normal_map": "sprites/pool_basin_big_1_n.png",
+      "path": "sprites/pool_basin_big_1.png"
     },
-    "ex10_pool_basin_big_0_0_2": {
-      "emissive_mask": "sprites/pool_basin_big_0_0_2_e.png",
+    "ex10_pool_basin_big_2": {
+      "emissive_mask": "sprites/pool_basin_big_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_0_2_n.png",
-      "path": "sprites/pool_basin_big_0_0_2.png"
+      "normal_map": "sprites/pool_basin_big_2_n.png",
+      "path": "sprites/pool_basin_big_2.png"
     },
-    "ex10_pool_basin_big_0_0_3": {
-      "emissive_mask": "sprites/pool_basin_big_0_0_3_e.png",
+    "ex10_pool_basin_big_3": {
+      "emissive_mask": "sprites/pool_basin_big_3_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_0_3_n.png",
-      "path": "sprites/pool_basin_big_0_0_3.png"
-    },
-    "ex10_pool_basin_big_0_1_0": {
-      "emissive_mask": "sprites/pool_basin_big_0_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_1_0_n.png",
-      "path": "sprites/pool_basin_big_0_1_0.png"
-    },
-    "ex10_pool_basin_big_0_1_1": {
-      "emissive_mask": "sprites/pool_basin_big_0_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_1_1_n.png",
-      "path": "sprites/pool_basin_big_0_1_1.png"
-    },
-    "ex10_pool_basin_big_0_1_2": {
-      "emissive_mask": "sprites/pool_basin_big_0_1_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_1_2_n.png",
-      "path": "sprites/pool_basin_big_0_1_2.png"
-    },
-    "ex10_pool_basin_big_0_1_3": {
-      "emissive_mask": "sprites/pool_basin_big_0_1_3_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_1_3_n.png",
-      "path": "sprites/pool_basin_big_0_1_3.png"
-    },
-    "ex10_pool_basin_big_0_2_0": {
-      "emissive_mask": "sprites/pool_basin_big_0_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_2_0_n.png",
-      "path": "sprites/pool_basin_big_0_2_0.png"
-    },
-    "ex10_pool_basin_big_0_2_1": {
-      "emissive_mask": "sprites/pool_basin_big_0_2_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_2_1_n.png",
-      "path": "sprites/pool_basin_big_0_2_1.png"
-    },
-    "ex10_pool_basin_big_0_2_2": {
-      "emissive_mask": "sprites/pool_basin_big_0_2_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_2_2_n.png",
-      "path": "sprites/pool_basin_big_0_2_2.png"
-    },
-    "ex10_pool_basin_big_0_2_3": {
-      "emissive_mask": "sprites/pool_basin_big_0_2_3_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_basin_big_0_2_3_n.png",
-      "path": "sprites/pool_basin_big_0_2_3.png"
+      "normal_map": "sprites/pool_basin_big_3_n.png",
+      "path": "sprites/pool_basin_big_3.png"
     },
     "ex10_pool_edge_left_0": {
       "emissive_mask": "sprites/pool_edge_left_0_e.png",
@@ -13748,125 +11491,29 @@
       "normal_map": "sprites/pool_rocks_1_n.png",
       "path": "sprites/pool_rocks_1.png"
     },
-    "ex10_pool_shore_big_0_1_0": {
-      "emissive_mask": "sprites/pool_shore_big_0_1_0_e.png",
+    "ex10_pool_shore_big_0": {
+      "emissive_mask": "sprites/pool_shore_big_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_0_1_0_n.png",
-      "path": "sprites/pool_shore_big_0_1_0.png"
+      "normal_map": "sprites/pool_shore_big_0_n.png",
+      "path": "sprites/pool_shore_big_0.png"
     },
-    "ex10_pool_shore_big_0_1_1": {
-      "emissive_mask": "sprites/pool_shore_big_0_1_1_e.png",
+    "ex10_pool_shore_big_1": {
+      "emissive_mask": "sprites/pool_shore_big_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_0_1_1_n.png",
-      "path": "sprites/pool_shore_big_0_1_1.png"
+      "normal_map": "sprites/pool_shore_big_1_n.png",
+      "path": "sprites/pool_shore_big_1.png"
     },
-    "ex10_pool_shore_big_0_1_2": {
-      "emissive_mask": "sprites/pool_shore_big_0_1_2_e.png",
+    "ex10_pool_shore_big_2": {
+      "emissive_mask": "sprites/pool_shore_big_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_0_1_2_n.png",
-      "path": "sprites/pool_shore_big_0_1_2.png"
+      "normal_map": "sprites/pool_shore_big_2_n.png",
+      "path": "sprites/pool_shore_big_2.png"
     },
-    "ex10_pool_shore_big_0_1_3": {
-      "emissive_mask": "sprites/pool_shore_big_0_1_3_e.png",
+    "ex10_pool_shore_big_3": {
+      "emissive_mask": "sprites/pool_shore_big_3_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_0_1_3_n.png",
-      "path": "sprites/pool_shore_big_0_1_3.png"
-    },
-    "ex10_pool_shore_big_0_2_0": {
-      "emissive_mask": "sprites/pool_shore_big_0_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_0_2_0_n.png",
-      "path": "sprites/pool_shore_big_0_2_0.png"
-    },
-    "ex10_pool_shore_big_0_2_1": {
-      "emissive_mask": "sprites/pool_shore_big_0_2_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_0_2_1_n.png",
-      "path": "sprites/pool_shore_big_0_2_1.png"
-    },
-    "ex10_pool_shore_big_0_2_2": {
-      "emissive_mask": "sprites/pool_shore_big_0_2_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_0_2_2_n.png",
-      "path": "sprites/pool_shore_big_0_2_2.png"
-    },
-    "ex10_pool_shore_big_0_2_3": {
-      "emissive_mask": "sprites/pool_shore_big_0_2_3_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_0_2_3_n.png",
-      "path": "sprites/pool_shore_big_0_2_3.png"
-    },
-    "ex10_pool_shore_big_1_0_0": {
-      "emissive_mask": "sprites/pool_shore_big_1_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_0_0_n.png",
-      "path": "sprites/pool_shore_big_1_0_0.png"
-    },
-    "ex10_pool_shore_big_1_0_1": {
-      "emissive_mask": "sprites/pool_shore_big_1_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_0_1_n.png",
-      "path": "sprites/pool_shore_big_1_0_1.png"
-    },
-    "ex10_pool_shore_big_1_0_2": {
-      "emissive_mask": "sprites/pool_shore_big_1_0_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_0_2_n.png",
-      "path": "sprites/pool_shore_big_1_0_2.png"
-    },
-    "ex10_pool_shore_big_1_0_3": {
-      "emissive_mask": "sprites/pool_shore_big_1_0_3_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_0_3_n.png",
-      "path": "sprites/pool_shore_big_1_0_3.png"
-    },
-    "ex10_pool_shore_big_1_1_0": {
-      "emissive_mask": "sprites/pool_shore_big_1_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_1_0_n.png",
-      "path": "sprites/pool_shore_big_1_1_0.png"
-    },
-    "ex10_pool_shore_big_1_1_1": {
-      "emissive_mask": "sprites/pool_shore_big_1_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_1_1_n.png",
-      "path": "sprites/pool_shore_big_1_1_1.png"
-    },
-    "ex10_pool_shore_big_1_1_2": {
-      "emissive_mask": "sprites/pool_shore_big_1_1_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_1_2_n.png",
-      "path": "sprites/pool_shore_big_1_1_2.png"
-    },
-    "ex10_pool_shore_big_1_1_3": {
-      "emissive_mask": "sprites/pool_shore_big_1_1_3_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_1_3_n.png",
-      "path": "sprites/pool_shore_big_1_1_3.png"
-    },
-    "ex10_pool_shore_big_1_2_0": {
-      "emissive_mask": "sprites/pool_shore_big_1_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_2_0_n.png",
-      "path": "sprites/pool_shore_big_1_2_0.png"
-    },
-    "ex10_pool_shore_big_1_2_1": {
-      "emissive_mask": "sprites/pool_shore_big_1_2_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_2_1_n.png",
-      "path": "sprites/pool_shore_big_1_2_1.png"
-    },
-    "ex10_pool_shore_big_1_2_2": {
-      "emissive_mask": "sprites/pool_shore_big_1_2_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_2_2_n.png",
-      "path": "sprites/pool_shore_big_1_2_2.png"
-    },
-    "ex10_pool_shore_big_1_2_3": {
-      "emissive_mask": "sprites/pool_shore_big_1_2_3_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/pool_shore_big_1_2_3_n.png",
-      "path": "sprites/pool_shore_big_1_2_3.png"
+      "normal_map": "sprites/pool_shore_big_3_n.png",
+      "path": "sprites/pool_shore_big_3.png"
     },
     "ex10_pour_foot_0": {
       "emissive_mask": "sprites/pour_foot_0_e.png",
@@ -14328,65 +11975,23 @@
       "normal_map": "sprites/rock_chip_n.png",
       "path": "sprites/rock_chip.png"
     },
-    "ex10_roots_big_0_0": {
-      "emissive_mask": "sprites/roots_big_0_0_e.png",
+    "ex10_roots_big": {
+      "emissive_mask": "sprites/roots_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/roots_big_0_0_n.png",
-      "path": "sprites/roots_big_0_0.png"
+      "normal_map": "sprites/roots_big_n.png",
+      "path": "sprites/roots_big.png"
     },
-    "ex10_roots_big_0_1": {
-      "emissive_mask": "sprites/roots_big_0_1_e.png",
+    "ex10_rope_bucket_big": {
+      "emissive_mask": "sprites/rope_bucket_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/roots_big_0_1_n.png",
-      "path": "sprites/roots_big_0_1.png"
+      "normal_map": "sprites/rope_bucket_big_n.png",
+      "path": "sprites/rope_bucket_big.png"
     },
-    "ex10_roots_big_0_2": {
-      "emissive_mask": "sprites/roots_big_0_2_e.png",
+    "ex10_rope_ladder_big": {
+      "emissive_mask": "sprites/rope_ladder_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/roots_big_0_2_n.png",
-      "path": "sprites/roots_big_0_2.png"
-    },
-    "ex10_roots_big_1_0": {
-      "emissive_mask": "sprites/roots_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/roots_big_1_0_n.png",
-      "path": "sprites/roots_big_1_0.png"
-    },
-    "ex10_roots_big_1_1": {
-      "emissive_mask": "sprites/roots_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/roots_big_1_1_n.png",
-      "path": "sprites/roots_big_1_1.png"
-    },
-    "ex10_roots_big_1_2": {
-      "emissive_mask": "sprites/roots_big_1_2_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/roots_big_1_2_n.png",
-      "path": "sprites/roots_big_1_2.png"
-    },
-    "ex10_rope_bucket_big_0_0": {
-      "emissive_mask": "sprites/rope_bucket_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/rope_bucket_big_0_0_n.png",
-      "path": "sprites/rope_bucket_big_0_0.png"
-    },
-    "ex10_rope_bucket_big_1_0": {
-      "emissive_mask": "sprites/rope_bucket_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/rope_bucket_big_1_0_n.png",
-      "path": "sprites/rope_bucket_big_1_0.png"
-    },
-    "ex10_rope_ladder_big_0_0": {
-      "emissive_mask": "sprites/rope_ladder_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/rope_ladder_big_0_0_n.png",
-      "path": "sprites/rope_ladder_big_0_0.png"
-    },
-    "ex10_rope_ladder_big_1_0": {
-      "emissive_mask": "sprites/rope_ladder_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/rope_ladder_big_1_0_n.png",
-      "path": "sprites/rope_ladder_big_1_0.png"
+      "normal_map": "sprites/rope_ladder_big_n.png",
+      "path": "sprites/rope_ladder_big.png"
     },
     "ex10_rubble": {
       "emissive_mask": "sprites/rubble_e.png",
@@ -14394,29 +11999,17 @@
       "normal_map": "sprites/rubble_n.png",
       "path": "sprites/rubble.png"
     },
-    "ex10_rubble_pile_0_big_0_0": {
-      "emissive_mask": "sprites/rubble_pile_0_big_0_0_e.png",
+    "ex10_rubble_pile_0_big": {
+      "emissive_mask": "sprites/rubble_pile_0_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/rubble_pile_0_big_0_0_n.png",
-      "path": "sprites/rubble_pile_0_big_0_0.png"
+      "normal_map": "sprites/rubble_pile_0_big_n.png",
+      "path": "sprites/rubble_pile_0_big.png"
     },
-    "ex10_rubble_pile_0_big_0_1": {
-      "emissive_mask": "sprites/rubble_pile_0_big_0_1_e.png",
+    "ex10_rubble_pile_1_big": {
+      "emissive_mask": "sprites/rubble_pile_1_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/rubble_pile_0_big_0_1_n.png",
-      "path": "sprites/rubble_pile_0_big_0_1.png"
-    },
-    "ex10_rubble_pile_1_big_0_0": {
-      "emissive_mask": "sprites/rubble_pile_1_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/rubble_pile_1_big_0_0_n.png",
-      "path": "sprites/rubble_pile_1_big_0_0.png"
-    },
-    "ex10_rubble_pile_1_big_0_1": {
-      "emissive_mask": "sprites/rubble_pile_1_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/rubble_pile_1_big_0_1_n.png",
-      "path": "sprites/rubble_pile_1_big_0_1.png"
+      "normal_map": "sprites/rubble_pile_1_big_n.png",
+      "path": "sprites/rubble_pile_1_big.png"
     },
     "ex10_scorch": {
       "emissive_mask": "sprites/scorch_e.png",
@@ -14446,17 +12039,11 @@
       "normal_map": "sprites/signpost_n.png",
       "path": "sprites/signpost.png"
     },
-    "ex10_skull_pike_big_0_0": {
-      "emissive_mask": "sprites/skull_pike_big_0_0_e.png",
+    "ex10_skull_pike_big": {
+      "emissive_mask": "sprites/skull_pike_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/skull_pike_big_0_0_n.png",
-      "path": "sprites/skull_pike_big_0_0.png"
-    },
-    "ex10_skull_pike_big_1_0": {
-      "emissive_mask": "sprites/skull_pike_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/skull_pike_big_1_0_n.png",
-      "path": "sprites/skull_pike_big_1_0.png"
+      "normal_map": "sprites/skull_pike_big_n.png",
+      "path": "sprites/skull_pike_big.png"
     },
     "ex10_sky": {
       "filter": "nearest",
@@ -14672,41 +12259,23 @@
       "normal_map": "sprites/spill_right_2_3_n.png",
       "path": "sprites/spill_right_2_3.png"
     },
-    "ex10_splash_rocks_0_big_0_0": {
-      "emissive_mask": "sprites/splash_rocks_0_big_0_0_e.png",
+    "ex10_splash_rocks_0_big": {
+      "emissive_mask": "sprites/splash_rocks_0_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/splash_rocks_0_big_0_0_n.png",
-      "path": "sprites/splash_rocks_0_big_0_0.png"
+      "normal_map": "sprites/splash_rocks_0_big_n.png",
+      "path": "sprites/splash_rocks_0_big.png"
     },
-    "ex10_splash_rocks_0_big_0_1": {
-      "emissive_mask": "sprites/splash_rocks_0_big_0_1_e.png",
+    "ex10_splash_rocks_1_big": {
+      "emissive_mask": "sprites/splash_rocks_1_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/splash_rocks_0_big_0_1_n.png",
-      "path": "sprites/splash_rocks_0_big_0_1.png"
+      "normal_map": "sprites/splash_rocks_1_big_n.png",
+      "path": "sprites/splash_rocks_1_big.png"
     },
-    "ex10_splash_rocks_1_big_0_0": {
-      "emissive_mask": "sprites/splash_rocks_1_big_0_0_e.png",
+    "ex10_spoil_heap_big": {
+      "emissive_mask": "sprites/spoil_heap_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/splash_rocks_1_big_0_0_n.png",
-      "path": "sprites/splash_rocks_1_big_0_0.png"
-    },
-    "ex10_splash_rocks_1_big_0_1": {
-      "emissive_mask": "sprites/splash_rocks_1_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/splash_rocks_1_big_0_1_n.png",
-      "path": "sprites/splash_rocks_1_big_0_1.png"
-    },
-    "ex10_spoil_heap_big_0_0": {
-      "emissive_mask": "sprites/spoil_heap_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/spoil_heap_big_0_0_n.png",
-      "path": "sprites/spoil_heap_big_0_0.png"
-    },
-    "ex10_spoil_heap_big_0_1": {
-      "emissive_mask": "sprites/spoil_heap_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/spoil_heap_big_0_1_n.png",
-      "path": "sprites/spoil_heap_big_0_1.png"
+      "normal_map": "sprites/spoil_heap_big_n.png",
+      "path": "sprites/spoil_heap_big.png"
     },
     "ex10_stalactite_0": {
       "emissive_mask": "sprites/stalactite_0_e.png",
@@ -14774,41 +12343,11 @@
       "normal_map": "sprites/stalagmite_2_n.png",
       "path": "sprites/stalagmite_2.png"
     },
-    "ex10_statue_big_0_0": {
-      "emissive_mask": "sprites/statue_big_0_0_e.png",
+    "ex10_statue_big": {
+      "emissive_mask": "sprites/statue_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/statue_big_0_0_n.png",
-      "path": "sprites/statue_big_0_0.png"
-    },
-    "ex10_statue_big_0_1": {
-      "emissive_mask": "sprites/statue_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/statue_big_0_1_n.png",
-      "path": "sprites/statue_big_0_1.png"
-    },
-    "ex10_statue_big_1_0": {
-      "emissive_mask": "sprites/statue_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/statue_big_1_0_n.png",
-      "path": "sprites/statue_big_1_0.png"
-    },
-    "ex10_statue_big_1_1": {
-      "emissive_mask": "sprites/statue_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/statue_big_1_1_n.png",
-      "path": "sprites/statue_big_1_1.png"
-    },
-    "ex10_statue_big_2_0": {
-      "emissive_mask": "sprites/statue_big_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/statue_big_2_0_n.png",
-      "path": "sprites/statue_big_2_0.png"
-    },
-    "ex10_statue_big_2_1": {
-      "emissive_mask": "sprites/statue_big_2_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/statue_big_2_1_n.png",
-      "path": "sprites/statue_big_2_1.png"
+      "normal_map": "sprites/statue_big_n.png",
+      "path": "sprites/statue_big.png"
     },
     "ex10_status_crackle_large_0": {
       "filter": "nearest",
@@ -15060,17 +12599,11 @@
       "normal_map": "sprites/stump_n.png",
       "path": "sprites/stump.png"
     },
-    "ex10_timber_stack_big_0_0": {
-      "emissive_mask": "sprites/timber_stack_big_0_0_e.png",
+    "ex10_timber_stack_big": {
+      "emissive_mask": "sprites/timber_stack_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/timber_stack_big_0_0_n.png",
-      "path": "sprites/timber_stack_big_0_0.png"
-    },
-    "ex10_timber_stack_big_0_1": {
-      "emissive_mask": "sprites/timber_stack_big_0_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/timber_stack_big_0_1_n.png",
-      "path": "sprites/timber_stack_big_0_1.png"
+      "normal_map": "sprites/timber_stack_big_n.png",
+      "path": "sprites/timber_stack_big.png"
     },
     "ex10_timber_support": {
       "emissive_mask": "sprites/timber_support_e.png",
@@ -15082,41 +12615,17 @@
       "filter": "nearest",
       "path": "sprites/title_star.png"
     },
-    "ex10_toll_boom_big_0_0": {
-      "emissive_mask": "sprites/toll_boom_big_0_0_e.png",
+    "ex10_toll_boom_big": {
+      "emissive_mask": "sprites/toll_boom_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/toll_boom_big_0_0_n.png",
-      "path": "sprites/toll_boom_big_0_0.png"
+      "normal_map": "sprites/toll_boom_big_n.png",
+      "path": "sprites/toll_boom_big.png"
     },
-    "ex10_toll_boom_big_0_1": {
-      "emissive_mask": "sprites/toll_boom_big_0_1_e.png",
+    "ex10_toll_sign_big": {
+      "emissive_mask": "sprites/toll_sign_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/toll_boom_big_0_1_n.png",
-      "path": "sprites/toll_boom_big_0_1.png"
-    },
-    "ex10_toll_boom_big_1_0": {
-      "emissive_mask": "sprites/toll_boom_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/toll_boom_big_1_0_n.png",
-      "path": "sprites/toll_boom_big_1_0.png"
-    },
-    "ex10_toll_boom_big_1_1": {
-      "emissive_mask": "sprites/toll_boom_big_1_1_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/toll_boom_big_1_1_n.png",
-      "path": "sprites/toll_boom_big_1_1.png"
-    },
-    "ex10_toll_sign_big_0_0": {
-      "emissive_mask": "sprites/toll_sign_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/toll_sign_big_0_0_n.png",
-      "path": "sprites/toll_sign_big_0_0.png"
-    },
-    "ex10_toll_sign_big_1_0": {
-      "emissive_mask": "sprites/toll_sign_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/toll_sign_big_1_0_n.png",
-      "path": "sprites/toll_sign_big_1_0.png"
+      "normal_map": "sprites/toll_sign_big_n.png",
+      "path": "sprites/toll_sign_big.png"
     },
     "ex10_tome_arcane_idle_0": {
       "emissive_mask": "sprites/tome_arcane_idle_0_e.png",
@@ -15312,17 +12821,11 @@
       "filter": "nearest",
       "path": "sprites/tracer.png"
     },
-    "ex10_trestle_big_0_0": {
-      "emissive_mask": "sprites/trestle_big_0_0_e.png",
+    "ex10_trestle_big": {
+      "emissive_mask": "sprites/trestle_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/trestle_big_0_0_n.png",
-      "path": "sprites/trestle_big_0_0.png"
-    },
-    "ex10_trestle_big_1_0": {
-      "emissive_mask": "sprites/trestle_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/trestle_big_1_0_n.png",
-      "path": "sprites/trestle_big_1_0.png"
+      "normal_map": "sprites/trestle_big_n.png",
+      "path": "sprites/trestle_big.png"
     },
     "ex10_troll_armoured_idle_0": {
       "filter": "nearest",
@@ -16080,95 +13583,41 @@
       "normal_map": "sprites/under_right_n.png",
       "path": "sprites/under_right.png"
     },
-    "ex10_vine_0_big_0_0": {
-      "emissive_mask": "sprites/vine_0_big_0_0_e.png",
+    "ex10_vine_0_big": {
+      "emissive_mask": "sprites/vine_0_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/vine_0_big_0_0_n.png",
-      "path": "sprites/vine_0_big_0_0.png"
+      "normal_map": "sprites/vine_0_big_n.png",
+      "path": "sprites/vine_0_big.png"
     },
-    "ex10_vine_0_big_1_0": {
-      "emissive_mask": "sprites/vine_0_big_1_0_e.png",
+    "ex10_vine_1_big": {
+      "emissive_mask": "sprites/vine_1_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/vine_0_big_1_0_n.png",
-      "path": "sprites/vine_0_big_1_0.png"
+      "normal_map": "sprites/vine_1_big_n.png",
+      "path": "sprites/vine_1_big.png"
     },
-    "ex10_vine_1_big_0_0": {
-      "emissive_mask": "sprites/vine_1_big_0_0_e.png",
+    "ex10_vine_2_big": {
+      "emissive_mask": "sprites/vine_2_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/vine_1_big_0_0_n.png",
-      "path": "sprites/vine_1_big_0_0.png"
+      "normal_map": "sprites/vine_2_big_n.png",
+      "path": "sprites/vine_2_big.png"
     },
-    "ex10_vine_1_big_1_0": {
-      "emissive_mask": "sprites/vine_1_big_1_0_e.png",
+    "ex10_vine_curtain_0_big": {
+      "emissive_mask": "sprites/vine_curtain_0_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/vine_1_big_1_0_n.png",
-      "path": "sprites/vine_1_big_1_0.png"
+      "normal_map": "sprites/vine_curtain_0_big_n.png",
+      "path": "sprites/vine_curtain_0_big.png"
     },
-    "ex10_vine_1_big_2_0": {
-      "emissive_mask": "sprites/vine_1_big_2_0_e.png",
+    "ex10_vine_curtain_1_big": {
+      "emissive_mask": "sprites/vine_curtain_1_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/vine_1_big_2_0_n.png",
-      "path": "sprites/vine_1_big_2_0.png"
+      "normal_map": "sprites/vine_curtain_1_big_n.png",
+      "path": "sprites/vine_curtain_1_big.png"
     },
-    "ex10_vine_2_big_0_0": {
-      "emissive_mask": "sprites/vine_2_big_0_0_e.png",
+    "ex10_vine_curtain_2_big": {
+      "emissive_mask": "sprites/vine_curtain_2_big_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/vine_2_big_0_0_n.png",
-      "path": "sprites/vine_2_big_0_0.png"
-    },
-    "ex10_vine_2_big_1_0": {
-      "emissive_mask": "sprites/vine_2_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/vine_2_big_1_0_n.png",
-      "path": "sprites/vine_2_big_1_0.png"
-    },
-    "ex10_vine_curtain_0_big_0_0": {
-      "emissive_mask": "sprites/vine_curtain_0_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/vine_curtain_0_big_0_0_n.png",
-      "path": "sprites/vine_curtain_0_big_0_0.png"
-    },
-    "ex10_vine_curtain_0_big_1_0": {
-      "emissive_mask": "sprites/vine_curtain_0_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/vine_curtain_0_big_1_0_n.png",
-      "path": "sprites/vine_curtain_0_big_1_0.png"
-    },
-    "ex10_vine_curtain_0_big_2_0": {
-      "emissive_mask": "sprites/vine_curtain_0_big_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/vine_curtain_0_big_2_0_n.png",
-      "path": "sprites/vine_curtain_0_big_2_0.png"
-    },
-    "ex10_vine_curtain_1_big_0_0": {
-      "emissive_mask": "sprites/vine_curtain_1_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/vine_curtain_1_big_0_0_n.png",
-      "path": "sprites/vine_curtain_1_big_0_0.png"
-    },
-    "ex10_vine_curtain_1_big_1_0": {
-      "emissive_mask": "sprites/vine_curtain_1_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/vine_curtain_1_big_1_0_n.png",
-      "path": "sprites/vine_curtain_1_big_1_0.png"
-    },
-    "ex10_vine_curtain_2_big_0_0": {
-      "emissive_mask": "sprites/vine_curtain_2_big_0_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/vine_curtain_2_big_0_0_n.png",
-      "path": "sprites/vine_curtain_2_big_0_0.png"
-    },
-    "ex10_vine_curtain_2_big_1_0": {
-      "emissive_mask": "sprites/vine_curtain_2_big_1_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/vine_curtain_2_big_1_0_n.png",
-      "path": "sprites/vine_curtain_2_big_1_0.png"
-    },
-    "ex10_vine_curtain_2_big_2_0": {
-      "emissive_mask": "sprites/vine_curtain_2_big_2_0_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/vine_curtain_2_big_2_0_n.png",
-      "path": "sprites/vine_curtain_2_big_2_0.png"
+      "normal_map": "sprites/vine_curtain_2_big_n.png",
+      "path": "sprites/vine_curtain_2_big.png"
     },
     "ex10_vine_curtain_3": {
       "emissive_mask": "sprites/vine_curtain_3_e.png",

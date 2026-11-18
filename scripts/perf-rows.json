@@ -1469,7 +1469,7 @@
           "each": 64
         },
         "upload_bytes": {
-          "sum": 816192
+          "sum": 760032
         },
         "text_renders": {
           "each": 2
