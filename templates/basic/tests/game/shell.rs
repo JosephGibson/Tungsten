@@ -11,13 +11,13 @@ use tungsten::core::{
     InputState, KeyCode, SaveSlots, Schedule, Stage, Time, UserFolder, World, system,
 };
 use tungsten::kit::{Health, Hit, damage};
+use tungsten::screens::{CONFIRM, POP_SECS, RESET_SECS};
 use tungsten::testing::UiHarness;
 use tungsten::{Plugin, StateStack};
 use tungsten_template_basic::game;
 use tungsten_template_basic::sample::hud::Hud;
 use tungsten_template_basic::sample::{GEM_STARTS, PLAYER_START, SampleRun};
 use tungsten_template_basic::save::{self, SaveGame};
-use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::game_over::GAME_OVER;
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::pause::PAUSE;
@@ -1009,7 +1009,8 @@ fn menu_changes_take_their_times() {
     harness.tap_action("state_pause");
     assert_eq!(top(&harness), Some(PAUSE));
     assert!(tungsten_template_basic::shell::idle(harness.world()));
-    // A pop: the card fades out over 0.08 s, then the screen below acts.
+    // A pop: the card fades out over 0.08 s, then the stack pops it and the
+    // screen below acts the frame after.
     let resume = harness.find("Resume").unwrap();
     assert!(harness.focus(resume));
     harness.harness_mut().press_action("ui_accept");
@@ -1018,7 +1019,7 @@ fn menu_changes_take_their_times() {
     let pop = steps_to_idle(&mut harness);
     assert_eq!(top(&harness), Some(game::GAMEPLAY));
     assert!(
-        (pop as f32 * dt - theme::POP_SECS).abs() <= dt + 1e-4,
+        ((pop - 1) as f32 * dt - POP_SECS).abs() <= dt + 1e-4,
         "{pop} steps"
     );
     // A run change: the curtain's 0.24 s, from the question's Quit.
@@ -1031,7 +1032,7 @@ fn menu_changes_take_their_times() {
     harness.harness_mut().release_action("ui_accept");
     let run = steps_to_idle(&mut harness);
     assert_eq!(top(&harness), Some(TITLE));
-    let curtain = theme::CURTAIN_IN_SECS + theme::CURTAIN_OUT_SECS;
+    let curtain = RESET_SECS[0] + RESET_SECS[1];
     assert!(
         (run as f32 * dt - curtain).abs() <= dt + 1e-4,
         "{run} steps"
@@ -1049,23 +1050,21 @@ fn a_run_change_fades_through_the_curtain_and_autosaves_the_new_run_once() {
     harness.harness_mut().press_action("ui_accept");
     harness.step(1);
     harness.harness_mut().release_action("ui_accept");
-    let curtain = harness.front_modal().expect("the curtain");
-    let tree = harness.tree();
-    assert!(tree.children(curtain).is_empty(), "a bare root");
-    assert_eq!(
-        tree.resolved_style(curtain).unwrap().background,
-        tree.theme().tokens.colors.background,
-        "the theme's background"
-    );
+    // The fade: `tungsten::screens::reset`'s pass in the theme's background.
+    fn stack(harness: &UiHarness) -> &StateStack {
+        harness.world().resource::<StateStack>()
+    }
+    let background = harness.tree().theme().tokens.colors.background;
+    let background = background.map(|channel| f32::from(channel) / 255.0);
     let (mut peak, mut saves, mut written) = (0.0_f32, 0, None);
     for _ in 0..60 {
         harness.step(1);
-        let tree = harness.tree();
-        if !tree.contains(curtain) {
+        let Some(pass) = stack(&harness).transition_pass() else {
             break;
-        }
-        let opacity = tree.opacity(curtain).unwrap();
-        peak = peak.max(opacity);
+        };
+        let faded = matches!(pass, PostPass::Fade(fade) if fade.color == background);
+        assert!(faded, "the theme's background: {pass:?}");
+        peak = peak.max(stack(&harness).transition_cover());
         if top(&harness) == Some(TITLE) {
             assert!(
                 !slot_file(&dir, AUTOSAVES[0]).exists(),
@@ -1078,7 +1077,10 @@ fn a_run_change_fades_through_the_curtain_and_autosaves_the_new_run_once() {
             written = bytes;
         }
     }
-    assert!(!harness.tree().contains(curtain), "gone once faded");
+    assert!(
+        stack(&harness).transition_pass().is_none(),
+        "gone once faded"
+    );
     assert_eq!(peak, 1.0, "opaque at the swap");
     assert_eq!(top(&harness), Some(game::GAMEPLAY));
     harness.step(10);
@@ -1489,4 +1491,127 @@ fn game_over_plays_its_sting_and_music_until_the_run_ends() {
             .contains(&(music, theme::GAME_OVER_FADE)),
         "its music stops with the run"
     );
+}
+
+/// The game clock's elapsed game seconds.
+fn game_clock(harness: &UiHarness) -> f64 {
+    harness.world().resource::<Time>().elapsed()
+}
+
+/// Steps 10 frames and whether the game clock ran through them, neither
+/// held nor paused.
+fn clock_runs(harness: &mut UiHarness) -> bool {
+    let at = game_clock(harness);
+    harness.step(10);
+    let time = harness.world().resource::<Time>();
+    !time.is_held() && !time.is_paused() && game_clock(harness) > at
+}
+
+/// A run at Hard, started through the shell.
+fn start_hard(harness: &mut UiHarness) {
+    let difficulty = Difficulty::Hard;
+    let start = RunStart {
+        difficulty,
+        save: None,
+    };
+    tungsten_template_basic::shell::start_run(harness.world_mut(), start, None);
+}
+
+#[test]
+fn a_change_of_run_saves_the_old_run_whole_and_enters_with_its_run_state() {
+    let difficulty = |harness: &UiHarness| {
+        let run = harness.world().get_resource::<RunState>();
+        run.map(|run| run.difficulty)
+    };
+    // The frames from a change of run's request to its swap, measured.
+    let mut probe = harness();
+    start(&mut probe);
+    start_hard(&mut probe);
+    let mut swap = 0;
+    while difficulty(&probe) != Some(Difficulty::Hard) {
+        probe.step(1);
+        swap += 1;
+        assert!(swap < 60, "the swap never came");
+    }
+    // An autosave the old run asked for that first captures on the swap's
+    // frame, its player hidden until then.
+    let dir = user_folder("change-of-run-save");
+    let mut harness = hiding(&dir, 0);
+    start(&mut harness);
+    walk(&mut harness, 20);
+    let walked = player_position(&harness).unwrap();
+    harness.step(30);
+    let before = autosave_bytes(&dir);
+    request_autosave(harness.world_mut());
+    harness.world_mut().resource_mut::<Hidden>().0 = swap - 1;
+    start_hard(&mut harness);
+    for frame in 1..swap {
+        harness.step(1);
+        assert_eq!(autosave_bytes(&dir), before, "frame {frame}: none yet");
+    }
+    harness.step(1);
+    assert_eq!(top(&harness), Some(game::GAMEPLAY), "the swap's frame");
+    assert_eq!(
+        difficulty(&harness),
+        Some(Difficulty::Hard),
+        "entered with its run state"
+    );
+    let now = autosave_bytes(&dir);
+    let changed: Vec<_> = (0..now.len())
+        .filter(|at| now[*at] != before[*at])
+        .collect();
+    assert_eq!(changed.len(), 1, "one save on the swap's frame");
+    let old = read(&dir, AUTOSAVES[changed[0]]);
+    assert_eq!(
+        old.meta.difficulty,
+        Difficulty::Normal,
+        "the old run's state"
+    );
+    assert_eq!(player_of(&old), walked, "and its world");
+    harness.step(2);
+    let new = autosave_bytes(&dir);
+    let next = (0..new.len()).find(|at| new[*at] != now[*at]);
+    let first = read(&dir, AUTOSAVES[next.expect("the new run's first autosave")]);
+    assert_eq!(first.meta.difficulty, Difficulty::Hard);
+    assert_eq!(player_of(&first), PLAYER_START);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_clock_holds_under_pause() {
+    let mut harness = harness();
+    start(&mut harness);
+    tap(&mut harness, "state_pause");
+    assert_eq!(top(&harness), Some(PAUSE));
+    let time = harness.world().resource::<Time>();
+    assert!(time.is_held(), "the stack's hold");
+    assert!(!time.is_paused(), "not the game's own pause");
+    let at = game_clock(&harness);
+    harness.step(30);
+    assert_eq!(game_clock(&harness), at, "held");
+    tap(&mut harness, "state_pause");
+    assert_eq!(top(&harness), Some(game::GAMEPLAY));
+    assert!(clock_runs(&mut harness), "runs again");
+}
+
+#[test]
+fn a_load_from_pause_runs_the_game_clock() {
+    let dir = user_folder("load-from-pause-clock");
+    let (mut harness, _) = load_under_the_curtain(&dir);
+    settle(&mut harness);
+    assert_eq!(top(&harness), Some(game::GAMEPLAY));
+    assert!(clock_runs(&mut harness), "the loaded run's clock");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_retry_from_game_over_runs_the_game_clock() {
+    let mut harness = harness();
+    start(&mut harness);
+    kill(&mut harness);
+    assert!(harness.world().resource::<Time>().is_held());
+    press(&mut harness, "Retry");
+    settle(&mut harness);
+    assert_eq!(top(&harness), Some(game::GAMEPLAY));
+    assert!(clock_runs(&mut harness), "the new run's clock");
 }

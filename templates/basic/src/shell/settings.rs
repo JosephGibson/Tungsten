@@ -1,8 +1,9 @@
 //! Tabbed settings: Display, Audio, Interface, Controls and Gameplay. Every
 //! change applies at once through `tungsten::apply_settings`, a scale slider's
 //! at its release, and is written when the screen closes (Back or
-//! `ui_cancel` save `Settings` and the gameplay options) or the game exits
-//! with it open; a tab's Reset returns its values to unset or default.
+//! `ui_cancel`, which save `Settings` with the gameplay options at its exit)
+//! or the game exits with it open; a tab's Reset returns its values to
+//! unset or default.
 //! The window mode and size are picked first and sent by Apply, so a player
 //! cycles sizes freely; Apply then asks to keep them, reverting after 10 s.
 //! The tabs sit in a rail beside the rows; `ui_next` and `ui_prev` step
@@ -23,16 +24,14 @@ use tungsten::core::ui::{
 use tungsten::core::{
     AudioBus, DisplayMode, FrameRateCap, MonitorInfo, Resolution, ScaleFactor, Settings, World,
 };
+use tungsten::screens::{self, Confirm};
 use tungsten::{
     GameState, StateContext, StateId, apply_settings, requested_display, shipped_volume,
 };
 
-use super::confirm::{self, ConfirmState};
 use super::keybindings::{self, KeybindingsState};
 use super::options::{self, GameOptions};
-use super::{
-    BACK, Difficulty, Menu, RunState, Shell, enter, events, idle, pop, pressed, push, stack, toast,
-};
+use super::{Difficulty, Menu, RunState, Shell, events, idle, pressed, push, stack, toast};
 
 pub const SETTINGS: StateId = "settings";
 /// The tabs, in order, and their keys.
@@ -116,8 +115,8 @@ fn change_display(world: &mut World, edit: impl FnOnce(&mut Settings)) {
     let before = world.resource::<Settings>().clone();
     change(world, edit);
     let (mode, size) = (before.display_mode(), before.resolution());
-    let keep = ConfirmState::new("Keep these display settings?", "Keep", "Revert");
-    confirm::ask(
+    let keep = Confirm::new("Keep these display settings?", "Keep", "Revert");
+    screens::ask(
         world,
         keep.countdown(10.0).on_no(move |world| {
             change(world, |settings| {
@@ -314,18 +313,23 @@ pub(super) fn bind(bindings: &mut UiBindings) {
 /// The settings screen, open on one tab.
 pub struct SettingsState {
     tab: usize,
-    root: Option<WidgetId>,
+    menu: Option<Menu>,
 }
 
 impl SettingsState {
     #[must_use]
     pub fn new(tab: usize) -> Self {
-        Self { tab, root: None }
+        Self { tab, menu: None }
+    }
+
+    /// The screen's root, once entered.
+    fn root(&self) -> Option<WidgetId> {
+        self.menu.as_ref().map(|menu| menu.root)
     }
 
     /// Shows `tab` and focuses its button.
     fn select(&self, world: &mut World, tab: usize) {
-        let Some(root) = self.root else {
+        let Some(root) = self.root() else {
             return;
         };
         view_mut(world).tab = tab;
@@ -355,7 +359,7 @@ impl SettingsState {
             "apply" => {
                 let (mode, size) = std::mem::take(&mut view_mut(world).pending);
                 let first = self
-                    .root
+                    .root()
                     .and_then(|root| screen_build::node(world, root, "window_mode"));
                 if let Some(first) = first {
                     world.resource_mut::<UiTree>().focus(first);
@@ -396,7 +400,7 @@ impl SettingsState {
             }
             "uncapped" => {
                 let slider = self
-                    .root
+                    .root()
                     .and_then(|root| screen_build::node(world, root, "frame_rate_limit"));
                 let value = slider.and_then(|id| world.resource::<UiTree>().slider_value(id));
                 let cap = if on {
@@ -466,12 +470,6 @@ impl SettingsState {
             _ => {}
         }
     }
-
-    /// Writes `Settings` and the options, then closes.
-    fn leave(world: &mut World) {
-        save(world);
-        pop(world);
-    }
 }
 
 /// Writes `Settings`, the gameplay options in their game section; a failure
@@ -494,37 +492,40 @@ impl GameState for SettingsState {
             ..SettingsView::default()
         });
         stack(world).own_resource::<SettingsView>();
-        let root = Menu::build(world, "settings").root;
-        self.root = Some(root);
+        self.menu = Some(Menu::new(world, "settings"));
         self.select(world, tab);
-        enter(world, root);
         world.resource_mut::<Shell>().settings_open = true;
     }
 
+    /// Writes `Settings` and the options as the screen closes.
     fn on_exit(&mut self, ctx: &mut StateContext) {
+        save(ctx.world);
         ctx.world.resource_mut::<Shell>().settings_open = false;
     }
 
     fn on_resume(&mut self, ctx: &mut StateContext) {
-        if let Some(root) = self.root {
+        if let Some(root) = self.root() {
             screen_build::refresh(ctx.world, root);
         }
     }
 
     fn update(&mut self, world: &mut World) {
-        let Some(root) = self.root else {
+        // A cancel or Back closes the screen there.
+        let Some(menu) = self.menu.as_mut() else {
             return;
         };
-        if idle(world) && self.routed(world, root) {
-            return;
+        let root = menu.root;
+        menu.chosen(world);
+        if idle(world) {
+            self.routed(world);
         }
         screen_build::refresh(world, root);
     }
 }
 
 impl SettingsState {
-    /// This routing's events and tab keys; `true` when the screen closed.
-    fn routed(&mut self, world: &mut World, root: WidgetId) -> bool {
+    /// This routing's events and tab keys.
+    fn routed(&mut self, world: &mut World) {
         let step = match ["ui_next", "ui_prev"].map(|key| pressed(world, key, false)) {
             [true, false] => 1,
             [false, true] => TABS.len() - 1,
@@ -542,16 +543,6 @@ impl SettingsState {
         let scale = |name: &str| matches!(name, "ui_scale" | "text_scale");
         for event in events(world) {
             match event {
-                UiEvent::Activated {
-                    key: Some(BACK), ..
-                } => {
-                    Self::leave(world);
-                    return true;
-                }
-                UiEvent::Cancel { scope, .. } if scope == root => {
-                    Self::leave(world);
-                    return true;
-                }
                 UiEvent::Activated {
                     key: Some(RESET_TAB),
                     ..
@@ -573,6 +564,5 @@ impl SettingsState {
                 _ => {}
             }
         }
-        false
     }
 }

@@ -1545,11 +1545,25 @@ fn the_title_draws_its_sky_and_its_twinkles_leave_with_it() {
         }
     }
     assert!(twinkling, "the stars twinkle");
-    // A New Game through the curtain: no star stays, and a run's sky draws.
+    // A New Game through the fade: no star of the title's stays, and a
+    // run's sky draws. The run's own motes draw the star's sprite too, from
+    // emitters that live.
+    let lingering = |h: &UiHarness| {
+        let world = h.world();
+        world
+            .query::<&Particle>()
+            .filter(|particle| particle.config.sprite == TITLE_STAR)
+            .filter(|particle| {
+                !particle
+                    .emitter
+                    .is_some_and(|emitter| world.is_alive(emitter))
+            })
+            .count()
+    };
     super::start(&mut harness);
     harness.step(1);
     assert!(twinkles(&harness).is_empty(), "the twinkles left");
-    assert_eq!(stars(&harness), 0, "no star lingers");
+    assert_eq!(lingering(&harness), 0, "no star lingers");
     let run = drawn(&harness);
     assert!(run.contains(&960), "the run's sky: {run:?}");
 }

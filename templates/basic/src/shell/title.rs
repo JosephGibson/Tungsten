@@ -16,9 +16,9 @@ use tungsten::core::ui::{
     Edges, Justify, LayoutStyle, Sizing, StyleOverrides, UiBindings, UiKey, UiTree, WidgetId,
     screen_build, widgets,
 };
+use tungsten::screens::{self, Confirm};
 use tungsten::{GameState, StateContext, StateId, StateMusic};
 
-use super::confirm::{self, ConfirmState};
 use super::options::GameOptions;
 use super::saves::{Mode, SavesState, age, slot_name};
 use super::settings::SettingsState;
@@ -163,8 +163,8 @@ impl TitleState {
             return start_run(world, start, None);
         }
         let question = "Start a new game? Its autosaves will replace the oldest ones.";
-        let ask = ConfirmState::new(question, "Start", "Cancel");
-        confirm::ask(
+        let ask = Confirm::new(question, "Start", "Cancel");
+        screens::ask(
             world,
             ask.on_yes(move |world| start_run(world, start, None)),
         );

@@ -11,12 +11,12 @@ use tungsten::core::{
     VideoMode,
 };
 use tungsten::kit::{Hit, damage};
+use tungsten::screens::CONFIRM;
 use tungsten::testing::UiHarness;
 use tungsten::{WindowSize, shipped_volume};
 use tungsten_template_basic::game;
 use tungsten_template_basic::sample::CAMERA_SHAKE;
 use tungsten_template_basic::save::SaveGame;
-use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::settings::{self, SETTINGS};
 use tungsten_template_basic::shell::{AUTOSAVES, Difficulty};

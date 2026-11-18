@@ -17,8 +17,8 @@ use tungsten::{GameState, RootCover, StateContext, StateId, StateMusic, Transiti
 use super::saves::{Mode, SavesState};
 use super::title::TitleState;
 use super::{
-    Change, Menu, RunStart, Shell, SlotState, goto, idle, play, push, read_slots, run, stack,
-    start_run, theme,
+    Menu, RunStart, Shell, SlotState, goto, idle, play, push, read_slots, run, stack, start_run,
+    theme,
 };
 
 pub const GAME_OVER: StateId = "game_over";
@@ -105,13 +105,14 @@ impl GameState for GameOverState {
         edit(world.resource_mut::<UiTree>(), menu.root, true);
         stack(world).own_root(menu.root, RootCover::Show);
         let shell = world.resource_mut::<Shell>();
-        (shell.change, shell.died) = (Some(Change::Entrance(0.0, menu.root)), Some(0.0));
+        (shell.entrance, shell.died) = (Some((0.0, menu.root)), Some(0.0));
         play(world, theme::GAME_OVER_SOUNDS[0], 0.0);
         self.menu = Some(menu);
     }
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
-        ctx.world.resource_mut::<Shell>().died = None;
+        let shell = ctx.world.resource_mut::<Shell>();
+        (shell.entrance, shell.died) = (None, None);
         // Its passes, which `shell_frame` wrote after the game's stack.
         if let Some(tail) = ctx.world.get_resource_mut::<PostTail>() {
             tail.0.clear();
@@ -133,7 +134,7 @@ impl GameState for GameOverState {
         if let Some(menu) = self.menu.as_mut()
             && menu.revised(world)
         {
-            let entering = matches!(world.resource::<Shell>().change, Some(Change::Entrance(..)));
+            let entering = world.resource::<Shell>().entrance.is_some();
             edit(world.resource_mut::<UiTree>(), menu.root, entering);
         }
         let Some(menu) = self.menu.as_mut().filter(|_| idle(world)) else {

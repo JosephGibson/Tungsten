@@ -12,10 +12,10 @@
 
 use tungsten::core::ui::{Sizing, UiEvent, UiKey, UiRouter, UiTree, Visibility, WidgetId, widgets};
 use tungsten::core::{ActionMap, ActionMapError, Binding, BindingDevice, World};
+use tungsten::screens::{self, Confirm, ModalScreen};
 use tungsten::{GameState, StateContext, StateId};
 
-use super::confirm::{self, ConfirmState};
-use super::{BACK, activated, cancelled, enter, events, pop, toast, transitioning};
+use super::{events, toast};
 
 pub const KEYBINDINGS: StateId = "keybindings";
 /// A row's binding columns.
@@ -87,6 +87,8 @@ pub struct KeybindingsState {
     ui: Option<(WidgetId, Vec<[WidgetId; 4]>)>,
     /// The row and column capturing, which the router times out.
     capture: Option<(usize, usize)>,
+    /// The modal screen, which closes on a cancel or Back.
+    screen: Option<ModalScreen>,
 }
 
 impl KeybindingsState {
@@ -148,8 +150,8 @@ impl KeybindingsState {
             map.set_binding_at(&action, device, index, binding);
             persist(world);
         };
-        let ask = ConfirmState::new(&format!("Already used by {label}. Swap?"), "Swap", "Cancel");
-        confirm::ask(world, ask.on_yes(swap));
+        let ask = Confirm::new(&format!("Already used by {label}. Swap?"), "Swap", "Cancel");
+        screens::ask(world, ask.on_yes(swap));
     }
 
     fn stop_capture(&mut self, world: &mut World) {
@@ -206,7 +208,7 @@ impl GameState for KeybindingsState {
         if let Some(first) = rows.first() {
             tree.focus(first[0]);
         }
-        enter(ctx.world, root);
+        self.screen = Some(ModalScreen::adopt(ctx.world, root, card));
         self.ui = Some((root, rows));
         self.refresh(ctx.world);
     }
@@ -220,12 +222,14 @@ impl GameState for KeybindingsState {
     }
 
     fn update(&mut self, world: &mut World) {
-        let Some((root, rows)) = self.ui.clone() else {
+        // A cancel or Back closes the screen there; nothing while capturing.
+        let Some(screen) = self.screen.as_mut() else {
             return;
         };
-        if transitioning(world) {
+        let chosen = screen.update(world);
+        let Some((_, rows)) = self.ui.clone() else {
             return;
-        }
+        };
         if let Some((row, column)) = self.capture {
             for event in events(world) {
                 match event {
@@ -246,14 +250,10 @@ impl GameState for KeybindingsState {
             tree.set_text(rows[row][column], text.as_str());
             return;
         }
-        let Some((cell, key)) = activated(world, root) else {
-            if cancelled(world, root) {
-                pop(world);
-            }
+        let Some(key) = chosen else {
             return;
         };
         match (key, self.cell_of(key)) {
-            (BACK, _) => pop(world),
             (RESET_ALL, _) => {
                 reset(world, None);
                 self.refresh(world);
@@ -265,7 +265,7 @@ impl GameState for KeybindingsState {
             (_, Some((row, column))) => {
                 self.capture = Some((row, column));
                 let router = world.resource_mut::<UiRouter>();
-                router.capture_next_input_for(cell, CAPTURE_SECS);
+                router.capture_next_input_for(rows[row][column], CAPTURE_SECS);
             }
             (_, None) => {}
         }

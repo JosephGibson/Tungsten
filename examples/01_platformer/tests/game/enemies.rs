@@ -3174,8 +3174,8 @@ fn a_killed_enemy_rolls_its_drops_and_an_orb_heals_or_restores_mana() {
             OrbKind::Health => assert_eq!(after.0 - before.0, 20.0, "20 health"),
             OrbKind::Mana => {
                 let restored = after.1 - before.1;
-                // Mana regenerates 1.5 a tenth of a second besides.
-                assert!((restored - 25.0).abs() <= 1.5, "25 mana: {restored}");
+                // Mana regenerates 3 a tenth of a second besides.
+                assert!((restored - 25.0).abs() <= 3.0, "25 mana: {restored}");
             }
         }
     }

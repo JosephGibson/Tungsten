@@ -4,10 +4,10 @@
 use tungsten::core::{
     ActionMap, Binding, GamepadButton, GamepadId, InputState, KeyCode, UserFolder,
 };
+use tungsten::screens::CONFIRM;
 use tungsten::testing::UiHarness;
 use tungsten_template_basic::sample::hud::Hud;
 use tungsten_template_basic::shell::capturing;
-use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::keybindings::{COLUMNS, KEYBINDINGS};
 use tungsten_template_basic::shell::toast::Toasts;
 

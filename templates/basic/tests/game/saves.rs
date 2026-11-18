@@ -11,6 +11,7 @@ use tungsten::core::save::{SaveStamp, Saved, Value};
 use tungsten::core::ui::WidgetKind;
 use tungsten::core::{Entity, Position, SaveData, SaveSlots, Settings, Time, UserFolder};
 use tungsten::kit::{Counters, Effects, Flags, Health, Hit, Spawner, damage};
+use tungsten::screens::CONFIRM;
 use tungsten::testing::UiHarness;
 use tungsten_template_basic::game;
 use tungsten_template_basic::sample::{
@@ -18,7 +19,6 @@ use tungsten_template_basic::sample::{
     SPAWN_GRACE, SampleRun,
 };
 use tungsten_template_basic::save::{self, SaveGame};
-use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::game_over::GAME_OVER;
 use tungsten_template_basic::shell::options::{self, GameOptions};
 use tungsten_template_basic::shell::pause::PAUSE;
