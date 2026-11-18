@@ -58,7 +58,6 @@ use example_01_platformer::features::toys::{self, BALL_CAP};
 use example_01_platformer::game;
 use example_01_platformer::save::{self, SaveGame};
 use example_01_platformer::shared::{Joined, SaveId, Saved};
-use example_01_platformer::shell::toast::Toasts;
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart, SlotState};
 use glam::Vec2;
 use tungsten::core::save::{SaveRegistry, Value};
@@ -71,6 +70,7 @@ use tungsten::kit::{
     Hitbox, Modifier, Oscillator, PathFollower, Pickup, Projectile, Shield, StateMachine, Stats,
     Tags, carrier_of, conductions,
 };
+use tungsten::screens::Toasts;
 use tungsten::testing::UiHarness;
 
 use super::prefab_box;

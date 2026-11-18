@@ -11,7 +11,7 @@ use tungsten::core::{
     InputState, KeyCode, SaveSlots, Schedule, Stage, Time, UserFolder, World, system,
 };
 use tungsten::kit::{Health, Hit, damage};
-use tungsten::screens::{CONFIRM, POP_SECS, RESET_SECS};
+use tungsten::screens::{CONFIRM, POP_SECS, RESET_SECS, TOAST_SECS, Toasts, toast};
 use tungsten::testing::UiHarness;
 use tungsten::{Plugin, StateStack};
 use tungsten_template_basic::game;
@@ -22,7 +22,6 @@ use tungsten_template_basic::shell::game_over::GAME_OVER;
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::pause::PAUSE;
 use tungsten_template_basic::shell::title::TITLE;
-use tungsten_template_basic::shell::toast::{self, TOAST_SECS, Toasts};
 use tungsten_template_basic::shell::{
     AUTOSAVES, Difficulty, RunStart, RunState, request_autosave, theme,
 };
@@ -833,7 +832,7 @@ fn a_toast_leaves_on_the_real_clock_under_a_pause() {
     start(&mut harness);
     tap(&mut harness, "state_pause");
     assert!(paused(&harness));
-    toast::toast(harness.world_mut(), "Saved to Slot 1");
+    toast(harness.world_mut(), "Saved to Slot 1");
     harness.step(1);
     let shown = |harness: &UiHarness| harness.world().resource::<Toasts>().texts(harness.tree());
     assert_eq!(shown(&harness), ["Saved to Slot 1"]);

@@ -18,12 +18,12 @@ use tungsten::core::save::SaveError;
 use tungsten::core::text::{TextAlign, TextWrap};
 use tungsten::core::ui::{Align, Direction, Justify, Sizing, UiKey, UiTree, WidgetId, widgets};
 use tungsten::core::{SaveSlots, World};
-use tungsten::screens::{self, Confirm, ModalScreen};
+use tungsten::screens::{self, Confirm, ModalScreen, toast};
 use tungsten::{GameState, StateContext, StateId};
 
 use super::options::GameOptions;
 use super::{
-    AUTOSAVES, SLOTS, Shell, SlotState, activated, load, read_slots, save_to, toast, version_note,
+    AUTOSAVES, SLOTS, Shell, SlotState, activated, load, read_slots, save_to, version_note,
 };
 use crate::save;
 
@@ -229,7 +229,7 @@ fn saved(world: &mut World, slot: &'static str) {
         true => format!("Saved to {name}"),
         false => format!("{name} could not be saved"),
     };
-    toast::toast(world, text);
+    toast(world, text);
 }
 
 /// Deletes `slot`'s file, so it can be written again; a file that stays
@@ -242,7 +242,7 @@ fn delete(world: &mut World, slot: &'static str) {
         }
         Err(error) => {
             log::warn!("Save slot '{slot}' not deleted: {error}");
-            toast::toast(world, format!("{} could not be deleted", slot_name(slot)));
+            toast(world, format!("{} could not be deleted", slot_name(slot)));
         }
     }
 }

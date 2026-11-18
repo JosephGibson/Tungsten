@@ -24,14 +24,14 @@ use tungsten::core::ui::{
 use tungsten::core::{
     AudioBus, DisplayMode, FrameRateCap, MonitorInfo, Resolution, ScaleFactor, Settings, World,
 };
-use tungsten::screens::{self, Confirm};
+use tungsten::screens::{self, Confirm, toast};
 use tungsten::{
     GameState, StateContext, StateId, apply_settings, requested_display, shipped_volume,
 };
 
 use super::keybindings::{self, KeybindingsState};
 use super::options::{self, GameOptions};
-use super::{Difficulty, Menu, RunState, Shell, events, idle, pressed, push, stack, toast};
+use super::{Difficulty, Menu, RunState, Shell, events, idle, pressed, push, stack};
 
 pub const SETTINGS: StateId = "settings";
 /// The tabs, in order, and their keys.
@@ -381,7 +381,7 @@ impl SettingsState {
             "keybindings" => push(world, KeybindingsState::default()),
             "reset_bindings" => {
                 keybindings::reset(world, None);
-                toast::toast(world, "Bindings reset");
+                toast(world, "Bindings reset");
             }
             _ => {}
         }

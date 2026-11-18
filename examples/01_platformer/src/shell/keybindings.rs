@@ -12,10 +12,10 @@
 
 use tungsten::core::ui::{Sizing, UiEvent, UiKey, UiRouter, UiTree, Visibility, WidgetId, widgets};
 use tungsten::core::{ActionMap, ActionMapError, Binding, BindingDevice, World};
-use tungsten::screens::{self, Confirm, ModalScreen};
+use tungsten::screens::{self, Confirm, ModalScreen, toast};
 use tungsten::{GameState, StateContext, StateId};
 
-use super::{events, toast};
+use super::events;
 
 pub const KEYBINDINGS: StateId = "keybindings";
 /// A row's binding columns.
@@ -127,7 +127,7 @@ impl KeybindingsState {
         let (device, index) = CELLS[column];
         if binding.device() != device {
             let wanted = ["keys", "keys", "pad buttons"][column];
-            return toast::toast(world, format!("{} takes {wanted}", COLUMNS[column]));
+            return toast(world, format!("{} takes {wanted}", COLUMNS[column]));
         }
         let action = self.actions[row].clone();
         let map = world.resource::<ActionMap>();

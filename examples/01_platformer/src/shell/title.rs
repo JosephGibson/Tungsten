@@ -16,7 +16,7 @@ use tungsten::core::ui::{
     Edges, Justify, LayoutStyle, Sizing, StyleOverrides, UiBindings, UiKey, UiTree, WidgetId,
     screen_build, widgets,
 };
-use tungsten::screens::{self, Confirm};
+use tungsten::screens::{self, Confirm, toast};
 use tungsten::{GameState, StateContext, StateId, StateMusic};
 
 use super::options::GameOptions;
@@ -25,7 +25,6 @@ use super::settings::SettingsState;
 use super::{
     AUTOSAVES, BACK, Difficulty, GameInfo, Menu, RunStart, RunState, Shell, SlotState, activated,
     cancelled, enter, idle, load, newest, push, quit_game, read_slots, stack, start_run, theme,
-    toast,
 };
 use crate::game::difficulty_note;
 use crate::save::SaveGame;
@@ -206,7 +205,7 @@ impl GameState for TitleState {
         let shell = world.resource_mut::<Shell>();
         if warnings > 0 && !std::mem::replace(&mut shell.warned, true) {
             let files = if warnings == 1 { "file" } else { "files" };
-            toast::toast(world, format!("{warnings} save {files} could not be read"));
+            toast(world, format!("{warnings} save {files} could not be read"));
         }
     }
 

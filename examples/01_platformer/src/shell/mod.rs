@@ -1,6 +1,6 @@
 //! The shell: the screens every game keeps, copied unchanged into a new
 //! game. A title, pause, game over, save and load, tabbed settings,
-//! keybindings and toasts, with `tungsten::screens`' confirm, around a run
+//! keybindings, with `tungsten::screens`' confirm and toasts, around a run
 //! the game's gameplay state plays. It calls the game through seven names in
 //! `game.rs` and `save.rs` (the seam) and nothing else outside this folder.
 //!
@@ -24,7 +24,6 @@ pub mod saves;
 pub mod settings;
 pub mod theme;
 pub mod title;
-pub mod toast;
 
 use serde::{Deserialize, Serialize};
 use tungsten::core::post::PostTail;
@@ -218,7 +217,6 @@ impl Plugin for ShellPlugin {
         world.insert_resource(self.info.clone());
         world.insert_resource(Shell::default());
         ScreensPlugin.build(schedule, world);
-        world.insert_resource(toast::Toasts::default());
         options::load(world);
         // The screen files' names (`assets/ui/screens/`).
         let saving_off = |world: &World| !saving_on(world);
@@ -712,8 +710,8 @@ fn save_due(world: &mut World) {
 
 /// `shell_frame`: game over's passes, the run's playtime, the exit's save
 /// of the Settings screen's changes while it is open, after a confirm's
-/// safe answer, the pause key, focus loss, the end of game over's entrance
-/// and the toasts.
+/// safe answer, the pause key, focus loss and the end of game over's
+/// entrance.
 fn frame(world: &mut World) {
     let real = world.resource::<Time>().real_delta();
     let died = world.resource_mut::<Shell>().died.as_mut().map(|secs| {
@@ -748,7 +746,6 @@ fn frame(world: &mut World) {
         Some((_, root)) => game_over::reveal(world, root),
         None => {}
     }
-    toast::tick(world);
 }
 
 /// Plays the manifest's sound `id` at its volume, looping as the manifest
