@@ -21,6 +21,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-216` | Agents push the version branch after each commit (`git push origin 0.NNN`, the whole command); tags, merges and every other push stay the owner's, held by a global PreToolUse push guard. Amends `D-215`. |
 | `D-218` | 1.0 promises a fifth genre, action RPGs: tag-scoped modifiers on skills, generated equipment on the same modifiers, one rule set for players and enemies; the kit's `arpg` tag at 7.10, scoped by the redo's 7.19 (7.7 waits for it) and built by 8.7. Amends `D-172`, `D-215`. |
 | `D-237` | Session tiers past art and sound: 9.1's budgets and 9.3's stability policy at Opus 5.5 max, as `D-151`'s gates were; §8's evaluation agents at xhigh at every checkpoint; every other session, asset briefs and releases included, at xhigh. Amends `D-151`, `D-215`. |
+| `D-291` | The evaluation's protocol (7.13g, `example-01-evaluation`): fresh headless Opus 5.5 xhigh sessions in workspaces outside the repository, memory moved aside per launch, one frame and brief as the prompt, two hours and USD 100 a run, turns, tool calls, errors, files and wrong turns counted over every transcript, scripted verdicts lowered only by two fresh verifiers; the harness local in `perf-runs/713g-eval/harness/`, which the rerun, 8.5 and 8.6 reuse. |
 
 ## Assets / Rendering
 
