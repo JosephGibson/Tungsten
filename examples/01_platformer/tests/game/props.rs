@@ -801,6 +801,33 @@ fn a_thrown_crate_breaks_on_landing_and_a_dropped_one_stays_whole() {
 }
 
 #[test]
+fn a_thrown_crate_inside_an_area_zone_touching_nothing_stays_whole_its_first_step() {
+    use example_01_platformer::features::enemies::components::{Throw, Throws};
+    use example_01_platformer::features::level::components::Area;
+    use tungsten::core::BodyKind;
+    let (mut harness, _) = sky(200.0);
+    let at = Vec2::new(1000.0, TOP - 200.0);
+    let thrown = props::spawn(harness.world_mut(), PropKind::Crate, at);
+    let world = harness.world_mut();
+    let in_zone = world
+        .query::<(&Area, &Position, &Collider, &RigidBody)>()
+        .any(|(_, position, collider, body)| {
+            let offset = at - (position.0 + collider.offset);
+            body.kind == BodyKind::Sensor && offset.abs().cmplt(collider.shape.half_extents()).all()
+        });
+    assert!(in_zone, "inside an area's zone sensor");
+    world.get_mut::<Velocity>(thrown).unwrap().0 = Vec2::new(elements::SHATTER_SPEED + 100.0, 0.0);
+    world.resource_mut::<Throws>().0.push(Throw {
+        body: thrown,
+        thrower: 0,
+        factor: 1.0,
+        left: 2.0,
+    });
+    harness.step(1);
+    assert!(alive(&harness, thrown), "whole after its first step");
+}
+
+#[test]
 fn a_frozen_crate_shatters_into_no_planks() {
     let (mut harness, _) = sky(200.0);
     let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);

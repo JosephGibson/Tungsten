@@ -14,7 +14,7 @@ use glam::Vec2;
 use tungsten::core::save::{self as engine_save, SaveState};
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, Time, With, World, system};
 use tungsten::kit::{Health, Phase, ensure_phases};
-use tungsten::{GameState, Plugin, StateContext, StateId};
+use tungsten::{GameState, Plugin, StateContext, StateId, StateStack};
 
 pub use components::Run;
 
@@ -139,6 +139,16 @@ impl GameState for GameplayState {
         audio::start(world);
         spells::start(world);
         banner::start(world);
+        // They leave the World after gameplay's exit.
+        let stack = world.resource_mut::<StateStack>();
+        stack.own_resource::<SaveState>();
+        stack.own_resource::<Run>();
+        stack.own_resource::<banner::Banner>();
+        stack.own_resource::<dummy::components::PlacedDummies>();
+        stack.own_resource::<enemies::components::PlacedEnemies>();
+        stack.own_resource::<enemies::drops::PlacedOrbs>();
+        stack.own_resource::<Cascades>();
+        stack.own_resource::<Summon>();
     }
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
@@ -148,16 +158,6 @@ impl GameState for GameplayState {
         for entity in saved {
             ctx.world.remove_component::<Saved>(entity);
         }
-        ctx.world.remove_resource::<SaveState>();
-        ctx.world.remove_resource::<Run>();
-        ctx.world.remove_resource::<banner::Banner>();
-        ctx.world
-            .remove_resource::<dummy::components::PlacedDummies>();
-        ctx.world
-            .remove_resource::<enemies::components::PlacedEnemies>();
-        ctx.world.remove_resource::<enemies::drops::PlacedOrbs>();
-        ctx.world.remove_resource::<Cascades>();
-        ctx.world.remove_resource::<Summon>();
         level::despawn(ctx.world);
         audio::stop(ctx.world);
         spells::stop(ctx.world);

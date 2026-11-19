@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::core::AnimationState;
 
@@ -69,8 +68,6 @@ pub struct Moves {
     /// tick's at least `systems::TICK_EDGE`, falling to 0 over
     /// `systems::EDGE_SECS`.
     pub edge: f32,
-    /// The last cast's aim.
-    pub aim: Vec2,
     /// The one-shot clip shown over the animator's.
     pub shown: Option<Shown>,
     /// It died: its controller drops it, its input locked for good.

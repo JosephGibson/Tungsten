@@ -13,8 +13,8 @@ use tungsten::core::{
     Transform, Visibility, World,
 };
 use tungsten::kit::{
-    DamagedPart, EffectApplied, EffectExpired, EffectRequest, Effects, Follow, Health, ImmunePart,
-    Lifetime, Modifier, Source, Stats, Tags, Target, end_effect, stimulate,
+    DamagedPart, EffectExpired, EffectRequest, Effects, Follow, Health, ImmunePart, Lifetime,
+    Modifier, Source, Stats, Tags, Target, end_effect, stimulate,
 };
 
 use super::components::{StatusEmitter, StatusLook};
@@ -83,7 +83,6 @@ pub fn reactions(
     world: &mut World,
     parts: &mut EventCursor<DamagedPart>,
     immune: &mut EventCursor<ImmunePart>,
-    _applied: &mut EventCursor<EffectApplied>,
 ) {
     let states = world
         .get_resource::<ResolveStates>()

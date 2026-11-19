@@ -228,11 +228,11 @@ pub fn holds_combat_values(world: &World, player: Entity) -> bool {
         })
 }
 
-/// Shows a cast by `player` along `aim` with `gesture`, for [`CAST_SECS`]:
+/// Shows a cast by `player` with `gesture`, for [`CAST_SECS`]:
 /// a spell's flares the staff; a shot, the gun's, leaves it be. A pour or a
 /// shot cuts a pressed spell's clip short and takes its pose's tag at once,
 /// the other's going, so a switch shows its pose on its first frame.
-pub fn cast(world: &mut World, player: Entity, aim: Vec2, gesture: Gesture) {
+pub fn cast(world: &mut World, player: Entity, gesture: Gesture) {
     if matches!(gesture, Gesture::Pour | Gesture::Shoot)
         && let Some(animator) = world.get_mut::<CharacterAnimator>(player)
     {
@@ -243,7 +243,6 @@ pub fn cast(world: &mut World, player: Entity, aim: Vec2, gesture: Gesture) {
         if gesture != Gesture::Shoot {
             moves.glow = CAST_SECS;
         }
-        moves.aim = aim;
         moves.gesture = Some(gesture);
         moves.cast = CAST_SECS;
     }

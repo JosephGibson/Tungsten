@@ -1046,7 +1046,8 @@ fn grown(shape: Shape, margin: f32) -> Shape {
 
 /// Whether `entity`, a body of `shape` about `centre`, ends the step within
 /// [`TOUCH_MARGIN`](super::TOUCH_MARGIN) of a tile or of another body, but
-/// the one of save ID `spared`.
+/// a sensor, which nothing meets (an area's zone spans the map), and the one
+/// of save ID `spared`.
 fn touches(world: &World, entity: Entity, centre: Vec2, shape: Shape, spared: u64) -> bool {
     let margin = super::TOUCH_MARGIN;
     let mut met = Vec::new();
@@ -1057,8 +1058,9 @@ fn touches(world: &World, entity: Entity, centre: Vec2, shape: Shape, spared: u6
     }
     world
         .query::<(Entity, &Position, &Collider, &RigidBody)>()
-        .any(|(other, at, collider, _)| {
+        .any(|(other, at, collider, body)| {
             other != entity
+                && body.kind != BodyKind::Sensor
                 && crate::shared::save_id(world, other).is_none_or(|id| id.0 != spared)
                 && gap(centre, shape, at.0 + collider.offset, collider.shape) <= margin
         })

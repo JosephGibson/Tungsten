@@ -291,10 +291,9 @@ impl Plugin for CombatPlugin {
         ensure_phases(schedule);
         let states = system("combat_states", systems::states).before(DAMAGE_RESOLVE);
         schedule.add(Stage::FixedUpdate, Phase::Resolve.join(states));
-        let (mut parts, mut immune, mut applied) =
-            (EventCursor::new(), EventCursor::new(), EventCursor::new());
+        let (mut parts, mut immune) = (EventCursor::new(), EventCursor::new());
         let reactions = system("combat_reactions", move |world: &mut World| {
-            systems::reactions(world, &mut parts, &mut immune, &mut applied);
+            systems::reactions(world, &mut parts, &mut immune);
         });
         schedule.add(Stage::FixedUpdate, Phase::React.join(reactions));
         let mut expired = EventCursor::new();

@@ -82,7 +82,7 @@ pub fn shoot(world: &mut World) {
         flash(world, muzzle, aim);
         spawn_burst(world, "ex10_muzzle_flash", muzzle);
         audio::play(world, Sound::Shot, muzzle);
-        player::cast(world, player, aim, Gesture::Shoot);
+        player::cast(world, player, Gesture::Shoot);
         if rounds(world, player).is_some_and(|(left, _)| left == 0) {
             world.insert(player, Reload { left: RELOAD_SECS });
         }

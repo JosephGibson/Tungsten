@@ -211,7 +211,7 @@ fn hold(world: &mut World, player: Entity, spell: Spell) -> Used {
         let dt = world.resource::<Time>().delta();
         toys::place_small_balls(world, at, dt);
     }
-    player::cast(world, player, aim, spell.gesture());
+    player::cast(world, player, spell.gesture());
     Used::Used
 }
 
@@ -297,7 +297,7 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         }
         Spell::Flamethrower | Spell::IceSpray | Spell::SmallBalls => {}
     }
-    player::cast(world, player, aim, spell.gesture());
+    player::cast(world, player, spell.gesture());
 }
 
 /// `spells_held`, in `Update`: a spray shows from the frame its cast
