@@ -267,6 +267,20 @@ impl TopDownMover {
         self.velocity
     }
 
+    /// Whether its first step has run; until it has, a step moves it
+    /// nothing. A save leaves the flag out, so a loaded mover's is clear.
+    #[must_use]
+    pub fn started(&self) -> bool {
+        self.started
+    }
+
+    /// Marks whether its first step has run: a game that sets a mover aside
+    /// and gives it back, which a load may have restored with the flag
+    /// clear, marks it started so its first step back moves.
+    pub fn set_started(&mut self, started: bool) {
+        self.started = started;
+    }
+
     /// Sets the speed, 0 standing it still: what a `move_speed` stat
     /// writes. One that is not finite and at least 0 is ignored.
     pub(crate) fn set_speed(&mut self, speed: f32) {

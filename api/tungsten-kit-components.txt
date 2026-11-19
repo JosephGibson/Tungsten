@@ -624,7 +624,7 @@ shape effect: A change an entity carries: timed, infinite or instant, with a pay
   field intensity: shape effect_intensity = null — makes it a status: an intensity each application builds by its amount times its status effect, up to `max`, one stack, worn by `decay` a second until it runs out at 0; its `scale` curve reads the intensity
   field bands: list of shape effect_band = null — a status's thresholds, `at` strictly ascending up to its `max`: each band's tags granted while the intensity is at least its `at`
   field fuel: shape effect_fuel = null — a stat of its holder's an instance burns while it runs; at 0, or on a holder without it, it has run out
-  field on_end: list of shape interaction_output = null — chemistry outputs run on the holder when an instance ends: run out, worn out, its fuel spent, removed or ended; an instant one's as it lands
+  field on_end: list of shape interaction_output = null — chemistry outputs run on the holder when an instance ends: run out, worn out, its fuel spent, removed or ended; an instant one's queued as it lands, for the next step's chemistry
   field emit: shape effect_emit = null — a chemistry stimulus its holder sends to the receivers around it on a period
   sample: {}
 shape effect_action: An effect applied at the next effect resolve, from the event's other entity on the subject or from the subject on the other.

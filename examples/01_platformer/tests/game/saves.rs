@@ -2039,12 +2039,7 @@ fn a_flyer_saved_frozen_mid_flight_thaws_into_its_saved_flight() {
         after.0.direction(),
         "the same flight back at the thaw"
     );
-    assert!(
-        before.1.distance(after.1) < 2.0,
-        "flying on alike: {} and {}",
-        before.1,
-        after.1
-    );
+    assert_eq!(before.1, after.1, "flying on alike");
 }
 
 /// The enemies' scripted seconds both runs play after the save: the

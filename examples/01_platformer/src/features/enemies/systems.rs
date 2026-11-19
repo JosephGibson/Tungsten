@@ -748,9 +748,13 @@ fn swap_driver(world: &mut World, enemy: Entity, frozen: bool) {
             let borrowed = PlatformerController::new(1.0, 1.0).with_filter(super::walk_filter());
             world.insert(enemy, borrowed);
         }
-    } else if let Some(Displaced(mover)) = world.get::<Displaced>(enemy).cloned() {
+    } else if let Some(Displaced(mut mover)) = world.get::<Displaced>(enemy).cloned() {
         world.remove_component::<Displaced>(enemy);
         world.remove_component::<PlatformerController>(enemy);
+        // A mover set aside has run, since movers run before effects land
+        // in a step; a load's leaves the flag out, so its first step back
+        // would stand still.
+        mover.set_started(true);
         world.insert(enemy, mover);
     }
 }

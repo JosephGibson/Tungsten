@@ -4586,7 +4586,7 @@ fn describe_effects(world: &mut World) {
             FieldDescription::new(
                 "on_end",
                 FieldType::List(Box::new(FieldType::Shape("interaction_output"))),
-                "chemistry outputs run on the holder when an instance ends: run out, worn out, its fuel spent, removed or ended; an instant one's as it lands",
+                "chemistry outputs run on the holder when an instance ends: run out, worn out, its fuel spent, removed or ended; an instant one's queued as it lands, for the next step's chemistry",
             )
             .default("null"),
         )

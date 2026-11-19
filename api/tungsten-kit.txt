@@ -4129,6 +4129,8 @@ pub fn tungsten_kit::TopDownMover::direction(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::TopDownMover::new(f32) -> Self
 pub fn tungsten_kit::TopDownMover::push(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::TopDownMover::set_direction(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::TopDownMover::set_started(&mut self, bool)
+pub fn tungsten_kit::TopDownMover::started(&self) -> bool
 pub fn tungsten_kit::TopDownMover::velocity(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::TopDownMover::with_acceleration(self, f32) -> Self
 pub fn tungsten_kit::TopDownMover::with_deceleration(self, f32) -> Self
@@ -9552,6 +9554,8 @@ pub fn tungsten_kit::TopDownMover::direction(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::TopDownMover::new(f32) -> Self
 pub fn tungsten_kit::TopDownMover::push(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::TopDownMover::set_direction(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::TopDownMover::set_started(&mut self, bool)
+pub fn tungsten_kit::TopDownMover::started(&self) -> bool
 pub fn tungsten_kit::TopDownMover::velocity(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::TopDownMover::with_acceleration(self, f32) -> Self
 pub fn tungsten_kit::TopDownMover::with_deceleration(self, f32) -> Self
