@@ -1,7 +1,7 @@
 //! The shell: the screens every game keeps, copied unchanged into a new
 //! game. A title, pause, game over, save and load, tabbed settings,
 //! keybindings, with `tungsten::screens`' confirm and toasts, around a run
-//! the game's gameplay state plays. It calls the game through seven names in
+//! the game's gameplay state plays. It calls the game through six names in
 //! `game.rs` and `save.rs` (the seam) and nothing else outside this folder.
 //!
 //! A run starts with [`start_run`] and ends at the title. Saves go to

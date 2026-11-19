@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 /// What a prop is: a pine crate, a powder keg, a goblin's bomb or rock, a
-/// broken crate's plank, or a rubble stone of its size.
+/// broken crate's plank, or a rubble stone of its size. A value, not a
+/// component: a prop carries its marker (`Crate`, `Keg`, `Bomb`, `Rock`,
+/// `Plank` or `Stone`), which `props::kind` reads as one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PropKind {

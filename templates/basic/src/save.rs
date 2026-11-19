@@ -5,8 +5,8 @@
 //! restored in one call each. A new game names its entities, registers its
 //! own components (`App::register_saved`), bumps the schema and writes
 //! `migrate_step`; count on from the sample's schema 5, so a save the
-//! sample wrote while you tried it reads as damaged, never as a newer
-//! version's.
+//! sample wrote while you tried it reads as an older version's, never as
+//! a newer version's.
 
 use serde::{Deserialize, Serialize};
 use tungsten::core::save::{WorldSave, capture_world};

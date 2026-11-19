@@ -7,7 +7,7 @@
 //! The run is the engine's `WorldSave` (`D-230`) beside 01's table of its
 //! balls. A run's start names the player, global, and the map's saved
 //! objects (its lava basins, decks, the elevator, the dummy, enemies, placed
-//! orbs, tomes and geysers) in the map's area, once its setup is done, so a
+//! orbs and geysers) in the map's area, once its setup is done, so a
 //! capture writes each one's changes over its fresh spawn: their state is
 //! the components and resources 01 and the kit register, chemistry's queue
 //! among them. The run's spawns are the World save's records, whole: the

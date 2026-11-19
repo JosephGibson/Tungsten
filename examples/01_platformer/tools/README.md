@@ -80,8 +80,11 @@ locked; the level and `content` are source-driven and never are. Unlocking is
 the owner's call: `--unlock NAME` drops a family's lock before an asset
 session redraws it, and `--lock NAME`, once the owner accepts the new art,
 records its hashes again, refusing while the tree's files differ from what
-the family makes. A code session never unlocks; a change to shared code that
-moves a locked file waits for the owner's unlock of each family it moves.
+the family makes. A session granted an unlock leaves the family unlocked at
+its end unless the owner accepted the new art in that session, and no check
+needs every family locked. A code session never unlocks; a change to shared
+code that moves a locked file waits for the owner's unlock of each family it
+moves.
 
 The shell's assets come with its code: Inter and Source Serif 4 with their
 licence files and the shell's screen files (`assets/ui/screens/`) are copied
@@ -409,10 +412,17 @@ take none:
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`, classed by its `level.ambient` tag (`content/data/tags/game.json`); each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
 | `markers` | `spawn`, where a fresh run's player stands, an `iron` marker at each loose block's centre, a `crate` or `keg` marker at each placed prop's, a `stone_<size>` marker at each stone's, and the elevator's `lift_sheave` | None: the game reads them by name |
 | `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its first three tags (`flesh`, `freezable`, `conductive`), the prefab's `living` and `level.saved` left after them |
-| `enemies` | The 36 enemies, each by its `name`; a new one needs a name no saved object has, and moves no save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), whose `tags` end in `level.saved`, its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
+| `enemies` | The 36 enemies, each by its `name`; a new one needs a name no saved object has, and moves no save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`) or its variant's, whose `tags` end in `level.saved`, its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home. A kind's variant is a `Variant`, its prefab's `enemy.variant`, and a `<kind>_<variant>` prefab in `content/prefabs/` that `enemies::prefab` names, a whole copy of the kind's (`troll_armoured`, the bridge troll's) or one that `extends` it |
 | `pickups` | The eight placed health orbs, each by its `name` | `health_orb`, the drops' prefab, tagged `level.saved`, which only the map's spawn reads, so a dropped orb carries it unread; the run takes their `lifetime` off |
 | `tomes` | The three books; no save names a book, so none takes a save ID | `tome_<kind>`, its point the book's top-left |
 | `geysers` | The three geysers, the map's last saved layer, each by its `name` | `geyser`, tagged `level.saved`, its point the vent sprite's top-left, its column's middle less 32 px and its support's row less 32, so the vent's bottom row stands on the floor; its `geyser.offset` property |
+
+A new kind of saved map object takes its kind in 01's `tests/game/saves.rs`,
+whose census (`every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation`)
+panics on a saved entity of no known kind: a branch in `kind` by a component of
+its own, an arm in `lists` naming what its prefab, the map or a load gives again
+(`rebuilt`) and what only draws it (`presentation`), and its name in the kinds
+the census sees.
 
 A parameter that lives in an array (a box's half extents, an oscillator's
 amplitude, a path's points) gives its object a prefab of its own; a scalar would
