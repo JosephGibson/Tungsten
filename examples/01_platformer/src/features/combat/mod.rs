@@ -285,6 +285,7 @@ pub struct CombatPlugin;
 impl Plugin for CombatPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.insert_resource(systems::Grades::default());
+        world.insert_resource(systems::StatusTinted::default());
         world.resource_mut::<Extracts>().add_sprites(draw::overlays);
         world.resource_mut::<Extracts>().add_sprites(draw::edge);
         ensure_phases(schedule);

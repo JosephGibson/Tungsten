@@ -1925,3 +1925,24 @@ fn the_rings_draw_their_curves_as_tweens() {
     assert_eq!(world.query::<&RingLook>().count(), 0);
     assert!(effects(world).is_empty());
 }
+
+#[test]
+fn a_creatures_own_tint_shows_alone_and_under_a_statuss_tint() {
+    use example_01_platformer::features::combat::systems::POISON_TINT;
+    use example_01_platformer::features::dummy;
+    let (mut harness, player) = run();
+    harness.step(10);
+    let at = centre(&harness, player) + Vec2::new(120.0, -140.0);
+    let target = dummy::spawn(harness.world_mut(), at);
+    let own = [200, 160, 120, 255];
+    harness.world_mut().get_mut::<Sprite>(target).unwrap().color = own;
+    harness.step(5);
+    let shown = |harness: &UiHarness| harness.world().get::<Sprite>(target).unwrap().color;
+    assert_eq!(shown(&harness), own, "its own, with no status");
+    super::combat::apply(&mut harness, target, "poisoned", None);
+    harness.step(5);
+    let tinted: [u8; 4] = std::array::from_fn(|i| {
+        (f32::from(own[i]) * f32::from(POISON_TINT[i]) / 255.0).round() as u8
+    });
+    assert_eq!(shown(&harness), tinted, "the status's tint times its own");
+}

@@ -308,26 +308,57 @@ pub fn tint(tags: &Tags, time: f32, grade: f32, level: f32) -> [u8; 4] {
     }
 }
 
-/// `status_tints`, in the present phase: each target with health takes its
-/// statuses' tint, the courier's mixed toward red while a blow's
-/// `Moves::hurt` runs.
+/// What `status_tints` wrote last frame, each target's sprite colour as it
+/// read it and as it wrote it, so the next frame puts the read colour back
+/// where nothing wrote since, as the kit's looks put theirs back: a World
+/// resource [`CombatPlugin`](super::CombatPlugin) inserts, its list kept
+/// between frames.
+#[derive(Debug, Default)]
+pub struct StatusTinted(Vec<(Entity, [u8; 4], [u8; 4])>);
+
+/// `status_tints`, in the present phase: each target with health shows its
+/// sprite's own colour times its statuses' tint, the courier's mixed toward
+/// red while a blow's `Moves::hurt` runs. Last frame's tints come off
+/// first ([`StatusTinted`]), so a prefab's `sprite.color` shows under them.
 pub fn tints(world: &mut World) {
+    let mut tinted = world
+        .get_resource_mut::<StatusTinted>()
+        .map(|tinted| std::mem::take(&mut tinted.0))
+        .unwrap_or_default();
+    for (entity, read, written) in tinted.drain(..) {
+        if let Some(sprite) = world.get_mut::<Sprite>(entity)
+            && sprite.color == written
+        {
+            sprite.color = read;
+        }
+    }
     let time = drawn_time(world);
     let looks: Vec<(Entity, [u8; 4])> = world
         .query::<(Entity, &Health, &Tags)>()
         .map(|(entity, _, tags)| {
             let level = frost_level(world, entity, tags);
-            let mut color = tint(tags, time, grade(world, entity, tags), level);
-            if let Some(moves) = world.get::<Moves>(entity) {
-                color = mix(color, HURT_TINT, moves.hurt / HURT_SECS);
-            }
-            (entity, color)
+            (entity, tint(tags, time, grade(world, entity, tags), level))
         })
         .collect();
-    for (entity, color) in looks {
+    for (entity, status) in looks {
+        let hurt = world
+            .get::<Moves>(entity)
+            .map(|moves| moves.hurt / HURT_SECS);
         if let Some(sprite) = world.get_mut::<Sprite>(entity) {
+            let read = sprite.color;
+            let mut color: [u8; 4] = std::array::from_fn(|i| {
+                (f32::from(read[i]) * f32::from(status[i]) / 255.0).round() as u8
+            });
+            if let Some(share) = hurt {
+                color = mix(color, HURT_TINT, share);
+            }
             sprite.color = color;
+            tinted.push((entity, read, color));
         }
+    }
+    match world.get_resource_mut::<StatusTinted>() {
+        Some(slot) => slot.0 = tinted,
+        None => world.insert_resource(StatusTinted(tinted)),
     }
 }
 
