@@ -1,0 +1,301 @@
+# 7.13g's rerun (example-01-evaluation-rerun) — draft
+
+- **status:** draft
+- **goal:** Phase 7's 7.13g rerun (§2.8 of [phase 7](phase-7.md)), 7.13's last plan: the thirteen briefs of 7.13g's first plan (§8's five tasks in example 01 and in a `tungsten new` copy; LW3, SF1 and SF4 in the copy) rerun by fresh Opus 5.5 xhigh agents under `D-291`'s harness at the fixes' base (`D-292`), each counted and compared with the first pass; every friction point of the rerun a verified seam with a destination; the first pass's 23 fixed seams measured; the rerun's doc seams fixed; the owner's acceptance of 01; and phase 7's Step 13 closed when every task completes and the owner accepts.
+- **non-goals:**
+  - The rerun's code fixes: each seam goes to its system's home (§2.6); only a seam that kept a task from completing is 7.13's, and then Step 13 stays open for a plan of its own (§6).
+  - A brief changed past its premise's fix, a frame changed, or a task added (`D-291`); the setup items `D-291` left to this plan stay as the first pass ran them (§2.4).
+  - A prefab fixture with a break only `tungsten check` reports: this base has none without a second file's break (§2.3).
+  - 7.14's C4 (the empty-archetype walk) and PK1's landing after it; EV-40's and EV-41's homes (7.16, 7.14); the fix of `tungsten check`'s `engine_white` mismatch (A11), a known issue.
+  - Agent guidance's shape: 7.16, which reads both passes' seams.
+  - A sitting, a benchmark row or a counter guard (`D-226`): the evaluation measures agents, not frames.
+  - Any edit by an evaluation agent to this repository: the agents work in copies outside it.
+- **files to touch:** per step (§3), nothing outside its list:
+  - Step 1: this plan (`status`, the evidence row). Local: `R/harness/` (`eval.py`, its pass-1 copy `eval-1.py`, files added), `R/runs/1/` (files added), `W/`, `B/`, `~/.claude/projects/` (pass 1's ten evaluation folders moved within it).
+  - Steps 2 and 3: this plan (the evidence row). Local: `R/runs/2/`, `R/harness/`, `W/`, `~/.claude/projects/`.
+  - Step 4: this plan (§2.9–§2.12, the evidence row). Local: `R/seams/2/`, `R/runs/2/`.
+  - Step 5: the files §2.11's `doc` rows name, inside §2.6's list; this plan (the evidence row).
+  - Step 6: this plan (§2.7's notes, the evidence row).
+  - Step 7: this plan (deleted), `docs/plans/phase-7.md`, `ROADMAP.md`, `docs/known-issues.md`, `DECISIONS.md`, `docs/DECISION_INDEX.md`.
+- **ordered steps:** (1) the harness at the new base, the fixtures' premises and the base's checks; (2) the copy's eight runs; (3) 01's five runs; (4) the seams merged, verified and measured; (5) the rerun's doc seams fixed; (6) the owner's acceptance of 01; (7) close.
+- **done-when:** every step's done-when passes, quoted in the evidence log; thirteen pass-2 runs with a verdict and four counts each, compared with pass 1 (§2.9); every pass-2 friction row in one seam row or one entry; the 23 fixed seams measured (§2.10); the doc seams landed and reviewed; the owner's verdict quoted; `just check` and `just smoke` pass and the demo works (Step 7); the plan deleted with its citations, `example-01-evaluation-rerun` out of Now, and phase 7's Step 13 closed when all thirteen complete and the owner accepts, or its open items named with their next plan (§2.7).
+
+Item `example-01-evaluation-rerun` in [ROADMAP.md](../../ROADMAP.md), phase 7's 7.13g rerun, from phase 7's Step 13, its §2.6, §2.8 and EV rows in §2.2, the redo's 7.13 row and §8 ([roadmap redo](roadmap-redo.md)), `D-291`, `D-292`, and 7.13g's fixes' §2.5 (`git show 0c1d9c4d:docs/plans/example-01-evaluation-fixes.md`) with the first plan at `9bc05f39` (`git show 9bc05f39:docs/plans/example-01-evaluation.md`). Written 2026-11-19 at `a4f8f075`. Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md) and the [operating rules](../operating-rules.md); this plan records only where it differs: Steps 1–4 and 6 commit this plan alone (the harness, workspaces and builds are local); Step 6 waits for the owner's verdict and pauses the plan without one; and a task that does not complete, or the owner's notes, leave Step 13 open without stopping the close (§6).
+
+## Context digest
+
+- 7.13g's first plan ran the thirteen briefs once (`D-291`: every run `complete` at attempt 1, 101 friction rows as 43 seams, EV-1–EV-43 in phase 7's §2.2); its doc seams landed there (`3afadd0c`), and its fixes plan landed the eight `7.13` seams and PK2–PK6 (`D-292`, closed at `a4f8f075`). This plan is 7.13's last: the rerun after the fixes and the owner's acceptance of 01. The redo's §8 passes the 7.13 checkpoint when every friction point is a seam and the rerun completes the tasks; phase 7's Step 13 adds the owner's acceptance (§2.7).
+- The counts must compare with pass 1's, and later with 8.5's and 8.6's: one harness, frames, briefs, fixtures, binary, venv and counting rule (`D-291`). Only the base changes, with what the harness needs for a second pass (§2.2).
+- What the audit changed in the sources' plan: no prefab-file break is `tungsten check`'s alone (A9), so the fixtures stay pass 1's and both prefab briefs' premises now hold (§2.3), against phase 7's §2.8 and `D-292`'s consequence, which the close amends; pass 1's transcripts sit in the project folders pass 2's sessions reuse (A5), so they leave first; pass 1's build folders hold each task crate's incremental cache, so the warm builds start fresh, as pass 1's did (§2.2).
+- The setup items `D-291` left here (01's commit hook, a Pillow venv on 01's agents' path) stay off (§2.4).
+- Later items expect: 7.14 next when Step 13 closes; 7.16 to read both passes' seams; 8.5 and 8.6 to reuse the harness and compare with both passes.
+
+## 1. Audit
+
+Read at `a4f8f075`. `W` is `/home/joker/tungsten-eval/` (the agents' side), `R` is `perf-runs/713g-eval/` (ignored, local), `H` is `R/harness/`, `B` is `target/713g-eval/`, `E` is `examples/01_platformer/`, `T` is `templates/basic/`. Pass 1 is the first plan's run (its §2.2–§2.8 the protocol `D-291` records).
+
+| # | Finding | Evidence |
+| --- | --- | --- |
+| A1 | The step's sources: the rerun reruns every task under `D-291`'s harness at the fixes' base, its prefab briefs losing their false premise and their fixtures a break only `tungsten check` reports, its friction recorded as seams, and the owner accepts 01; the 7.13 checkpoint passes when every friction is a seam and the rerun after the fixes completes the tasks; `D-291` changes a brief only by its premise's fix and leaves 01's hooks and a venv on 01's path to this plan | `docs/plans/phase-7.md:463`, `:555`; `docs/plans/roadmap-redo.md:542`, `:546`; `DECISIONS.md:4546`, `:4552`, `:4566` |
+| A2 | Pass 1's records, kept for this plan: the harness, its 13 runs and seams (`R`), the engine export, archived workspaces and logs (`W`), and the builds (`B`): the pinned binary 2.1.327 (356 MB), the venv with Pillow 12.3.0, `B/copy` 17 GB and `B/e01` 14 GB. Pass 1's setup built both from empty folders (serde, wgpu and winit compiled) | `H/setup.json`; `H/setup/warm-copy-build.log` (210 `Compiling` lines), `H/setup/e01-build.log` (226); `du -sh B/*` |
+| A3 | The harness exports and builds once: `setup` reads one `setup.json`, skips a part whose key it holds, takes no pass, and stops when `W/engine` exists without a record; `PLAN` names the first plan; `setup`'s 01 export at `W/e01` stays until removed, which pass 1 did by hand after `base` | `H/eval.py:46`, `:909-992`, `:1197-1198`; `H/run-notes.md` ("W/e01 … removed after base") |
+| A4 | `H/e01-last.json` holds pass 1's last 01 run (`1/e01.prefab/a1`, the crawler's two paths), which `reset_touch` would touch before pass 2's first 01 run | `H/e01-last.json`; `H/eval.py:286-299` |
+| A5 | Pass 1's ten project folders, `~/.claude/projects/-home-joker-tungsten-eval-*`, still hold its sessions' transcripts at the paths pass 2's sessions reuse (copy.enemy's `c71b7544….jsonl` in `…-copy-enemy/`, 01's five in `…-e01/`); `launch` moves only `memory/` aside before a session and copies the transcripts after it, so a pass-2 session, or a void's retry at one path, could list its predecessor's transcript | `ls ~/.claude/projects/-home-joker-tungsten-eval-copy-enemy/`; `R/runs/1/copy.enemy/a1/meta.json` (`session`); `H/eval.py:345-367`, `:383-385`, `:411-420` |
+| A6 | `launch` reads `paths.json` at its start and writes it at its end, so three runs at once lose each other's keys (5 kept of 14); harmless, since each run's memory moved into its own record at its end (every pass-1 run's `memory_after`) | `H/paths.json`; `H/eval.py:382-383`, `:411-413`; `R/runs/1/*/a1/meta.json` |
+| A7 | `probe` deletes the record and archive under `runs/probe/` before it runs; `seams --check` wants the IDs from `EV-1` with no gap and reads `### 2.11` to `### 2.12` and `### 2.12` to `## 3.` | `H/eval.py:1046-1056`, `:857-870` |
+| A8 | The fixtures' files are unchanged since pass 1's base and each edit's text matches once; the value breaks' tests stand | `git diff --quiet ca678445 HEAD -- T/assets/prefabs/enemy_patrol.json E/tools/content/prefabs/crawler.json E/assets/prefabs/crawler.json` → exit 0; `rg -c` of each `from` → `1`; `T/tests/game/sample.rs:1341`, `E/tests/game/data.rs:24`; `H/fixtures/fixtures.json` |
+| A9 | A prefab file's checks are the same at the load and in `tungsten check`: the window's and the harness's loads `commit`, the check `commit_for_check`, both running `resolve_variants` and `check_file_backed`, which hold each component's asset check (a cue's sounds among them) and, since `D-292`, the base sprite; map objects are checked at the load too. The check's own prefab loop reports only a name an animation's frame or a tilemap's tile interned with no sprite behind it, which only a second file's break makes; no load-time intern adds another name | `crates/tungsten-core/src/assets/data.rs:712-775`; `crates/tungsten/src/asset_loader/prefab.rs:31-34`, `:127`, `:212`; `crates/tungsten/src/asset_loader/check.rs:64-86`, `:437-491`; `crates/tungsten-kit/src/react/cues.rs:3537-3547`; `rg -n intern_sprite` (the loads intern the manifest's names, animation frames and `engine_white`; the rest intern at run time) |
+| A10 | A boot unit's load error stops the window: `boot_redraw`'s error goes to `fail_boot`, which logs "Manifest composition failed", sets the fatal error and exits the event loop, and the prefabs are a boot unit; so the fixtures' sprite typo now stops both games' starts, which the fixes' probe left unprobed | `crates/tungsten/src/app.rs:1396-1400`, `:3719-3723`; `crates/tungsten/src/asset_loader/mod.rs:1172`, `:1332` |
+| A11 | `tungsten check` refuses a prefab naming the reserved `engine_white`, which the window's and the harness's loads intern after the manifest's names: the check's sprite pass interns no `ENGINE_WHITE`. Probed on the template, restored by `git show HEAD:`: the patrol's `asset_id` → `engine_white` gives `tungsten check` exit 1, ``sprite.asset_id: unknown sprite ID `engine_white` ``, and `keys::a_capture_cancels_after_five_seconds` → `1 passed` | `crates/tungsten/src/asset_loader/check.rs:338-389`; `crates/tungsten/src/asset_loader/mod.rs:1124-1126`; `crates/tungsten/src/testing.rs:157-160` |
+| A12 | The tree names the evaluation: phase 7's EV rows (EV-8: a prefab's base sprite unchecked at load) and its §2.8 (the rerun's prefab briefs and fixtures), `D-291`, `D-292`'s consequence on the rerun's fixtures, the known issues and the Now line; the first plan, which held the fixtures' values, is gone from the tree, and the harness is outside it | `rg -c 'example-01-evaluation\|7\.13g'` → `docs/plans/phase-7.md` 52, `DECISIONS.md` 5, `docs/known-issues.md` 5, `ROADMAP.md` 3, `docs/DECISION_INDEX.md` 2; `DECISIONS.md:4566` |
+| A13 | The frames and briefs stand as pass 1 ran them (`D-291`): the frames carry none of the `env` rows' frame fixes (EV-2, EV-3, EV-14, EV-15, EV-18, EV-37); `e01.sound`'s candidate (a) still has no sound, the bat's screech and dive alone | `H/frame-copy.md`, `H/frame-e01.md`, `H/briefs.json`; `E/tools/sounds.json:255-262`; `E/tools/content/data/cue_rules/sounds.json:411`, `:427` |
+| A14 | 01's pit pin is the fixes' base's (`D-292`: no pin moved): allocations 60,846, allocated_bytes 60,769,145; its movers query matches 128 archetypes, so a task's first new body archetype adds 60 allocations and 1,597,440 B, the walk's cost (C4) | `E/tests/game/guards/pit.json`; `docs/known-issues.md:32`, `:51` |
+| A15 | Between pass 1's base (`ca678445`) and this tree: pass 1's records, its doc fixes (`3afadd0c`), the fixes plan and its eight commits; 45 files | `git log --oneline ca678445..a4f8f075`; `git diff --stat ca678445 a4f8f075` |
+| A16 | Pass 1's Step 4 tools: the merge's and verifiers' briefs, the assembler and the final tables | `R/seams/briefs.md`, `R/seams/assemble.py`, `R/seams/final-2.11.md`, `final-2.12.md`, `final-map.json` |
+| A17 | Disk 46 GB free of 468 (90 %); the Claude week 29.6 % (`perf-runs/713-chain/spend.py`, window 11-16 08:00Z to 11-23 08:00Z); pass 1's runs took 16 GB of disk (76 → 60 GB free) and its session about 8 % of the week | `df -h /`; `spend.py`; pass 1's evidence rows 1–3 |
+| A18 | The week's gate is `spend.py`, which sums every transcript under `~/.claude/projects` by message ID, so a transcript moved out of that folder leaves the gate; the warm-up's and `base`'s logs are written at fixed paths (`H/setup/<part>.log`, `H/base/`), which a second run of either overwrites | `perf-runs/713-chain/spend.py:21`; `H/eval.py:88`, `:338`, `:939`, `:955`, `:974`, `:986`, `:1112` |
+
+## 2. Design
+
+### 2.1 One protocol, two passes
+
+`D-291`'s protocol is unchanged: each task one fresh headless session (`claude -p` at Opus 5.5 and xhigh, `D-237`) started from a workspace outside the repository; the frames, briefs and fixtures as pass 1 ran them (`H/frame-copy.md`, `H/frame-e01.md`, `H/briefs.json`, `H/fixtures/fixtures.json`); the caps (2 hours, USD 100), the gates (30 GB free, 90 % of the week), the concurrency (copies three at once on one warm build, 01's one at a time at `W/e01`), the counts, the verdicts, a void's one retry and the two verifiers; the pinned binary and the venv. Pass 2's records are `R/runs/2/`, `W/runs/2/`, `W/logs/2/` and `W/start/2/` (the harness's `-p 2`). What changes is the base and what a second pass needs (§2.2), the start probes (§2.3) and the seams' IDs and comparison (§2.6, §2.9).
+
+### 2.2 The base, the builds and the project folders
+
+- **The base** is this plan's commit: `a4f8f075` plus this plan and its Now line. `setup -p 2` exports it minus this plan into a fresh `W/engine`, pass 1's moving to `W/runs/1/engine`, and its diff from `a4f8f075` is that commit's two files alone, so every code, asset and doc byte an agent meets is the fixes' close's.
+- **Fresh warm builds.** `B/copy` and `B/e01` hold pass 1's builds and its runs' leftovers, each task crate's incremental cache among them: a pass-2 run of `copy-enemy` builds a crate of that name at that path, so pass 1's cache would warm it past pass 1's own start. Both folders are removed and rebuilt by pass 1's warm-up steps from empty, as pass 1's were (A2), which also frees 31 GB before 14 GB of builds (§2.8). `B/bin/claude` and `B/venv` stay, their versions checked against `setup.json`.
+- **01's reset:** `H/e01-last.json` moves into `R/runs/1/`, so pass 2's first 01 run resets nothing, as pass 1's first did (A4); later runs reset by pass 1's rule.
+- **Project folders.** Pass 1's ten, `~/.claude/projects/-home-joker-tungsten-eval-*`, hold its transcripts at the paths pass 2's sessions reuse (A5), so Step 1 moves them into `~/.claude/projects/-tungsten-eval-archive/1/`: still under the folder `spend.py` sums, so the week's gate keeps counting them (A18), but in no session's project folder (the archive's name is no workspace's path). From pass 2, `launch` moves a workspace's whole project folder (memory, transcripts, tool results) into `-tungsten-eval-archive/stray/` before its session and refuses to start while it exists, and after the session copies its transcripts and memory into the run's record as before, then moves the folder to `-tungsten-eval-archive/<pass>/<task>-a<attempt>/`, so neither a later pass nor a void's retry at one path finds an earlier session there. `launch` no longer reads or writes `paths.json` (A6).
+- **Pass 1's records stay byte for byte.** Pass 2's harness writes only pass-keyed paths: `H/setup-N.json` and `H/setup-N/` for the warm-up's logs, `H/base-N.json` and `H/base-N/`, `R/runs/probe<N>/`, `H/launch-<N>-<task>-a<attempt>.out`, `R/runs/<N>/`, `R/seams/<N>/` (A18). Step 1 hashes every file of `H/`, `R/runs/1/`, `R/runs/probe/` and `R/seams/` first (but `eval.py`, which it edits, `harness.log`, which grows, and `e01-last.json`, which it moves), and Steps 1, 4 and 7 check each unchanged.
+- **The harness's changes** (Step 1), each keeping pass 1's commands' results: `PLAN` is this plan; `setup -p N` writes its record and logs as above, does the moves above, removes `B/copy` and `B/e01` after recording their sizes, checks `B/bin/claude --version` and the venv's Pillow against `setup.json`, then exports, builds the CLI and warms the copy and `W/e01` as pass 1's setup did; `launch` moves project folders as above; `base -p N` adds the starts (§2.3) and removes `W/e01` at its end, so Step 3's first workspace is a fresh export; `probe -p N` plants a transcript beside its memory sentinel; `seams --check` takes `--first N` (default 1), the table's IDs running from `EV-N` with no gap; `compare A B` prints each task's verdict and counts in both passes; the briefs come from `H/briefs-<N>.json` for pass N when that file exists (a premise fix, §2.3), else `H/briefs.json`; the scan adds §2.5's `check` item. `H/eval-1.py` keeps pass 1's script byte for byte.
+
+### 2.3 The fixtures and the prefab briefs
+
+Pass 1's fixtures break each prefab twice (`H/fixtures/fixtures.json`): its sprite misspelt (`enemy` → `enmy`; `ex10_crawler_walk_0` → `ex10_crawer_walk_0`), which pass 1's load missed and `tungsten check` reported, and one value (`health.max` 3 → 30; `run_speed` 210 → 21) that one test alone catches (`sample::every_enemy_stands_at_the_run_start`; `data::every_restated_constant_matches_its_data`). Phase 7's §2.8 and `D-292`'s consequence asked the rerun for another break only `tungsten check` reports, since EV-8's fix makes the load refuse the sprite. This base has none to give (A9):
+
+- Every check `tungsten check` runs on a prefab file, the load runs too: one staged load, one set of checks.
+- The check's own prefab loop reports a name an animation's frame or a tilemap's tile interned with no sprite behind it. That needs a second file broken (an animation naming a missing sprite, then the prefab naming it), outside "the patrolling enemy's prefab" and "the frost crawler's prefab": the briefs would change past their premise, which `D-291` forbids, and the task would no longer compare with pass 1's.
+- The one check-only case, a prefab naming `engine_white`, is the check's mismatch with the loads (A11), not a break.
+
+So the fixtures stay pass 1's (Q1). Their sprite typo now fails the load, the headless suite and the start with the nearest name, as EV-8's fix meant, and the value still only its test catches: the prefab runs measure EV-8's fix on the same fixture. Both briefs' premises, false in pass 1 ("the game stops at startup", "example 01 no longer starts"; EV-8), now hold, since a prefab failing its boot unit stops the window (A10). `base -p 2` probes it in each workspace by `tungsten run --script` with a script that exits at frame 9 (`{"version": 1, "frames": 10, "steps": [{"frame": 9, "exit": {}}]}`): exit 0 at the base, and with the fixture's two breaks a non-zero exit naming the misspelt sprite. A start that does not stop is a failed premise: that brief loses its clause once, in `H/briefs-2.json`, recorded in Step 1's row before any launch.
+
+### 2.4 The setup `D-291` left to this plan
+
+`D-291` names two setup changes for this plan to weigh: 01's export running `just hooks`, so the commit hook refuses the session's attribution trailer (EV-3), and a Pillow venv on 01's agents' `PATH` (EV-4). Neither is made (Q2): each moves the counts this pass exists to compare (a refused commit adds an error and a retry; a ready venv saves each 01 run its own install); each is an `env` row with no engine change, whose recurrence is an entry on EV-3 or EV-4; and 8.6, which runs 01 again on Phase 8, weighs them against both passes' counts. The other `env` rows' frame fixes (EV-2, EV-14, EV-15, EV-18, EV-37) stay out for the same reason: the frames are pass 1's.
+
+### 2.5 What the tree says about the evaluation
+
+The first plan, the harness and the fixtures are outside every export, so the fixtures' values are named nowhere an agent may read (A12). The tree does name the evaluation: phase 7's EV rows and §2.8, `D-291`, `D-292`'s consequence on the rerun's fixtures and the Now line. The frames let an agent read them (`W/engine`'s docs, all of `W/e01`), and for the prefab tasks they name only the sprite, which the suite's first run names anyway. So no file leaves the export: the scan adds a `check` item for a tool result quoting the rerun's own records (`7.13g's rerun`, `prefab fixture`, `prefab briefs`, `example-01-evaluation-rerun`), read by hand with the run's other `check` items, and a run that read them before its fix has it noted in its evidence row and its verdict's reason, never voided or retried: the frame allows those files, and a retry reads the same tree. Pass 1's records (`W/runs/1/`, `W/logs/1/`, `W/runs/1/engine`, `R/`) stay forbidden by the frames and voided by the scan, and pass 1's transcripts leave the project folders (§2.2). A read under `~/.claude` stays a `check` item, as in pass 1; one that reached `-tungsten-eval-archive/` is handled as a void (its one retry), since it reads another run's transcript.
+
+### 2.6 Seams
+
+The rows, their ranking and their cells are pass 1's (§2.8 at `9bc05f39`): a fresh agent merges the thirteen pass-2 logs and the scans' error lists, and two fresh verifiers check every claim, as in pass 1 (`R/seams/briefs.md`, its paths and the points below changed in `R/seams/2/briefs.md`):
+
+- **IDs** run on from pass 1's: `EV-44`, `EV-45`, …; none when every friction is an entry.
+- **Dedupe first,** against pass 1's 43 rows (whole in `R/seams/final-2.11.md` and `final-2.12.md`) and pass 1's registers (the seam register, the genre jam's rows, phase 7's §2.2–§2.7, the paper designs' and the ARPG design's rows, `docs/known-issues.md`, `ROADMAP.md`'s Later): a friction an existing ID covers is an entry in §2.12 with its new evidence. On one of the 23 rows pass 1 fixed, the entry says whether the fix reached it; a recurrence that a gap of the fix's makes (a case, a file or a page it missed) is a row of its own naming the fixed one. A friction that kept a pass-2 task from completing (§6) on a phase 7 row still `Later` or `open` is an entry whose Destination is `7.13`, and Step 7 moves that row to `7.13`, `open` (phase 7's §2.1: its move, noted `moved from <step> (the rerun's <task>)`, or a `Later` row 7.13g's plan takes back); on any other ID (a landed or closed row, a known issue, a J- row) it is a §2.11 row of its own at `7.13` naming that ID. Every other entry's Destination is `—`.
+- **The fixes, measured** (§2.10): each of the 23, from the pass-2 runs of the tasks that met it in pass 1 and any other that meets it: `gone` (met, no friction), `not met` (no run reached its case) or `recurs` (with its entry or row).
+- **Destinations,** by phase 7's §2.1 rule and pass 1's list, with no third 7.13 plan by default: `doc` (Step 5); `7.13` only for a seam that kept a pass-2 task from completing (§6); `known-issues` for a bug in 01, the template, the kit, the engine or the CLI that a task met and worked around; `8.4` for a gap in 01's own code or data and `8.5` for the template's (their Phase 8 passes); a kit or engine item to the Phase 8 step that builds its system (`8.N`) or `Later` (`D-172`'s second genre); `7.14` or `7.15` for a cost (a pit rise on the walk is C4's evidence, A14); `7.16` for agent guidance; `env` for the machine, the session or the harness, the briefs' open choices included.
+- **The doc seams' files** are pass 1's: `docs/*.md` but the frozen records; `T/AGENTS.md` (12,282 of its 12,288 bytes: a fix there cuts what it adds), `T/README.md`, `T/tools/README.md`; `E/README.md`, `E/tools/README.md`; doc comments (`///`, `//!`) in `crates/*/src/`, `T/src/` and `E/src/`; `scripts/missing-docs.json` when new rustdoc lowers it. A kit description string is code. The repository's own `AGENTS.md`, `docs/LLM_INDEX.md` and every skill are 7.16's; a doc seam needing any other file is `known-issues`.
+
+### 2.7 The checkpoint and the owner's acceptance
+
+- **The checkpoint** (the redo's §8, its 7.13 row): every friction point of both passes recorded as a seam (pass 1's 43 rows and five entries; this pass's §2.11 and §2.12), and the rerun after the fixes completing the tasks: all thirteen pass-2 verdicts `complete`, final after the verifiers. Step 4 reads it.
+- **Phase 7's Step 13** closes when its done-when holds whole: the redo's 7.13 sketch (7.13a–7.13f landed, `D-271`–`D-290`), the checkpoint, every parked seam fixed or in its home with its reason (pass 1's §2.9 at `9bc05f39`, PK1 waiting for 7.14's C4 in its known issue, `D-292`), and the owner's acceptance of 01.
+- **The acceptance** (Step 6) comes after the seams and the doc fixes, so the owner plays the tree the rerun measured. The session runs the demo, then gives the owner what to play and asks for a verdict: a New Game from the title through the six areas, the lantern clearing to the troll bridge, with the spells, the gun, the foes, the toys and the tomes; a save and a Continue mid-run; the options and game over; and two behaviours the fixes changed, a frozen wisp saved and loaded thawing into its flight (PK2) and a troll's crate thrown inside an area breaking where it lands, not at the throw (PK3). No review sheet: the session draws nothing.
+- **The verdict** is the owner's words, quoted in Step 6's row. "Accepted", with or without notes for later, meets Step 13's last item; each note goes in the table below with one destination of §2.6's list (a doc's to `known-issues`, Step 5 having run), and Step 7 lands every one in its destination's home before the plan goes: a phase 7 row `AC-<n>` at its step for a step (§2.3 for a Phase 8 one) or at `—`, `closed (env)` for `env`, as §2.11's `env` rows land, a `docs/known-issues.md` entry for `known-issues`, a line in `ROADMAP.md`'s Later for `Later`. A note the owner wants landed before accepting keeps Step 13 open: its destination is `7.13`, and the close names its plan next. Where the owner cannot answer in the session (a headless one), Step 6 pauses the plan (§6).
+
+| # | Note | Destination |
+| --- | --- | --- |
+
+### 2.8 Budget, disk and time
+
+- **The week:** 29.6 % at writing; pass 1's whole session took about 8 % (19.3 → about 27 %), so this run ends near 38 %, under the 90 % gate. Pass 1's thirteen runs cost USD 58 at API prices.
+- **Disk:** 46 GB free at writing. Step 1 frees `B/copy` (17 GB) and `B/e01` (14 GB), and its fresh builds take about 14 GB (pass 1's 6.8 and 7.4), so about 63 GB at the first launch; pass 1's runs took 16 GB, so about 47 GB at the last, above the 30 GB gate.
+- **Time,** by pass 1's: setup 8 min, `base` about 20 (`just level-check` 9 of them), the copy's eight 27 min at three at once, 01's five 3.5 h one at a time (each with 10 min of checks), the merge 40 min and the verifiers 30, the doc fixes and their review about an hour, the close 30 min: about 7 hours, then the owner's play.
+
+### 2.9 Counts against pass 1
+
+Written at Step 4 from `eval.py compare 1 2`, each cell `pass 1 → pass 2`. Pass 1's side, final (`R/runs/1/*/a1/counts.json`; wrong turns the verifiers' confirmed plus unlogged; work calls are tool calls less the log's):
+
+| Task | Verdict | Turns | Work calls | Errors | Files | Wrong turns | Minutes | USD | Log rows |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| copy.enemy | complete | 75 | 67 | 3 | 21 | 0 | 11.6 | 4.39 | 11 |
+| copy.room | complete | 72 | 68 | 2 | 15 | 0 | 8.1 | 3.44 | 7 |
+| copy.sound | complete | 33 | 32 | 2 | 6 | 0 | 3.4 | 1.29 | 5 |
+| copy.status | complete | 68 | 64 | 2 | 17 | 0 | 9.0 | 3.60 | 8 |
+| copy.prefab | complete | 20 | 15 | 0 | 1 | 0 | 2.2 | 0.85 | 3 |
+| copy.lw3 | complete | 97 | 93 | 1 | 14 | 1 | 10.4 | 4.50 | 8 |
+| copy.sf1 | complete | 96 | 90 | 2 | 25 | 2 | 14.5 | 5.95 | 11 |
+| copy.sf4 | complete | 86 | 80 | 2 | 17 | 0 | 13.2 | 4.95 | 10 |
+| e01.enemy | complete | 141 | 135 | 0 | 17 | 2 | 36.6 | 8.09 | 9 |
+| e01.room | complete | 107 | 104 | 2 | 9 | 1 | 35.0 | 5.83 | 7 |
+| e01.sound | complete | 81 | 76 | 0 | 17 | 2 | 22.6 | 4.07 | 6 |
+| e01.status | complete | 159 | 152 | 2 | 23 | 2 | 37.9 | 9.42 | 11 |
+| e01.prefab | complete | 49 | 44 | 1 | 2 | 0 | 25.5 | 1.72 | 5 |
+
+### 2.10 The fixes, measured
+
+The 23 seams pass 1 fixed, with the tasks that met them then; the Pass 2 cell (`gone`, `not met` or `recurs` with its entry or row) and the Evidence cell are written at Step 4 (§2.6).
+
+| ID | Fix | Pass 1 | Pass 2 | Evidence |
+| --- | --- | --- | --- | --- |
+| EV-5 | The headless load's physics names, tilesets and rooms (`9cbddb27`) | copy.room, copy.lw3, copy.sf1 | | |
+| EV-6 | `tungsten::core::Vec2` and `vec2` (`5aba64e1`) | copy.enemy, copy.lw3, copy.sf1 | | |
+| EV-7 | The guard's message and 01's tools guide on the pit's pin (`9cbddb27`) | e01.enemy, e01.room, e01.sound | | |
+| EV-8 | A prefab's base sprite checked at its load (`9dfb5f53`) | copy.prefab, e01.prefab | | |
+| EV-9 | `shell_checkpoint` after the kit's trace (`a0b69266`) | copy.enemy, copy.sf4 | | |
+| EV-10 | A feature with nothing to register (`3afadd0c`) | copy.room, copy.status | | |
+| EV-12 | The schema rule and `register_saved`'s place (`3afadd0c`) | copy.enemy, copy.sf4 | | |
+| EV-13 | A saved countdown on `Cooldown` (`3afadd0c`) | copy.sf4, copy.enemy | | |
+| EV-16 | A still prefab's `Transform` (`3afadd0c`) | e01.enemy, e01.status | | |
+| EV-25 | Writing a room generator (`3afadd0c`) | copy.sf1 | | |
+| EV-26 | Respawning a live room (`3afadd0c`) | copy.room | | |
+| EV-27 | `contact_damage` at 0 as a trigger (`3afadd0c`) | copy.status | | |
+| EV-28 | 01's enemy variants (`3afadd0c`) | e01.enemy | | |
+| EV-29 | `chambers` in 01's level source (`0c1d9c4d`) | e01.room | | |
+| EV-30 | What a session's `--unlock` leaves (`3afadd0c`) | e01.sound | | |
+| EV-31 | 01's saves census table (`3afadd0c`) | e01.status | | |
+| EV-32 | Where an AI's `Intent` comes from (`3afadd0c`) | copy.enemy | | |
+| EV-33 | An instant effect's `on_end` step said (`f75cbc54`) | copy.status | | |
+| EV-34 | A `normal_map` lights a sprite (`3afadd0c`) | copy.lw3 | | |
+| EV-35 | `--into` inside the manifest's folder (`3afadd0c`) | copy.sf1 | | |
+| EV-36 | 01's status tints over a creature's own (`d6eb7ed7`) | e01.enemy | | |
+| EV-38 | A script's stage holding the states (`3afadd0c`) | copy.sf1 | | |
+| EV-39 | `PropKind` and its markers (`3afadd0c`) | e01.room | | |
+
+### 2.11 Seams table
+
+Written at Step 4: `| ID | Friction | Kind | Tasks | Evidence | Lines | Lacking | Fix | Destination |`, IDs from `EV-44` (§2.6).
+
+### 2.12 Registered elsewhere
+
+Written at Step 4: `| # | ID | Tasks | New evidence | Destination |`, an entry per friction an existing ID covers, EV-1–EV-43 included, its Destination `—` or `7.13` (§2.6).
+
+## 3. Steps
+
+Paths in commands: `H` is `perf-runs/713g-eval/harness` from the repository's root; `<scratchpad>` is the run session's scratchpad. A filter's test run is read by its `N passed` line, never by its exit alone.
+
+### Step 1: The harness at the new base, the fixtures' premises and the base's checks
+
+- **Files:** this plan (`status: in progress`, the evidence row). Local: `H/eval.py` and `H/eval-1.py`, `H/`'s pass-2 files; `R/runs/1/e01-last.json` (moved in); `W/`; `B/`; `~/.claude/projects/` (pass 1's ten evaluation folders into `-tungsten-eval-archive/1/`).
+- **Change:** `status: in progress`; pass 1's records hashed (§2.2) by `python3 -B -c "import hashlib,json,pathlib,sys; r=pathlib.Path('perf-runs/713g-eval'); json.dump({str(p): hashlib.sha256(p.read_bytes()).hexdigest() for d in ('harness', 'runs/1', 'runs/probe', 'seams') for p in sorted((r / d).rglob('*')) if p.is_file() and p.name not in ('eval.py', 'harness.log', 'e01-last.json')}, open(sys.argv[1], 'w'))" <scratchpad>/pass-1-records.json`, and `python3 -B perf-runs/713-chain/spend.py`'s `week` read; `H/eval.py` copied byte for byte to `H/eval-1.py`, then edited by §2.2's list; `git rev-parse HEAD` read; `setup -p 2` (it moves pass 1's engine export to `W/runs/1/engine`, `e01-last.json` into `R/runs/1/` and the ten project folders into the archive, then builds); the premises re-read as pass 1 read them (the sample's shots, patrol enemy, `enemy` sprite and `tools/sounds.py`; 01's beetle as a walker that fire hurts, the clearing's east end with ground under it, a pool prop to tint, fire's burning on bodies, the crawler's prefab source; `e01.sound`'s candidate); `base -p 2`; `probe -p 2`.
+- **Done-when:**
+  - pass 1's records unchanged: `python3 -B -c "import hashlib,json,pathlib,sys; m=json.load(open(sys.argv[1])); bad=[p for p, h in m.items() if not pathlib.Path(p).is_file() or hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() != h]; print(len(m), 'files,', len(bad), 'changed', *bad); sys.exit(1 if bad else 0)" <scratchpad>/pass-1-records.json` → exit 0, `<n> files, 0 changed` (the records check; Steps 4 and 7 run it too);
+  - `python3 -B H/eval-1.py status -p 1 > <scratchpad>/status-1a.txt; python3 -B H/eval.py status -p 1 > <scratchpad>/status-1b.txt; cmp <scratchpad>/status-1a.txt <scratchpad>/status-1b.txt` → exit 0;
+  - `rtk proxy git show 9bc05f39:docs/plans/example-01-evaluation.md > <scratchpad>/pass-1.md; python3 -B H/eval.py seams --check <scratchpad>/pass-1.md -p 1` → exit 0, `43 seam rows, 101 log rows, 101 citations, 0 problems`;
+  - `python3 -B H/eval.py setup -p 2` → exit 0; `H/setup-2.json`'s `engine.base` the commit read at the step's start, and `rtk proxy git diff --name-only a4f8f075 <that commit>` → `ROADMAP.md` and `docs/plans/example-01-evaluation-rerun.md` alone; `test -e /home/joker/tungsten-eval/engine/docs/plans/example-01-evaluation-rerun.md` → exit 1; `setup-2.json`'s binary version and Pillow `setup.json`'s (`2.1.327 (Claude Code)`, `12.3.0`);
+  - `python3 -B H/eval.py base -p 2` → exit 0, every line pass: the copy's `cargo test` (its pass count), clippy, `tungsten check`, its tree clean after the builds and its start (exit 0); its fixture: `tungsten check` exit 1, `tungsten check: 1 error in 1 file`, the line naming `enmy` and `enemy`; both breaks: `cargo test` exit non-zero and the start exit non-zero, naming `enmy`; the sprite undone: `tungsten check` exit 0 and `cargo test` failing `sample::every_enemy_stands_at_the_run_start` alone; 01's `cargo test` (its pass count), `tungsten check`, clippy, `just level-check` and its start (exit 0); its fixture: `generate.py --check` exit 0 on the broken tree, `tungsten check` exit 1 naming `ex10_crawer_walk_0`; both breaks: `cargo test` exit non-zero and the start exit non-zero, naming it; the sprite undone: `tungsten check` exit 0 and `cargo test` failing `data::every_restated_constant_matches_its_data` alone; `W/e01` removed;
+  - `python3 -B H/eval.py probe -p 2` → exit 0: subtype `success`, its transcript found, `scan` counting a tool call, an `env` in it showing the child's own `CLAUDE_CODE_SESSION_ID` and not the run session's, the memory sentinel and the planted transcript moved aside before the launch and absent from the child's transcripts, and its project folder in `-tungsten-eval-archive/probe2/` after the run;
+  - `test -e H/e01-last.json` → exit 1 and `test -s perf-runs/713g-eval/runs/1/e01-last.json` → exit 0; `python3 -B -c "import glob,sys; sys.exit(len(glob.glob('/home/joker/.claude/projects/-home-joker-tungsten-eval-*')))"` → exit 0; `python3 -B -c "import glob,sys; n=len(glob.glob('/home/joker/.claude/projects/-tungsten-eval-archive/1/*/*.jsonl')); print(n); sys.exit(0 if n == 14 else 1)"` → `14` (pass 1's thirteen sessions and its probe's);
+  - `python3 -B perf-runs/713-chain/spend.py`'s `week` after the move not below its reading at the step's start (the transcripts still counted, A18), both quoted;
+  - `git status --porcelain` → this plan alone.
+- **Commit:** `docs(plans): start 7.13g's rerun, its harness at the new base`
+- **Moves:** none.
+
+### Step 2: The copy's eight runs
+
+- **Files:** this plan (the evidence row). Local: `R/runs/2/`, `H/`, `W/`.
+- **Change:** for each of `copy.enemy`, `copy.room`, `copy.sound`, `copy.status`, `copy.prefab`, `copy.lw3`, `copy.sf1`, `copy.sf4`, in that order: `eval.py workspace <task> -p 2`, then `eval.py launch <task> -p 2` as a background task (its output to `H/launch-2-<task>-a<attempt>.out`), at most three at once, each gate read first; each run's `check` items read by hand (§2.5's among them), a void reviewed and, when real, run once more (`-a 2`).
+- **Done-when:** `python3 -B H/eval.py status -p 2 --set copy` → exit 0, eight lines, each verdict `complete`, `partial` or `failed` with its four counts; for each of the eight, at the attempt its verdict names, `test -s /home/joker/tungsten-eval/logs/2/<task>-a<attempt>.md` → exit 0, or, for a run whose session wrote no log (a cap or a crash), its record holding `result.json`, `stderr` and `checks.json`, the missing log named in the evidence row, and its friction taken from its transcript and error list at Step 4 (pass 1's Q9); `git -C /home/joker/tungsten-eval/engine status --porcelain` → prints nothing.
+- **Commit:** `docs(plans): record the copy's eight rerun runs`
+- **Moves:** none.
+
+### Step 3: 01's five runs
+
+- **Files:** this plan (the evidence row). Local: `R/runs/2/`, `H/`, `W/`.
+- **Change:** `e01.enemy`, `e01.room`, `e01.sound`, `e01.status`, `e01.prefab`, one at a time at `W/e01`, each reset by pass 1's rule before the next (the first resetting nothing, §2.2), each gate read first, each run's `check` items read by hand.
+- **Done-when:** `python3 -B H/eval.py status -p 2 --set e01` → exit 0, five lines as Step 2's; each run's log or missing-log record as Step 2's; each workspace record (`R/runs/2/<task>/a<attempt>/workspace.json`) with `status_clean` true, and, where its reset touched a restored Rust source, `build.rs` or `Cargo.toml`, `Compiling example-01-platformer` among its lines (quoted); the first one's reset touching nothing.
+- **Commit:** `docs(plans): record 01's five rerun runs`
+- **Moves:** none.
+
+### Step 4: The seams, merged, verified and measured
+
+- **Files:** this plan (§2.9–§2.12, the evidence row). Local: `R/seams/2/`, `R/runs/2/`.
+- **Change:** `R/seams/2/briefs.md` from pass 1's with §2.6's points; a fresh-context subagent merges the thirteen pass-2 logs and error lists into `R/seams/2/merged.md` (rows from `EV-44`, entries, §2.10's outcomes, every log row mapped once); two fresh-context verifiers, one for the copy's runs and one for 01's, check every row, entry and outcome against the workspaces and the base and judge each `complete` run's named test against its brief and each run's wrong turns (`R/seams/2/verify-1.md`, `verify-2.md`); their corrections taken; `eval.py verdict … -p 2 --final` and `eval.py wrong … -p 2` for each run; `compare 1 2` into §2.9; §2.10–§2.12 written; the checkpoint read (§2.7).
+- **Done-when:** `python3 -B H/eval.py seams --check docs/plans/example-01-evaluation-rerun.md -p 2 --first 44` → exit 0, `0 problems` (every pass-2 log row cited once in §2.11's Tasks cells or §2.12, one destination of §2.6's list a row, the IDs from `EV-44` with no gap); `python3 -B H/eval.py status -p 2` → exit 0, thirteen lines, each `final`; `python3 -B H/eval.py compare 1 2` → exit 0, thirteen tasks, in §2.9; `rg -c '^\| EV-[0-9]+ \| [^|]+ \| [^|]+ \| (gone|not met|recurs[^|]*) \| [^|]* \|$' docs/plans/example-01-evaluation-rerun.md` → `23`; the verifiers' files judging every row, entry and outcome `confirmed`, `corrected` or `dropped`; the checkpoint's reading in the evidence row (thirteen `complete`, or §6's stop named, each blocking seam's row or entry at `7.13`); Step 1's records check → exit 0, `0 changed`; `just repo-check` → exit 0.
+- **Commit:** `docs(plans): record 7.13g's rerun seams and counts`
+- **Moves:** none.
+
+### Step 5: The rerun's doc seams fixed
+
+- **Files:** the files §2.11's `doc` rows name, inside §2.6's list; this plan (the evidence row).
+- **Change:** each `doc` row's fix, every fact checked against the source; then a fresh-context subagent reviews the diff against the code, its blocking findings fixed, the rest answered in the evidence row. With no `doc` row, the evidence row says so and the commit holds it alone.
+- **Done-when:** `just checks <the step's paths>`'s recommendations → each passes; `just ctx` → passes (`T/AGENTS.md` within 12,288 bytes); `just repo-check` → passes; before the commit, `rtk proxy git diff --unified=0 HEAD -- '*.rs' > <scratchpad>/rs.diff; python3 -B -c "import re,sys; bad=[l for l in open(sys.argv[1]) if l[:1] in '+-' and not l.startswith(('+++ ', '--- ')) and not re.match(r'[+-]\s*(///|//!)', l)]; sys.stdout.write(''.join(bad)); sys.exit(1 if bad else 0)" <scratchpad>/rs.diff` → exit 0 (only doc comment lines change in Rust files; Python reads the diff, since rtk rewrites piped filters).
+- **Commit:** `docs: fix the docs 7.13g's rerun agents tripped on`
+- **Moves:** `scripts/missing-docs.json` may fall.
+
+### Step 6: The owner's acceptance of 01
+
+- **Files:** this plan (§2.7's notes, the evidence row).
+- **Change:** the demo; §2.7's play list given to the owner with the question; the verdict quoted; each note in §2.7's table with its destination.
+- **Done-when:** the demo, from `examples/01_platformer`: `cargo run -q --locked -p tungsten-cli -- run --script <scratchpad>/demo.json`, the script `{"version": 1, "frames": 152, "steps": [{"frame": 2, "action": "start_run"}, {"frame": 150, "assert": {"probe": "player", "path": "/health/0", "op": ">", "value": 0}}, {"frame": 151, "exit": {}}]}` → exit 0, `tungsten run: 151 frames, 0 captures, 1 assert: passed`; the owner's verdict quoted in the evidence row; each note a row of §2.7's table with one destination of §2.6's list.
+- **Commit:** `docs(plans): record the owner's acceptance of example 01`
+- **Moves:** none.
+
+### Step 7: Close
+
+- **Files:** this plan (deleted), `docs/plans/phase-7.md`, `ROADMAP.md`, `docs/known-issues.md`, `DECISIONS.md`, `docs/DECISION_INDEX.md`.
+- **Change:** phase 7 gains a row per §2.11 row, `| EV-<n> | <pattern> | <step> | <status> | <note> |`, its note citing this plan's §2.11 at its last commit: `doc` → `7.13`, `landed <Step 5's sha>`; `env` → `—`, `closed (env)`; `known-issues` → `—`, `closed (known issue)`, its entry written; `Later` → `Later`, `Later`, its line in `ROADMAP.md`'s Later; `7.14`, `7.15`, `7.16` → that step, `open`; `8.N` → into §2.3 at that step, `open`; `7.13` (§6 alone) → `7.13`, `open`. Each §2.12 entry at `7.13` moves its ID's row (§2.6); each note of §2.7's table lands in its home (§2.7). Phase 7's §2.8 records the rerun (its verdicts, its counts against pass 1, the fixes measured, the fixtures' premise, the owner's verdict) and, when Step 13's done-when holds (§2.7), Step 13 closed with 7.14 next, else what keeps it open and its next plan; phase 7's evidence log takes the row `13 (7.13), part g's rerun`. `docs/known-issues.md` takes the `known-issues` rows and A11 (Follow-ups); `ROADMAP.md` its Later lines, this item out of Now and phase 7's line naming what is next. The rerun's choices that bind 8.5 and 8.6 (§2.2–§2.5; Q1–Q4) recorded with the tungsten-decision skill under the next free ID, rechecked before the commit, amending `D-292`'s consequence on the rerun's fixtures. The plan deleted.
+- **Done-when:** `just check` → exit 0; `just smoke` → exit 0; the demo: `python3 -B H/eval.py status -p 2` → exit 0, thirteen final verdicts, and `python3 -B H/eval.py compare 1 2` → exit 0; `rg -c '^\| EV-[0-9]+ \|' docs/plans/phase-7.md` → 43 plus §2.11's rows, read before the deletion; each §2.7 note's home line quoted in the evidence row, and `rg -c '^\| AC-[0-9]+ \|' docs/plans/phase-7.md` → the count of §2.7's notes at a step or `env` (`rg` exit 1 with none); Step 1's records check → exit 0, `0 changed`; when Step 13 closes, `rg -q '^\| [^|]+ \| [^|]+ \| 7\.13 \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0; `rg -l 'example-01-evaluation-rerun\.md' docs ROADMAP.md AGENTS.md; test $? -eq 1` → exit 0; `just repo-check` → exit 0.
+- **Ends with:** the commits, the evidence, what the owner should try, and the next prompt: tungsten-next's `step` prompt for 7.14 (phase 7's Step 14) when Step 13 closed, else the `step` prompt for the plan its open seams or notes need.
+
+## 4. Open questions
+
+| # | Question | Default |
+| --- | --- | --- |
+| Q1 | The prefab fixtures: pass 1's, or a break only `tungsten check` reports, as phase 7's §2.8 and `D-292`'s consequence asked? | Pass 1's (§2.3): no prefab-file break is the check's alone at this base (A9), a second file's break changes the briefs past their premise (`D-291`), and the same fixture measures EV-8's fix; both briefs' premises now hold (A10), which Step 1 probes; the close amends `D-292`'s consequence |
+| Q2 | 01's export running `just hooks` (EV-3), and a Pillow venv on 01's agents' `PATH` (EV-4)? | Neither (§2.4): each moves the counts this pass compares, their frictions recur as entries, and 8.6 weighs them |
+| Q3 | The rerun's seam IDs? | `EV-44` on, in phase 7's §2.2 (§2.3 for a Phase 8 step): one evaluation register, which 8.5 and 8.6 continue |
+| Q4 | A rerun seam whose fix is code? | Its system's home (§2.6): `known-issues`, `8.4`, `8.5`, `8.N`, `Later` or `7.14`–`7.16`; `7.13` only for a seam that kept a task from completing (§6) |
+| Q5 | The rerun's doc seams? | Fixed in Step 5 with a fresh review, as pass 1's were: a doc left wrong misleads the next agent |
+| Q6 | Warm builds: pass 1's folders, or fresh? | Fresh (§2.2): pass 1's started from empty folders, and its runs left each task crate's incremental cache at the paths pass 2 reuses |
+| Q7 | A pass-2 task not `complete`? | §6: no retry for a verdict; its seams `7.13`, Step 13 open, the close naming their plan next |
+| Q8 | The owner's notes, or no answer in the session? | §2.7 and §6: each note to its destination, a note wanted first keeping Step 13 open; no answer pauses the plan with the `resume` prompt |
+| Q9 | `tungsten check` refusing `engine_white` (A11)? | A known issue at the close: no task meets it, and this plan lands no code |
+| Q10 | The tree's records naming the evaluation (A12)? | They stay in the exports (§2.5); a run quoting them is read by hand and noted, never voided or retried |
+| Q11 | Concurrency? | Pass 1's: copies three at once on one warm build, 01 one at a time at one path |
+
+Each question takes its stated default; the owner reviews the plan on their own time.
+
+## 5. Invariants
+
+- **May move:** phase 7's §2.2, §2.3, §2.8 and evidence log (Step 7); the docs of Step 5 and `scripts/missing-docs.json`, down only; `docs/known-issues.md`, `ROADMAP.md`, `DECISIONS.md` and `docs/DECISION_INDEX.md` (Step 7); the local harness by §2.2's list (Step 1).
+- **Must not move:** every pin, hash, digest, reference image and API snapshot line; any code outside doc comments; this repository's tree by any evaluation agent (`git status` at each step); pass 1's records, which this plan adds to (its engine export, `e01-last.json` and archived project folders) and reads, never rewrites (Step 1's records check at Steps 1, 4 and 7; `status -p 1` and `seams --check` on pass 1's plan as before, Step 1); the frames, `H/briefs.json`, `H/fixtures/`, the binary and the venv; the transcripts `spend.py` counts (A18).
+
+## 6. Stop conditions
+
+- A base check, a start, a premise or the probe session fails at Step 1: stop the plan, since the rerun needs a green base, true premises and a working driver. A start that does not stop with its fixture is a failed premise: that brief loses its clause once (§2.3), recorded before any launch; any other fixture failure stops the plan.
+- A gate closes before a launch (under 30 GB free, or the week at 90 %): launch nothing more, wait for the started runs to end and be checked and scanned, then pause the plan, still `in progress`: the step's row `paused` with the gate's reading and the runs left, committed alone, and the session ends with tungsten-next's `resume` prompt. Steps 4 to 7 wait for all thirteen.
+- A void voids again: `failed` (pass 1's §2.7).
+- A pass-2 task not `complete` once Step 4's verdicts are final: the checkpoint fails (§2.7); the seams that kept it from completing are `7.13`; Steps 5 to 7 still run; Step 13 stays open, and the close names their plan next (phase 7's §6). No run is retried for its verdict.
+- The owner's verdict keeps acceptance back (§2.7): the same. The owner unable to answer in the session: Step 6 pauses the plan as a closed gate does, its row `paused` with the request, and the session ends with the `resume` prompt.
+- A doc fix's check fails: restore that file, route its row to `7.16` (an instruction file's shape) or `known-issues` with the check's output, and go on.
+- A failed check, a stop condition or a file outside a step's list stops the step (the skill).
+
+## 7. Critique
+
+Round 1 (2026-11-19, `critique --raw --repo` with a focus note on §2.3's fixtures, §2.2's comparability, §2.7's paths and the done-when commands; the draft at 46.0k characters). The CLI's default `gpt-6.2-astra` was refused before any model call (`status 400: The 'gpt-6.2-astra' model is not supported when using Codex with a ChatGPT account`, 5h 0 % → 0 %), so it ran on `gpt-6-astra`. Footer: `model gpt-6-astra, effort xhigh, context 872000, mode repo (output cap 4000), 317.2 s, tokens in 1249311 (cached 1149824), out 9874 (reasoning 5533), commands 27, output 520.6 KB (largest 134.2 KB), usage 5h 0% → 26%, week 78% → 83%`. It found the fixture default supported by the code, and five medium findings, each checked and taken.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 1 | Moving the project folders out of `~/.claude/projects` drops their usage from the week's gate | `perf-runs/713-chain/spend.py:21` (its glob is `~/.claude/projects/**/*.jsonl`); `H/eval.py:338` (the gate reads it) | Accepted | The archive is `~/.claude/projects/-tungsten-eval-archive/`, which the glob covers and no session's path maps to (§2.2, A18); Step 1 checks the 14 transcripts there and the week's reading not lower after the move; §2.5 treats a read of it as a void |
+| 2 | A second setup overwrites pass 1's warm-up logs, which A2 cites | `H/eval.py:88` (`write_text`), `:939`, `:955`, `:974`, `:986`; `base` the same at `:1112` | Accepted | Pass 2 writes pass-keyed paths alone (`H/setup-N/`, `H/base-N/`, …; §2.2); pass 1's records are hashed at Step 1's start and checked unchanged at Steps 1, 4 and 7; §5 |
+| 3 | A failed run with no friction log fails Steps 2 and 3, so the close §6 promises cannot be reached | `H/eval.py:421` (a log copied only when it exists), `:783` (a cap's verdict without it) | Accepted | Steps 2 and 3 take a run's log or its missing-log record (`result.json`, `stderr`, `checks.json`, its friction from the transcript at Step 4) |
+| 4 | A blocking friction an existing ID covers stays an entry with no destination, so its phase 7 row keeps its old step | §2.6's dedupe against §6; `docs/plans/phase-7.md:320` (EV-20 `Later`); phase 7's §2.1 (terminal statuses; a `Later` row 7.13g's plan takes back returns to `open`) | Accepted | §2.12's entries take a Destination: `7.13` for a blocker on a `Later` or open phase 7 row, which Step 7 moves to `7.13` by §2.1; a blocker on any other ID is a §2.11 row at `7.13` naming it; `—` otherwise |
+| 5 | Notes the owner accepts with can vanish with the plan | §2.7 against Step 7; `docs/plans/README.md:42`, `:45` | Accepted | §2.7: Step 7 lands every note in its home (an `AC-<n>` phase 7 row, a known issue or a Later line); Step 7's done-when counts the `AC-` rows and quotes each home |
+
+Round 1 changed done-when checks, so round 2 ran on `gpt-6-astra` at xhigh on the plan without this section and the log (`--from "sed '/^## 7\./,/^## Fol/{/^## Fol/!d}' …"`, 50.2k characters) with a focus note naming round 1's changes, none rejected. Footer: `model gpt-6-astra, effort xhigh, context 872000, mode repo (output cap 4000), 180.3 s, tokens in 542167 (cached 479488), out 5814 (reasoning 3219), commands 13, output 518.4 KB (largest 240.9 KB), usage 5h 26% → 40%, week 83% → 85%`. It found the archive and the records' preservation matching the repository, and one medium finding, a gap round 1's fix 5 left, checked and taken. No third round (the skill).
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 2.1 | An owner note routed to `env` has no home, so Step 7 cannot quote it | §2.7's homes (a step, `known-issues`, `Later`) against §2.6's list, which holds `env`; Step 7's `env` rows (`—`, `closed (env)`) | Accepted | §2.7: an `env` note is an `AC-<n>` row at `—`, `closed (env)`, as §2.11's `env` rows land; Step 7's `AC-` count includes it |
+
+## Evidence log
+
+| Step | Date | Verdict | Key numbers | Paths |
+| --- | --- | --- | --- | --- |
+
+## Follow-ups
+
+- Known issue (A11): `tungsten check` refuses a prefab naming the reserved `engine_white`, which the window's and the headless loads intern after the manifest's names (`crates/tungsten/src/asset_loader/check.rs`, whose sprite pass interns no `ENGINE_WHITE`); its fix is the check interning it as the loads do. The close writes it.
