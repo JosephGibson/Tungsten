@@ -1,6 +1,6 @@
-# 7.13g's fixes (example-01-evaluation-fixes) — draft
+# 7.13g's fixes (example-01-evaluation-fixes) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Phase 7's 7.13g fixes (§2.8 of [phase 7](phase-7.md)), the second plan of 7.13g: the code fixes of the evaluation's eight `7.13` seams (EV-5 the headless load's rooms, EV-6 `Vec2` named by the engine, EV-7 the pit guard's message, EV-8 a prefab's base sprite at load, EV-9 the shell's checkpoint order, EV-29 a chamber in 01's level source, EV-33 an instant effect's `on_end` timing, EV-36 01's tints over a creature's own) and of 7.13's parked seams PK2–PK6 (the set-aside mover's first step, the crate at the zone sensor, 01's unread cursor, `Moves::aim`, S-163's 01 site); PK1's cost found (S-125's loose props) and its landing and S-113's 01 part given their homes; so 7.13g's rerun measures the fixed tree.
 - **non-goals:**
   - The rerun of the thirteen briefs, its harness at the new base, its fixtures and briefs, and the owner's acceptance of 01: **7.13g's rerun**, written when this plan closes (§2.1, §2.5).
@@ -244,6 +244,7 @@ After round 2, outside both rounds: Step 2's done-when gained 02's guards, since
 
 | Step | Date | Verdict | Checks | Commit |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-19 | landed | `P/s1.patch`'s two lines by hand, the guide's sentence after the spawn paragraph. `rg -c 'pub use glam::\{Vec2, vec2\};' crates/tungsten-core/src/lib.rs` → `1`; `just api` exit 0, then `just api-check` exit 0 and `git diff --numstat -- api/` → `2	0	api/tungsten-core.txt` alone; `rg -c 'tungsten::core::Vec2' docs/getting-started.md` → `1`; `cargo test -p tungsten-core --locked --doc` exit 0, `23 passed`; `cargo fmt --all -- --check` and `just lint` exit 0; 01's pit exit 0, `1 passed` (Step 2's files were set aside and the doc tests, pit and lint rerun on Step 1's tree alone after an edit landed during the first pit build) | this row's |
 
 ## Follow-ups
 

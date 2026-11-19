@@ -1,4 +1,6 @@
 pub mod tungsten_core
+pub use tungsten_core::Vec2
+pub use tungsten_core::vec2
 pub mod tungsten_core::assets
 pub mod tungsten_core::assets::animation
 pub enum tungsten_core::assets::animation::AnimationError

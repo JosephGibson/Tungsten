@@ -70,6 +70,8 @@ pub use ecs::{
     Bundle, CommandBuffer, Entity, EventCursor, EventQueue, EventRead, OptionalColumn,
     PendingEntity, ShakeEvent, SquashEvent, With, Without, World, WorldCounters,
 };
+/// `glam`'s 2D vector, which the API takes and gives, so a game needs no `glam` of its own.
+pub use glam::{Vec2, vec2};
 pub use input::{
     ActionMap, ActionMapError, AxisDirection, Binding, BindingDevice, GamepadAxis, GamepadButton,
     GamepadId, InputState, KeyCode, Modifiers, MouseButton, RawEvent, RawInput, RoutedInput,
