@@ -243,7 +243,13 @@ impl Plugin for ShellPlugin {
         let save = system("shell_save", save_due).before(STATE_DISPATCHER);
         schedule.add(Stage::PreUpdate, save);
         schedule.add(Stage::Update, system("shell_frame", frame));
-        schedule.add(Stage::FixedUpdate, system("shell_checkpoint", checkpoint));
+        // After the kit's trace, so a game system joining a kit phase before
+        // React leaves it last; one in React may follow it, which changes
+        // nothing, since it only marks that a step ran. The shell's games
+        // build the kit, so the trace is always there.
+        let checkpoint =
+            system("shell_checkpoint", checkpoint).after(tungsten::kit::KIT_TRACE_STEP);
+        schedule.add(Stage::FixedUpdate, checkpoint);
     }
 }
 
