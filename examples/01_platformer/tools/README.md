@@ -15,7 +15,11 @@ just level-check
 cargo test -p example-01-platformer
 ```
 
-This is the authoring edit loop. At handoff, use the canonical
+This is the authoring edit loop. `cargo test -p example-01-platformer` runs
+01's pit guard, whose pin (`tests/game/guards/pit.json`) map content anywhere
+can move, not only the pit's: rewrite it with `TUNGSTEN_GUARDS_WRITE=1` once
+the change is meant, its cause in the change's plan or its commit message. At
+handoff, use the canonical
 [validation matrix](../../../docs/validation.md#change-to-check-matrix), running
 each applicable check once for that stage. The generator and Rust tests cover
 different guarantees; keep both. For visible or audible changes, apply the

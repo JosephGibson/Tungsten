@@ -235,7 +235,8 @@ impl CounterGuard {
         Err(format!(
             "counter guard {}: the reading differs from its pin (pinned -> now)\n{differ}\
              rerun with {WRITE_VAR}=1 to rewrite the pin once the change is meant; \
-             a rise in a cost counter needs a fix or its cause in the plan",
+             a rise in a cost counter needs a fix, or its cause in the change's plan, \
+             or in its commit message when the change has none",
             pin.display()
         ))
     }

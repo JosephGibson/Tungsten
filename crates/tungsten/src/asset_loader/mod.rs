@@ -403,7 +403,7 @@ fn load_sound_unit(manifest: &ResolvedManifest, id: &str, world: &mut World) -> 
 }
 
 /// A section's IDs, sorted, so a load's order is every run's.
-fn sorted_keys<T>(section: &HashMap<String, T>) -> Vec<&String> {
+pub(crate) fn sorted_keys<T>(section: &HashMap<String, T>) -> Vec<&String> {
     let mut ids: Vec<&String> = section.keys().collect();
     ids.sort();
     ids

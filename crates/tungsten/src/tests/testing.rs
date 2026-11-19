@@ -1107,3 +1107,27 @@ fn a_counting_harness_logs_no_audio() {
     harness.step(1);
     assert!(harness.audio_log().is_empty(), "frame 5 plays nothing");
 }
+
+/// What a room spawn's `with` gives.
+#[derive(Debug, Clone, Copy)]
+struct InRoom;
+
+#[test]
+fn load_manifest_registers_the_manifests_rooms_so_a_test_spawns_one() {
+    use tungsten_core::assets::{RoomRegistry, TilemapRegistry};
+    let fixture =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rooms/manifest.json");
+    let mut harness = Harness::new(app());
+    harness.load_manifest(fixture).unwrap();
+    let world = harness.world_mut();
+    let rooms = world.resource::<RoomRegistry>();
+    assert_eq!(rooms.ids().collect::<Vec<_>>(), ["cave", "hall"]);
+    assert_eq!(rooms.tileset_ids().collect::<Vec<_>>(), ["cave"]);
+    // The physics names load first: `terrain` is layer 1.
+    let map = world.resource::<TilemapRegistry>().get("cave").unwrap();
+    assert_eq!(map.layer_physics(1).layers, 1 << 1);
+    let spawned = world.spawn_room("cave", [0.0, 0.0], &(InRoom,)).unwrap();
+    let objects: Vec<Entity> = spawned.objects().map(|(_, entity)| entity).collect();
+    assert_eq!(objects.len(), 4);
+    assert!(objects.iter().all(|&entity| world.has::<InRoom>(entity)));
+}

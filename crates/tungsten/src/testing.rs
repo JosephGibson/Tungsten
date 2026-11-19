@@ -39,7 +39,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use tungsten_core::assets::SoundRegistry;
-use tungsten_core::assets::{FilterMode, ResolvedManifest, TextureHandle};
+use tungsten_core::assets::{FilterMode, ResolvedManifest, RoomRegistry, TextureHandle};
 use tungsten_core::post::PostPass;
 use tungsten_core::script::{Ending, Report, Script};
 use tungsten_core::ui::PaintList;
@@ -131,12 +131,16 @@ impl Harness {
     /// `engine_white` after them, so a load-time sprite check (an ability's
     /// `icon`, a prefab's sprite and `variants`) passes headless; then its
     /// animations, UI themes, sounds, tilemaps and particle configs, in the
-    /// order a window's startup loads them; each `materials` entry's metadata (its
-    /// ID, source manifest, shader ID and uniform defaults) in the
-    /// `MaterialRegistry`, with no upload, then the stock glow's and, unless
-    /// the manifest declares it, the engine's `damage_flash`, so a kit
-    /// `HitFlash` finds it headless; then the prefabs and data entries in two
-    /// phases, every ID checked ([`load_prefabs`](asset_loader::load_prefabs)).
+    /// order a window's startup loads them; each `materials` entry's
+    /// metadata (its ID, source manifest, shader ID and uniform defaults) in
+    /// the `MaterialRegistry`, with no upload, then the stock glow's and,
+    /// unless the manifest declares it, the engine's `damage_flash`, so a kit
+    /// `HitFlash` finds it headless; then the physics layer and material
+    /// names and, when it has rooms or tilesets, a fresh `RoomRegistry` with
+    /// each tileset and then each room, sorted, as a window's load registers
+    /// them, so a test spawns a manifest room; then the prefabs and data
+    /// entries in two phases, every ID checked
+    /// ([`load_prefabs`](asset_loader::load_prefabs)).
     /// What needs the renderer is skipped: the sprites themselves, none
     /// registered (no size, no texture; [`note_sprite_sizes`](Self::note_sprite_sizes)
     /// notes their sizes, [`register_sprites`](Self::register_sprites)
@@ -180,6 +184,16 @@ impl Harness {
         asset_loader::load_sounds(&manifest, world)?;
         asset_loader::load_tilemaps(&manifest, world)?;
         asset_loader::load_particles(&manifest, world)?;
+        asset_loader::load_physics_names(&manifest, world);
+        if asset_loader::room::has_rooms(&manifest) {
+            world.insert_resource(RoomRegistry::new());
+            for id in asset_loader::sorted_keys(&manifest.tilesets) {
+                asset_loader::room::load_tileset_unit(&manifest, id, world)?;
+            }
+            for id in asset_loader::sorted_keys(&manifest.rooms) {
+                asset_loader::room::load_room_unit(&manifest, id, world)?;
+            }
+        }
         asset_loader::load_prefabs(&manifest, world)
     }
 
