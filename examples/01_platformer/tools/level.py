@@ -499,8 +499,9 @@ def terrain_tiles(source, cells):
 
 def background_tiles(source, cells, props):
     """The background layer: the caves' backs under an indoor area's roof,
-    the miners' shoring in its `shoring` columns, the tunnel mouths, the
-    outdoor `backs` spans and the river's depths. Which cells draw follows
+    the miners' shoring in its `shoring` columns, the caves' plain rock in
+    a chamber, the tunnel mouths, the outdoor `backs` spans and the river's
+    depths. Which cells draw follows
     the terrain's occupancy and roofs, so each draws from a stream seeded
     by its place, and a terrain change re-rolls only the backs it
     touches."""
@@ -535,6 +536,21 @@ def background_tiles(source, cells, props):
                     out[(x, y)] = f'cave_back_pillar_{rng.randrange(2)}'
                 else:
                     out[(x, y)] = weighted(rng, ((f'cave_back_rock_{rng.randrange(4)}', 12), (f'cave_back_ember_{rng.randrange(4)}', 2)))
+    # A chamber dug into an outdoor area: the caves' plain rock behind its
+    # open cells, stalactites under its roof and no embers, and the same
+    # plain tile behind the roof's lowest cell, so its cut shows rock.
+    for chamber in source.get('chambers', []):
+        for x in range(chamber['left'], chamber['right']):
+            for y in range(chamber['top'], chamber['floor']):
+                if (x, y) in cells:
+                    continue
+                rng = rng_for(f'background-{x}-{y}')
+                if (x, y - 1) in ground:
+                    out[(x, y - 1)] = f'cave_back_rock_{x % 4}'
+                    if rng.randrange(5) < 2:
+                        out[(x, y)] = f'cave_back_stalactites_{rng.randrange(2)}'
+                        continue
+                out[(x, y)] = f'cave_back_rock_{rng.randrange(4)}'
     for tunnel in source.get('tunnels', []):
         for r in range(2):
             for c in range(2):
@@ -773,8 +789,8 @@ def validate_layout(source, tiled, iron, shallow):
     """M76's checks: the areas tile the map's columns, the tests' sky stays
     empty, no view holds past the light budget, each bat hangs flush under a
     roof, fires sweep clear, the pit holds the balls inside its shell, no
-    iron lies under open air, lava stays in its basin and `backs` stay
-    outdoors."""
+    iron lies under open air, lava stays in its basin, each chamber is open
+    inside and walled round, and `backs` stay outdoors."""
     cols, rows, tile = source['cols'], source['rows'], source['tile']
     columns = [area['columns'] for area in source['landmarks']]
     if columns[0][0] != 0 or columns[-1][1] != cols - 1 or any(b[0] != a[1] + 1 for a, b in zip(columns, columns[1:])):
@@ -859,6 +875,17 @@ def validate_layout(source, tiled, iron, shallow):
             y += 1
         if any((x, y) not in terrain for x in range(b['left'], b['right'])):
             raise ValueError(f"lava basin at {b['left']}: open floor")
+    # Each chamber is open inside and walled round, its floor under it.
+    for chamber in source.get('chambers', []):
+        left, right, top, floor = chamber['left'], chamber['right'], chamber['top'], chamber['floor']
+        if any((x, y) in walls for x in range(left, right) for y in range(top, floor)
+               if not any(p['style'] not in FAMILIES and p['left'] <= x < p['right'] and p['row'] <= y < p['bottom']
+                          for p in source['platforms'])):
+            raise ValueError(f"chamber {chamber['name']}: a wall inside it")
+        rim = [(x, floor) for x in range(left, right)] + [(left - 1, y) for y in range(top, floor)]
+        rim += [(right, y) for y in range(top, floor)]
+        if any(c not in walls for c in rim):
+            raise ValueError(f"chamber {chamber['name']}: open at its floor or sides")
     outdoor = [a['columns'] for a in source['landmarks'] if not a.get('indoor')]
     for span in source.get('backs', []):
         if not any(a[0] <= span['left'] and span['right'] - 1 <= a[1] for a in outdoor):

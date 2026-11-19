@@ -8,7 +8,7 @@ import wave
 
 from art import PALETTE, STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
 from generate import FAMILIES as ASSET_FAMILIES, TEMPLATE, generate, hashed, lock_breaks, users
-from level import FAMILIES, build_level, opaque_tiles, tiled_text, validate_level
+from level import FAMILIES, background_tiles, build_level, opaque_tiles, terrain_cells, tiled_text, validate_level
 from placement import MOST, SINK, Placed, floating, hangs, judge, stands, stream_kind
 
 
@@ -278,6 +278,35 @@ class AuthoringTests(unittest.TestCase):
         for y in range(floor,floor+4):
             for x in range(left-4,right+4):self.assertNotEqual(collision[y*cols+x],0)
         self.assertGreater(self.source['kill_row'],floor)
+
+    def pit_chamber(self, **change):
+        """The level with the pit's clear interior as its one chamber,
+        `change` over the chamber's bounds."""
+        pit = self.source['pit']
+        chamber = dict(name='pit', left=pit['left'], right=pit['right'], top=pit['rim'], floor=pit['floor'])
+        source = copy.deepcopy(self.source)
+        source['chambers'] = [dict(chamber, **change)]
+        return source
+
+    def test_a_chamber_validates_and_draws_the_caves_rock_behind_its_open_cells(self):
+        source = self.pit_chamber()
+        validate_level(source, self.tiled, self.ids)
+        chamber = source['chambers'][0]
+        cells = terrain_cells(source)
+        drawn = background_tiles(source, cells, source['props'])
+        before = background_tiles(self.source, cells, self.source['props'])
+        open_ = [(x, y) for x in range(chamber['left'], chamber['right'])
+                 for y in range(chamber['top'], chamber['floor']) if (x, y) not in cells]
+        self.assertTrue(open_)
+        self.assertTrue(all(drawn[c].startswith('cave_back_') for c in open_))
+        self.assertFalse(any(c in before for c in open_), 'none without the chamber')
+
+    def test_a_chamber_refuses_a_wall_inside_it_and_an_open_floor(self):
+        pit = self.source['pit']
+        for change, error in [({'left': pit['left'] - 1}, 'a wall inside it'),
+                              ({'floor': pit['floor'] - 1}, 'open at its floor or sides')]:
+            with self.assertRaisesRegex(ValueError, error):
+                validate_level(self.pit_chamber(**change), self.tiled, self.ids)
 
 
 class FamilyTests(unittest.TestCase):
