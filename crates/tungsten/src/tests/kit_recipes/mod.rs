@@ -3,11 +3,14 @@
 //! `KitPlugins::set()`; the coverage test over every registered scene name
 //! and data kind; the kit determinism hash.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use glam::Vec2;
 use tungsten_core::physics::Position;
-use tungsten_core::{ActionMap, Binding, Config, Entity, KeyCode, PluginSet, Transform};
+use tungsten_core::{
+    ActionMap, AssetRegistry, Binding, Config, Entity, KeyCode, PluginSet, ResolvedManifest,
+    Transform,
+};
 
 use crate::App;
 use crate::kit::{
@@ -58,15 +61,38 @@ fn declare_actions(app: &mut App) {
     }
 }
 
+/// The sprite names the fixture's prefabs give, interned before its manifest
+/// loads so the prefabs' sprite check passes: the fixtures draw nothing, so
+/// their manifests list no sprite for them.
+fn intern_prefab_sprites(app: &mut App, manifest: &Path) {
+    let manifest = ResolvedManifest::load(manifest).expect("the fixture's manifest");
+    let names: Vec<String> = manifest
+        .prefabs
+        .values()
+        .filter_map(|prefab| {
+            let text = std::fs::read_to_string(&prefab.path).ok()?;
+            let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+            json.pointer("/sprite/asset_id")?
+                .as_str()
+                .map(str::to_owned)
+        })
+        .collect();
+    app.world_mut()
+        .resource_mut::<AssetRegistry>()
+        .intern_sprites(names.iter().map(String::as_str));
+}
+
 /// A harness with `plugins` built after the engine's, the fixture actions
 /// declared and the genre's manifest loaded, at dt `dt`.
 pub(crate) fn recipe(genre: &str, plugins: PluginSet, dt: f32) -> Harness {
     let mut app = App::new(Config::default()).expect("App::new failed");
     app.add_plugins(plugins);
     declare_actions(&mut app);
+    let manifest = fixture_dir(genre).join("manifest.json");
+    intern_prefab_sprites(&mut app, &manifest);
     let mut harness = Harness::new(app);
     harness
-        .load_manifest(fixture_dir(genre).join("manifest.json"))
+        .load_manifest(manifest)
         .unwrap_or_else(|e| panic!("{genre}: the fixture loads: {e}"));
     harness.set_dt(dt);
     harness

@@ -473,7 +473,12 @@ fn check_prefabs_and_data(manifest: &ResolvedManifest, world: &mut World, errors
         let Some(sprite) = prefabs.get(id).and_then(|prefab| prefab.sprite.as_ref()) else {
             continue;
         };
-        if sprites.is_none_or(|sprites| sprites.get_sprite(&sprite.asset_id).is_none()) {
+        // A name nothing interned is the prefab check's own error; one an
+        // animation or a tilemap interned passes it with no sprite behind it.
+        if sprites.is_some_and(|sprites| {
+            sprites.sprite_id(&sprite.asset_id).is_some()
+                && sprites.get_sprite(&sprite.asset_id).is_none()
+        }) {
             errors.push(
                 &manifest.prefabs[id].path,
                 format!(

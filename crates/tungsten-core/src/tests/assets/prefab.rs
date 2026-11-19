@@ -251,7 +251,8 @@ fn prefab_file_errors() {
 
 #[test]
 fn the_rules_kept_from_scenes_pass_the_load() {
-    let world = world();
+    let mut world = world();
+    world.resource_mut::<AssetRegistry>().intern_sprite("slime");
     // A tween channel accepts unknown keys, and a type without
     // `deny_unknown_fields` ignores an unknown field.
     let file = PrefabFile::new(Some(
@@ -1411,6 +1412,9 @@ fn a_variant_takes_its_bases_fields_and_merges_components_by_member() {
         ),
     ]);
     let mut world = world();
+    world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprites(["slime", "slime_red"]);
     dir.load(&["slime", "slime_red"])
         .commit(&mut world)
         .unwrap();
@@ -1813,6 +1817,26 @@ fn an_unknown_variant_fails_the_load() {
         "{err}"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_unknown_base_sprite_fails_the_load() {
+    let world = variant_world();
+    let load = |sprite: &str| {
+        let file = PrefabFile::new(Some(&format!(r#"{{ "sprite": {sprite} }}"#)));
+        PrefabData::load(&file.path, &world)
+    };
+    let err = load(r#"{ "asset_id": "crat" }"#).unwrap_err();
+    assert!(matches!(err, PrefabError::Validation { .. }), "{err}");
+    assert!(
+        err.to_string()
+            .ends_with("sprite.asset_id: unknown sprite ID `crat`; did you mean `crate`?"),
+        "{err}"
+    );
+    // The base before its variants.
+    let err = load(r#"{ "asset_id": "crat", "variants": ["crate_bb"] }"#).unwrap_err();
+    assert!(err.to_string().contains("sprite.asset_id: "), "{err}");
+    assert!(load(r#"{ "asset_id": "crate" }"#).is_ok());
 }
 
 #[test]

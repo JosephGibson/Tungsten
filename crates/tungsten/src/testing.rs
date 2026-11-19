@@ -127,8 +127,9 @@ impl Harness {
 
     /// Loads the manifest at `path` without the renderer: first every
     /// sprite name it names, sheet frames included, interned in sorted
-    /// order as a window's load interns them, so a load-time sprite check
-    /// (an ability's `icon`, a prefab's `variants`) passes headless; then its
+    /// order as a window's load interns them, then the reserved
+    /// `engine_white` after them, so a load-time sprite check (an ability's
+    /// `icon`, a prefab's sprite and `variants`) passes headless; then its
     /// animations, UI themes, sounds, tilemaps and particle configs, in the
     /// order a window's startup loads them; each `materials` entry's metadata (its
     /// ID, source manifest, shader ID and uniform defaults) in the
@@ -150,6 +151,9 @@ impl Harness {
         let world = self.app.world_mut();
         if let Some(assets) = world.get_resource_mut::<AssetRegistry>() {
             assets.intern_sprites(manifest.sprites.keys().map(String::as_str));
+            // The reserved white texel after the manifest's names, as a
+            // window's load interns it, so a prefab may name it.
+            assets.intern_sprite(asset_loader::ENGINE_WHITE);
         }
         asset_loader::load_animations(&manifest, world)?;
         asset_loader::load_ui_themes(&manifest, world)?;

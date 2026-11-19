@@ -171,27 +171,33 @@ impl PrefabData {
         Ok((data, Some(json)))
     }
 
-    /// Phase two of a load: the fields' checks, each sprite variant against
-    /// the names the World's `AssetRegistry` holds (as a load-time sprite
-    /// check reads one, an ability's `icon`; the base `asset_id` is interned
-    /// at the spawn, as before), then each component's `check_in` against
-    /// `world`, a missing prefab, data or sprite ID with the nearest one
-    /// appended.
+    /// Phase two of a load: the fields' checks, the sprite's `asset_id` and
+    /// then each variant against the names the World's `AssetRegistry` holds
+    /// (as a load-time sprite check reads one, an ability's `icon`), then
+    /// each component's `check_in` against `world`, a missing prefab, data
+    /// or sprite ID with the nearest one appended.
     pub(crate) fn validate(&self, world: &World) -> Result<(), String> {
         self.validate_fields()?;
         if let Some(sprite) = &self.sprite {
             let sprites = world.get_resource::<AssetRegistry>();
+            let unknown = |name: &str| {
+                sprites
+                    .is_none_or(|sprites| sprites.sprite_id(name).is_none())
+                    .then(|| {
+                        let hint = sprites.and_then(|sprites| {
+                            let mut names: Vec<&str> = sprites.sprite_names().collect();
+                            names.sort_unstable();
+                            data::nearest(name, names.into_iter())
+                        });
+                        format!("unknown sprite ID `{name}`{}", data::did_you_mean(hint))
+                    })
+            };
+            if let Some(message) = unknown(&sprite.asset_id) {
+                return Err(format!("sprite.asset_id: {message}"));
+            }
             for (i, variant) in sprite.variants.iter().enumerate() {
-                if sprites.is_none_or(|sprites| sprites.sprite_id(variant).is_none()) {
-                    let hint = sprites.and_then(|sprites| {
-                        let mut names: Vec<&str> = sprites.sprite_names().collect();
-                        names.sort_unstable();
-                        data::nearest(variant, names.into_iter())
-                    });
-                    return Err(format!(
-                        "sprite.variants[{i}]: unknown sprite ID `{variant}`{}",
-                        data::did_you_mean(hint)
-                    ));
+                if let Some(message) = unknown(variant) {
+                    return Err(format!("sprite.variants[{i}]: {message}"));
                 }
             }
         }

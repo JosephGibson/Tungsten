@@ -921,6 +921,33 @@ fn load_manifest_interns_its_sprite_names_and_registers_no_sprite() {
 }
 
 #[test]
+fn load_manifest_interns_engine_white_so_a_prefab_may_name_it() {
+    let dir = std::env::temp_dir().join(format!("tungsten_load_white_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("flash.json"),
+        r#"{"sprite": {"asset_id": "engine_white"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("manifest.json"),
+        r#"{"prefabs": {"flash": {"path": "flash.json"}}}"#,
+    )
+    .unwrap();
+    let mut harness = Harness::new(app());
+    // As a window's load gives it: the prefab's sprite check passes.
+    harness.load_manifest(dir.join("manifest.json")).unwrap();
+    let sprites = harness.app.world().resource::<AssetRegistry>();
+    assert!(
+        sprites
+            .sprite_id(crate::asset_loader::ENGINE_WHITE)
+            .is_some()
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn frame_draw_holds_the_composed_post_stack() {
     use tungsten_core::post::{BloomParams, PostPass, PostStack, PostTail};
     let bloom = PostPass::Bloom(BloomParams::default());
