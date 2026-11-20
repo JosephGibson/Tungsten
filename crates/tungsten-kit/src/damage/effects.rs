@@ -999,6 +999,19 @@ impl Effect {
         self
     }
 
+    /// Whether a step does nothing to an instance but count its time left:
+    /// no period, emission, fuel or intensity runs, no tag holds it and it
+    /// shows no look, so [`EFFECT_TICK`] counts it in place.
+    fn only_counts(&self) -> bool {
+        self.period.is_none()
+            && self.emit.is_none()
+            && self.fuel.is_none()
+            && self.intensity.is_none()
+            && self.suppressed_by.is_empty()
+            && self.look.is_none()
+            && self.bands.iter().all(|band| band.look.is_none())
+    }
+
     /// Its emission, when it has one.
     pub(crate) fn emission(&self) -> Option<&Emit> {
         self.emit.as_ref()
@@ -3765,10 +3778,103 @@ struct Ticked {
     worn: bool,
 }
 
+/// The most entries [`Counting`] keeps, and the longest ID it keeps; an
+/// ID past either takes the full step.
+const COUNTING_CAP: usize = 64;
+const COUNTING_ID: usize = 48;
+
+/// One `effects` entry [`Counting`] knows: its ID's bytes, in place, and
+/// whether it only counts.
+#[derive(Clone, Copy)]
+struct Known {
+    id: [u8; COUNTING_ID],
+    len: usize,
+    counts: bool,
+}
+
+/// Which `effects` entries only count their time down
+/// ([`Effect::only_counts`]), by ID: read from the World's data at each
+/// step's start for the IDs the steps before met, so a reload shows in the
+/// next step and a crowd holding one entry costs no lookup a holder. An ID
+/// met for the first time takes the full step and is read from the next.
+/// Its room is taken once, at the plugin's build, so no step allocates.
+struct Counting {
+    known: Vec<Known>,
+}
+
+impl Default for Counting {
+    fn default() -> Self {
+        Self {
+            known: Vec::with_capacity(COUNTING_CAP),
+        }
+    }
+}
+
+impl Counting {
+    /// Reads each known ID's entry again.
+    fn refresh(&mut self, world: &World) {
+        let data = world.get_resource::<DataRegistry>();
+        for known in &mut self.known {
+            known.counts = std::str::from_utf8(&known.id[..known.len])
+                .ok()
+                .and_then(|id| data?.get::<Effect>(id))
+                .is_some_and(Effect::only_counts);
+        }
+    }
+
+    /// Whether `effect` only counts down; false for an ID not read yet,
+    /// which joins the known ones.
+    fn counts(&mut self, effect: &DataRef<Effect>) -> bool {
+        let Some(id) = effect.id() else {
+            return effect.as_inline().is_some_and(Effect::only_counts);
+        };
+        let id = id.as_bytes();
+        if let Some(known) = self.known.iter().find(|known| &known.id[..known.len] == id) {
+            return known.counts;
+        }
+        if self.known.len() < COUNTING_CAP && id.len() <= COUNTING_ID {
+            let mut known = Known {
+                id: [0; COUNTING_ID],
+                len: id.len(),
+                counts: false,
+            };
+            known.id[..id.len()].copy_from_slice(id);
+            self.known.push(known);
+        }
+        false
+    }
+
+    /// Whether `effects` needs no more of a step of `dt` than its
+    /// instances' time counted down, which this does in place: nothing
+    /// pending, and each instance one that only counts, with no period or
+    /// emission clock to drop and not ending in this step. The full step
+    /// would change such a holder the same way and touch nothing else.
+    fn count_down(&mut self, effects: &mut Effects, dt: f32) -> bool {
+        let plain = effects.pending.is_empty()
+            && effects.instances.iter().all(|instance| {
+                instance.period_left.is_none()
+                    && instance.emit_left.is_none()
+                    && instance
+                        .left
+                        .is_none_or(|left| dt <= 0.0 || count_down(left, dt) > 0.0)
+                    && self.counts(&instance.effect)
+            });
+        if plain && dt > 0.0 {
+            for instance in &mut effects.instances {
+                if let Some(left) = &mut instance.left {
+                    *left = count_down(*left, dt);
+                }
+            }
+        }
+        plain
+    }
+}
+
 /// [`EFFECT_TICK`]'s state between steps, kept so a step allocates nothing
 /// once warm.
 #[derive(Default)]
 struct Ticker {
+    counting: Counting,
     entities: Vec<Entity>,
     payloads: Vec<Payload>,
     expired: Vec<EffectInstance>,
@@ -3789,8 +3895,11 @@ struct Ticker {
 }
 
 impl Ticker {
-    /// Per entity in index order: the pending entries queued, then each
-    /// instance's period and time left counted.
+    /// A holder whose instances only count down is counted in place, in
+    /// the query's pass ([`Counting::count_down`]): its step reads and
+    /// writes nothing else, so its place in the order shows nowhere. The
+    /// rest per entity in index order: the pending entries queued, then
+    /// each instance's period and time left counted.
     fn run(&mut self, world: &mut World) {
         let dt = world
             .get_resource::<Time>()
@@ -3799,12 +3908,21 @@ impl Ticker {
         if let Some(holders) = world.get_resource_mut::<LookHolders>() {
             holders.0.clear();
         }
+        self.counting.refresh(world);
         self.entities.clear();
-        self.entities.extend(
-            world
-                .query::<(Entity, &Effects)>()
-                .map(|(entity, _)| entity),
-        );
+        let mut holders = 0_usize;
+        for (entity, effects) in world.query_mut::<(Entity, &mut Effects)>() {
+            holders += 1;
+            if !self.counting.count_down(effects, dt) {
+                self.entities.push(entity);
+            }
+        }
+        // Room for every holder, in 64s, so one that turns busy mid-play
+        // grows no list.
+        let room = holders.next_multiple_of(64);
+        if self.entities.capacity() < room {
+            self.entities.reserve_exact(room - self.entities.len());
+        }
         let order = order_of(world);
         self.entities.sort_by_key(|&entity| order.key(entity));
         let entities = std::mem::take(&mut self.entities);
