@@ -640,9 +640,15 @@ pub fn ball_impacts(world: &mut World) {
     let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
         return;
     };
+    // Neither a spark nor a thud comes of two bodies under 0.45 of the
+    // lower threshold.
+    let mut fast = FastBodies::new(0.45 * IMPACT_SPEED.min(BALL_THUD_SPEED));
     let mut sparked: Vec<(Option<SaveId>, Entity, Vec2)> = Vec::new();
     let mut dusted: Vec<(Option<SaveId>, Entity, Vec2)> = Vec::new();
     for event in events.iter_current() {
+        if !fast.either(world, event.a, event.b) {
+            continue;
+        }
         let va = world
             .get::<PreviousVelocity>(event.a)
             .map_or(Vec2::ZERO, |v| v.0);
@@ -1069,6 +1075,52 @@ pub fn thermal_shatter(world: &mut World, at: Vec2, radius: f32) {
     }
 }
 
+/// Which of a step's bodies are fast, each read once: a contact closes no
+/// faster than its two bodies' speeds together, so a walk of the step's
+/// contacts that asks a closing speed of `2 * slow` or more passes a
+/// contact of two slow bodies, and a pile's ball is read once for its many
+/// contacts. A bit an entity index; a body past the bits is read each time.
+struct FastBodies {
+    slow: f32,
+    seen: [u64; 2048],
+    fast: [u64; 2048],
+}
+
+impl FastBodies {
+    fn new(slow: f32) -> Self {
+        Self {
+            slow,
+            seen: [0; 2048],
+            fast: [0; 2048],
+        }
+    }
+
+    /// Whether `entity`'s speed as the step began is `slow` or more.
+    fn has(&mut self, world: &World, entity: Entity) -> bool {
+        let read = |slow: f32| {
+            let speed = before_step(world, entity).length_squared();
+            speed >= slow * slow || speed.is_nan()
+        };
+        let index = entity.id() as usize;
+        let (word, bit) = (index / 64, 1 << (index % 64));
+        if word >= self.seen.len() {
+            return read(self.slow);
+        }
+        if self.seen[word] & bit == 0 {
+            self.seen[word] |= bit;
+            if read(self.slow) {
+                self.fast[word] |= bit;
+            }
+        }
+        self.fast[word] & bit != 0
+    }
+
+    /// Whether a contact's body or its other one is fast.
+    fn either(&mut self, world: &World, a: Entity, b: Option<Entity>) -> bool {
+        self.has(world, a) || b.is_some_and(|b| self.has(world, b))
+    }
+}
+
 /// A body's velocity as the step began, which an impact reads.
 fn before_step(world: &World, entity: Entity) -> Vec2 {
     world
@@ -1281,7 +1333,12 @@ pub fn body_impacts(world: &mut World) {
     let mut clacks: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
     let mut knocks: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
     let throws = world.get_resource::<Throws>();
+    // Two bodies under 0.45 of the speed below close slower than it.
+    let mut fast = FastBodies::new(0.45 * SHATTER_SPEED);
     for event in events.iter_current() {
+        if !fast.either(world, event.a, event.b) {
+            continue;
+        }
         let va = before_step(world, event.a);
         let vb = event.b.map_or(Vec2::ZERO, |b| before_step(world, b));
         let closing = -(va - vb).dot(event.normal);
