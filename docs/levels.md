@@ -56,7 +56,7 @@ The conventions every surface shares:
 - A layer is drawn (`render`, the default) or collided with (`collision`); terrain that does both paints into one of each, as `floor` does above. A collision layer alone draws nothing.
 - Terrain is `shapes` painted in order into the layers each names, then each layer's `cells`, overrides keyed `"<col>,<row>"` that name a tile or `null` for empty.
 - An object's `set` overrides its prefab's components by dotted path: `"set": { "health.max": 50 }`.
-- A place is a `point`, a `rect` or a `route`; a point's or an area's `to` links it to `<room>.<place>`.
+- A place is a `point`, a `rect` or a `route`; a point's or an area's `to` links it to `<room>.<place>`. A route's stops are points too: the level rules read a top-down mover's stop as the cell it falls in, and a platformer mover's as its body's centre, on the first row it can stand on within 2 cells under it.
 
 `tungsten schema room` and `tungsten schema tileset` print each format's JSON Schema, every field with its description.
 
@@ -162,6 +162,8 @@ impl RoomGenerator for Gems {
 ```
 
 `app.register_generator("gems", Gems)` registers it, as `world.register_generator` does in a plugin's `build`. `world.generate_rooms("gems", seed, "gems")` then registers each room the generator adds as `<prefix>_<local>`, here `gems_main` with its objects `gems_main.gem_1` and `gems_main.gem_2`, and spawns none; `generation.id("main")` gives the same ID, for a link's `to`. `tungsten check`, a script's `generate` step and `tungsten level generate` take the generator's ID as the prefix unless given one. A state spawns each of the result's `rooms()` at its origin, `world.spawn_room(id, origin, &(SceneEntity { state_id: GAMEPLAY },))`. A prefix generates again only once its rooms are removed, so a state that generates on its entry first takes the last run's rooms out, `despawn_room` and then `remove_room` each. `tungsten check` generates each generator's rooms at seeds 0 to 15 and checks them as listed rooms (`--seeds <count>` for 0 to `<count>` − 1, `--seed <seed>` for one), a finding filed under `generator <id>` with the seeds that gave it.
+
+A save holding a generated area restores only into a World that holds that area's generation again, or `save::restore_world` refuses it: a continued run calls `save::regenerate(world, &save.world)`, which only registers every generation the save names (its generator, seed and prefix); the game then spawns the rooms it shows and calls `save::restore_world`, so it keeps no seed of its own. An area whose generation changed since the save restores through its generator's `migrate`, which refuses by default.
 
 ## In a script
 

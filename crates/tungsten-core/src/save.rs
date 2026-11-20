@@ -83,7 +83,10 @@ pub trait SaveData: Serialize + DeserializeOwned {
     const SCHEMA: u32;
 
     /// Rewrites `data`, saved under schema `from`, into schema `from + 1`'s
-    /// shape: one schema's change. The default refuses every schema.
+    /// shape: one schema's change. The default refuses every schema. `data`
+    /// is `serde_json`'s [`Value`], which this module re-exports, so a game
+    /// writes its steps over `tungsten::core::save::Value` with no `serde_json`
+    /// of its own.
     ///
     /// # Errors
     ///

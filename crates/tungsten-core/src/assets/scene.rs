@@ -267,7 +267,9 @@ pub struct SceneSprite {
     /// The tint the sprite's texture is multiplied by, RGBA from 0 to 255 a
     /// channel in linear light: the frame encodes it to sRGB, so
     /// `[70, 120, 64]` on a white texel draws as `[143, 182, 137]`. White,
-    /// no tint, by default.
+    /// no tint, by default. A lit sprite's tint colours its albedo alone: its
+    /// emissive mask adds after the lights, uncoloured, though the tint's
+    /// alpha fades it with the sprite.
     #[serde(default = "white")]
     pub color: [u8; 4],
     #[serde(default)]

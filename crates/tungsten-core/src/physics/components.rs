@@ -7,7 +7,9 @@ use crate::ecs::bundle::{Bundle, BundleSink};
 use crate::physics::PhysicsMaterial;
 use crate::physics::collision::Aabb;
 
-/// World-space position.
+/// World-space position of a body or of an entity a kit item moves, from
+/// which `physics_sync` draws its `Transform`. A prefab or map object with
+/// neither has none: its point is its `Transform`'s `position`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Position(pub Vec2);
 

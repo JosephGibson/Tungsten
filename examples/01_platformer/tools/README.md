@@ -18,8 +18,8 @@ cargo test -p example-01-platformer
 This is the authoring edit loop. `cargo test -p example-01-platformer` runs
 01's pit guard, whose pin (`tests/game/guards/pit.json`) map content anywhere
 can move, not only the pit's: rewrite it with `TUNGSTEN_GUARDS_WRITE=1` once
-the change is meant, its cause in the change's plan or its commit message. At
-handoff, use the canonical
+the change is meant, its cause in the change's plan or, with none, its commit's
+one-line subject. At handoff, use the canonical
 [validation matrix](../../../docs/validation.md#change-to-check-matrix), running
 each applicable check once for that stage. The generator and Rust tests cover
 different guarantees; keep both. For visible or audible changes, apply the
@@ -380,7 +380,14 @@ mine) and the aqueduct's ferry are other ways round.
 Gameplay geometry is authored, never randomized. Route tests use actual engine input and physics against the
 real generated map, searching launch positions without changing gravity or
 colliders. Run those tests after any layout change; geometric jump estimates
-alone do not prove clearance beneath the solid platforms.
+alone do not prove clearance beneath the solid platforms. Four tables hold
+launches and walks by column and move with the layout: the route test's
+`LAUNCHES` and `TOME_LAUNCHES` (`tests/game/level.rs`), whose failures print the
+row to write; the playthrough's `MAIN` (`tests/game/playthrough.rs`), the main
+route's `LAUNCHES` rows with a `WAITS` entry each and one for the last walk,
+which fails with where the player stood; and the areas test's `CROSSINGS`
+(`tests/game/areas.rs`, where each walk into an area starts), which fails with
+the area reached against the one expected.
 
 `level.py` emits the embedded Tiled catalog (`firstgid=1`, zero for empty, no flip
 bits) and the map's object layers, with the prefabs their classes name. Edit their
