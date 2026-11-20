@@ -637,6 +637,10 @@
       "path": "animations/wisp_float_left.json"
     }
   },
+  "boot": {
+    "hold": 2.0,
+    "logo": "boot_dot"
+  },
   "data": {
     "abilities": {
       "bat_dive": {
@@ -2743,6 +2747,10 @@
     }
   },
   "sprites": {
+    "boot_dot": {
+      "filter": "linear",
+      "path": "sprites/boot_dot.png"
+    },
     "ex10_accretion_disk": {
       "filter": "linear",
       "path": "sprites/accretion_disk.png"

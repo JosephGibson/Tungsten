@@ -19,7 +19,7 @@ use crate::features::run::{GameplayState, RunPlugin};
 use crate::features::spells::SpellsPlugin;
 use crate::features::tomes::TomesPlugin;
 use crate::features::toys::ToysPlugin;
-use crate::shell::{Difficulty, GameInfo, RunStart, ShellPlugin};
+use crate::shell::{Difficulty, GameInfo, RunStart, ShellPlugin, boot};
 
 /// The game's manifest, relative to its folder.
 pub const MANIFEST: &str = "assets/manifest.json";
@@ -82,7 +82,7 @@ pub fn kit_plugins() -> tungsten::core::PluginSet {
 
 /// Registers the game with `app`: the kit's plugins ([`kit_plugins`]) and
 /// 01's `armour` hit preparation, the shell, then the features, the cursor
-/// last.
+/// last, and the shell's boot splash.
 pub fn register(app: &mut App, info: GameInfo) {
     app.add_plugins(kit_plugins());
     // Before the manifest loads, whose blasts and impacts name it.
@@ -106,4 +106,5 @@ pub fn register(app: &mut App, info: GameInfo) {
     app.add_plugin(TomesPlugin);
     // Last, so the cursor draws over every other contribution.
     app.add_plugin(CursorPlugin);
+    app.set_boot_view(boot::view);
 }

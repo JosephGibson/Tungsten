@@ -91,8 +91,10 @@ code that moves a locked file waits for the owner's unlock of each family it
 moves.
 
 The shell's assets come with its code: Inter and Source Serif 4 with their
-licence files and the shell's screen files (`assets/ui/screens/`) are copied
-byte for byte from `templates/basic/assets/`, with their manifest entries, so
+licence files, the shell's screen files (`assets/ui/screens/`) and the boot
+splash's disc (`boot_dot`, the shell's one sprite, under the template's ID)
+are copied byte for byte from `templates/basic/assets/`, with their manifest
+entries and the `boot` group that names the disc as its logo, so
 `--check` also catches drift from the template; the kit's hit flash draws
 through the engine's own `damage_flash` material. The `shell` theme is the template's text in
 01's colours (01 (h), `generate.THEME_COLORS`): each of the template's colours

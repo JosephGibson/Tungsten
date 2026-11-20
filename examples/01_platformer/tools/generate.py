@@ -54,7 +54,10 @@ def themed(text):
         if rgb not in THEME_COLORS:raise ValueError(f'{THEME}: template colour {rgb} has no colour of 01\'s (THEME_COLORS)')
         return THEME_COLORS[rgb]+alpha
     return re.sub(r'(#[0-9a-fA-F]{6})([0-9a-fA-F]{2})?\b',mapped,text)
-SHELL_SECTIONS=('fonts','font_families','font_fallback','ui_themes','ui_screens')
+SHELL_SECTIONS=('fonts','font_families','font_fallback','ui_themes','ui_screens','boot')
+# The boot splash's one disc (`D-265`), which the `boot` group names as its
+# logo: the shell's only sprite, under the template's ID.
+SHELL_SPRITES=('boot_dot',)
 # 01's own face beside the template's: Source Serif 4 Bold, under the same
 # licence as its Regular, for the area titles, from the repository's fonts.
 SERIF_BOLD=ROOT.parent.parent/'assets'/'fonts'/'SourceSerif4'/'static'/'SourceSerif4-Bold.ttf'
@@ -877,18 +880,19 @@ def strings(*data):
 
 
 def content_family(made,sprites,lit):
-    """The shell's fonts, theme and screen files, copied from the template,
-    01's serif face, the content's prefabs and data, the glow shader and
-    materials, the ambient emitter's prefab and the particle configs:
-    sources copied or written from this file."""
+    """The shell's fonts, theme, screen files and boot splash, copied from
+    the template, 01's serif face, the content's prefabs and data, the glow
+    shader and materials, the ambient emitter's prefab and the particle
+    configs: sources copied or written from this file."""
     template=json.loads((TEMPLATE/'assets/manifest.json').read_text())
     shell={section:json.loads(json.dumps(template[section])) for section in SHELL_SECTIONS}
+    shell['sprites']={name:dict(template['sprites'][name]) for name in SHELL_SPRITES}
     shell['fonts']['serif_bold']=dict(path='fonts/SourceSerif4/SourceSerif4-Bold.ttf')
     shell['font_families']['serif']['faces'].append('serif_bold')
     made.entries.update(entries_of(shell))
     for path in SHELL_ASSETS:
         made.files['assets/'+path]=(TEMPLATE/'assets'/path).read_bytes()
-    for entry in template['ui_screens'].values():
+    for entry in [*template['ui_screens'].values(),*shell['sprites'].values()]:
         made.files['assets/'+entry['path']]=(TEMPLATE/'assets'/entry['path']).read_bytes()
     made.files['assets/'+THEME]=themed((TEMPLATE/'assets'/THEME).read_text()).encode()
     made.files['assets/fonts/SourceSerif4/SourceSerif4-Bold.ttf']=SERIF_BOLD.read_bytes()
@@ -1176,7 +1180,8 @@ def validate_references(manifest,configs,source):
     # clip's, a particle config's and a tile's sprite and a material's shader
     # are `tungsten check`'s, which `just level-check` runs after this.
     for section in ('sprites','animations','particles'):
-        if any(not s.startswith('ex10_') for s in manifest[section]):raise ValueError('unprefixed '+section+' ID')
+        shell=SHELL_SPRITES if section=='sprites' else ()
+        if any(not s.startswith('ex10_') and s not in shell for s in manifest[section]):raise ValueError('unprefixed '+section+' ID')
     # The level's own, when it is built.
     if source is None:return
     for p in source['props']:
