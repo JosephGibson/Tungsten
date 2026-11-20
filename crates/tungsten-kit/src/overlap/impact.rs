@@ -782,11 +782,45 @@ impl Impacted {
     }
 }
 
-/// The velocities [`IMPACT_RECORD`] kept this step, by entity index: a
-/// World resource it inserts, which no save holds.
+/// The velocities [`IMPACT_RECORD`] kept this step, each in the slot of its
+/// entity's index, so a read is one slot's however many it kept: a World
+/// resource it inserts, which no save holds.
 #[derive(Debug, Default)]
 struct ImpactRecord {
-    kept: Vec<(Entity, Vec2)>,
+    /// By entity index: the step that kept the slot, its entity and the
+    /// velocity.
+    kept: Vec<(u32, Entity, Vec2)>,
+    /// The step's number, from 1: a slot of another number is empty, so a
+    /// step's start clears none.
+    step: u32,
+}
+
+impl ImpactRecord {
+    /// Starts a step's record with every slot empty.
+    fn begin(&mut self) {
+        self.step = self.step.wrapping_add(1);
+        if self.step == 0 {
+            // The number wrapped: no slot of an old step may pass for one
+            // of this step's.
+            self.kept.clear();
+            self.step = 1;
+        }
+    }
+
+    /// Keeps `entity`'s velocity for the step.
+    fn keep(&mut self, entity: Entity, velocity: Vec2) {
+        let index = entity.id() as usize;
+        if index >= self.kept.len() {
+            self.kept.resize(index + 1, (0, entity, Vec2::ZERO));
+        }
+        self.kept[index] = (self.step, entity, velocity);
+    }
+
+    /// The velocity kept for `entity` this step.
+    fn get(&self, entity: Entity) -> Option<Vec2> {
+        let &(step, kept, velocity) = self.kept.get(entity.id() as usize)?;
+        (step == self.step && kept == entity).then_some(velocity)
+    }
 }
 
 /// `entity`'s velocity as [`IMPACT_RECORD`] kept it this step, as the move
@@ -798,11 +832,7 @@ struct ImpactRecord {
 /// meant for the step's impacts runs before [`IMPACT_RECORD`] by name.
 #[must_use]
 pub fn step_velocity(world: &World, entity: Entity) -> Option<Vec2> {
-    let kept = &world.get_resource::<ImpactRecord>()?.kept;
-    let at = kept
-        .binary_search_by_key(&entity.id(), |(kept, _)| kept.id())
-        .ok()?;
-    (kept[at].0 == entity).then_some(kept[at].1)
+    world.get_resource::<ImpactRecord>()?.get(entity)
 }
 
 /// [`IMPACT_RECORD`]: each hitter's and each `Health` holder's velocity,
@@ -810,25 +840,25 @@ pub fn step_velocity(world: &World, entity: Entity) -> Option<Vec2> {
 fn record(world: &mut World) {
     if !world.has_any::<ImpactDamage>() {
         if let Some(record) = world.get_resource_mut::<ImpactRecord>() {
-            record.kept.clear();
+            record.begin();
         }
         return;
     }
-    let mut record = world.remove_resource::<ImpactRecord>().unwrap_or_default();
-    record.kept.clear();
-    record.kept.extend(
-        world
-            .query::<(Entity, &Velocity, &ImpactDamage)>()
-            .map(|(entity, velocity, _)| (entity, velocity.0)),
-    );
-    record.kept.extend(
-        world
-            .query::<(Entity, &Velocity, &Health)>()
-            .filter(|&(entity, ..)| !world.has::<ImpactDamage>(entity))
-            .map(|(entity, velocity, _)| (entity, velocity.0)),
-    );
-    record.kept.sort_unstable_by_key(|(entity, _)| entity.id());
-    world.insert_resource(record);
+    // The record leaves its resource for the pass with its room, and goes
+    // back into it: no step boxes one.
+    if !world.has_resource::<ImpactRecord>() {
+        world.insert_resource(ImpactRecord::default());
+    }
+    let mut record = std::mem::take(world.resource_mut::<ImpactRecord>());
+    record.begin();
+    for (entity, velocity, _) in world.query::<(Entity, &Velocity, &ImpactDamage)>() {
+        record.keep(entity, velocity.0);
+    }
+    // A hitter with `Health` is kept again, the same velocity in its slot.
+    for (entity, velocity, _) in world.query::<(Entity, &Velocity, &Health)>() {
+        record.keep(entity, velocity.0);
+    }
+    *world.resource_mut::<ImpactRecord>() = record;
 }
 
 /// The gap between two bodies' surfaces, boxes or circles about their
@@ -885,9 +915,11 @@ fn hitter_mass(rule: &ImpactDamage, body: Option<&RigidBody>) -> Option<f32> {
     })
 }
 
-/// A body's kept velocity: its record, else its velocity now.
-fn kept_velocity(world: &World, entity: Entity) -> Vec2 {
-    step_velocity(world, entity)
+/// A body's kept velocity: `record`'s, the step's read once a pass, else
+/// its velocity now.
+fn kept_velocity(record: Option<&ImpactRecord>, world: &World, entity: Entity) -> Vec2 {
+    record
+        .and_then(|record| record.get(entity))
         .or_else(|| world.get::<Velocity>(entity).map(|velocity| velocity.0))
         .unwrap_or(Vec2::ZERO)
 }
@@ -912,6 +944,7 @@ impl ImpactRunner {
             return;
         }
         self.touches.clear();
+        let record = world.get_resource::<ImpactRecord>();
         for (hitter, rule, position, collider, body) in world.query::<(
             Entity,
             &ImpactDamage,
@@ -923,7 +956,7 @@ impl ImpactRunner {
                 continue;
             }
             // Its kept speed first: a slow hitter costs one lookup.
-            let kept = kept_velocity(world, hitter);
+            let kept = kept_velocity(record, world, hitter);
             if kept.length_squared() < rule.speed * rule.speed || world.has::<Despawning>(hitter) {
                 continue;
             }
@@ -942,7 +975,7 @@ impl ImpactRunner {
                     continue;
                 }
                 let towards = (at - centre).normalize_or_zero();
-                let closing = (kept - kept_velocity(world, target)).dot(towards);
+                let closing = (kept - kept_velocity(record, world, target)).dot(towards);
                 if closing >= rule.speed {
                     self.touches.push(Touch {
                         hitter,
