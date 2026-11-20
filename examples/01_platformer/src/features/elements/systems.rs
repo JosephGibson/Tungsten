@@ -78,10 +78,15 @@ const SCRAP_EJECT_LIFT: f32 = 180.0;
 const CONTACT_MARGIN: f32 = 3.0;
 
 /// Lights `ball` when it is a small ball that never burned and is not
-/// frozen ([`light`]).
+/// frozen ([`light`]). A ball once lit keeps its [`Flame`] with its
+/// `kindled`, so a burning pile's neighbours stop here before a tag is
+/// read.
 pub fn ignite(world: &mut World, ball: Entity) {
+    if !world.has::<SmallBall>(ball) || world.has::<Flame>(ball) {
+        return;
+    }
     let lit = has_status(world, ball, BURNING) || has_status(world, ball, SPENT);
-    if world.has::<SmallBall>(ball) && !lit && !is_frozen(world, ball) {
+    if !lit && !is_frozen(world, ball) {
         light(world, ball, BURN_SECS);
     }
 }
@@ -133,39 +138,90 @@ fn cell(at: Vec2, size: f32) -> (i32, i32) {
     ((at.x / size).floor() as i32, (at.y / size).floor() as i32)
 }
 
+/// A step's set of live entities, a bit an entity index, the few past the
+/// bits listed: a pass that asks of every contact's two bodies whether a
+/// crowd holds them reads two bits a contact, where a hash set hashed both.
+struct Marks {
+    bits: [u64; 2048],
+    past: Vec<Entity>,
+}
+
+impl Marks {
+    fn new() -> Self {
+        Self {
+            bits: [0; 2048],
+            past: Vec::new(),
+        }
+    }
+
+    fn mark(&mut self, entity: Entity) {
+        let index = entity.id() as usize;
+        match self.bits.get_mut(index / 64) {
+            Some(word) => *word |= 1 << (index % 64),
+            None => self.past.push(entity),
+        }
+    }
+
+    /// Whether an entity of `entity`'s index was marked: itself, when it is
+    /// alive, since no two live entities share an index.
+    fn has(&self, entity: Entity) -> bool {
+        let index = entity.id() as usize;
+        match self.bits.get(index / 64) {
+            Some(word) => word >> (index % 64) & 1 == 1,
+            None => self.past.contains(&entity),
+        }
+    }
+}
+
 /// `fire_spread`, in the overlap phase after the physics step: a burning
 /// ball lights the small balls its step's contacts name and those resting
 /// against it, which sleep and send no contacts. The burning set is the
 /// step's, so fire spreads one hop a step.
 pub fn spread_fire(world: &mut World) {
-    let sources: HashSet<Entity> = world
-        .query::<(Entity, &Flame, &Tags)>()
-        .filter(|(_, _, tags)| tags.has(BURNING))
-        .map(|(entity, ..)| entity)
-        .collect();
-    if sources.is_empty() {
+    // No ball was ever lit: the query below keeps no shape for a level
+    // without fire (`D-206`).
+    if !world.has_any::<Flame>() {
         return;
     }
+    // The burning balls, marked, and their centres off their own rows.
+    let mut sources = Marks::new();
+    let mut lit: Vec<Vec2> = Vec::new();
+    let mut burning = false;
+    for (entity, _, tags, at, collider) in
+        world.query::<(Entity, &Flame, &Tags, Option<&Position>, Option<&Collider>)>()
+    {
+        if !tags.has(BURNING) {
+            continue;
+        }
+        burning = true;
+        sources.mark(entity);
+        if let Some(at) = at {
+            lit.push(at.0 + collider.map_or(Vec2::ZERO, |collider| collider.offset));
+        }
+    }
+    if !burning {
+        return;
+    }
+    // A contact's body burns when its index is marked and it is alive.
+    let burns = |entity: Entity| sources.has(entity) && world.is_alive(entity);
     // Two touching small balls' centres, with the solver's resting slack.
     let contact = 2.0 * ball_radii(world).1 + 0.5;
     let mut targets = HashSet::new();
     if let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() {
+        // Two burning balls' contact lights neither, and most of a burning
+        // pile's contacts are theirs: only a contact with one side burning
+        // names a target.
         for event in events.iter_current() {
             let Some(b) = event.b else { continue };
-            if sources.contains(&event.a) {
-                targets.insert(b);
-            }
-            if sources.contains(&b) {
-                targets.insert(event.a);
-            }
+            match (burns(event.a), burns(b)) {
+                (true, false) => targets.insert(b),
+                (false, true) => targets.insert(event.a),
+                _ => false,
+            };
         }
     }
     // Only the unburnt balls within reach of the burning ones are bucketed:
     // a ball farther from every source than a touch lights nothing (P5).
-    let lit: Vec<Vec2> = sources
-        .iter()
-        .filter_map(|&source| body_centre(world, source))
-        .collect();
     let bounds = lit
         .iter()
         .map(|&p| (p, p))
@@ -195,8 +251,10 @@ pub fn spread_fire(world: &mut World) {
             }
         }
     }
+    // A spent ball is left be as `ignite` leaves it, before the sort.
     let mut targets: Vec<(Option<SaveId>, Entity)> = targets
         .into_iter()
+        .filter(|&entity| !world.has::<Flame>(entity))
         .map(|entity| (crate::shared::save_id(world, entity), entity))
         .collect();
     targets.sort_by_key(|(id, _)| *id);
@@ -210,10 +268,17 @@ pub fn spread_fire(world: &mut World) {
 /// above on each side, as inside a pile; one on a slope with a neighbour
 /// uphill stays exposed.
 pub fn flame_exposure(world: &mut World) {
+    if !world.has_any::<Flame>() {
+        return;
+    }
+    // Each burning ball's centre off its own row, as `body_centre` reads it.
     let burning: Vec<(Entity, Vec2)> = world
-        .query::<(Entity, &Flame, &Tags)>()
-        .filter(|(_, _, tags)| tags.has(BURNING))
-        .filter_map(|(entity, ..)| Some((entity, body_centre(world, entity)?)))
+        .query::<(Entity, &Flame, &Tags, Option<&Position>, Option<&Collider>)>()
+        .filter(|(_, _, tags, ..)| tags.has(BURNING))
+        .filter_map(|(entity, _, _, at, collider)| {
+            let offset = collider.map_or(Vec2::ZERO, |collider| collider.offset);
+            Some((entity, at?.0 + offset))
+        })
         .collect();
     let Some((min, max)) = burning
         .iter()
@@ -234,25 +299,40 @@ pub fn flame_exposure(world: &mut World) {
             cells.entry(cell(p, cover)).or_default().push(p);
         }
     }
-    for (entity, p) in burning {
-        let (x, y) = cell(p, cover);
-        let (mut left, mut right, mut over) = (false, false, false);
-        for q in (y - 1..=y)
-            .flat_map(|cy| (x - 1..=x + 1).map(move |cx| (cx, cy)))
-            .filter_map(|key| cells.get(&key))
-            .flatten()
-        {
-            let rise = p.y - q.y;
-            let dx = q.x - p.x;
-            if !(0.5 * small..=cover).contains(&rise) || dx.abs() > 1.3 * small {
-                continue;
+    let exposed: Vec<(Entity, bool)> = burning
+        .into_iter()
+        .map(|(entity, p)| {
+            let (x, y) = cell(p, cover);
+            let (mut left, mut right, mut over) = (false, false, false);
+            for q in (y - 1..=y)
+                .flat_map(|cy| (x - 1..=x + 1).map(move |cx| (cx, cy)))
+                .filter_map(|key| cells.get(&key))
+                .flatten()
+            {
+                let rise = p.y - q.y;
+                let dx = q.x - p.x;
+                if !(0.5 * small..=cover).contains(&rise) || dx.abs() > 1.3 * small {
+                    continue;
+                }
+                over |= dx.abs() < 0.5 * small;
+                left |= dx < 0.0;
+                right |= dx > 0.0;
             }
-            over |= dx.abs() < 0.5 * small;
-            left |= dx < 0.0;
-            right |= dx > 0.0;
+            (entity, !(over || (left && right)))
+        })
+        .collect();
+    // The flames' rows again, which listed the burning ones in this order:
+    // each is written as its row comes, and one this pass did not meet in
+    // turn by its own lookup.
+    let mut rest = exposed.iter().peekable();
+    for (entity, flame) in world.query_mut::<(Entity, &mut Flame)>() {
+        if let Some(&(_, bare)) = rest.next_if(|&&(next, _)| next == entity) {
+            flame.exposed = bare;
         }
+    }
+    for &(entity, bare) in rest {
         if let Some(flame) = world.get_mut::<Flame>(entity) {
-            flame.exposed = !(over || (left && right));
+            flame.exposed = bare;
         }
     }
 }
