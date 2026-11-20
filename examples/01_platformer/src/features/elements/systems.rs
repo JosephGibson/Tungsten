@@ -428,16 +428,19 @@ pub fn fire_particles(world: &mut World) {
         })
         .collect();
     crates.sort_by_key(|(id, _)| *id);
-    let burning: Vec<(Vec2, bool)> = world
-        .query::<(Entity, &Flame, &Tags, &Transform, &Collider)>()
-        .filter(|(_, _, tags, ..)| tags.has(BURNING))
-        .map(|(_, flame, _, at, collider)| (at.position + collider.offset, flame.exposed))
-        .collect();
-    let sources: Vec<Vec2> = if burning.iter().any(|&(_, exposed)| exposed) {
-        burning.iter().filter(|b| b.1).map(|b| b.0).collect()
-    } else {
-        burning.iter().map(|b| b.0).collect()
+    // The exposed burning balls, else every burning one: a buried ball's
+    // tags are read only when the pile shows no crest.
+    let burning = |crest: bool| -> Vec<Vec2> {
+        world
+            .query::<(Entity, &Flame, &Tags, &Transform, &Collider)>()
+            .filter(|(_, flame, tags, ..)| (flame.exposed || !crest) && tags.has(BURNING))
+            .map(|(_, _, _, at, collider)| at.position + collider.offset)
+            .collect()
     };
+    let mut sources = burning(true);
+    if sources.is_empty() {
+        sources = burning(false);
+    }
     let fixed = crates.len().min(FIRE_EMITTER_CAP / 2);
     let pairs = sources.len().min(FIRE_EMITTER_CAP / 2 - fixed);
     let count = (fixed + pairs) * 2;

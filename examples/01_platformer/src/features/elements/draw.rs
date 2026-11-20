@@ -80,11 +80,18 @@ fn flames(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     let lit: Vec<_> = world
         .query::<(Entity, &Flame, &Saved, &Transform, &Collider)>()
         .filter_map(|(ball, flame, id, at, collider)| {
+            // A buried ball, or one out of view, draws none: its burn's
+            // seconds are read off its statuses only past both.
+            let centre = at.position + collider.offset;
+            if !flame.exposed
+                || (centre + reach).cmplt(min).any()
+                || (centre - reach).cmpgt(max).any()
+            {
+                return None;
+            }
             let left = burn_left(world, ball)?;
             let look = flame_look(id.id(), left, flame.exposed, time)?;
-            let centre = at.position + collider.offset;
-            ((centre + reach).cmpge(min).all() && (centre - reach).cmple(max).all())
-                .then_some((centre, look))
+            Some((centre, look))
         })
         .collect();
     let mut batches = Vec::new();
