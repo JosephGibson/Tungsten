@@ -794,7 +794,8 @@ pub fn crush(world: &mut World) {
                 if !world.has::<IronBlock>(block) {
                     continue;
                 }
-                let frozen = is_frozen(world, target) && is_iron(world, target);
+                // Iron first: a ball's tags are not read to learn it is none.
+                let frozen = is_iron(world, target) && is_frozen(world, target);
                 if !world.has::<SmallBall>(target)
                     && !world.has::<Player>(target)
                     && !frozen
@@ -851,11 +852,12 @@ pub fn crush(world: &mut World) {
         }
         let mut keep = !struck.is_empty();
         smashed.extend(struck.into_iter().map(|(entity, ..)| entity));
+        // Iron's own rows, blocks then scraps, into a set: a burning pile's
+        // balls carry tags too, and none of theirs is read here.
         let frozen_hits: Vec<Entity> = world
-            .query::<(Entity, &Tags, &Position, &Collider)>()
-            .filter(|(entity, tags, ..)| {
-                tags.has(FROZEN) && *entity != block && is_iron(world, *entity)
-            })
+            .query_filtered::<(Entity, &Tags, &Position, &Collider), With<IronBlock>>()
+            .chain(world.query_filtered::<(Entity, &Tags, &Position, &Collider), With<IronScrap>>())
+            .filter(|(entity, tags, ..)| tags.has(FROZEN) && *entity != block)
             .filter_map(|(entity, _, p, c)| {
                 let half = c.shape.half_extents();
                 let target = p.0 + c.offset;
