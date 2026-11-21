@@ -412,8 +412,9 @@ impl World {
             .flat_map(|(rows, slices)| Q::iter(slices, rows))
     }
 
-    /// The row count and `Q`'s column slices of each matching archetype, for
-    /// a pass over whole columns.
+    /// The row count and `Q`'s column slices of each matching archetype that
+    /// has rows, for a pass over whole columns. An archetype with no rows
+    /// gives no entry, so every count is at least one.
     pub fn query_slices<'w, Q: ReadOnlyQueryData<'w>>(
         &'w self,
     ) -> impl Iterator<Item = (usize, Q::Slices)> {
@@ -427,15 +428,21 @@ impl World {
     ) -> impl Iterator<Item = (usize, Q::Slices)> {
         // The matching archetypes' slices first, so the iterator a query
         // returns is a vector's and its rows' loops stay as tight as before.
+        // The walk reads the shape's kept bits and skips an archetype with
+        // no rows; the list is sized by a count first, so a call allocates
+        // once when it has rows to read and never otherwise.
         let matched = self.archetypes.matching(Q::matches, F::matches);
-        let parts: Vec<(usize, Q::Slices)> = self
-            .archetypes
-            .archetypes
-            .iter()
-            .enumerate()
-            .filter(|&(index, _)| matched[index / 64] >> (index % 64) & 1 == 1)
-            .map(|(_, arch)| (arch.entities.len(), Q::slices(Columns::of(arch))))
-            .collect();
+        let archetypes = &self.archetypes.archetypes;
+        let live = set_bits(&matched)
+            .filter(|&index| !archetypes[index].entities.is_empty())
+            .count();
+        let mut parts: Vec<(usize, Q::Slices)> = Vec::with_capacity(live);
+        for index in set_bits(&matched) {
+            let arch = &archetypes[index];
+            if !arch.entities.is_empty() {
+                parts.push((arch.entities.len(), Q::slices(Columns::of(arch))));
+            }
+        }
         parts.into_iter()
     }
 
@@ -461,7 +468,8 @@ impl World {
             .flat_map(|(rows, slices)| Q::iter(slices, rows))
     }
 
-    /// Mutable counterpart of [`query_slices`](Self::query_slices).
+    /// Mutable counterpart of [`query_slices`](Self::query_slices): as
+    /// there, an archetype with no rows gives no entry.
     ///
     /// # Panics
     /// Panics, naming `Q`, if two items name the same component.
@@ -480,18 +488,26 @@ impl World {
         &'w mut self,
     ) -> impl Iterator<Item = (usize, Q::Slices)> {
         Q::check_access();
+        // As `query_slices_filtered`: the kept bits, no entry for an
+        // archetype with no rows, one sized list.
         let matched = self.archetypes.matching(Q::matches, F::matches);
-        let parts: Vec<(usize, Q::Slices)> = self
-            .archetypes
-            .archetypes
-            .iter_mut()
-            .enumerate()
-            .filter(|&(index, _)| matched[index / 64] >> (index % 64) & 1 == 1)
-            .map(|(_, arch)| {
+        let archetypes = &mut self.archetypes.archetypes;
+        let live = set_bits(&matched)
+            .filter(|&index| !archetypes[index].entities.is_empty())
+            .count();
+        let mut parts: Vec<(usize, Q::Slices)> = Vec::with_capacity(live);
+        let mut rest = archetypes.iter_mut();
+        let mut next = 0;
+        for index in set_bits(&matched) {
+            let arch = rest
+                .nth(index - next)
+                .expect("a matched bit names an archetype");
+            next = index + 1;
+            if !arch.entities.is_empty() {
                 let rows = arch.entities.len();
-                (rows, Q::slices_mut(ColumnsMut::of(arch)))
-            })
-            .collect();
+                parts.push((rows, Q::slices_mut(ColumnsMut::of(arch))));
+            }
+        }
         parts.into_iter()
     }
 
@@ -673,6 +689,21 @@ impl Default for World {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// The indices of the set bits of `words`, ascending.
+fn set_bits(words: &[u64]) -> impl Iterator<Item = usize> + '_ {
+    words.iter().enumerate().flat_map(|(word, &bits)| {
+        let mut bits = bits;
+        std::iter::from_fn(move || {
+            if bits == 0 {
+                return None;
+            }
+            let bit = bits.trailing_zeros() as usize;
+            bits &= bits - 1;
+            Some(word * 64 + bit)
+        })
+    })
 }
 
 /// The panic of [`World::resource`] and [`World::resource_mut`], out of

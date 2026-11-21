@@ -275,7 +275,10 @@ mod tests {
 
     use glam::Vec2;
     use tungsten_core::assets::{FilterMode, UvRect};
-    use tungsten_core::{AssetRegistry, Config, EventQueue, Sprite, Transform, Visibility};
+    use tungsten_core::{
+        AssetRegistry, Config, Entity, EventQueue, Sprite, Transform, Visibility, With, Without,
+        World,
+    };
 
     use super::*;
     use crate::App;
@@ -367,7 +370,14 @@ mod tests {
         assert!(first.allocations >= 30, "{first:?}");
         assert!(harness.draw().is_none(), "a counted frame copies no draw");
 
-        // A counted step allocates what the bare frame body does.
+        // A counted step allocates what the bare frame body does. The feed
+        // stays off for both frames, as in `measure`: the process's first
+        // app holds the logger's feed, and the first frame after a measure
+        // would drain the records queued behind it.
+        let feed = harness
+            .world_mut()
+            .get_resource_mut::<LogConsole>()
+            .and_then(LogConsole::take_feed);
         harness.count_only = true;
         let before = allocations();
         harness.step(1);
@@ -379,6 +389,9 @@ mod tests {
             .run_frame(Instant::now(), FrameClock::Pinned(harness.dt), |_| {});
         let bare = allocations().count - before.count;
         assert_eq!(stepped, bare);
+        if let Some(console) = harness.world_mut().get_resource_mut::<LogConsole>() {
+            console.restore_feed(feed);
+        }
     }
 
     #[test]
@@ -429,5 +442,122 @@ mod tests {
         let split = CounterGuard::measure(&mut harness, 1, 2);
         assert_eq!(split.max_sprite_instances, 3);
         assert_eq!(split.max_sprite_batches, 2);
+    }
+
+    struct Marked(u32);
+    struct Part<const N: u8>;
+
+    /// A World of 64 archetypes that hold a `Marked`, one entity in each:
+    /// the subsets of six parts.
+    fn marked_world() -> (World, Vec<Entity>) {
+        let mut world = World::new();
+        let mut entities = Vec::new();
+        for mask in 0..64_u32 {
+            let entity = world.spawn_with((Marked(mask),));
+            if mask & 1 != 0 {
+                world.insert(entity, Part::<0>);
+            }
+            if mask & 2 != 0 {
+                world.insert(entity, Part::<1>);
+            }
+            if mask & 4 != 0 {
+                world.insert(entity, Part::<2>);
+            }
+            if mask & 8 != 0 {
+                world.insert(entity, Part::<3>);
+            }
+            if mask & 16 != 0 {
+                world.insert(entity, Part::<4>);
+            }
+            if mask & 32 != 0 {
+                world.insert(entity, Part::<5>);
+            }
+            entities.push(entity);
+        }
+        (world, entities)
+    }
+
+    /// Each of four query shapes run once, which keeps its matching
+    /// archetypes: the one allocation a shape makes outside its calls' lists.
+    fn first_calls(world: &mut World) {
+        assert_eq!(world.query::<(Entity, &Marked)>().count(), 64);
+        assert_eq!(world.query_mut::<&mut Marked>().count(), 64);
+        let with = world.query_slices_filtered::<&Marked, With<Part<0>>>();
+        assert_eq!(with.count(), 32);
+        let without = world.query_mut_slices_filtered::<&mut Marked, Without<Part<1>>>();
+        assert_eq!(without.count(), 32);
+    }
+
+    /// The allocations and bytes of one run of `call`, with its result.
+    fn counted<R>(call: impl FnOnce() -> R) -> (u64, u64, R) {
+        let before = allocations();
+        let result = call();
+        let after = allocations();
+        (
+            after.count - before.count,
+            after.bytes - before.bytes,
+            result,
+        )
+    }
+
+    #[test]
+    fn a_query_whose_matching_archetypes_are_empty_allocates_nothing() {
+        let (mut world, entities) = marked_world();
+        first_calls(&mut world);
+        // Every archetype outlives its rows, so each shape still matches its
+        // 64 or 32.
+        for entity in entities {
+            world.despawn(entity);
+        }
+        let read = counted(|| world.query::<(Entity, &Marked)>().count());
+        assert_eq!(read, (0, 0, 0));
+        let write = counted(|| world.query_mut::<&mut Marked>().count());
+        assert_eq!(write, (0, 0, 0));
+        let slices = counted(|| {
+            world
+                .query_slices_filtered::<&Marked, With<Part<0>>>()
+                .count()
+        });
+        assert_eq!(slices, (0, 0, 0));
+        let slices_mut = counted(|| {
+            world
+                .query_mut_slices_filtered::<&mut Marked, Without<Part<1>>>()
+                .count()
+        });
+        assert_eq!(slices_mut, (0, 0, 0));
+    }
+
+    #[test]
+    fn a_query_with_rows_allocates_its_list_once() {
+        let (mut world, entities) = marked_world();
+        first_calls(&mut world);
+        // Three archetypes keep their row, 61 lose it: masks 5 and 21 hold
+        // part 0 and not part 1, mask 62 part 1 and not part 0.
+        for (mask, entity) in entities.into_iter().enumerate() {
+            if ![5, 21, 62].contains(&mask) {
+                world.despawn(entity);
+            }
+        }
+        let masks: Vec<u32> = world.query::<&Marked>().map(|marked| marked.0).collect();
+        assert_eq!(masks, [5, 21, 62]);
+        // One list a call, sized for the archetypes with rows alone.
+        let entry = size_of::<(usize, (&[Entity], &[Marked]))>() as u64;
+        let read = counted(|| world.query::<(Entity, &Marked)>().count());
+        assert_eq!(read, (1, 3 * entry, 3));
+        let entry = size_of::<(usize, &mut [Marked])>() as u64;
+        let write = counted(|| world.query_mut::<&mut Marked>().count());
+        assert_eq!(write, (1, 3 * entry, 3));
+        let slices = counted(|| {
+            world
+                .query_slices_filtered::<&Marked, With<Part<0>>>()
+                .count()
+        });
+        assert_eq!(slices, (1, 2 * entry, 2));
+        let slices_mut = counted(|| {
+            world
+                .query_mut_slices_filtered::<&mut Marked, Without<Part<1>>>()
+                .count()
+        });
+        assert_eq!(slices_mut, (1, 2 * entry, 2));
     }
 }
