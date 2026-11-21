@@ -893,6 +893,7 @@ Every value in the table reads `improved`. `gpu` waits on the GPU, so its `total
 ## D-086 — Default extract and tilemap extract: one pass into kept buffers, a key sort, an asset cache
 **Amended by D-113:** the default extract's asset lookup only; a sprite's `SpriteAssetId` indexes the registry, and the last-seen memo, the 64-slot cache and their test are gone. The tilemap extract's per-map tileset resolution and the rest stand.
 **Amended by D-114:** the default extract's two passes only; pass 1 keys a culled sprite without writing its instance, and pass 2 copies only kept instances and drops the batches that leaves empty. Output for a frame that culls nothing is unchanged, and the rest stands.
+**Amended by D-294:** the default extract's key only; the frame after a one-batch frame writes a key for a culled sprite alone, and runs pass 1 again with keys when a sprite breaks the one batch. Output is unchanged, and the rest stands.
 **Date:** 2026-10-01
 **Decision:** The default sprite extract and the tilemap extract write into buffers the app keeps between frames and return the batches, instances and pixels they returned before. This merges the rewrite that `D-085` measured and left out ("Not merged"). The owner accepted the three readings that come with it on 2026-10-01.
 
@@ -4576,3 +4577,15 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - The rerun, 2026-11-20: thirteen runs `complete` at attempt 1, final after two fresh verifiers; against pass 1, 1,084 → 988 turns, 230.0 → 208.5 agent-minutes, USD 58.12 → 54.24 at API prices and 101 → 88 friction rows; 23 seams (EV-44–EV-66: 11 doc fixes landed, 5 to Later, 2 known issues, one to 7.16, 4 env) and 23 entries, none blocking; of pass 1's 23 fixed seams, 15 gone, 2 not met and 6 recurring.
 - The owner accepted example 01 on 2026-11-20, closing phase 7's Step 13; 7.14 is next.
 - The harness's `seams --check` reads a section from its heading at a line's start, and `compare A B` prints both passes' counts.
+
+## D-294 — The default extract writes a sprite's sort key only where a frame reads it
+**Date:** 2026-11-21
+**Decision:** `D-086`'s 16-byte key, as `D-114` left it, is written only for a frame that reads it (7.14's C6, `cpu-pass-clips-saves-extract` Step 4). On kept buffers, the frame after one that ended as one batch (one class on one `z_order` in painter order, no raised tile layer) starts keyless: pass 1 writes a key for a culled sprite alone, holding the record count at its place, and ends on the one-batch path, where a count change rewrites `z_norm` from each instance's slot and the culled sprites before it. After the archetype that leaves the frame more than one batch (a second class, a second `z_order`, a lower order), pass 1 runs again from the first archetype with keys, once, and the next 60 frames start keyed. A buffer's first frame, a frame after any other frame and a frame with a raised layer start keyed, as before. The buffers keep the last frame's count in a field of their own, where they read it off the keys' length. Every frame's batches and instances are `D-086`'s, byte for byte.
+
+**Why:** Only pass 2, the sort and a count change read a kept sprite's key, and a one-batch frame runs neither of the first two. On the headless control at 400,000 sprites (`docs/perf/benchmarks.md`, the `gpu` section) the keys cost 0.23 of 3.55 ms a frame: 3.548 → 3.317 ms, after the plain row loop took 5.795 → 3.547. A frame that needs keys shows it within pass 1, so the second run is bounded: once a frame, and once in 62 frames for a game that flips between one batch and several every frame.
+
+**Consequences:**
+- A buffer's first frame is keyed, so a game of several classes never runs pass 1 twice at its start, and the key vector is sized on that frame as before: no counter guard's pin moved.
+- A frame that restarts makes one more query list.
+- `ExtractBuffers`' `keyed_only` and `general_only`, in tests only, run pass 1 as it stood: the references the keyless frame and the plain loop are checked against, beside the pre-rewrite extract.
+- The control still reads over 7.14's target of 2.904 ms, so C6 ends `stopped`: what remains is the rows' loads, the size, the view test, the order and its bits and the instance's store.

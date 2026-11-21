@@ -2256,3 +2256,334 @@ fn plain_archetypes_extract_as_the_general_loop_does() {
         }
     }
 }
+
+// 7.14's C6, the keyless frame (`D-294`): the frame after a one-batch frame
+// writes no key a kept sprite. `ExtractBuffers::keyed_only` starts every
+// frame keyed, the path as it stood, as the reference beside the pre-rewrite
+// extract.
+
+/// `(restarts, keyless frames)` of `world`'s kept buffers so far.
+fn keyless_counts(world: &World) -> (u32, u32) {
+    let scratch = world.get_resource::<ExtractScratch>().unwrap();
+    let buffers = scratch.0.borrow();
+    (buffers.restarts, buffers.keyless_frames)
+}
+
+/// Buffers that start every frame keyed.
+fn keyed_buffers() -> ExtractBuffers {
+    ExtractBuffers {
+        keyed_only: true,
+        ..ExtractBuffers::default()
+    }
+}
+
+/// The pre-rewrite reference's batches less the instances `view` culls, and
+/// less the batches that leaves empty.
+fn reference_less_culled(world: &World, view: Option<(Vec2, Vec2)>) -> Vec<SpriteBatch> {
+    let mut batches = reference_extract(world);
+    if let Some(view) = view {
+        for batch in &mut batches {
+            if batch.material_id.is_none() {
+                batch.instances.retain(|i| {
+                    !outside_view(Vec2::from(i.position), Vec2::from(i.size), i.rotation, view)
+                });
+            }
+        }
+        batches.retain(|batch| !batch.instances.is_empty());
+    }
+    batches
+}
+
+/// One frame of `world` through its kept scratch, then recycled: its batches
+/// equal to the same frame's through `keyed` and to the reference extract's
+/// less what the view culls, with at most one restart. Returns whether it
+/// `(restarted, ended keyless)`.
+#[track_caller]
+fn keyless_frame(world: &World, keyed: &mut ExtractBuffers, context: &str) -> (bool, bool) {
+    let before = keyless_counts(world);
+    let batches = extract_sprites_default(world);
+    let after = keyless_counts(world);
+    let assets = world.resource::<AssetRegistry>();
+    let view = view_bounds(world);
+    let expected = extract_into(world, assets, view, keyed, &mut []);
+    assert_same_batches(&batches, &expected, &format!("{context}, the keyed frame"));
+    assert_same_batches(
+        &batches,
+        &reference_less_culled(world, view),
+        &format!("{context}, the reference"),
+    );
+    world
+        .get_resource::<ExtractScratch>()
+        .unwrap()
+        .recycle(batches);
+    assert!(after.0 - before.0 <= 1, "{context}: restarted twice");
+    (after.0 > before.0, after.1 > before.1)
+}
+
+#[test]
+fn keyless_frames_match_the_reference_as_a_frame_changes() {
+    // One class on one z in ID order, so most frames run keyless, while the
+    // count grows and shrinks, the camera culls another share, and now and
+    // then a row breaks the one batch for a few frames: a second class, or
+    // another `z_order` below or above the rest, at the first row, a middle
+    // one or the last.
+    let (mut keyless, mut restarts, mut culled_keyless) = (0u32, 0u32, 0u32);
+    for seed in 1..=6u64 {
+        let mut rng = Pcg32::seeded(seed);
+        let mut world = view_world();
+        register_sprite(&mut world, "other", FilterMode::Linear);
+        world.insert_resource(ExtractScratch::default());
+        let other = intern(&mut world, "other");
+        let spawn = |world: &mut World, rng: &mut Pcg32| {
+            let at = Vec2::new(rng.next_range(-150.0, 150.0), rng.next_range(-150.0, 150.0));
+            spawn_visible(world, "quad", at, 0)
+        };
+        let mut rows: Vec<Entity> = (0..40 + pick(&mut rng, 200))
+            .map(|_| spawn(&mut world, &mut rng))
+            .collect();
+        let mut keyed = keyed_buffers();
+        // The row that breaks the one batch, the frames it stays and the
+        // sprite it goes back to.
+        let mut intruder: Option<(Entity, u32, Sprite)> = None;
+        for frame in 0..400 {
+            if let Some((entity, left, sprite)) = intruder.take() {
+                if left == 0 {
+                    *world.get_mut::<Sprite>(entity).unwrap() = sprite;
+                } else {
+                    intruder = Some((entity, left - 1, sprite));
+                }
+            }
+            let place = |rng: &mut Pcg32, rows: &[Entity]| {
+                rows[[0, rows.len() / 2, rows.len() - 1][pick(rng, 3) as usize]]
+            };
+            // A frame in four is steady and an intruder comes one frame in
+            // twelve; the hold after its restart is sixty, so about a frame
+            // in six ends keyless.
+            match pick(&mut rng, 48) {
+                12..=23 => {
+                    // Hidden or shown again: the count moves, the order holds.
+                    for _ in 0..=pick(&mut rng, 8) {
+                        let entity = rows[pick(&mut rng, rows.len() as u32) as usize];
+                        let visibility = world.get_mut::<Visibility>(entity).unwrap();
+                        visibility.visible = !visibility.visible;
+                    }
+                }
+                24..=31 => {
+                    // Fresh IDs behind the rest: still in painter order.
+                    for _ in 0..=pick(&mut rng, 10) {
+                        rows.push(spawn(&mut world, &mut rng));
+                    }
+                }
+                32..=43 => {
+                    world.get_resource_mut::<CameraState>().unwrap().position =
+                        Vec2::new(rng.next_range(-120.0, 120.0), rng.next_range(-120.0, 120.0));
+                }
+                44 | 45 if intruder.is_none() => {
+                    let entity = place(&mut rng, &rows);
+                    let sprite = *world.get::<Sprite>(entity).unwrap();
+                    world.get_mut::<Sprite>(entity).unwrap().asset_id = other;
+                    intruder = Some((entity, pick(&mut rng, 3), sprite));
+                }
+                46 | 47 if intruder.is_none() => {
+                    let entity = place(&mut rng, &rows);
+                    let sprite = *world.get::<Sprite>(entity).unwrap();
+                    world.get_mut::<Sprite>(entity).unwrap().z_order =
+                        [-1, 1][pick(&mut rng, 2) as usize];
+                    intruder = Some((entity, pick(&mut rng, 3), sprite));
+                }
+                _ => {}
+            }
+            let context = format!("seed {seed}, frame {frame}");
+            let (restarted, ended_keyless) = keyless_frame(&world, &mut keyed, &context);
+            restarts += u32::from(restarted);
+            keyless += u32::from(ended_keyless);
+            if ended_keyless {
+                let view = view_bounds(&world).unwrap();
+                let drawn = instance_count(&reference_less_culled(&world, Some(view)));
+                culled_keyless += u32::from(drawn < instance_count(&reference_extract(&world)));
+            }
+        }
+        // A low ID respawned behind the rest: one class on one z, out of
+        // painter order from here on.
+        let first = rows.swap_remove(0);
+        world.despawn(first);
+        rows.push(spawn(&mut world, &mut rng));
+        for frame in 400..404 {
+            keyless_frame(&world, &mut keyed, &format!("seed {seed}, frame {frame}"));
+        }
+    }
+    assert!(
+        keyless > 300 && restarts >= 20 && culled_keyless > 300,
+        "{keyless} keyless frames, {culled_keyless} of them culling, {restarts} restarts"
+    );
+}
+
+#[test]
+fn a_keyless_frame_takes_the_last_frames_vector() {
+    let mut world = single_batch_world(500);
+    world.insert_resource(ExtractScratch::default());
+    let recycle = |world: &World, batches: Vec<SpriteBatch>| {
+        world
+            .get_resource::<ExtractScratch>()
+            .unwrap()
+            .recycle(batches);
+    };
+    // The first frame is keyed: no frame before it ended as one batch.
+    let first = extract_sprites_default(&world);
+    let storage = first[0].instances.as_ptr();
+    recycle(&world, first);
+    assert_eq!(keyless_counts(&world), (0, 0));
+    // Each later frame is keyless, its instances in the same vector, a frame
+    // with fewer sprites included.
+    for frame in 1..=5 {
+        if frame == 3 {
+            let hidden: Vec<Entity> = world
+                .query::<(Entity, &Sprite)>()
+                .map(|(e, _)| e)
+                .filter(|e| e.id() % 5 == 0)
+                .collect();
+            for entity in hidden {
+                world.get_mut::<Visibility>(entity).unwrap().visible = false;
+            }
+        }
+        let batches = extract_sprites_default(&world);
+        assert_same_batches(
+            &batches,
+            &reference_extract(&world),
+            &format!("frame {frame}"),
+        );
+        assert_eq!(batches[0].instances.as_ptr(), storage, "frame {frame}");
+        recycle(&world, batches);
+        assert_eq!(keyless_counts(&world), (0, frame), "frame {frame}");
+    }
+}
+
+#[test]
+fn a_restart_keeps_the_buffers_keyed_for_sixty_frames() {
+    let mut world = single_batch_world(64);
+    register_sprite(&mut world, "other", FilterMode::Linear);
+    world.insert_resource(ExtractScratch::default());
+    let (quad, other) = (intern(&mut world, "quad"), intern(&mut world, "other"));
+    let tenth = world
+        .query::<(Entity, &Sprite)>()
+        .map(|(e, _)| e)
+        .find(|e| e.id() == 10)
+        .unwrap();
+    let mut keyed = keyed_buffers();
+    assert_eq!(keyless_frame(&world, &mut keyed, "frame 0"), (false, false));
+    assert_eq!(keyless_frame(&world, &mut keyed, "frame 1"), (false, true));
+
+    // A second class for one frame: pass 1 runs again with keys, once.
+    world.get_mut::<Sprite>(tenth).unwrap().asset_id = other;
+    assert_eq!(
+        keyless_frame(&world, &mut keyed, "the restart"),
+        (true, false)
+    );
+    world.get_mut::<Sprite>(tenth).unwrap().asset_id = quad;
+    // Sixty frames start keyed though each ends as one batch; the next is
+    // keyless again.
+    for held in 1..=60 {
+        assert_eq!(
+            keyless_frame(&world, &mut keyed, &format!("held frame {held}")),
+            (false, false),
+            "held frame {held}"
+        );
+    }
+    assert_eq!(
+        keyless_frame(&world, &mut keyed, "the frame after the hold"),
+        (false, true)
+    );
+
+    // A game that flips between one class and two each frame restarts once
+    // in 62 frames: the hold's sixty, then a one-class frame that starts
+    // keyed because the two-class frame before it was no one batch.
+    let before = keyless_counts(&world).0;
+    for frame in 0..186 {
+        let id = if frame % 2 == 0 { other } else { quad };
+        world.get_mut::<Sprite>(tenth).unwrap().asset_id = id;
+        keyless_frame(&world, &mut keyed, &format!("flipping frame {frame}"));
+    }
+    assert_eq!(keyless_counts(&world).0 - before, 3);
+}
+
+#[test]
+fn raised_layers_start_keyed() {
+    let world = {
+        let mut world = single_batch_world(40);
+        world.insert_resource(ExtractScratch::default());
+        world
+    };
+    let mut keyed = keyed_buffers();
+    assert_eq!(keyless_frame(&world, &mut keyed, "frame 0"), (false, false));
+    assert_eq!(keyless_frame(&world, &mut keyed, "frame 1"), (false, true));
+    // A tile layer among the sprites: the frame is no one batch, so it and
+    // the frame after it start keyed, and no pass runs twice.
+    let layer = || {
+        let mut batch = SpriteBatch::new(TextureHandle(3), FilterMode::Nearest);
+        batch
+            .instances
+            .push(SpriteInstance::whole([0.0; 2], [1.0; 2], 0.0, [255; 4]));
+        vec![(5, vec![batch])]
+    };
+    let assets = world.resource::<AssetRegistry>();
+    for frame in 0..3 {
+        let before = keyless_counts(&world);
+        let batches = extract_sprites_among(&world, &mut layer());
+        let expected = extract_into(
+            &world,
+            assets,
+            view_bounds(&world),
+            &mut keyed,
+            &mut layer(),
+        );
+        assert_eq!(
+            batches.len(),
+            2,
+            "frame {frame}: the sprites, then the layer"
+        );
+        assert_same_batches(&batches, &expected, &format!("raised frame {frame}"));
+        assert_eq!(keyless_counts(&world), before, "raised frame {frame}");
+        world
+            .get_resource::<ExtractScratch>()
+            .unwrap()
+            .recycle(batches);
+    }
+    assert_eq!(
+        keyless_frame(&world, &mut keyed, "after the layer"),
+        (false, false)
+    );
+    assert_eq!(
+        keyless_frame(&world, &mut keyed, "one frame on"),
+        (false, true)
+    );
+}
+
+#[test]
+fn another_z_order_in_painter_order_ends_a_keyless_frame() {
+    // One class in ID order whose first row sits a z below the rest, or whose
+    // last sits a z above: still in painter order, but two z-runs and so two
+    // batches, which a keyless frame cannot be.
+    for (id, z_order) in [(0, -1), (63, 1)] {
+        let mut world = single_batch_world(64);
+        world.insert_resource(ExtractScratch::default());
+        let row = world
+            .query::<(Entity, &Sprite)>()
+            .map(|(e, _)| e)
+            .find(|e| e.id() == id)
+            .unwrap();
+        let mut keyed = keyed_buffers();
+        assert_eq!(keyless_frame(&world, &mut keyed, "frame 0"), (false, false));
+        assert_eq!(keyless_frame(&world, &mut keyed, "frame 1"), (false, true));
+        world.get_mut::<Sprite>(row).unwrap().z_order = z_order;
+        assert_eq!(
+            reference_extract(&world).len(),
+            2,
+            "row {id} at z {z_order}"
+        );
+        assert_eq!(
+            keyless_frame(&world, &mut keyed, "another z"),
+            (true, false),
+            "row {id} at z {z_order}"
+        );
+    }
+}

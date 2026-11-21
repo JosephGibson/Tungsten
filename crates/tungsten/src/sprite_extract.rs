@@ -21,7 +21,11 @@
 //! sort key per visible sprite; the keys are sorted (skipped when the query
 //! already yields painter order) and a second pass gathers the instances into
 //! their batches. A frame that is one batch in query order skips the second
-//! pass: its instance list becomes the batch. A sprite's interned asset ID
+//! pass: its instance list becomes the batch. The frame after such a one, on
+//! kept buffers, starts keyless (7.14's C6, `D-294`): it writes a key for a
+//! culled sprite alone, and when a sprite breaks the one batch (a second
+//! class, a second `z_order`, a lower order) pass 1 runs again with keys,
+//! once, and the next sixty frames start keyed. A sprite's interned asset ID
 //! indexes the registry directly, with no hashing or string compare. An
 //! archetype with no override block and no flip, the common one, takes a row
 //! loop of its own (7.14's C6), which keeps what a sprite ID and material
@@ -90,7 +94,9 @@ type BatchKey = (u32, FilterMode, Option<MaterialAssetId>, Option<u64>, bool);
 struct SortKey {
     /// `(z_order, entity id)` packed so integer order is painter order.
     order: u64,
-    /// Slot in the record list, or [`CULLED`].
+    /// Slot in the record list, or [`CULLED`]. A keyless frame writes keys
+    /// for its culled sprites alone, each holding the record count at its
+    /// place: the kept sprites before it.
     record: u32,
     class: u32,
 }
@@ -279,12 +285,37 @@ pub(crate) struct ExtractBuffers {
     /// Tilemap IDs the tilemap extract found no map for, warned about once
     /// each.
     pub(crate) unknown_tilemaps: Vec<String>,
+    /// The sprites the last frame's pass 1 counted, culled ones included:
+    /// the room its instance vector asks the pool for and the count
+    /// `z_norm`'s first guess assumes. A keyless frame writes no key a kept
+    /// sprite, so the keys' length no longer tells.
+    last_total: usize,
+    /// Whether the last frame ended as one batch, so this one may start
+    /// keyless.
+    one_batch: bool,
+    /// Frames left that start keyed whatever the last one was:
+    /// [`KEYED_HOLD`] after a restart.
+    keyed_hold: u8,
     /// Runs pass 1's general loop over every archetype, as the extract did
     /// before plain archetypes took a loop of their own: the tests' reference
     /// for that loop.
     #[cfg(test)]
     general_only: bool,
+    /// Starts every frame keyed, as the extract did before the keyless
+    /// frame: the tests' reference for it.
+    #[cfg(test)]
+    keyed_only: bool,
+    /// Frames that ran pass 1 again with keys, for the tests.
+    #[cfg(test)]
+    restarts: u32,
+    /// Frames that ended keyless, for the tests.
+    #[cfg(test)]
+    keyless_frames: u32,
 }
+
+/// Frames that start keyed after a keyless pass 1 ran again with keys, so a
+/// game that flips between one batch and several restarts once in sixty.
+const KEYED_HOLD: u8 = 60;
 
 /// World resource that lets [`extract_sprites_default`] and the tilemap
 /// extracts ([`extract_tilemaps`](crate::extract_tilemaps) and
@@ -745,10 +776,11 @@ struct Resolved {
 }
 
 /// Pass 1 over an archetype with no override block and no flip: the general
-/// loop's keys and instances, row for row.
+/// loop's keys and instances, row for row. Without `KEYED` it writes a key
+/// for a culled sprite alone, holding the record count at its place.
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-fn plain_rows(
+fn plain_rows<const KEYED: bool, P: Fn(usize, &Transform) -> Vec2>(
     st: &mut Pass1,
     out: &mut Pass1Out<'_>,
     assets: &AssetRegistry,
@@ -761,7 +793,7 @@ fn plain_rows(
         &[Sprite],
         &[Visibility],
     ),
-    place: impl Fn(usize, &Transform) -> Vec2,
+    place: P,
 ) {
     let mut last_class = st.last_class;
     let mut last_order = st.last_order;
@@ -840,22 +872,33 @@ fn plain_rows(
         last_order = order;
         set_bits |= order;
         common_bits &= order;
-        let index = out.keys.len();
+        // The sprite's place among those counted so far, culled or kept.
+        let index = if KEYED {
+            out.keys.len()
+        } else {
+            out.records.len() + culled
+        };
         if resolved.culls && view.is_some_and(|view| outside_view(position, size, t.rotation, view))
         {
             culled += 1;
             out.keys.push(SortKey {
                 order,
-                record: CULLED,
+                record: if KEYED {
+                    CULLED
+                } else {
+                    out.records.len() as u32
+                },
                 class: resolved.class,
             });
             continue;
         }
-        out.keys.push(SortKey {
-            order,
-            record: out.records.len() as u32,
-            class: resolved.class,
-        });
+        if KEYED {
+            out.keys.push(SortKey {
+                order,
+                record: out.records.len() as u32,
+                class: resolved.class,
+            });
+        }
         out.records.push(SpriteInstance {
             position: [position.x, position.y],
             size: [size.x, size.y],
@@ -883,9 +926,9 @@ fn extract_into(
     raised: &mut [RaisedLayer],
 ) -> Vec<SpriteBatch> {
     #[cfg(test)]
-    let plain_loop = !buffers.general_only;
+    let (plain_loop, keyed_only) = (!buffers.general_only, buffers.keyed_only);
     #[cfg(not(test))]
-    let plain_loop = true;
+    let (plain_loop, keyed_only) = (true, false);
     let ExtractBuffers {
         keys,
         keys_swap,
@@ -896,211 +939,257 @@ fn extract_into(
         pool,
         batch_list,
         warnings,
+        last_total: kept_total,
+        one_batch,
+        keyed_hold,
+        #[cfg(test)]
+        restarts,
+        #[cfg(test)]
+        keyless_frames,
         ..
     } = buffers;
     let camera_position = world
         .get_resource::<CameraState>()
         .map_or(Vec2::ZERO, |camera| camera.position);
 
-    // Pass 1: one key per visible sprite with a resolved asset, in query
-    // order, and one instance per key that culling keeps. The vectors keep
-    // their capacity across frames; when the last frame's records left as a
-    // batch, the pool hands that vector back.
-    let last_total = keys.len();
-    keys.clear();
-    records.clear();
+    // Pass 1: an instance per visible sprite with a resolved asset that
+    // culling keeps, in query order, and a key per such sprite, kept or
+    // culled. The vectors keep their capacity across frames; when the last
+    // frame's records left as a batch, the pool hands that vector back.
+    let last_total = *kept_total;
     if records.capacity() == 0 {
         *records = pool.take(last_total);
     }
-    classes.clear();
-    class_of.clear();
-    let mut st = Pass1 {
-        last_class: None,
-        last_order: 0,
-        in_painter_order: true,
-        set_bits: 0,
-        common_bits: u64::MAX,
-        culled: 0,
-    };
-    // The slice form: each archetype's rows as its columns' slices. An
-    // archetype with no override block and no flip, the common one, takes
-    // the plain loop, which keeps what a sprite ID and material resolve to
-    // while the pair repeats; the rest take the general one.
-    let archetypes = world.query_slices::<(
-        Entity,
-        &Transform,
-        &Sprite,
-        &Visibility,
-        Option<&UniformOverrideBlock>,
-        Option<&ParallaxLayer>,
-    )>();
-    for (_, columns) in archetypes {
-        let (entities, transforms, sprites, visibilities, override_blocks, parallaxes) = columns;
-        let first = entities.first();
-        let flips = first.is_some_and(|&e| world.has::<SpriteFlip>(e));
-        let unlit = first.is_some_and(|&e| world.has::<Unlit>(e));
-        keys.reserve(entities.len());
-        if plain_loop && override_blocks.is_none() && !flips {
-            let mut out = Pass1Out {
-                keys,
-                records,
-                classes,
-                class_of,
-                warnings,
-            };
-            let columns = (entities, transforms, sprites, visibilities);
-            match parallaxes {
-                None => plain_rows(
-                    &mut st,
-                    &mut out,
-                    assets,
-                    view,
-                    unlit,
-                    last_total,
-                    columns,
-                    |_, t| t.position,
-                ),
-                Some(layers) => plain_rows(
-                    &mut st,
-                    &mut out,
-                    assets,
-                    view,
-                    unlit,
-                    last_total,
-                    columns,
-                    |row, t| {
+    // The frame after a one-batch frame starts keyless: only pass 2, the sort
+    // and a count change read a kept sprite's key, and a frame that stays one
+    // batch runs none of the first two. A keyless pass writes a key for a
+    // culled sprite alone, and gives way to a keyed one, from the first
+    // archetype, after the archetype that breaks the one batch.
+    let mut keyed = keyed_only || !*one_batch || *keyed_hold > 0 || !raised.is_empty();
+    *keyed_hold = keyed_hold.saturating_sub(1);
+    let st = loop {
+        keys.clear();
+        records.clear();
+        classes.clear();
+        class_of.clear();
+        let mut st = Pass1 {
+            last_class: None,
+            last_order: 0,
+            in_painter_order: true,
+            set_bits: 0,
+            common_bits: u64::MAX,
+            culled: 0,
+        };
+        let mut one_batch_so_far = true;
+        // The slice form: each archetype's rows as its columns' slices. An
+        // archetype with no override block and no flip, the common one,
+        // takes the plain loop, which keeps what a sprite ID and material
+        // resolve to while the pair repeats; the rest take the general one.
+        let archetypes = world.query_slices::<(
+            Entity,
+            &Transform,
+            &Sprite,
+            &Visibility,
+            Option<&UniformOverrideBlock>,
+            Option<&ParallaxLayer>,
+        )>();
+        for (_, columns) in archetypes {
+            let (entities, transforms, sprites, visibilities, override_blocks, parallaxes) =
+                columns;
+            let first = entities.first();
+            let flips = first.is_some_and(|&e| world.has::<SpriteFlip>(e));
+            let unlit = first.is_some_and(|&e| world.has::<Unlit>(e));
+            if keyed {
+                keys.reserve(entities.len());
+            }
+            if plain_loop && override_blocks.is_none() && !flips {
+                let mut out = Pass1Out {
+                    keys,
+                    records,
+                    classes,
+                    class_of,
+                    warnings,
+                };
+                let columns = (entities, transforms, sprites, visibilities);
+                // Four loops: keyed or not, with a parallax column or none.
+                macro_rules! rows {
+                    ($keyed:literal, $place:expr) => {
+                        plain_rows::<$keyed, _>(
+                            &mut st, &mut out, assets, view, unlit, last_total, columns, $place,
+                        )
+                    };
+                }
+                match (keyed, parallaxes) {
+                    (true, None) => rows!(true, |_, t| t.position),
+                    (false, None) => rows!(false, |_, t| t.position),
+                    (true, Some(layers)) => rows!(true, |row, t| {
                         parallax_world_position(
                             t.position,
                             layers[row].scroll_factor,
                             camera_position,
                         )
-                    },
-                ),
-            }
-            continue;
-        }
-        let rows = entities
-            .iter()
-            .zip(transforms)
-            .zip(sprites)
-            .zip(visibilities)
-            .zip(OptionalColumn(override_blocks.map(<[_]>::iter)))
-            .zip(OptionalColumn(parallaxes.map(<[_]>::iter)));
-        rows.for_each(|(((((&e, t), s), v), override_block), parallax)| {
-            if !v.visible {
-                return;
-            }
-            let Some(asset) = assets.sprite(s.asset_id) else {
-                warn_once(warnings, assets, s.asset_id, SpriteWarning::NoAsset);
-                return;
-            };
+                    }),
+                    (false, Some(layers)) => rows!(false, |row, t| {
+                        parallax_world_position(
+                            t.position,
+                            layers[row].scroll_factor,
+                            camera_position,
+                        )
+                    }),
+                }
+            } else {
+                let rows = entities
+                    .iter()
+                    .zip(transforms)
+                    .zip(sprites)
+                    .zip(visibilities)
+                    .zip(OptionalColumn(override_blocks.map(<[_]>::iter)))
+                    .zip(OptionalColumn(parallaxes.map(<[_]>::iter)));
+                rows.for_each(|(((((&e, t), s), v), override_block), parallax)| {
+                    if !v.visible {
+                        return;
+                    }
+                    let Some(asset) = assets.sprite(s.asset_id) else {
+                        warn_once(warnings, assets, s.asset_id, SpriteWarning::NoAsset);
+                        return;
+                    };
 
-            let override_hash = override_block.map(override_key);
-            // M29: lit wins over material when both are present. The collision
-            // is intentionally a non-goal in M29 (`D-061`); warn once per
-            // sprite ID so debug logs surface the conflict rather than
-            // silently dropping the material. An unlit sprite draws on the
-            // stock pipeline, maps or not.
-            let lit = asset.lit_atlas.is_some() && !unlit;
-            let effective_material = if lit { None } else { s.material_id };
-            if lit && s.material_id.is_some() {
-                let warning = SpriteWarning::LitMaterial(s.material_id);
-                warn_once(warnings, assets, s.asset_id, warning);
-            }
-            let key: BatchKey = (
-                asset.atlas.0,
-                asset.filter,
-                effective_material,
-                override_hash,
-                lit,
-            );
-            let class = match st.last_class {
-                Some((last_key, class)) if last_key == key => class,
-                _ => {
-                    let class = *class_of.entry(key).or_insert_with(|| {
-                        classes.push(BatchClass {
-                            texture: asset.atlas,
-                            filter: asset.filter,
-                            material_id: effective_material,
-                            uniform_overrides: override_block.copied(),
-                            lit,
-                            run: 0,
-                            batch: 0,
+                    let override_hash = override_block.map(override_key);
+                    // M29: lit wins over material when both are present. The collision
+                    // is intentionally a non-goal in M29 (`D-061`); warn once per
+                    // sprite ID so debug logs surface the conflict rather than
+                    // silently dropping the material. An unlit sprite draws on the
+                    // stock pipeline, maps or not.
+                    let lit = asset.lit_atlas.is_some() && !unlit;
+                    let effective_material = if lit { None } else { s.material_id };
+                    if lit && s.material_id.is_some() {
+                        let warning = SpriteWarning::LitMaterial(s.material_id);
+                        warn_once(warnings, assets, s.asset_id, warning);
+                    }
+                    let key: BatchKey = (
+                        asset.atlas.0,
+                        asset.filter,
+                        effective_material,
+                        override_hash,
+                        lit,
+                    );
+                    let class = match st.last_class {
+                        Some((last_key, class)) if last_key == key => class,
+                        _ => {
+                            let class = *class_of.entry(key).or_insert_with(|| {
+                                classes.push(BatchClass {
+                                    texture: asset.atlas,
+                                    filter: asset.filter,
+                                    material_id: effective_material,
+                                    uniform_overrides: override_block.copied(),
+                                    lit,
+                                    run: 0,
+                                    batch: 0,
+                                });
+                                (classes.len() - 1) as u32
+                            });
+                            st.last_class = Some((key, class));
+                            class
+                        }
+                    };
+
+                    let mut position = match parallax {
+                        Some(layer) => parallax_world_position(
+                            t.position,
+                            layer.scroll_factor,
+                            camera_position,
+                        ),
+                        None => t.position,
+                    };
+                    let size = Vec2::new(
+                        asset.width as f32 * t.scale.x,
+                        asset.height as f32 * t.scale.y,
+                    );
+                    let flip = flips && world.get::<SpriteFlip>(e).is_some_and(|flip| flip.0);
+                    if let Some(anchor) = asset.anchor {
+                        // A flipped sprite mirrors about its anchor: the mirrored
+                        // image's anchor lands on the entity.
+                        let anchor = if flip {
+                            [asset.width as f32 - anchor[0], anchor[1]]
+                        } else {
+                            anchor
+                        };
+                        position += anchor_offset(anchor, t.scale, size, t.rotation);
+                    }
+                    let order = painter_order(s.z_order, e.id());
+                    st.in_painter_order &= order >= st.last_order;
+                    st.last_order = order;
+                    st.set_bits |= order;
+                    st.common_bits &= order;
+                    let index = if keyed {
+                        keys.len()
+                    } else {
+                        records.len() + st.culled
+                    };
+                    if effective_material.is_none()
+                        && view.is_some_and(|view| outside_view(position, size, t.rotation, view))
+                    {
+                        st.culled += 1;
+                        keys.push(SortKey {
+                            order,
+                            record: if keyed { CULLED } else { records.len() as u32 },
+                            class,
                         });
-                        (classes.len() - 1) as u32
+                        return;
+                    }
+                    if keyed {
+                        keys.push(SortKey {
+                            order,
+                            record: records.len() as u32,
+                            class,
+                        });
+                    }
+                    let mut uv_min = asset.uv.min;
+                    let mut uv_size = [
+                        asset.uv.max[0] - asset.uv.min[0],
+                        asset.uv.max[1] - asset.uv.min[1],
+                    ];
+                    if flip {
+                        // A negative width samples right to left.
+                        uv_min[0] = asset.uv.max[0];
+                        uv_size[0] = -uv_size[0];
+                    }
+                    records.push(SpriteInstance {
+                        position: [position.x, position.y],
+                        size: [size.x, size.y],
+                        rotation: t.rotation,
+                        color: s.color,
+                        uv_min,
+                        uv_size,
+                        // Right for the single-batch case below when the count
+                        // repeats last frame's; rewritten otherwise.
+                        z_norm: z_norm(last_total, index),
+                        _pad: 0.0,
                     });
-                    st.last_class = Some((key, class));
-                    class
-                }
-            };
-
-            let mut position = match parallax {
-                Some(layer) => {
-                    parallax_world_position(t.position, layer.scroll_factor, camera_position)
-                }
-                None => t.position,
-            };
-            let size = Vec2::new(
-                asset.width as f32 * t.scale.x,
-                asset.height as f32 * t.scale.y,
-            );
-            let flip = flips && world.get::<SpriteFlip>(e).is_some_and(|flip| flip.0);
-            if let Some(anchor) = asset.anchor {
-                // A flipped sprite mirrors about its anchor: the mirrored
-                // image's anchor lands on the entity.
-                let anchor = if flip {
-                    [asset.width as f32 - anchor[0], anchor[1]]
-                } else {
-                    anchor
-                };
-                position += anchor_offset(anchor, t.scale, size, t.rotation);
-            }
-            let order = painter_order(s.z_order, e.id());
-            st.in_painter_order &= order >= st.last_order;
-            st.last_order = order;
-            st.set_bits |= order;
-            st.common_bits &= order;
-            let index = keys.len();
-            if effective_material.is_none()
-                && view.is_some_and(|view| outside_view(position, size, t.rotation, view))
-            {
-                st.culled += 1;
-                keys.push(SortKey {
-                    order,
-                    record: CULLED,
-                    class,
                 });
-                return;
             }
-            keys.push(SortKey {
-                order,
-                record: records.len() as u32,
-                class,
-            });
-            let mut uv_min = asset.uv.min;
-            let mut uv_size = [
-                asset.uv.max[0] - asset.uv.min[0],
-                asset.uv.max[1] - asset.uv.min[1],
-            ];
-            if flip {
-                // A negative width samples right to left.
-                uv_min[0] = asset.uv.max[0];
-                uv_size[0] = -uv_size[0];
+            // Keyless so far, the frame must still be the one batch the
+            // single-batch path below takes: in painter order, one class,
+            // one `z_order`.
+            if !keyed
+                && (!st.in_painter_order
+                    || classes.len() > 1
+                    || (!classes.is_empty() && (st.set_bits ^ st.common_bits) >> 32 != 0))
+            {
+                one_batch_so_far = false;
+                break;
             }
-            records.push(SpriteInstance {
-                position: [position.x, position.y],
-                size: [size.x, size.y],
-                rotation: t.rotation,
-                color: s.color,
-                uv_min,
-                uv_size,
-                // Right for the single-batch case below when the count
-                // repeats last frame's; rewritten otherwise.
-                z_norm: z_norm(last_total, index),
-                _pad: 0.0,
-            });
-        });
-    }
+        }
+        if one_batch_so_far {
+            break st;
+        }
+        keyed = true;
+        *keyed_hold = KEYED_HOLD;
+        #[cfg(test)]
+        {
+            *restarts += 1;
+        }
+    };
     let Pass1 {
         in_painter_order,
         set_bits,
@@ -1117,24 +1206,49 @@ fn extract_into(
         sort_keys(keys, keys_swap, varying_bits);
     }
 
-    let total = keys.len();
-    let mut out = std::mem::take(batch_list);
-    if total > 0
-        && in_painter_order
-        && classes.len() == 1
-        && varying_bits >> 32 == 0
-        && raised.is_empty()
+    // A keyless pass wrote a key for each culled sprite alone, and ended
+    // only as the one batch.
+    let total = if keyed {
+        keys.len()
+    } else {
+        records.len() + culled
+    };
+    let single = total > 0
+        && (!keyed
+            || (in_painter_order
+                && classes.len() == 1
+                && varying_bits >> 32 == 0
+                && raised.is_empty()));
+    *kept_total = total;
+    *one_batch = single;
+    #[cfg(test)]
     {
+        *keyless_frames += u32::from(!keyed);
+    }
+    let mut out = std::mem::take(batch_list);
+    if single {
         // One class in one z-run, already in painter order: the records are
         // the batch's instances, and their `z_norm` stands when pass 1
         // assumed the right count. The keys are in query order, so a kept
         // key's record sits at its slot.
         let mut instances = std::mem::take(records);
-        if total != last_total {
+        if total != last_total && keyed {
             for (idx_in_order, key) in keys.iter().enumerate() {
                 if key.record != CULLED {
                     instances[key.record as usize].z_norm = z_norm(total, idx_in_order);
                 }
+            }
+        } else if total != last_total {
+            // Keyless, an instance's place is its slot plus the culled
+            // sprites before it, each of which left the record count at its
+            // place.
+            let mut culls = keys.iter().map(|key| key.record as usize).peekable();
+            let mut culled_before = 0;
+            for (slot, instance) in instances.iter_mut().enumerate() {
+                while culls.next_if(|&at| at <= slot).is_some() {
+                    culled_before += 1;
+                }
+                instance.z_norm = z_norm(total, slot + culled_before);
             }
         }
         if instances.is_empty() {

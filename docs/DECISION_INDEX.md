@@ -53,7 +53,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-061` | Forward normal-mapped lighting, capped at 16 lights; normal/emissive sibling atlases; lit wins over material. Amended by `D-231`: lit sprites flash, flip and opt out by `Unlit`. Amended by `D-240`: the light at a point read on the CPU from the lit shader's terms. |
 | `D-073` | CPU parallax, trauma shake and dedicated squash/stretch components. Narrows `D-018`, `D-042`, `D-055`. Amended by `D-249`: the shake a layer after the winning rig, times `shake_scale`. |
 | `D-085` | Bounded text layout cache and reused post GPU objects. Amended by `D-090`: slot uniform writes; `D-117`: cache in `TextEngine`; `D-161`: one frame count over sections and world labels. Extract: `D-086`. |
-| `D-086` | Extract reuses buffers and compact sort keys. Amended by `D-113`: registry IDs replace asset cache; `D-114`: culled keys stay. |
+| `D-086` | Extract reuses buffers and compact sort keys. Amended by `D-113`: registry IDs replace asset cache; `D-114`: culled keys stay; `D-294`: no key a kept sprite after a one-batch frame. |
 | `D-087` | Last full-screen stage writes swapchain, then text; captures keep the blit. Amends `D-059`. |
 | `D-089` | Validate references on merged roots; any root reload rebuilds the graph. Amends `D-017`, `D-052`, `D-053`. |
 | `D-090` | Stock post parameters belong to each stack slot. Amends `D-058`, `D-085`. |
@@ -62,6 +62,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-101` | Each material batch gets its own UBO slot, preventing last-write aliasing (`D-090` slots). Amends `D-058`. Amended by `D-231`: lit batches bind their blocks too. |
 | `D-113` | Interned `SpriteAssetId` indexes the registry; file formats keep names. Amends `D-042`, `D-086`. |
 | `D-114` | Cull off-view stock/lit sprites, keep sort keys; material sprites remain. Amends `D-042`, `D-086`. |
+| `D-294` | The default extract writes a sort key only where a frame reads it: keyless after a one-batch frame, pass 1 again with keys, once, when a sprite breaks the batch, then 60 keyed frames; output unchanged. Amends `D-086`. |
 | `D-115` | Manifest font families and ordered fallback chain validate against the merged graph. |
 | `D-116` | Packaged fonts by default; system faces opt in through `render.system_fonts`. `unicode-script`: `D-015` rule 2. |
 | `D-117` | Device-free `TextEngine`, GPU `TextPipeline`, neutral core types and retained nodes. Amends `D-085`. Amended by `D-125`: `TextNodeStore` seam. |
