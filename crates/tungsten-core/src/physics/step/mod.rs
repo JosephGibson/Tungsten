@@ -447,8 +447,9 @@ pub struct PhysicsBuffers {
     sensor_pairs: Vec<u128>,
     /// Scratch for this step's sensor pairs.
     sensor_scratch: Vec<u128>,
-    /// Scratch: this step's sensor pairs with bodies, then all of them
-    /// merged into `sensor_scratch`.
+    /// Scratch: this step's sensor pairs with bodies in visit order, which
+    /// `StepExtra::sensor_visited` then keeps; the list given back is sorted
+    /// and merged into `sensor_scratch`.
     sensor_body_pairs: Vec<u128>,
     /// Each sensor's tile pairs, by gather index, kept while the sensor and
     /// the tiles stay as they were; cleared by a step without sensors.
@@ -574,6 +575,20 @@ struct StepExtra {
     sensor_cells_next: Vec<(u128, TileHit)>,
     /// The step's sensor exits, sent after its entries.
     sensor_exits: Vec<SensorExited>,
+    /// The last sensor pass's pairs with bodies in the order it visited
+    /// them, each one a pair of `PhysicsBuffers::sensor_pairs`: the next
+    /// pass compares its pairs with these in turn before it searches.
+    sensor_visited: Vec<u128>,
+    /// Scratch of the sensor pass: the sensors whose tile pairs it rewrote,
+    /// by gather index.
+    sensor_fresh: Vec<bool>,
+    /// Scratch of the sensor pass: the sensors' gather indices in key order.
+    sensor_order: Vec<usize>,
+    /// Tests: the path the sensor pass takes and what its last run did.
+    #[cfg(test)]
+    sensor_path: SensorPath,
+    #[cfg(test)]
+    sensor_stats: SensorStats,
     /// The kinematic bodies' pushes ([`take_push`]).
     push: PushRecord,
     /// Scratch for the gather's static joins (`gather::mask_static_joins`):
@@ -772,6 +787,14 @@ impl PhysicsBuffers {
     #[must_use]
     pub fn contact_count(&self) -> usize {
         self.contacts.len()
+    }
+
+    /// Tests: whether the sensor pass takes each sensor's candidates as a
+    /// sorted list, as it did before it read them by bit
+    /// ([`SensorPath::Search`]).
+    #[cfg(test)]
+    pub(super) fn sensor_candidates_sorted(&self) -> bool {
+        self.extra.sensor_path == SensorPath::Search
     }
 
     /// The last step's entity proxies at their final positions, in proxy
@@ -1930,6 +1953,40 @@ fn sweep_sensors(
     *swept_elapsed += sub_dt;
 }
 
+/// Tests: the path the sensor pass takes. `Search` is the pass as it stood
+/// before it compared its pairs in visit order: every pair searched in the
+/// sorted previous pairs, a sensor's candidates gathered into a sorted list,
+/// and the pairs sorted and merged every pass. `TrustCursor` is broken on
+/// purpose, for a negative control: a pair that is not the cursor's is taken
+/// as new without the search.
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum SensorPath {
+    #[default]
+    InOrder,
+    Search,
+    TrustCursor,
+}
+
+/// Tests: what the last sensor pass did.
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct SensorStats {
+    /// Body pairs found at the cursor.
+    in_turn: usize,
+    /// Body pairs that took the search of the sorted previous pairs.
+    searched: usize,
+    /// Searched pairs that moved the cursor up to them.
+    caught_up: usize,
+    /// The pass kept the last one's sorted pairs whole.
+    unchanged: bool,
+}
+
+/// How far past the cursor a pair found by the search is looked for among
+/// the last pass's visits, so the cursor follows when the pairs before it
+/// left.
+const SENSOR_CATCH_UP: usize = 8;
+
 /// Sensor pass: each sensor, in gather order, against the bodies it
 /// overlaps at the step's final positions, in index order (the spatial
 /// index, built here), then the solid cells of the tile cache's grids, in
@@ -1943,17 +2000,41 @@ fn sweep_sensors(
 /// pass kept keeps its tile pairs, drops those of the cells the step's
 /// refresh changed and tests those cells alone; the events and the pairs
 /// are those a test of every cell gives.
+///
+/// A pair with a body is old when the sorted previous pairs hold it. The
+/// last pass's body pairs are kept in the order it visited them, each of
+/// them a previous pair, with a cursor: a pair equal to the cursor's entry
+/// is old without a search, and any other pair takes the search, so the
+/// answer is the search's in every case. A pass whose body pairs are the
+/// last one's in turn, with no sensor's tile pairs rewritten and no sensor
+/// swept, has the last pass's sorted pairs, and keeps them without the
+/// sort, the merge and the walk for exits.
+///
+/// Out of line, so a profile counts the whole pass under its name.
+#[inline(never)]
 fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     let mut pairs = std::mem::take(&mut buffers.sensor_scratch);
     let mut body_pairs = std::mem::take(&mut buffers.sensor_body_pairs);
     let mut entered = std::mem::take(&mut buffers.sensor_events);
     let mut kept = std::mem::take(&mut buffers.sensor_tiles);
     let mut cells = std::mem::take(&mut buffers.extra.sensor_cells_next);
+    let visited = std::mem::take(&mut buffers.extra.sensor_visited);
+    let mut fresh = std::mem::take(&mut buffers.extra.sensor_fresh);
+    let mut order = std::mem::take(&mut buffers.extra.sensor_order);
     buffers.sensor_passes += 1;
     let pass = buffers.sensor_passes;
     let (replaced, written) = (buffers.tiles.replaced(), buffers.tiles.written_ids());
+    #[cfg(test)]
+    let path = buffers.extra.sensor_path;
+    #[cfg(test)]
+    let mut stats = SensorStats::default();
+    // The tile pairs stand as the last pass left them until a sensor's are
+    // rewritten below: a sensor more or fewer, a swept one, a key that
+    // changed, a tile written under one.
+    let mut tiles_stand = kept.len() == buffers.sensors.len() && buffers.extra.swept.is_empty();
     kept.resize_with(buffers.sensors.len(), SensorTiles::default);
-    let mut fresh = vec![false; buffers.sensors.len()];
+    fresh.clear();
+    fresh.resize(buffers.sensors.len(), false);
     body_pairs.clear();
     let previous = &buffers.sensor_pairs;
     let pair_of = |sensor: u64, other: u64| (u128::from(sensor) << 64) | u128::from(other);
@@ -1963,15 +2044,23 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
             .binary_search_by_key(&(index as u32), |sweep| sweep.sensor)
             .is_ok()
     };
+    // Whether every body pair so far is the last pass's at its own place.
+    let mut in_turn = true;
     {
         let kept = &mut kept;
         let fresh = &mut fresh;
         let entered = &mut entered;
         let body_pairs = &mut body_pairs;
+        let visited = &visited;
+        let in_turn = &mut in_turn;
+        #[cfg(test)]
+        let stats = &mut stats;
+        let mut cursor = 0;
         // Both closures below take the event list and the kept pairs, so
         // they go through cells shared by the three callbacks.
         let entered = std::cell::RefCell::new(entered);
         let kept = std::cell::RefCell::new(kept);
+        let tile_pairs_pushed = std::cell::Cell::new(false);
         let tested = SpatialIndex::sensor_overlaps(
             world,
             buffers,
@@ -2000,10 +2089,48 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
             },
             |sensor, other| {
                 let pair = pair_of(sensor.identity, other.identity);
+                let at = body_pairs.len();
                 body_pairs.push(pair);
-                if previous.binary_search(&pair).is_err()
-                    && let Some(entity) = sensor.entity
-                {
+                #[cfg(test)]
+                let at_cursor = path != SensorPath::Search && visited.get(cursor) == Some(&pair);
+                #[cfg(not(test))]
+                let at_cursor = visited.get(cursor) == Some(&pair);
+                let old = if at_cursor {
+                    *in_turn &= cursor == at;
+                    cursor += 1;
+                    #[cfg(test)]
+                    {
+                        stats.in_turn += 1;
+                    }
+                    true
+                } else {
+                    *in_turn = false;
+                    #[cfg(test)]
+                    let found =
+                        path != SensorPath::TrustCursor && previous.binary_search(&pair).is_ok();
+                    #[cfg(not(test))]
+                    let found = previous.binary_search(&pair).is_ok();
+                    #[cfg(test)]
+                    {
+                        stats.searched += 1;
+                    }
+                    if found {
+                        // An old pair out of turn: the pairs before it left,
+                        // so the cursor moves past it where it is near.
+                        let from = (cursor + 1).min(visited.len());
+                        let to = (from + SENSOR_CATCH_UP).min(visited.len());
+                        if let Some(skipped) = visited[from..to].iter().position(|&was| was == pair)
+                        {
+                            cursor = from + skipped + 1;
+                            #[cfg(test)]
+                            {
+                                stats.caught_up += 1;
+                            }
+                        }
+                    }
+                    found
+                };
+                if !old && let Some(entity) = sensor.entity {
                     entered
                         .borrow_mut()
                         .push(SensorEntered::new(entity, other.entity).with_point(other.center));
@@ -2012,6 +2139,7 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
             |index, sensor, tile, cell| {
                 let pair = pair_of(sensor.identity, tile.identity);
                 kept.borrow_mut()[index].pairs.push((pair, cell));
+                tile_pairs_pushed.set(true);
                 if previous.binary_search(&pair).is_err()
                     && let Some(entity) = sensor.entity
                 {
@@ -2023,6 +2151,7 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
                 }
             },
         );
+        tiles_stand &= !tile_pairs_pushed.get();
         #[cfg(test)]
         {
             buffers.sensor_cells = tested;
@@ -2110,6 +2239,28 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
             }
         });
     }
+    tiles_stand &= !fresh.contains(&true);
+    // The body pairs are the last pass's in turn and no tile pair moved: the
+    // sorted pairs and their cells are the last pass's too, and none exits.
+    let unchanged = in_turn && body_pairs.len() == visited.len() && tiles_stand;
+    #[cfg(test)]
+    let unchanged = unchanged && path != SensorPath::Search;
+    #[cfg(test)]
+    {
+        stats.unchanged = unchanged;
+        buffers.extra.sensor_stats = stats;
+    }
+    if unchanged {
+        buffers.sensor_scratch = pairs;
+        buffers.sensor_body_pairs = body_pairs;
+        buffers.sensor_events = entered;
+        buffers.sensor_tiles = kept;
+        buffers.extra.sensor_cells_next = cells;
+        buffers.extra.sensor_visited = visited;
+        buffers.extra.sensor_fresh = fresh;
+        buffers.extra.sensor_order = order;
+        return;
+    }
     for (entry, &fresh) in kept.iter_mut().zip(&fresh) {
         if fresh {
             entry.pairs.sort_unstable_by_key(|&(pair, _)| pair);
@@ -2117,13 +2268,19 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     }
     // Every pair, sorted: the body pairs merged with each sensor's sorted
     // tile pairs, the sensors in key order, since a pair's high half is its
-    // sensor's identity; the tile pairs' cells beside them.
-    body_pairs.sort_unstable();
-    let mut order: Vec<usize> = (0..kept.len()).collect();
+    // sensor's identity; the tile pairs' cells beside them. The body pairs
+    // are sorted in a copy, the last pass's visits' list, which this pass
+    // has done with; their visit order is the next pass's.
+    let mut sorted = visited;
+    sorted.clear();
+    sorted.extend_from_slice(&body_pairs);
+    sorted.sort_unstable();
+    order.clear();
+    order.extend(0..kept.len());
     order.sort_unstable_by_key(|&index| buffers.sensors.get(index).map_or(0, |sensor| sensor.key));
     pairs.clear();
     cells.clear();
-    let mut bodies = body_pairs.iter().copied().peekable();
+    let mut bodies = sorted.iter().copied().peekable();
     for &index in &order {
         for &(tile, cell) in &kept[index].pairs {
             while let Some(body) = bodies.next_if(|&body| body < tile) {
@@ -2157,9 +2314,12 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     }
     buffers.extra.sensor_cells_next = std::mem::replace(&mut buffers.extra.sensor_cells, cells);
     buffers.sensor_scratch = std::mem::replace(&mut buffers.sensor_pairs, pairs);
-    buffers.sensor_body_pairs = body_pairs;
+    buffers.sensor_body_pairs = sorted;
     buffers.sensor_events = entered;
     buffers.sensor_tiles = kept;
+    buffers.extra.sensor_visited = body_pairs;
+    buffers.extra.sensor_fresh = fresh;
+    buffers.extra.sensor_order = order;
 }
 
 /// A touching contact with a kinematic side; the other is an awake dynamic

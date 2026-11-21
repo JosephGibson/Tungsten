@@ -320,17 +320,43 @@ impl SpatialIndex {
                 }
                 let sensor = state.bodies[at];
                 let known = tiles_known(index, &sensor);
-                state.gather_parts(&sensor.aabb(), false);
-                state.candidates.sort_unstable();
-                for &id in &state.candidates {
-                    let other = state.entry(id);
-                    if other.sensor
-                        || sensor.mask & other.layers == 0
-                        || !shapes_overlap(sensor.shape, sensor.center, other.shape, other.center)
-                    {
-                        continue;
+                #[cfg(test)]
+                let sorted_list = buffers.sensor_candidates_sorted();
+                #[cfg(not(test))]
+                let sorted_list = false;
+                if sorted_list {
+                    // The pass as it stood: the candidates gathered into a
+                    // list and sorted, the sensors among them passed over.
+                    state.gather_parts(&sensor.aabb(), false);
+                    state.candidates.sort_unstable();
+                    for &id in &state.candidates {
+                        let other = state.entry(id);
+                        if other.sensor
+                            || sensor.mask & other.layers == 0
+                            || !shapes_overlap(
+                                sensor.shape,
+                                sensor.center,
+                                other.shape,
+                                other.center,
+                            )
+                        {
+                            continue;
+                        }
+                        visit(&sensor, other);
                     }
-                    visit(&sensor, other);
+                } else {
+                    state.bodies_near(&sensor.aabb(), |other| {
+                        if sensor.mask & other.layers != 0
+                            && shapes_overlap(
+                                sensor.shape,
+                                sensor.center,
+                                other.shape,
+                                other.center,
+                            )
+                        {
+                            visit(&sensor, other);
+                        }
+                    });
                 }
                 let (min, max) = padded(&sensor.aabb());
                 let mut test = |cell: &GridCell| {
@@ -371,6 +397,9 @@ struct IndexState {
     /// The exact corners of the entries' union; queries are clamped to it.
     bounds: Option<(Vec2, Vec2)>,
     candidates: Vec<ProxyId>,
+    /// [`Self::bodies_near`]'s candidates, a bit an entity proxy, every
+    /// word zero between its calls.
+    near: Vec<u64>,
     #[cfg(test)]
     builds: usize,
 }
@@ -455,6 +484,55 @@ impl IndexState {
         #[cfg(test)]
         {
             self.builds += 1;
+        }
+    }
+
+    /// Calls `visit` with each entity proxy whose box may meet `query`, in
+    /// id order: the proxies [`Self::gather_parts`] gives, sorted, without
+    /// the list or the sort. The grid's walk sets a bit a candidate, every
+    /// bit when the box spans more cells than four times the proxies, and
+    /// the set bits are read upward.
+    fn bodies_near(&mut self, query: &Aabb, mut visit: impl FnMut(&IndexEntry)) {
+        let Some((low, high)) = self.bounds else {
+            return;
+        };
+        let pad = Vec2::splat(QUERY_PAD);
+        let min = (query.min() - pad).max(low);
+        let max = (query.max() + pad).min(high);
+        if min.x > max.x || min.y > max.y {
+            return;
+        }
+        let span = (max - min) / self.grid.cell_size() + Vec2::ONE;
+        let base = self.tile_base;
+        let words = base.div_ceil(64);
+        let Self {
+            grid, bodies, near, ..
+        } = self;
+        near.resize(words, 0);
+        // The words that hold a set bit: `from..to`.
+        let (mut from, mut to) = (words, 0);
+        if span.x * span.y > (4 * base).max(64) as f32 {
+            near.fill(u64::MAX);
+            if let Some(last) = near.last_mut()
+                && !base.is_multiple_of(64)
+            {
+                *last = (1 << (base % 64)) - 1;
+            }
+            (from, to) = (0, words);
+        } else {
+            grid.for_each_in(&Aabb::from_min_max(min, max), None, |id| {
+                let word = id as usize / 64;
+                near[word] |= 1 << (id % 64);
+                from = from.min(word);
+                to = to.max(word + 1);
+            });
+        }
+        for word in from..to {
+            let mut bits = std::mem::take(&mut near[word]);
+            while bits != 0 {
+                visit(&bodies[word * 64 + bits.trailing_zeros() as usize]);
+                bits &= bits - 1;
+            }
         }
     }
 

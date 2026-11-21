@@ -10171,3 +10171,321 @@ fn supports_that_go_and_come_wake_the_sleepers_beside_them_alone() {
     edit(&mut world, &[(2, 1, false), (29, 0, false), (55, 1, false)]);
     assert!(!asleep(&world), "a cut under the pile left it asleep");
 }
+
+// The sensor pass's paths (phase 7's C1): its pairs compared in visit order,
+// an unchanged pass kept whole and its candidates read by bit, against the
+// pass as it stood (`SensorPath::Search`).
+
+/// A seeded scene for the sensor pass: a pit of tiles under gravity, resting
+/// sensors (one over everything, two whose boxes overlap), a moving and a
+/// swept one for the run's first and last thirds, a static box, a kinematic
+/// one that crosses them, and bodies that spawn, land, sleep, teleport and
+/// despawn while tiles are written under the sensors.
+struct SensorScene {
+    world: World,
+    stream: u64,
+    /// The pit's cells, as the registry holds them.
+    tiles: Vec<i32>,
+    /// The dynamic bodies alive.
+    bodies: Vec<Entity>,
+    kinematic: Entity,
+    mover: Option<Entity>,
+    sweeper: Option<Entity>,
+    guest: Option<Entity>,
+    steps: u32,
+}
+
+/// What a step's sensor pass sent and kept, and where the bodies are.
+#[derive(Debug, PartialEq)]
+struct SensorOutputs {
+    entered: Vec<SensorEntered>,
+    exited: Vec<SensorExited>,
+    pairs: Vec<u128>,
+    cells: TilePairs,
+    tiles: Vec<(Option<SensorKey>, TilePairs)>,
+    positions: Vec<[u32; 2]>,
+}
+
+/// Tile pairs with their cells, as the sensor pass keeps them.
+type TilePairs = Vec<(u128, TileHit)>;
+
+impl SensorScene {
+    const COLS: u32 = 24;
+    const ROWS: u32 = 10;
+
+    fn new(path: SensorPath, seed: u64) -> Self {
+        let mut world = seed_world();
+        world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 600.0);
+        let mut buffers = PhysicsBuffers::default();
+        buffers.extra.sensor_path = path;
+        world.insert_resource(buffers);
+        // 16 px tiles: a floor two rows deep and a wall down each side.
+        let tiles: Vec<i32> = (0..Self::COLS * Self::ROWS)
+            .map(|at| {
+                let (col, row) = (at % Self::COLS, at / Self::COLS);
+                if row >= Self::ROWS - 2 || col == 0 || col == Self::COLS - 1 {
+                    0
+                } else {
+                    EMPTY_TILE
+                }
+            })
+            .collect();
+        spawn_map(
+            &mut world,
+            "pit",
+            Vec2::ZERO,
+            Self::COLS,
+            vec![tiles.clone()],
+        );
+        spawn_sensor(
+            &mut world,
+            Collider::aabb(Vec2::new(300.0, 200.0)),
+            Vec2::new(192.0, 80.0),
+            Vec2::ZERO,
+        );
+        spawn_sensor(
+            &mut world,
+            Collider::aabb(Vec2::new(40.0, 30.0)),
+            Vec2::new(100.0, 100.0),
+            Vec2::ZERO,
+        );
+        spawn_sensor(
+            &mut world,
+            Collider::circle(36.0),
+            Vec2::new(130.0, 96.0),
+            Vec2::ZERO,
+        );
+        spawn_static(
+            &mut world,
+            Collider::aabb(Vec2::splat(6.0)),
+            Vec2::new(96.0, 120.0),
+        );
+        let kinematic = spawn_kinematic(
+            &mut world,
+            Collider::aabb(Vec2::new(10.0, 4.0)),
+            Vec2::new(200.0, 70.0),
+            Vec2::new(60.0, 0.0),
+        );
+        let mut scene = Self {
+            world,
+            stream: seed,
+            tiles,
+            bodies: Vec::new(),
+            kinematic,
+            mover: None,
+            sweeper: None,
+            guest: None,
+            steps: 0,
+        };
+        scene.spawn_movers();
+        for _ in 0..40 {
+            scene.spawn_body();
+        }
+        scene
+    }
+
+    /// splitmix64.
+    fn draw(&mut self) -> u64 {
+        self.stream = self.stream.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.stream;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    /// A draw in `[0, 1)`.
+    fn unit(&mut self) -> f32 {
+        (self.draw() >> 40) as f32 / (1_u64 << 24) as f32
+    }
+
+    fn spawn_body(&mut self) {
+        let at = Vec2::new(30.0 + 320.0 * self.unit(), 10.0 + 50.0 * self.unit());
+        let collider = if self.draw().is_multiple_of(2) {
+            Collider::circle(5.0)
+        } else {
+            Collider::aabb(Vec2::splat(5.0))
+        };
+        let body = spawn_body(
+            &mut self.world,
+            RigidBody::dynamic(),
+            collider,
+            at,
+            Vec2::ZERO,
+        );
+        self.bodies.push(body);
+    }
+
+    /// The moving sensor and the swept one, which runs just over the floor.
+    fn spawn_movers(&mut self) {
+        self.mover = Some(spawn_sensor(
+            &mut self.world,
+            Collider::aabb(Vec2::splat(20.0)),
+            Vec2::new(60.0, 110.0),
+            Vec2::new(45.0, 0.0),
+        ));
+        self.sweeper = Some(spawn_body(
+            &mut self.world,
+            RigidBody::sensor().with_swept(),
+            Collider::circle(6.0),
+            Vec2::new(30.0, 118.0),
+            Vec2::new(900.0, 0.0),
+        ));
+    }
+
+    /// One step's changes, then the step.
+    fn step(&mut self) {
+        let step = self.steps;
+        self.steps += 1;
+        if self.draw().is_multiple_of(6) && self.bodies.len() < 80 {
+            self.spawn_body();
+        }
+        if self.draw().is_multiple_of(8) && !self.bodies.is_empty() {
+            let at = (self.draw() % self.bodies.len() as u64) as usize;
+            let body = self.bodies.swap_remove(at);
+            self.world.despawn(body);
+        }
+        if self.draw().is_multiple_of(10) && !self.bodies.is_empty() {
+            let at = (self.draw() % self.bodies.len() as u64) as usize;
+            let to = Vec2::new(30.0 + 320.0 * self.unit(), 10.0 + 90.0 * self.unit());
+            self.world.get_mut::<Position>(self.bodies[at]).unwrap().0 = to;
+        }
+        // A cell written every 25 steps, in the floor's top row or the three
+        // above it: cleared when solid, filled when empty.
+        if step % 25 == 24 {
+            let col = 1 + (self.draw() % u64::from(Self::COLS - 2)) as u32;
+            let row = 5 + (self.draw() % 4) as u32;
+            let cell = &mut self.tiles[(row * Self::COLS + col) as usize];
+            *cell = if *cell == EMPTY_TILE { 0 } else { EMPTY_TILE };
+            let tile = *cell;
+            assert!(
+                self.world
+                    .resource_mut::<TilemapRegistry>()
+                    .set_tile("pit", 0, col, row, tile)
+            );
+        }
+        // The moving sensor and the kinematic box turn back, and the swept
+        // sensor starts over at the far wall.
+        if step % 100 == 99
+            && let Some(mover) = self.mover
+        {
+            let velocity = self.world.get_mut::<Velocity>(mover).unwrap();
+            velocity.0.x = -velocity.0.x;
+        }
+        if step % 90 == 89 {
+            let velocity = self.world.get_mut::<Velocity>(self.kinematic).unwrap();
+            velocity.0.x = -velocity.0.x;
+        }
+        if let Some(sweeper) = self.sweeper {
+            let position = self.world.get_mut::<Position>(sweeper).unwrap();
+            if position.0.x > 350.0 {
+                position.0.x = 30.0;
+            }
+        }
+        // The moving and the swept sensor leave for the middle third, where
+        // resting sensors alone leave passes with nothing new, and a guest
+        // sensor joins for a while.
+        match step {
+            200 => {
+                for sensor in [self.mover.take(), self.sweeper.take()] {
+                    self.world.despawn(sensor.unwrap());
+                }
+            }
+            260 => {
+                self.guest = Some(spawn_sensor(
+                    &mut self.world,
+                    Collider::circle(30.0),
+                    Vec2::new(250.0, 100.0),
+                    Vec2::ZERO,
+                ));
+            }
+            330 => {
+                let guest = self.guest.take().unwrap();
+                self.world.despawn(guest);
+            }
+            400 => self.spawn_movers(),
+            _ => {}
+        }
+        physics_step(&mut self.world);
+    }
+
+    fn outputs(&mut self) -> SensorOutputs {
+        drain_events(&mut self.world);
+        let entered = drain_sensor_entries(&mut self.world);
+        let exited = drain_sensor_exits(&mut self.world);
+        let buffers = self.world.resource::<PhysicsBuffers>();
+        SensorOutputs {
+            entered,
+            exited,
+            pairs: buffers.sensor_pairs.clone(),
+            cells: buffers.extra.sensor_cells.clone(),
+            tiles: buffers
+                .sensor_tiles
+                .iter()
+                .map(|entry| (entry.key, entry.pairs.clone()))
+                .collect(),
+            positions: self
+                .bodies
+                .iter()
+                .map(|&body| {
+                    self.world
+                        .get::<Position>(body)
+                        .unwrap()
+                        .0
+                        .to_array()
+                        .map(f32::to_bits)
+                })
+                .collect(),
+        }
+    }
+}
+
+#[test]
+fn the_sensor_pass_in_visit_order_sends_what_a_search_of_every_pair_does() {
+    for seed in [3_u64, 14] {
+        // Twin Worlds under one script: `old` on the pass as it stood, `new`
+        // on the visit-order pass, and `broken`, whose pass takes a pair
+        // that is not the cursor's as new without the search.
+        let mut old = SensorScene::new(SensorPath::Search, seed);
+        let mut new = SensorScene::new(SensorPath::InOrder, seed);
+        let mut broken = SensorScene::new(SensorPath::TrustCursor, seed);
+        let mut total = SensorStats::default();
+        let (mut unchanged, mut entered, mut exited, mut asleep, mut wrong) = (0, 0, 0, 0, 0);
+        for step in 0..600 {
+            old.step();
+            new.step();
+            broken.step();
+            let want = old.outputs();
+            let got = new.outputs();
+            assert_eq!(got, want, "seed {seed}, step {step}");
+            entered += want.entered.len();
+            exited += want.exited.len();
+            let buffers = new.world.resource::<PhysicsBuffers>();
+            let stats = buffers.extra.sensor_stats;
+            unchanged += usize::from(stats.unchanged);
+            total.in_turn += stats.in_turn;
+            total.searched += stats.searched;
+            total.caught_up += stats.caught_up;
+            asleep += usize::from(buffers.sleeping_count() > 0);
+            // The broken pass keeps the same pairs and sends other events.
+            let other = broken.outputs();
+            assert_eq!(other.pairs, want.pairs);
+            assert_eq!(other.positions, want.positions);
+            wrong += usize::from(other.entered != want.entered);
+        }
+        // The run held what the paths differ on: passes kept whole and
+        // passes rebuilt, pairs at the cursor, pairs searched, the cursor
+        // caught up after pairs left, sleepers, and the steps where trusting
+        // the cursor sends an entry the search does not.
+        let seen = format!(
+            "seed {seed}: unchanged {unchanged}, {total:?}, entered {entered}, exited {exited}, \
+             asleep {asleep}, wrong {wrong}"
+        );
+        assert!((40..560).contains(&unchanged), "{seen}");
+        assert!(total.in_turn > 10_000, "{seen}");
+        assert!(total.searched > 500, "{seen}");
+        assert!(total.caught_up > 20, "{seen}");
+        assert!(entered > 200 && exited > 200, "{seen}");
+        assert!(asleep > 100, "{seen}");
+        assert!(wrong > 20, "{seen}");
+    }
+}
