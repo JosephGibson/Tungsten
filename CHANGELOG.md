@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.118.0] - 2026-11-21
+
 Summary: the roadmap redo's Phase 7 step 7.13, example 01 on the new systems, run as eighteen plans (`D-271`–`D-293`): 01's elements on chemistry, its saves on the engine's World saves, its hits, foes, drops, casts, toys, sounds, geysers, lift and level parts on the kit and the engine, the template's shell and 01's copy on `tungsten::screens`, 01's art tools and whole big props, and a fresh-agent evaluation run before and after its fixes; the owner accepted 01, closing 7.13. 7.14, the CPU performance pass, is next. A perf gate before the cut took `e01-stress`'s `effect_tick` from 5.8 to 1.51 ms and its `fire_spread` 4.0 ms lower; against 0.117.0 the release sitting reads all 25 rows `ok`. 01's save moves from schema 24 to 41, which refuses every schema before 29, so 0.117's saves read as an older version's and never load; the template's stays at 5. The pre-release QA pass on 01 (2026-11-20) found nothing blocking: its tests, clippy, `just level-check` and its scripted tours in release and debug builds ran clean.
 
 ### Added
