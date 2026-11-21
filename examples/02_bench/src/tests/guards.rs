@@ -8,7 +8,6 @@
 use std::path::PathBuf;
 
 use glam::Vec2;
-use tungsten::WindowSize;
 use tungsten::core::assets::TextureHandle;
 use tungsten::core::{
     AnimationState, AssetRegistry, CameraState, Config, Entity, FilterMode, Light, ParallaxLayer,
@@ -16,6 +15,7 @@ use tungsten::core::{
     parallax_world_position,
 };
 use tungsten::testing::{CounterGuard, Harness, allocations};
+use tungsten::{FrameTimings, WindowSize};
 
 use crate::blast::{self, BlastCounts};
 use crate::boot;
@@ -310,6 +310,54 @@ fn guards_gpu_throughput() {
         ("gpu", "throughput", Some("0.01")),
         gpu_populations,
         gpu_drawable,
+    );
+}
+
+/// 7.14's control for the default extract (`docs/perf/benchmarks.md`, the
+/// `gpu` section): `gpu-throughput`'s scene, 400,000 sprites in one batch,
+/// stepped headless, so no GPU pass shares memory with the extract. It
+/// prints the extract's p50, p95 and lowest reading over 300 warmed frames,
+/// and checks on the frame before the window and the one after it that the
+/// extract drew every sprite. A timing, so no default run takes it: release,
+/// alone on a quiet machine, a reading the median of five runs' p50s.
+#[test]
+#[ignore = "a timing: release, alone on a quiet machine"]
+fn the_extract_headless() {
+    const WARMUP: u32 = 60;
+    const FRAMES: usize = 300;
+    let bench = knobs::select(BENCHES, Some("gpu")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("throughput"), None, None).expect("a configuration");
+    assert_eq!(
+        cfg.row(),
+        "gpu-throughput",
+        "the configuration measures another row"
+    );
+    let sprites = knob(&cfg, "sprites");
+    let mut harness = harness(&cfg);
+    gpu_populations(harness.world(), &cfg);
+    let draws_every_sprite = |harness: &mut Harness, frame: &str| {
+        let one = CounterGuard::measure(harness, 0, 1);
+        assert_eq!(
+            (one.max_sprite_instances, gpu_drawable(harness.world())),
+            (sprites, sprites),
+            "the frame {frame} the window: instances extracted and sprites drawable"
+        );
+    };
+    assert_eq!(harness.step(WARMUP - 1), WARMUP - 1, "the warm-up");
+    draws_every_sprite(&mut harness, "before");
+    let mut samples = Vec::with_capacity(FRAMES);
+    for _ in 0..FRAMES {
+        assert_eq!(harness.step(1), 1, "the run ended in its window");
+        samples.push(harness.world().resource::<FrameTimings>().extract_ms);
+    }
+    draws_every_sprite(&mut harness, "after");
+    samples.sort_by(f32::total_cmp);
+    eprintln!(
+        "the_extract_headless: {sprites} sprites, extract p50 {:.3} ms, p95 {:.3}, lowest {:.3} \
+         over {FRAMES} frames",
+        samples[FRAMES / 2],
+        samples[FRAMES * 95 / 100],
+        samples[0]
     );
 }
 

@@ -1,6 +1,6 @@
-# CPU pass: clips, saves and the extract (phase-7's step 7.14, second plan) — draft
+# CPU pass: clips, saves and the extract (phase-7's step 7.14, second plan)
 
-- **status:** draft
+- **status:** in progress
 - **goal:** End Phase 7's CPU pass ([phase-7.md](phase-7.md)'s Step 14 and §2.5, the [roadmap redo](roadmap-redo.md)'s 7.14 row, §5.5 and §5.8) by taking each of the three items §2.5 leaves open to `done` or `stopped`:
   - **C3:** `particles` `system.animate_sprites` p50 at most 0.120 ms (0.239 at the gate), by a clip slot kept in `AnimationState`.
   - **C5:** `saves` `system.save_snapshot` p50 at most 8.934 ms (17.867 at the gate, 12.9 today), by a prefab's runtime spawns saved as a table, `WorldSave` format 2 with format 1 still read; with S-191, a slot's header read without its data, and S-35 given its terminal status.
@@ -284,5 +284,6 @@ Round 2: not run. The same reviewer at xhigh, 2026-11-21, on the same tree with 
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-21 | done | A quiet machine: the encoder gone at 18:52Z, no `nxcodec.bin` at any reading. `cargo test -p example-02-bench --locked` → exit 0, `25 passed; 0 failed; 1 ignored`, `test tests::guards::the_extract_headless ... ignored, a timing: release, alone on a quiet machine`, no pin rewritten (`git status --short` → the step's four files). The control's five runs → exit 0 each, each `400000 sprites … over 300 frames`: p50 5.833, 5.832, 5.791, 5.809 and 5.791 ms (p95 5.839–5.870, lowest 5.762–5.815), 5 of 5 within 2 % of their median: **the reading 5.809 ms, the target at most 2.904**. A first set on the same source before `cargo fmt` moved one import (another binary by `sha256sum`) read 5.789, 5.792, 5.788, 5.793 and 5.801, median 5.792: the committed source's set is the reading. The capture between the two sets → exit 0, `gpu-throughput: valid; digest 121f8ef1503d8697`, `stage.extract` p50 11.94, 12.03 and 12.04 ms. `rg -c '^\| C6 \|.*on the headless control \|$' docs/plans/phase-7.md` → 1. `cargo fmt --all -- --check`, `git diff --check`, `just check` and `just repo-check` → exit 0 | `perf-runs/714-cpu-pass-2/step-1/` (`control-head-fmt-*.log` the reading, `control-head-*.log` the first set, `bench-tests.log`, `capture.log`, `just-check.log`, `repo-check.log`); `perf-runs/20261121T185742Z-gpu-throughput/`; `perf-runs/714-cpu-pass-2/tools/control.py` (the five runs, the median and the 2 % check) |
 
 ## Follow-ups
