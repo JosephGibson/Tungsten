@@ -57,10 +57,116 @@ pub(crate) struct Grid {
     candidates: Vec<Candidate>,
     /// `(cell key, candidate)`, sorted.
     cells: Vec<(u64, u32)>,
+    /// `cells`' candidates as a query's scan reads them, in `cells`' order.
+    packed: Vec<Packed>,
+    /// Where each cell's entries start, while the cells' box is small.
+    directory: Directory,
     /// The farthest a candidate's surface lies from its centre: a query
     /// widens its cells by it.
     reach: f32,
     built: bool,
+}
+
+/// A candidate under its cell: its centre, its place among the candidates
+/// and whether it has a shape, side by side for a scan of a cell's entries.
+#[derive(Debug, Clone, Copy)]
+struct Packed {
+    centre: Vec2,
+    index: u32,
+    shaped: bool,
+}
+
+/// A directory may hold this many cells a candidate; past it a query
+/// searches the sorted cells, as every query did.
+const DIRECTORY_CELLS: u64 = 4;
+
+/// Each cell's first entry in the sorted cells, over the box the occupied
+/// cells span: a query reads a column's rows from it in place of two
+/// searches of the cells.
+#[derive(Debug, Default)]
+struct Directory {
+    /// The box's first column and row, as [`coordinate`] gives them.
+    column: u64,
+    row: u64,
+    /// Its columns, and its rows a column; 0 rows while there is no table.
+    columns: u64,
+    rows: u64,
+    /// By column, then row: the entries before the cell's own, with one
+    /// more count that ends the last cell.
+    starts: Vec<u32>,
+}
+
+impl Directory {
+    /// Rebuilds the table over `cells`, sorted, or leaves none when their
+    /// box holds more than [`DIRECTORY_CELLS`] cells an entry.
+    fn build(&mut self, cells: &[(u64, u32)]) {
+        self.rows = 0;
+        self.starts.clear();
+        let (Some(&(first, _)), Some(&(last, _))) = (cells.first(), cells.last()) else {
+            return;
+        };
+        let row_of = |key: u64| key & u64::from(u32::MAX);
+        let (mut low, mut high) = (u64::MAX, 0);
+        for &(key, _) in cells {
+            low = low.min(row_of(key));
+            high = high.max(row_of(key));
+        }
+        let (columns, rows) = ((last >> 32) - (first >> 32) + 1, high - low + 1);
+        let slots = columns.saturating_mul(rows);
+        if slots > DIRECTORY_CELLS.saturating_mul(cells.len() as u64) {
+            return;
+        }
+        (self.column, self.row, self.columns, self.rows) = (first >> 32, low, columns, rows);
+        // The cells are sorted by column, then row, so their slots only
+        // rise: each slot up to an entry's own starts at that entry.
+        self.starts.resize(slots as usize + 1, cells.len() as u32);
+        let mut next = 0;
+        for (at, &(key, _)) in cells.iter().enumerate() {
+            let slot = (((key >> 32) - self.column) * rows + (row_of(key) - self.row)) as usize;
+            while next <= slot {
+                self.starts[next] = at as u32;
+                next += 1;
+            }
+        }
+    }
+
+    /// The entries of `column`'s cells from row `from` to row `to`, as a
+    /// range of the sorted cells: the one the two searches give.
+    fn rows_of(&self, cells: &[(u64, u32)], column: u64, from: u64, to: u64) -> (usize, usize) {
+        // A coordinate at the clamp's top end is past a key's 32 bits, and
+        // the keys it makes wrap: those rows keep the searches' answer.
+        let wraps = column > u64::from(u32::MAX) || to > u64::from(u32::MAX);
+        if self.rows == 0 || wraps {
+            return (
+                cells.partition_point(|&(at, _)| at < key(column, from)),
+                cells.partition_point(|&(at, _)| at <= key(column, to)),
+            );
+        }
+        let (from, to) = (from.max(self.row), to.min(self.row + self.rows - 1));
+        if column < self.column || column >= self.column + self.columns || from > to {
+            return (0, 0);
+        }
+        let first = ((column - self.column) * self.rows + (from - self.row)) as usize;
+        let last = ((column - self.column) * self.rows + (to - self.row)) as usize;
+        (self.starts[first] as usize, self.starts[last + 1] as usize)
+    }
+}
+
+/// The largest `f32` whose square root is at most `radius`, a finite radius
+/// that is not negative: since the root never falls as its square rises,
+/// `d.sqrt() <= radius` exactly when `d <= square_bound(radius)`, for every
+/// `d` a squared length can be.
+fn square_bound(radius: f32) -> f32 {
+    let mut bound = (radius * radius).min(f32::MAX);
+    // The product is rounded, and so is a root: step to the last square
+    // whose root still fits.
+    while bound.sqrt() > radius {
+        bound = bound.next_down();
+    }
+    while bound < f32::MAX && bound.next_up().sqrt() <= radius {
+        bound = bound.next_up();
+    }
+    bound
 }
 
 /// A cell coordinate, clamped to `i32` and offset so keys sort by column,
@@ -139,6 +245,16 @@ impl Grid {
             ));
         }
         self.cells.sort_unstable();
+        self.packed.clear();
+        self.packed.extend(self.cells.iter().map(|&(_, index)| {
+            let candidate = &self.candidates[index as usize];
+            Packed {
+                centre: candidate.centre,
+                index,
+                shaped: candidate.shape.is_some(),
+            }
+        }));
+        self.directory.build(&self.cells);
     }
 
     /// Into `out`, in the candidates' order, every candidate within
@@ -162,6 +278,46 @@ impl Grid {
             }
             return;
         }
+        // A candidate with no shape is `radius` away or nearer when its
+        // squared distance is at most this: the same answer as its
+        // distance's, without the root.
+        let bound = square_bound(radius);
+        for column in x0..=x1 {
+            let (from, to) = self.directory.rows_of(&self.cells, column, y0, y1);
+            for entry in &self.packed[from..to] {
+                let near = if entry.shaped {
+                    self.candidates[entry.index as usize].distance(point) <= radius
+                } else {
+                    (point - entry.centre).length_squared() <= bound
+                };
+                if near {
+                    out.push(entry.index);
+                }
+            }
+        }
+        out.sort_unstable();
+    }
+
+    /// Tests: [`Self::within`] as it stood: two searches of the sorted
+    /// cells a column and each candidate's own distance.
+    #[cfg(test)]
+    pub(crate) fn within_by_search(&self, point: Vec2, radius: f32, out: &mut Vec<u32>) {
+        out.clear();
+        if !(point.is_finite() && radius.is_finite() && radius >= 0.0) {
+            return;
+        }
+        let widened = radius + self.reach;
+        let (x0, x1) = (coordinate(point.x - widened), coordinate(point.x + widened));
+        let (y0, y1) = (coordinate(point.y - widened), coordinate(point.y + widened));
+        let span = (x1 - x0 + 1).saturating_mul(y1 - y0 + 1);
+        if span > self.candidates.len() as u64 {
+            for (index, candidate) in self.candidates.iter().enumerate() {
+                if candidate.distance(point) <= radius {
+                    out.push(index as u32);
+                }
+            }
+            return;
+        }
         for column in x0..=x1 {
             let from = self.cells.partition_point(|&(at, _)| at < key(column, y0));
             let to = self.cells.partition_point(|&(at, _)| at <= key(column, y1));
@@ -172,5 +328,18 @@ impl Grid {
             }
         }
         out.sort_unstable();
+    }
+
+    /// Tests: whether the last build made a directory, and the candidates
+    /// it holds.
+    #[cfg(test)]
+    pub(crate) fn directory_and_len(&self) -> (bool, usize) {
+        (self.directory.rows != 0, self.candidates.len())
+    }
+
+    /// Tests: [`square_bound`].
+    #[cfg(test)]
+    pub(crate) fn square_bound(radius: f32) -> f32 {
+        square_bound(radius)
     }
 }

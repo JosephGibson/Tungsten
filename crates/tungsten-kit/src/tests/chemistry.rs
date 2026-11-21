@@ -3420,3 +3420,203 @@ fn a_blast_passes_the_dead() {
     assert!(velocity(&world, live).x < 0.0, "{}", velocity(&world, live));
     assert_eq!(lost(&world, going), 0.0);
 }
+
+// The receiver grid's directory, packed centres and squared test (phase 7's
+// C2), against the grid's query as it stood (`Grid::within_by_search`).
+
+/// The grid's own stream (splitmix64).
+fn grid_draw(stream: &mut u64) -> u64 {
+    *stream = stream.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = *stream;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// A draw in `[0, 1)`.
+fn grid_unit(stream: &mut u64) -> f32 {
+    (grid_draw(stream) >> 40) as f32 / (1_u64 << 24) as f32
+}
+
+/// A World of seeded candidates about `origin`, `count` of them within
+/// `spread` px of it on each axis: one in three a circle, one in three a
+/// box, the rest bodiless points, every fourth with `Health` in place of
+/// `Tags`. Returns the World and each candidate's point.
+fn grid_world(seed: u64, count: usize, origin: Vec2, spread: f32) -> (World, Vec<Vec2>) {
+    let (mut world, _) = rig();
+    let mut stream = seed;
+    let mut points = Vec::new();
+    for at in 0..count {
+        let point = origin
+            + Vec2::new(
+                spread * (2.0 * grid_unit(&mut stream) - 1.0),
+                spread * (2.0 * grid_unit(&mut stream) - 1.0),
+            );
+        points.push(point);
+        let entity = world.spawn();
+        if at % 4 == 3 {
+            world.insert(entity, Health::new(5.0));
+        } else {
+            world.insert(entity, Tags::new(["flammable"]));
+        }
+        match at % 3 {
+            0 => {
+                world.insert(entity, Position(point));
+                world.insert(
+                    entity,
+                    Collider::circle(1.0 + 30.0 * grid_unit(&mut stream)),
+                );
+            }
+            1 => {
+                world.insert(entity, Position(point));
+                let half = Vec2::new(
+                    1.0 + 40.0 * grid_unit(&mut stream),
+                    1.0 + 12.0 * grid_unit(&mut stream),
+                );
+                world.insert(entity, Collider::aabb(half));
+            }
+            _ => world.insert(entity, Transform::from_position(point)),
+        }
+    }
+    (world, points)
+}
+
+/// Seeded queries of `world`'s grid by the directory and by the searches:
+/// the finds are equal, content and order. Around each of `points` it also
+/// asks at the candidate's own distance from a seeded point and a step to
+/// each side of it. Returns whether the build made a directory, the
+/// queries that found something and the ones that found nothing.
+fn grid_queries(world: &World, points: &[Vec2], seed: u64) -> (bool, usize, usize) {
+    let mut grid = grid::Grid::default();
+    grid.build(world);
+    let (directory, len) = grid.directory_and_len();
+    assert_eq!(len, points.len());
+    let mut stream = seed;
+    let (mut found, mut by_search) = (Vec::new(), Vec::new());
+    let (mut some, mut none) = (0, 0);
+    let mut ask = |point: Vec2, radius: f32| {
+        grid.within(point, radius, &mut found);
+        grid.within_by_search(point, radius, &mut by_search);
+        assert_eq!(found, by_search, "at {point:?}, radius {radius}");
+        if found.is_empty() {
+            none += 1;
+        } else {
+            some += 1;
+        }
+    };
+    for (at, &centre) in points.iter().enumerate() {
+        // A point a few to a few hundred px off the candidate, and radii at
+        // its exact distance and one step to each side.
+        let reach = [3.0, 40.0, 300.0][at % 3] * (0.1 + grid_unit(&mut stream));
+        let angle = std::f32::consts::TAU * grid_unit(&mut stream);
+        let point = centre + reach * Vec2::new(angle.cos(), angle.sin());
+        let exact = (point - centre).length();
+        for radius in [exact.next_down(), exact, exact.next_up()] {
+            ask(point, radius);
+        }
+        // And a seeded radius, from none to wider than the field.
+        let radius = [0.0, 8.0, 50.0, 120.0, 900.0][(grid_draw(&mut stream) % 5) as usize]
+            * grid_unit(&mut stream);
+        ask(point, radius);
+    }
+    // Points no query takes.
+    ask(Vec2::new(f32::NAN, 0.0), 10.0);
+    ask(Vec2::ZERO, f32::INFINITY);
+    ask(Vec2::ZERO, -1.0);
+    (directory, some, none)
+}
+
+#[test]
+fn the_grids_directory_finds_what_its_searches_do() {
+    let far = 64.0 * 2_147_483_648.0;
+    // Clustered fields, which get a directory, at the origin, far from it
+    // and across it; sparse ones, whose box is past the directory's bound;
+    // and fields about the clamp's two ends, where cell keys wrap.
+    let fields = [
+        (300, Vec2::ZERO, 200.0, true),
+        (500, Vec2::new(-3.0e6, 8.0e5), 600.0, true),
+        (64, Vec2::new(12.0, -7.0), 31.0, true),
+        (40, Vec2::ZERO, 50_000.0, false),
+        (200, Vec2::new(1.0e7, 1.0e7), 2.0e6, false),
+        (120, Vec2::new(far, 0.0), 4_000.0, true),
+        (120, Vec2::new(-far, far), 4_000.0, true),
+        (90, Vec2::new(0.0, far), 2.0e12, false),
+    ];
+    let (mut with_directory, mut without, mut some, mut none) = (0, 0, 0, 0);
+    for (seed, &(count, origin, spread, directory)) in fields.iter().enumerate() {
+        let (world, points) = grid_world(seed as u64 + 1, count, origin, spread);
+        let (made, found, empty) = grid_queries(&world, &points, 77 + seed as u64);
+        assert_eq!(made, directory, "field {seed}");
+        with_directory += usize::from(made);
+        without += usize::from(!made);
+        some += found;
+        none += empty;
+    }
+    assert!(with_directory >= 3 && without >= 3);
+    assert!(some > 2_000 && none > 200, "{some} found, {none} empty");
+    // No candidates: no directory, and nothing found.
+    let (world, points) = grid_world(1, 0, Vec2::ZERO, 1.0);
+    assert_eq!(grid_queries(&world, &points, 5), (false, 0, 3));
+}
+
+#[test]
+fn a_squared_bound_is_the_last_square_whose_root_fits() {
+    // For a radius, `bound` is the largest float whose root is at most it:
+    // every float about the radius' square sits on the side of the bound
+    // its root sits on of the radius.
+    let mut stream = 9_u64;
+    let mut radii = vec![
+        0.0,
+        -0.0,
+        f32::MIN_POSITIVE,
+        1.0e-30,
+        0.1,
+        1.0,
+        2.0_f32.sqrt(),
+        50.0,
+        288.0,
+        1.0e9,
+        1.8e19,
+        1.9e19,
+        3.0e19,
+        f32::MAX,
+    ];
+    for _ in 0..3_000 {
+        let scale = [1.0e-3, 1.0, 64.0, 5_000.0, 1.0e8][(grid_draw(&mut stream) % 5) as usize];
+        radii.push(scale * grid_unit(&mut stream));
+    }
+    let mut rounded_up = 0;
+    for radius in radii {
+        let bound = grid::Grid::square_bound(radius);
+        assert!(bound.sqrt() <= radius, "radius {radius}: {bound}");
+        assert!(
+            bound == f32::MAX || bound.next_up().sqrt() > radius,
+            "radius {radius}: {bound} is not the last"
+        );
+        rounded_up += usize::from(bound != radius * radius);
+        let mut square = (radius * radius).min(f32::MAX);
+        for _ in 0..40 {
+            square = square.next_down();
+        }
+        for _ in 0..80 {
+            // A squared length is never below 0.
+            if square >= 0.0 {
+                assert_eq!(
+                    square.sqrt() <= radius,
+                    square <= bound,
+                    "radius {radius}, square {square}"
+                );
+            }
+            if square == f32::MAX {
+                break;
+            }
+            square = square.next_up();
+        }
+        for square in [0.0, f32::MAX, f32::INFINITY, f32::NAN] {
+            assert_eq!(square.sqrt() <= radius, square <= bound, "radius {radius}");
+        }
+    }
+    // The radius' own square is often not the bound: the product and the
+    // root both round.
+    assert!(rounded_up > 500, "{rounded_up}");
+}
