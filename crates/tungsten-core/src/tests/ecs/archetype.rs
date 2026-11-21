@@ -164,6 +164,92 @@ fn slot_column_scans_the_key_without_a_slot_table() {
     );
 }
 
+/// A key entry and an empty column for each `[[u8; A]; B]`, `A` from 1 to
+/// 16: sixteen types a `B`.
+fn grid_row<const B: usize>(columns: &mut Vec<(TypeId, Box<dyn AnyColumn>)>) {
+    macro_rules! widths {
+        ($($a:literal)*) => {
+            $(columns.push(column::<[[u8; $a]; B]>(Vec::new()));)*
+        };
+    }
+    widths!(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16);
+}
+
+/// 192 distinct types as key entries: more than the 128 slots can separate.
+fn grid_columns() -> Vec<(TypeId, Box<dyn AnyColumn>)> {
+    let mut columns = Vec::new();
+    grid_row::<1>(&mut columns);
+    grid_row::<2>(&mut columns);
+    grid_row::<3>(&mut columns);
+    grid_row::<4>(&mut columns);
+    grid_row::<5>(&mut columns);
+    grid_row::<6>(&mut columns);
+    grid_row::<7>(&mut columns);
+    grid_row::<8>(&mut columns);
+    grid_row::<9>(&mut columns);
+    grid_row::<10>(&mut columns);
+    grid_row::<11>(&mut columns);
+    grid_row::<12>(&mut columns);
+    columns
+}
+
+#[test]
+fn has_answers_as_the_keys_own_contains() {
+    // Keys from a few types to all 192, seeded: the short ones get a
+    // separating shift and answer through their slots, the long ones none
+    // and scan. Every type is asked of every key, present and absent.
+    let all: Vec<TypeId> = grid_columns()
+        .into_iter()
+        .map(|(type_id, _)| type_id)
+        .collect();
+    assert_eq!(all.len(), 192);
+    let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+    let (mut slotted, mut scanning, mut shared_slots, mut found) = (0, 0, 0, 0);
+    for round in 0..240 {
+        // The share of the types a key keeps, in 64ths.
+        let share = [1, 4, 8, 24, 44, 64][round % 6];
+        let columns: Vec<_> = grid_columns()
+            .into_iter()
+            .filter(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state % 64 < share
+            })
+            .collect();
+        let long = columns.len() > ColumnSlots::SLOTS;
+        let arch = make_arch(columns);
+        let has_shift = arch.column_slots.shift != ColumnSlots::NO_SHIFT;
+        assert!(!(long && has_shift), "128 slots separate no longer key");
+        if has_shift {
+            slotted += 1;
+        } else {
+            scanning += 1;
+        }
+        for &type_id in &all {
+            let held = arch.component_types.contains(&type_id);
+            assert_eq!(arch.has(type_id), held, "round {round}");
+            found += usize::from(held);
+            // An absent type whose slot another type holds: the slot alone
+            // would answer that the key has it.
+            if has_shift && !held && arch.slot_index(type_id).is_some() {
+                shared_slots += 1;
+            }
+        }
+        assert!(!arch.has(TypeId::of::<u64>()));
+    }
+    assert!(slotted >= 80, "{slotted}");
+    assert!(scanning >= 80, "{scanning}");
+    assert!(shared_slots > 500, "{shared_slots}");
+    assert!(found > 10_000, "{found}");
+
+    // A short key whose slot table is forced off scans too.
+    let mut arch = wide_arch(0b1011_0110);
+    arch.column_slots = ColumnSlots::new(&[7, 7]);
+    assert!(arch.has(TypeId::of::<[u8; 2]>()));
+    assert!(!arch.has(TypeId::of::<[u8; 3]>()));
+}
+
 #[test]
 fn slot_column_erased_is_the_key_types_own_column() {
     let mut arch = wide_arch(0b1011_0110);
