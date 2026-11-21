@@ -101,7 +101,7 @@ pub struct tungsten_core::assets::animation::AnimationState
 pub tungsten_core::assets::animation::AnimationState::accumulated_ms: f32
 pub tungsten_core::assets::animation::AnimationState::animation_id: alloc::string::String
 pub tungsten_core::assets::animation::AnimationState::finished: bool
-pub tungsten_core::assets::animation::AnimationState::frame_index: usize
+pub tungsten_core::assets::animation::AnimationState::frame_index: u32
 pub tungsten_core::assets::animation::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
@@ -4653,7 +4653,7 @@ pub struct tungsten_core::assets::AnimationState
 pub tungsten_core::assets::AnimationState::accumulated_ms: f32
 pub tungsten_core::assets::AnimationState::animation_id: alloc::string::String
 pub tungsten_core::assets::AnimationState::finished: bool
-pub tungsten_core::assets::AnimationState::frame_index: usize
+pub tungsten_core::assets::AnimationState::frame_index: u32
 pub tungsten_core::assets::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
@@ -20671,7 +20671,7 @@ pub struct tungsten_core::AnimationState
 pub tungsten_core::AnimationState::accumulated_ms: f32
 pub tungsten_core::AnimationState::animation_id: alloc::string::String
 pub tungsten_core::AnimationState::finished: bool
-pub tungsten_core::AnimationState::frame_index: usize
+pub tungsten_core::AnimationState::frame_index: u32
 pub tungsten_core::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>

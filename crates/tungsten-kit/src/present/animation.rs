@@ -209,7 +209,7 @@ fn animation_tick(world: &mut World) {
             sounds.push((row, sound.clone()));
         }
         finishing |= state.finished && !was_finished && state.despawn_at_end();
-        if let Some(current) = clip.frames.get(state.frame_index)
+        if let Some(current) = clip.frames.get(state.frame_index as usize)
             && current.sprite != sprite.asset_id
         {
             sprite.asset_id = current.sprite;

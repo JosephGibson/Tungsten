@@ -241,7 +241,7 @@ fn an_overlay_rides_its_holder() {
     apply(&mut world, second, "rimed", 1.0);
     apply(&mut world, third, "rimed", 1.0);
     frame(&mut world, &mut schedule);
-    let phases: Vec<(usize, u32)> = world
+    let phases: Vec<(u32, u32)> = world
         .query::<&AnimationState>()
         .map(|state| (state.frame_index, state.accumulated_ms as u32))
         .collect();

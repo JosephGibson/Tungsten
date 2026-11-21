@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, DefaultHasher};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -88,11 +89,54 @@ impl AnimationData {
     }
 }
 
-/// Animation registry resource.
+/// Animation registry resource: the clips in the order they registered,
+/// each at a slot an [`AnimationState`] keeps, so a state on a registered
+/// clip finds it by one compare of its ID.
 #[derive(Debug, Default, Clone)]
 pub struct AnimationRegistry {
-    animations: HashMap<String, AnimationData>,
-    path_to_id: HashMap<PathBuf, String>,
+    clips: Vec<Clip>,
+    slots: FixedMap<String, u32>,
+    /// Each source path's clip, by slot.
+    paths: FixedMap<PathBuf, u32>,
+}
+
+/// A map under a hasher that takes no room in it, so the registry, which
+/// five systems box again each frame, stays under its old 96 bytes.
+type FixedMap<K, V> = HashMap<K, V, BuildHasherDefault<DefaultHasher>>;
+
+/// One registered clip: its ID and its data.
+#[derive(Debug, Clone)]
+struct Clip {
+    id: String,
+    data: AnimationData,
+}
+
+/// [`AnimationState`]'s slot before its first lookup.
+const NO_SLOT: u32 = u32::MAX;
+
+/// Whether two IDs are equal, a word at a time with no call: the lengths,
+/// then each eight bytes and the last eight, which overlap the others in an
+/// ID whose length is no multiple of eight; an ID under eight bytes goes a
+/// byte at a time.
+#[inline]
+fn same_id(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let word = |bytes: &[u8]| u64::from_ne_bytes(bytes.try_into().expect("eight bytes"));
+    if a.len() < 8 {
+        return a.iter().zip(b).all(|(x, y)| x == y);
+    }
+    let last = a.len() - 8;
+    let mut at = 0;
+    while at < last {
+        if word(&a[at..at + 8]) != word(&b[at..at + 8]) {
+            return false;
+        }
+        at += 8;
+    }
+    word(&a[last..]) == word(&b[last..])
 }
 
 impl AnimationRegistry {
@@ -101,33 +145,64 @@ impl AnimationRegistry {
         Self::default()
     }
 
+    /// Registers `data` under `id`: a new ID takes the next slot, a held
+    /// one keeps its slot with the new data.
     pub fn insert(&mut self, id: String, data: AnimationData) {
-        self.animations.insert(id, data);
+        self.put(id, data);
     }
 
     /// Insert with source-path reverse lookup.
     pub fn insert_with_path(&mut self, id: String, data: AnimationData, path: PathBuf) {
-        self.path_to_id.insert(path, id.clone());
-        self.animations.insert(id, data);
+        let slot = self.put(id, data);
+        self.paths.insert(path, slot);
+    }
+
+    /// [`insert`](Self::insert), and the slot the clip holds.
+    fn put(&mut self, id: String, data: AnimationData) -> u32 {
+        if let Some(&slot) = self.slots.get(&id) {
+            self.clips[slot as usize].data = data;
+            return slot;
+        }
+        let slot = u32::try_from(self.clips.len()).expect("fewer than 2^32 clips");
+        self.slots.insert(id.clone(), slot);
+        self.clips.push(Clip { id, data });
+        slot
     }
 
     #[must_use]
     pub fn get(&self, id: &str) -> Option<&AnimationData> {
-        self.animations.get(id)
+        let &slot = self.slots.get(id)?;
+        Some(&self.clips[slot as usize].data)
     }
 
+    /// The clip `id` names and its slot: the one at `slot` when that slot
+    /// holds `id`, one compare, else the lookup by name.
+    #[inline]
+    fn find(&self, slot: u32, id: &str) -> Option<(u32, &AnimationData)> {
+        match self.clips.get(slot as usize) {
+            Some(clip) if same_id(&clip.id, id) => Some((slot, &clip.data)),
+            _ => {
+                let &slot = self.slots.get(id)?;
+                Some((slot, &self.clips[slot as usize].data))
+            }
+        }
+    }
+
+    /// Each clip's ID and data, in the order the IDs first registered.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &AnimationData)> {
-        self.animations.iter().map(|(k, v)| (k.as_str(), v))
+        self.clips.iter().map(|clip| (clip.id.as_str(), &clip.data))
     }
 
     /// Animation ID for source path.
     #[must_use]
     pub fn id_for_path(&self, path: &Path) -> Option<&str> {
-        self.path_to_id.get(path).map(String::as_str)
+        let &slot = self.paths.get(path)?;
+        Some(self.clips[slot as usize].id.as_str())
     }
 
+    /// The clips' IDs, in the order they first registered.
     pub fn ids(&self) -> impl Iterator<Item = &str> {
-        self.animations.keys().map(String::as_str)
+        self.clips.iter().map(|clip| clip.id.as_str())
     }
 }
 
@@ -135,7 +210,11 @@ impl AnimationRegistry {
 #[derive(Debug, Clone)]
 pub struct AnimationState {
     pub animation_id: String,
-    pub frame_index: usize,
+    /// The frame shown; a clip holds fewer than 2^32.
+    pub frame_index: u32,
+    /// Its clip's slot in the registry that last advanced it, checked
+    /// against [`animation_id`](Self::animation_id) at each use.
+    slot: u32,
     pub accumulated_ms: f32,
     pub playing: bool,
     pub finished: bool,
@@ -167,6 +246,7 @@ impl AnimationState {
         Self {
             animation_id: animation_id.into(),
             frame_index: 0,
+            slot: NO_SLOT,
             accumulated_ms: 0.0,
             playing: true,
             finished: false,
@@ -220,14 +300,16 @@ impl AnimationState {
 
     /// Current frame's sprite ID.
     #[must_use]
+    #[inline]
     pub fn current_sprite(&self, registry: &AnimationRegistry) -> Option<SpriteAssetId> {
-        let anim = registry.get(&self.animation_id)?;
-        let frame = anim.frames.get(self.frame_index)?;
+        let (_, anim) = registry.find(self.slot, &self.animation_id)?;
+        let frame = anim.frames.get(self.frame_index as usize)?;
         Some(frame.sprite)
     }
 
     /// Advance by milliseconds at its [`speed`](Self::speed); returns the new
     /// frame's sprite ID on a frame change.
+    #[inline]
     pub fn advance(&mut self, dt_ms: f32, registry: &AnimationRegistry) -> Option<SpriteAssetId> {
         self.advance_entering(dt_ms, registry).sprite
     }
@@ -236,12 +318,16 @@ impl AnimationState {
     /// a sound (redo 7.9): a frame is entered when playback moves into it,
     /// a loop's wrap into the first frame included, so a clip's first frame
     /// sounds on each wrap, never at the clip's start.
+    #[inline]
     pub fn advance_entering(&mut self, dt_ms: f32, registry: &AnimationRegistry) -> Advanced {
         if !self.playing || self.finished {
             return Advanced::default();
         }
-        match registry.get(&self.animation_id) {
-            Some(clip) => self.advance_in(dt_ms, clip),
+        match registry.find(self.slot, &self.animation_id) {
+            Some((slot, clip)) => {
+                self.slot = slot;
+                self.advance_in(dt_ms, clip)
+            }
             None => Advanced::default(),
         }
     }
@@ -249,6 +335,7 @@ impl AnimationState {
     /// [`advance_entering`](Self::advance_entering) in `clip`, the state's
     /// animation as its caller found it: a pass over many states on one
     /// clip looks it up once.
+    #[inline]
     pub fn advance_in(&mut self, dt_ms: f32, clip: &AnimationData) -> Advanced {
         let anim = clip;
         let mut advanced = Advanced::default();
@@ -260,36 +347,38 @@ impl AnimationState {
         let old_frame = self.frame_index;
         // A hot reload may replace the clip with fewer frames while playback
         // still points into the old clip. Preserve progress up to its new end.
-        self.frame_index = self.frame_index.min(anim.frames.len() - 1);
+        let mut frame = (self.frame_index as usize).min(anim.frames.len() - 1);
 
         // Bound zero-duration frame loops.
         let max_steps = anim.frames.len() * 2;
         for _ in 0..max_steps {
-            let current_frame = &anim.frames[self.frame_index];
+            let current_frame = &anim.frames[frame];
             let dur = (current_frame.duration_ms as f32).max(1.0);
             if self.accumulated_ms < dur {
                 break;
             }
 
             self.accumulated_ms -= dur;
-            self.frame_index += 1;
+            frame += 1;
 
-            if self.frame_index >= anim.frames.len() {
+            if frame >= anim.frames.len() {
                 if anim.looping {
-                    self.frame_index = 0;
+                    frame = 0;
                 } else {
-                    self.frame_index = anim.frames.len() - 1;
+                    frame = anim.frames.len() - 1;
                     self.finished = true;
                     break;
                 }
             }
-            if anim.frames[self.frame_index].sound.is_some() {
-                advanced.sound_frame = Some(self.frame_index);
+            if anim.frames[frame].sound.is_some() {
+                advanced.sound_frame = Some(frame);
             }
         }
 
+        // A clip holds fewer than 2^32 frames.
+        self.frame_index = frame as u32;
         if self.frame_index != old_frame {
-            advanced.sprite = Some(anim.frames[self.frame_index].sprite);
+            advanced.sprite = Some(anim.frames[frame].sprite);
         }
         advanced
     }

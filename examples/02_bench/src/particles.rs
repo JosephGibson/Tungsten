@@ -370,7 +370,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
             let clip = index as u32 % clips;
             let frame = rng.next_u32() % FRAMES_PER_CLIP;
             let mut state = AnimationState::new(clip_id(clip));
-            state.frame_index = frame as usize;
+            state.frame_index = frame;
             state.accumulated_ms = rng.next_f32_unit() * duration_ms as f32;
             let mut sprite = Sprite::new(frame_ids[clip as usize][frame as usize]);
             sprite.z_order = -1;

@@ -808,7 +808,7 @@ fn strips(world: &mut World) {
 }
 
 /// `entity`'s clip, frame and whether it plays.
-fn held(world: &World, entity: Entity) -> (String, usize, bool) {
+fn held(world: &World, entity: Entity) -> (String, u32, bool) {
     let state = world.get::<AnimationState>(entity).unwrap();
     (state.animation_id.clone(), state.frame_index, state.playing)
 }
@@ -843,7 +843,7 @@ fn an_aim_strip_holds_the_frame_nearest_the_aim() {
         (1.0, 1.0, 3),
         (0.0, 1.0, 4),
     ] {
-        let sprite = SpriteAssetId::new(200 + want as u32);
+        let sprite = SpriteAssetId::new(200 + want);
         assert_eq!(
             at(&mut world, x, y),
             (("pose_right".into(), want, false), sprite),
@@ -939,7 +939,7 @@ fn an_aim_strip_from_down_matches_a_pose_list() {
             frame(&mut world, &mut schedule, dt);
             let shown = held(&world, list).0;
             let pose = poses.iter().position(|id| *id == shown).unwrap();
-            assert_eq!(held(&world, strip).1, pose, "{aim}");
+            assert_eq!(held(&world, strip).1 as usize, pose, "{aim}");
         }
     }
 }
