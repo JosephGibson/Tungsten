@@ -26,7 +26,6 @@ mod data;
 mod dummy;
 mod enemies;
 mod fixed_step;
-mod frame_time;
 mod guards;
 mod gun;
 mod hazards;
