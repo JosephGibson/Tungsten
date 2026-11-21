@@ -559,12 +559,24 @@ fn a_tag_two_instances_grant_leaves_with_the_second_to_expire_in_both_orders() {
 
 #[test]
 fn an_effect_that_only_counts_down_keeps_the_full_steps_time_and_end() {
+    // Alone, and among a crowd of ticking effects that rests the counting
+    // pass, so the full step counts it on most steps.
+    for crowd in [0, 40] {
+        only_counting_effects_end_as_ticking_ones_do(crowd);
+    }
+}
+
+fn only_counting_effects_end_as_ticking_ones_do(crowd: usize) {
     let (mut world, mut schedule) = rig();
     // `plain` and the inline twin only count their time, which the tick
     // does in place; `ticking` has a period, so it takes the full step.
     let timed = || Effect::new().with_duration(0.25);
     let plain = insert(&mut world, "plain", timed().with_grant(["status.marked"]));
     let ticking = insert(&mut world, "ticking", timed().with_period(10.0));
+    for _ in 0..crowd {
+        let holder = world.spawn();
+        EffectRequest::new(holder, ticking.clone()).apply(&mut world);
+    }
     let holders = [plain, DataRef::inline(timed()), ticking].map(|effect| {
         let holder = world.spawn();
         EffectRequest::new(holder, effect).apply(&mut world);
@@ -581,7 +593,11 @@ fn an_effect_that_only_counts_down_keeps_the_full_steps_time_and_end() {
     for at in 1..=20 {
         step(&mut world, &mut schedule, STEP);
         let [plain, inline, ticking] = lefts(&world);
-        assert_eq!((plain, inline), (ticking, ticking), "step {at}");
+        assert_eq!(
+            (plain, inline),
+            (ticking, ticking),
+            "step {at}, crowd {crowd}"
+        );
         for (holder, end) in ended.iter_mut().enumerate() {
             if end.is_none() && instances(&world, holders[holder]).is_empty() {
                 *end = Some(at);

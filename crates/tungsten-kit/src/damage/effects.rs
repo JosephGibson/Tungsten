@@ -3782,6 +3782,10 @@ struct Ticked {
 /// ID past either takes the full step.
 const COUNTING_CAP: usize = 64;
 const COUNTING_ID: usize = 48;
+/// The steps the counting pass sits out after a run that found few
+/// holders to count: under a twentieth of the steps, so a World of ticking
+/// effects pays its read of them in none of its slower frames.
+const COUNTING_REST: u8 = 31;
 
 /// One `effects` entry [`Counting`] knows: its ID's bytes, in place, and
 /// whether it only counts.
@@ -3849,6 +3853,11 @@ impl Counting {
     /// pending, and each instance one that only counts, with no period or
     /// emission clock to drop and not ending in this step. The full step
     /// would change such a holder the same way and touch nothing else.
+    /// Kept out of line: inlined, it grew [`Ticker::run`] until the
+    /// compiler inlined [`definition`] through the full step's code, which
+    /// cost the steps of effects that do tick (02's `spread`, its
+    /// `effect_tick` p95 1.36 to 1.45 ms).
+    #[inline(never)]
     fn count_down(&mut self, effects: &mut Effects, dt: f32) -> bool {
         let plain = effects.pending.is_empty()
             && effects.instances.iter().all(|instance| {
@@ -3875,6 +3884,10 @@ impl Counting {
 #[derive(Default)]
 struct Ticker {
     counting: Counting,
+    /// The steps the counting pass still sits out, and the holders its
+    /// last run met.
+    rest: u8,
+    met: usize,
     entities: Vec<Entity>,
     payloads: Vec<Payload>,
     expired: Vec<EffectInstance>,
@@ -3899,7 +3912,11 @@ impl Ticker {
     /// the query's pass ([`Counting::count_down`]): its step reads and
     /// writes nothing else, so its place in the order shows nowhere. The
     /// rest per entity in index order: the pending entries queued, then
-    /// each instance's period and time left counted.
+    /// each instance's period and time left counted. The pass reads every
+    /// holder's instances, which pays where enough of them only count:
+    /// after a run that found under an eighth it sits out
+    /// [`COUNTING_REST`] steps, or until the holders grow by an eighth,
+    /// and every holder takes the full step meanwhile, to the same end.
     fn run(&mut self, world: &mut World) {
         let dt = world
             .get_resource::<Time>()
@@ -3908,14 +3925,29 @@ impl Ticker {
         if let Some(holders) = world.get_resource_mut::<LookHolders>() {
             holders.0.clear();
         }
-        self.counting.refresh(world);
+        let asking = self.rest == 0;
+        if asking {
+            self.counting.refresh(world);
+        }
         self.entities.clear();
-        let mut holders = 0_usize;
+        let (mut holders, mut counted) = (0_usize, 0_usize);
         for (entity, effects) in world.query_mut::<(Entity, &mut Effects)>() {
             holders += 1;
-            if !self.counting.count_down(effects, dt) {
+            if asking && self.counting.count_down(effects, dt) {
+                counted += 1;
+            } else {
                 self.entities.push(entity);
             }
+        }
+        if asking {
+            self.met = holders;
+            if counted * 8 < holders {
+                self.rest = COUNTING_REST;
+            }
+        } else if holders > self.met + self.met / 8 {
+            self.rest = 0;
+        } else {
+            self.rest -= 1;
         }
         // Room for every holder, in 64s, so one that turns busy mid-play
         // grows no list.
