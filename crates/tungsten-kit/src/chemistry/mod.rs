@@ -431,6 +431,13 @@ impl Ticker {
     }
 }
 
+/// Tests: a World resource that makes chemistry's runs take the paths they
+/// took before a receiver's kept slot was a hint: every first reach probes
+/// the queue's index, every build of the grid sorts its cells and the take
+/// keys every waiting entry.
+#[cfg(test)]
+pub(crate) struct AsItStood;
+
 /// [`CHEMISTRY`]'s state between steps: its place in the parts queue and
 /// its scratch lists, kept so a run allocates little once warm.
 #[derive(Default)]
@@ -454,6 +461,13 @@ impl Runner {
         }
         snapshot(world, &mut self.rules);
         let settings = Settings::of(world);
+        #[cfg(test)]
+        let as_it_stood = world.has_resource::<AsItStood>();
+        #[cfg(test)]
+        {
+            self.reach.probe_all = as_it_stood;
+            self.reach.grid.sort_every_build = as_it_stood;
+        }
         // A queue a load restored meets this World's settings first.
         if world
             .get_resource::<Chemistry>()
@@ -462,6 +476,8 @@ impl Runner {
             let mut chemistry = world.remove_resource::<Chemistry>().unwrap();
             chemistry.enforce(world, &settings);
             world.insert_resource(chemistry);
+            // The load rebuilt the queue: no slot kept before it is a hint.
+            self.reach.forget_slots();
         }
         let Some(run) = world
             .get_resource::<Chemistry>()
@@ -546,6 +562,13 @@ impl Runner {
         let mut taken = std::mem::take(&mut self.taken);
         {
             let mut chemistry = world.remove_resource::<Chemistry>().unwrap();
+            #[cfg(test)]
+            if as_it_stood {
+                chemistry.take_keying_every_entry(world, settings.cap, run, &mut taken);
+            } else {
+                chemistry.take(world, settings.cap, run, &mut taken);
+            }
+            #[cfg(not(test))]
             chemistry.take(world, settings.cap, run, &mut taken);
             chemistry.run = run + 1;
             world.insert_resource(chemistry);

@@ -91,6 +91,9 @@ pub(crate) struct Reach {
     /// in: every emission that reaches a receiver after the first merges
     /// there without a probe of the queue's index. A pass only adds to the
     /// queue and holds no receiver, so a slot it found stays its pair's.
+    /// A slot of an earlier pass stays as a hint for a pass's first reach,
+    /// which the queue checks against the entry the slot holds
+    /// ([`Chemistry::stimulate_entity`]), whoever the candidate is by then.
     kept: Vec<Kept>,
     /// [`spread`]'s pass, which stamps `kept`; 0 before the first.
     pass: u32,
@@ -151,7 +154,8 @@ impl Reach {
         cells_within(world, point, radius, skip, &mut self.names, &mut self.cells);
     }
 
-    /// Begins a pass of [`spread`]: no slot of an earlier pass is kept.
+    /// Begins a pass of [`spread`]: a slot an earlier pass kept is a hint
+    /// from here on, which the queue checks before it merges there.
     fn begin_pass(&mut self) {
         self.pass = self.pass.wrapping_add(1);
         if self.pass == 0 {
@@ -159,6 +163,12 @@ impl Reach {
             self.kept.clear();
             self.pass = 1;
         }
+    }
+
+    /// Forgets every kept slot: a load rebuilt the queue they were found
+    /// in.
+    pub(crate) fn forget_slots(&mut self) {
+        self.kept.clear();
     }
 
     /// Puts the pass at its last stamp, so a test's next pass begins the
@@ -260,8 +270,19 @@ pub(crate) fn spread(
                 }
                 continue;
             }
-            let receiver = Receiver::Entity(candidate.entity);
-            if let Some(slot) = chemistry.stimulate_slot(settings, receiver, id, stimulus, run)
+            // The pass's first reach of this receiver: the slot an earlier
+            // pass kept for the stimulus is a hint the queue checks.
+            let hint =
+                (kept.pass != 0 && kept.stimulus == id && !probe_all).then_some(kept.slot as usize);
+            #[cfg(test)]
+            let hinted = chemistry.hinted;
+            let slot =
+                chemistry.stimulate_entity(settings, candidate.entity, id, stimulus, run, hint);
+            #[cfg(test)]
+            {
+                reach.skipped += chemistry.hinted - hinted;
+            }
+            if let Some(slot) = slot
                 && let Ok(slot) = u32::try_from(slot)
             {
                 *kept = Kept {

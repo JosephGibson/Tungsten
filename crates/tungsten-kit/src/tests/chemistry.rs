@@ -3620,3 +3620,227 @@ fn a_squared_bound_is_the_last_square_whose_root_fits() {
     // root both round.
     assert!(rounded_up > 500, "{rounded_up}");
 }
+
+// A receiver's kept slot as a hint across runs, the cells' order kept, the
+// coordinate without `floorf` and the take's cut-off age (phase 7's C2),
+// against the runs as they stood (`AsItStood`).
+
+/// A seeded field for the twin runs: 20 × 20 named receivers 24 px apart,
+/// `heat` building `burning` on them and `elemental.fire` too, six sturdier
+/// ones with health among them, three lit; chemistry at a cap of 24, a
+/// bound of 300 and a depth limit of 2, so the queue backs up, drops and
+/// cuts. Returns the World, its schedule, the receivers and the sturdy
+/// ones.
+fn hinted_field(as_it_stood: bool) -> (World, Schedule, Vec<Entity>, Vec<Entity>) {
+    let plugin = ChemistryPlugin::new()
+        .with_cap(24)
+        .with_bound(300)
+        .with_depth(2);
+    let (mut world, schedule) = rig_with(&plugin);
+    if as_it_stood {
+        world.insert_resource(AsItStood);
+    }
+    let receivers = field(&mut world, 400);
+    rule(
+        &mut world,
+        "kindles",
+        json!({ "stimulus": "elemental.fire", "on": { "all": ["flammable"] }, "outputs": [{ "build": { "status": "burning", "amount": 2 } }] }),
+    );
+    let sturdy: Vec<Entity> = (0..6)
+        .map(|at| {
+            let entity = receiver(&mut world, &["flammable"]);
+            let point = Vec2::new(60.0 + 70.0 * at as f32, 130.0);
+            world.insert(entity, Transform::from_position(point));
+            entity
+        })
+        .collect();
+    for (at, &entity) in receivers.iter().chain(&sturdy).enumerate() {
+        tungsten_core::save::name(&mut world, entity, None, &format!("r{at}")).unwrap();
+    }
+    for at in [21, 190, 377] {
+        EffectRequest::new(receivers[at], DataRef::by_id("burning")).apply(&mut world);
+    }
+    (world, schedule, receivers, sturdy)
+}
+
+#[test]
+fn chemistrys_runs_with_hints_queue_what_the_runs_as_they_stood_do() {
+    for seed in [4_u64, 31] {
+        let (mut old, mut old_schedule, receivers, sturdy) = hinted_field(true);
+        let (mut new, mut new_schedule, same, _) = hinted_field(false);
+        assert_eq!(same, receivers);
+        let mut stream = seed;
+        let mut live: Vec<Entity> = receivers.clone();
+        let (mut hinted, mut loads, mut despawned, mut held, mut peak) = (0, 0, 0, 0, 0);
+        for run in 0..260_u32 {
+            // One stream scripts both Worlds: a direct hit, an emission past
+            // the depth limit, a hold, and a despawn, by seeded turns.
+            let pick = |stream: &mut u64, of: &[Entity]| {
+                of[(grid_draw(stream) % of.len() as u64) as usize]
+            };
+            if grid_draw(&mut stream).is_multiple_of(4) {
+                let target = pick(&mut stream, &sturdy);
+                for world in [&mut old, &mut new] {
+                    hit(world, target, "elemental.fire", 2.0);
+                }
+            }
+            if grid_draw(&mut stream).is_multiple_of(6) {
+                let from = pick(&mut stream, &live);
+                for world in [&mut old, &mut new] {
+                    let heat = stimuli::Named::New("heat".into());
+                    stimuli::emit_from(world, from, heat, 1.0, 60.0, None, 3);
+                }
+            }
+            if grid_draw(&mut stream).is_multiple_of(9) {
+                let entity = pick(&mut stream, &live);
+                held += 1;
+                for world in [&mut old, &mut new] {
+                    world.resource_mut::<Chemistry>().hold(entity);
+                }
+            }
+            if grid_draw(&mut stream).is_multiple_of(5) {
+                let at = (grid_draw(&mut stream) % live.len() as u64) as usize;
+                let entity = live.swap_remove(at);
+                despawned += 1;
+                for world in [&mut old, &mut new] {
+                    world.despawn(entity);
+                }
+            }
+            step(&mut old, &mut old_schedule);
+            step(&mut new, &mut new_schedule);
+            let (want, got) = (chemistry(&old), chemistry(&new));
+            assert_eq!(got.slotted(), want.slotted(), "seed {seed}, run {run}");
+            assert_eq!(
+                (got.pending(), got.dropped(), got.cut(), got.ran()),
+                (want.pending(), want.dropped(), want.cut(), want.ran()),
+                "seed {seed}, run {run}"
+            );
+            assert_eq!(want.hinted, 0, "the runs as they stood take no hint");
+            peak = peak.max(want.pending());
+            // The saved forms, and twice a load of each World's own save:
+            // the queue comes back in its saved order, under other slots.
+            if run % 20 == 19 {
+                let saves = [&old, &new].map(|world| capture_world(world).unwrap());
+                let [saved_old, saved_new] = &saves;
+                assert_eq!(
+                    serde_json::to_value(saved_new).unwrap(),
+                    serde_json::to_value(saved_old).unwrap(),
+                    "seed {seed}, run {run}"
+                );
+                if run == 99 || run == 179 {
+                    hinted += chemistry(&new).hinted;
+                    restore_world(&mut old, saved_old, &(Restored,)).unwrap();
+                    restore_world(&mut new, saved_new, &(Restored,)).unwrap();
+                    assert_eq!(chemistry(&new).slotted(), chemistry(&old).slotted());
+                    loads += 1;
+                }
+            }
+        }
+        hinted += chemistry(&new).hinted;
+        let queue = chemistry(&old);
+        let seen = format!(
+            "seed {seed}: {hinted} hinted, {} ran, {} dropped, {} cut, peak {peak}, {despawned} \
+             despawned, {held} held, {loads} loads",
+            queue.ran(),
+            queue.dropped(),
+            queue.cut(),
+        );
+        assert!(hinted > 1_000, "{seen}");
+        assert!(
+            queue.ran() > 2_000 && queue.dropped() > 0 && queue.cut() > 20,
+            "{seen}"
+        );
+        assert!(
+            peak >= 200 && despawned > 30 && held > 15 && loads == 2,
+            "{seen}"
+        );
+    }
+}
+
+#[test]
+fn a_coordinate_is_the_floor_of_its_cell() {
+    // The cell of every kind of float: seeded bit patterns, the values
+    // about each cell's edge, and the ends.
+    let mut stream = 17_u64;
+    let mut values: Vec<f32> = vec![
+        0.0,
+        -0.0,
+        63.999_996,
+        64.0,
+        -64.0,
+        -64.000_01,
+        f32::MIN_POSITIVE,
+        -f32::MIN_POSITIVE,
+        f32::MAX,
+        f32::MIN,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NAN,
+        -f32::NAN,
+        64.0 * 2_147_483_648.0,
+        -64.0 * 2_147_483_648.0,
+        64.0 * 2_147_483_520.0,
+        64.0 * 16_777_216.0,
+        -64.0 * 16_777_217.0,
+    ];
+    for _ in 0..200_000 {
+        values.push(f32::from_bits(grid_draw(&mut stream) as u32));
+        // About a cell's edge, either side of zero.
+        let cell = (grid_draw(&mut stream) % 4_000_000) as f32 - 2_000_000.0;
+        let edge = cell * 64.0;
+        values.extend([edge, edge.next_down(), edge.next_up()]);
+    }
+    let mut negative_fractions = 0;
+    for value in values {
+        let want = grid::coordinate_by_floor(value);
+        assert_eq!(grid::coordinate_of(value), want, "{value:?}");
+        negative_fractions += usize::from(value < 0.0 && value % 64.0 != 0.0);
+    }
+    assert!(negative_fractions > 100_000);
+}
+
+#[test]
+fn a_take_by_its_cut_off_age_takes_what_keying_every_entry_does() {
+    // Queues of entries queued over 3 to 200 runs, taken at seeded caps
+    // and runs: the entries taken, in order, and the ones left are the
+    // same whether every waiting entry gets a key or only those at the
+    // cap's cut-off age or before.
+    let (mut world, _) = rig();
+    let entities: Vec<Entity> = (0..400).map(|_| world.spawn()).collect();
+    let mut stream = 23_u64;
+    let (mut taken_some, mut left_some, mut old_ages) = (0, 0, 0);
+    for round in 0..300 {
+        let span = [3, 20, 64, 200][round % 4];
+        let count = 1 + (grid_draw(&mut stream) % 400) as usize;
+        let run = span + grid_draw(&mut stream) % 3;
+        let cap = [0, 1, 7, 64, 256, 1_000][(grid_draw(&mut stream) % 6) as usize];
+        let build = |stream: &mut u64| {
+            let mut queue = Chemistry::default();
+            let settings = Settings::default();
+            for &entity in &entities[..count] {
+                let age = grid_draw(stream) % (span + 4);
+                let receiver = Receiver::Entity(entity);
+                let name = ["heat", "ping", "pong"][(grid_draw(stream) % 3) as usize];
+                let stimulus = Stimulus {
+                    amount: 1.0,
+                    status_effect: 1.0,
+                    dot_base: 1.0,
+                    depth: (grid_draw(stream) % 3) as u8,
+                    credit: None,
+                };
+                queue.stimulate(&settings, receiver, name, stimulus, age);
+            }
+            queue
+        };
+        let (mut by_age, mut every) = (build(&mut stream.clone()), build(&mut stream));
+        let (mut got, mut want) = (Vec::new(), Vec::new());
+        by_age.take(&world, cap, run, &mut got);
+        every.take_keying_every_entry(&world, cap, run, &mut want);
+        assert_eq!(got, want, "round {round}: cap {cap}, run {run}");
+        assert_eq!(by_age.slotted(), every.slotted(), "round {round}");
+        taken_some += usize::from(!want.is_empty());
+        left_some += usize::from(every.pending() > 0);
+        old_ages += usize::from(span == 200);
+    }
+    assert!(taken_some > 200 && left_some > 200 && old_ages == 75);
+}

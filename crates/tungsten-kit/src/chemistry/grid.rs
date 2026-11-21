@@ -57,6 +57,10 @@ pub(crate) struct Grid {
     candidates: Vec<Candidate>,
     /// `(cell key, candidate)`, sorted.
     cells: Vec<(u64, u32)>,
+    /// Each candidate's cell key, by candidate: while a build finds them
+    /// all as the last one left them, the sorted cells and their directory
+    /// stand, and only the packed entries are read again.
+    keys: Vec<u64>,
     /// `cells`' candidates as a query's scan reads them, in `cells`' order.
     packed: Vec<Packed>,
     /// Where each cell's entries start, while the cells' box is small.
@@ -65,6 +69,12 @@ pub(crate) struct Grid {
     /// widens its cells by it.
     reach: f32,
     built: bool,
+    /// Tests: the builds that sorted the cells, and a switch that makes
+    /// every build sort them, as each did.
+    #[cfg(test)]
+    pub(crate) sorted: u32,
+    #[cfg(test)]
+    pub(crate) sort_every_build: bool,
 }
 
 /// A candidate under its cell: its centre, its place among the candidates
@@ -170,8 +180,26 @@ fn square_bound(radius: f32) -> f32 {
 }
 
 /// A cell coordinate, clamped to `i32` and offset so keys sort by column,
-/// then row.
+/// then row: the floor of `value / CELL`, 0 for a NaN, taken by a truncation
+/// and a step down for a negative fraction, with no call to `floorf`. The
+/// clamp's bounds are whole, so clamping first gives the floor's clamp.
 fn coordinate(value: f32) -> u64 {
+    let scaled = value / CELL;
+    let cell = if scaled.is_nan() {
+        0
+    } else {
+        // At most 2^31 either way, so the cast is exact, and its `f32` is
+        // the float itself or the whole number it was cut to.
+        let scaled = scaled.clamp(i32::MIN as f32, i32::MAX as f32);
+        let whole = scaled as i64;
+        whole - i64::from(whole as f32 > scaled)
+    };
+    (cell + (1_i64 << 31)) as u64
+}
+
+/// Tests: [`coordinate`] as it stood, by `f32::floor`.
+#[cfg(test)]
+pub(crate) fn coordinate_by_floor(value: f32) -> u64 {
     let cell = (value / CELL).floor();
     let cell = if cell.is_nan() {
         0
@@ -179,6 +207,12 @@ fn coordinate(value: f32) -> u64 {
         cell.clamp(i32::MIN as f32, i32::MAX as f32) as i64
     };
     (cell + (1_i64 << 31)) as u64
+}
+
+/// Tests: [`coordinate`].
+#[cfg(test)]
+pub(crate) fn coordinate_of(value: f32) -> u64 {
+    coordinate(value)
 }
 
 fn key(column: u64, row: u64) -> u64 {
@@ -204,7 +238,6 @@ impl Grid {
         }
         self.built = true;
         self.candidates.clear();
-        self.cells.clear();
         self.reach = 0.0;
         for (entity, _) in world.query::<(Entity, &Tags)>() {
             if let Some((centre, shape)) = locate(world, entity) {
@@ -232,19 +265,34 @@ impl Grid {
         let order = order_of(world);
         self.candidates
             .sort_by_key(|candidate| order.key(candidate.entity));
-        for (index, candidate) in self.candidates.iter().enumerate() {
+        // The candidates' keys, and whether each is the last build's: the
+        // cells are `(key, candidate)` sorted, so they stand while every
+        // candidate keeps its key.
+        let mut same = self.keys.len() == self.candidates.len();
+        self.keys.resize(self.candidates.len(), 0);
+        for (candidate, kept) in self.candidates.iter().zip(&mut self.keys) {
             if let Some(shape) = candidate.shape {
                 self.reach = self.reach.max(shape.half_extents().length());
             }
-            self.cells.push((
-                key(
-                    coordinate(candidate.centre.x),
-                    coordinate(candidate.centre.y),
-                ),
-                index as u32,
-            ));
+            let key = key(
+                coordinate(candidate.centre.x),
+                coordinate(candidate.centre.y),
+            );
+            same &= *kept == key;
+            *kept = key;
         }
-        self.cells.sort_unstable();
+        #[cfg(test)]
+        {
+            same &= !self.sort_every_build;
+            self.sorted += u32::from(!same);
+        }
+        if !same {
+            self.cells.clear();
+            self.cells
+                .extend(self.keys.iter().zip(0..).map(|(&key, index)| (key, index)));
+            self.cells.sort_unstable();
+            self.directory.build(&self.cells);
+        }
         self.packed.clear();
         self.packed.extend(self.cells.iter().map(|&(_, index)| {
             let candidate = &self.candidates[index as usize];
@@ -254,7 +302,6 @@ impl Grid {
                 shaped: candidate.shape.is_some(),
             }
         }));
-        self.directory.build(&self.cells);
     }
 
     /// Into `out`, in the candidates' order, every candidate within
