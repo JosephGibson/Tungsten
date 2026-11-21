@@ -4,7 +4,7 @@
 
 use glam::Vec2;
 use tungsten::core::{Entity, Time, With, Without, World};
-use tungsten::kit::{Aim, Health, Used, cursor_to_world, use_ability};
+use tungsten::kit::{Aim, Health, Used, cap_refuses, cursor_to_world, use_ability};
 
 use super::components::{Refusal, Refused, Spell, Spellbook, Summon};
 use super::{
@@ -16,11 +16,11 @@ use crate::features::lightning;
 use crate::features::player;
 use crate::features::run::Run;
 use crate::features::toys::components::{FireMissile, Spray};
-use crate::features::toys::flask::FLASK_CAP;
-use crate::features::toys::{self, BALL_CAP, MISSILE_CAP};
+use crate::features::toys::flask::FLASK_PREFAB;
+use crate::features::toys::{self, BALL_CAP, FIRE_MISSILE_PREFAB};
 use crate::features::{dummy, enemies, props};
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, just_pressed, pressed, spawn_key_burst};
+use crate::shared::{Joined, just_pressed, pressed, spawn_key_burst};
 use crate::shell;
 
 /// The run's player while it lives.
@@ -45,7 +45,8 @@ fn aim(world: &World, player: Entity) -> Vec2 {
 /// react phase, and the small balls forget what they owed and stop their
 /// loop, spending nothing at the balls' cap. One refused for mana stays off
 /// until the cast is released (I2). A held spell's refusal is said on the
-/// step it is first refused, once a press ([`refuse_cast`]).
+/// step it is first refused, once a press ([`refuse_cast`]): its no mana,
+/// or the small balls' cap.
 pub fn cast(world: &mut World) {
     let Some(player) = caster(world) else {
         toys::stop_small_balls(world);
@@ -70,7 +71,7 @@ pub fn cast(world: &mut World) {
                         refuse(world);
                     }
                     placing = used == Used::Used && spell == Spell::SmallBalls;
-                    Refusal::of(used)
+                    (used == Used::NoCost).then_some(Refusal::NoMana)
                 };
                 if let Some(refusal) = refusal {
                     say(world, player, refusal);
@@ -86,16 +87,13 @@ pub fn cast(world: &mut World) {
 }
 
 /// Says why a cast was refused at `at`, the cursor's point or else the
-/// wizard's: no mana and not ready each play their sound, not ready
-/// flashing the selected slot red, and no room fizzles there with its own,
-/// a key burst.
+/// wizard's: no mana plays its sound, and no room fizzles there with its
+/// own, a key burst. It says 01's own refusals, before any use, and a held
+/// spell's; a pressed spell's use refused says why through its ability's
+/// `ability_refused` rules, at the aim.
 pub fn refuse_cast(world: &mut World, refusal: Refusal, at: Vec2) {
     match refusal {
         Refusal::NoMana => audio::play(world, Sound::NoMana, at),
-        Refusal::NotReady => {
-            audio::play(world, Sound::NotReady, at);
-            super::hud::refused(world);
-        }
         Refusal::NoRoom => {
             spawn_key_burst(world, "ex10_fizzle", at);
             audio::play(world, Sound::Fizzled, at);
@@ -213,26 +211,27 @@ fn hold(world: &mut World, player: Entity, spell: Spell) -> Used {
         let dt = world.resource::<Time>().delta();
         toys::place_small_balls(world, at, dt);
     }
-    player::cast(world, player, aim, spell.gesture());
+    player::cast(world, player, spell.gesture());
     Used::Used
 }
 
 /// A press of `spell`: refused before its ability spends anything while
-/// its toy is at its cap (a flask's [`FLASK_CAP`] in flight), it needs the
-/// cursor and has none, a summon's box
-/// would overlap a solid tile there, or an iron block, a crate or a keg
-/// would not fit there (`toys::iron_fits`, `props::fits`); then its use,
-/// then its toy. A refusal says why, once ([`refuse_cast`]).
+/// its toy is at its cap (the missile's and a flask's prefabs' refusing
+/// `cap`s by `kit::cap_refuses`, the balls' table), it needs the cursor and
+/// has none, a summon's box would overlap a solid tile there, or an iron
+/// block, a crate or a keg would not fit there (`toys::iron_fits`,
+/// `props::fits`); then its use, then its toy. A refusal says why, once
+/// ([`refuse_cast`]).
 fn press(world: &mut World, player: Entity, spell: Spell) {
     let Some(centre) = player::centre(world, player) else {
         return;
     };
     let at = cursor_to_world(world);
     let refused = match spell {
-        Spell::FireMissile => toys::missile_count(world) >= MISSILE_CAP,
+        Spell::FireMissile => cap_refuses(world, FIRE_MISSILE_PREFAB),
         Spell::BowlingBall => toys::ball_count(world) >= BALL_CAP,
         Spell::BlackHole | Spell::Lightning => at.is_none(),
-        Spell::ToxicFlask => at.is_none() || toys::flask::count(world) >= FLASK_CAP,
+        Spell::ToxicFlask => at.is_none() || cap_refuses(world, FLASK_PREFAB),
         Spell::IronBlock => at.is_none_or(|at| !toys::iron_fits(world, at)),
         Spell::Summon => at.is_none_or(|at| {
             let summoned = summon_type(world).summoned;
@@ -245,19 +244,16 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         }),
         _ => false,
     };
-    let used = if refused {
-        None
-    } else {
-        Some(use_ability(world, player, spell.ability()))
-    };
-    let refusal = match used {
-        None => Some(Refusal::NoRoom),
-        Some(used) if used != Used::Used => Refusal::of(used),
-        Some(_) => None,
-    };
-    if refused || used != Some(Used::Used) {
-        if let Some(refusal) = refusal {
-            refuse_cast(world, refusal, at.unwrap_or(centre));
+    if refused {
+        refuse_cast(world, Refusal::NoRoom, at.unwrap_or(centre));
+        return;
+    }
+    // A use's refusal sounds from its ability's `ability_refused` rules;
+    // not ready or out of charges, its slot flashes red.
+    let used = use_ability(world, player, spell.ability());
+    if used != Used::Used {
+        if matches!(used, Used::NotReady | Used::NoCharge) {
+            super::hud::refused(world);
         }
         return;
     }
@@ -265,10 +261,10 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
     let at = at.unwrap_or(centre);
     match spell {
         // The ability's spawn payload fires it; `adopt` takes it in.
-        Spell::FireMissile => audio::play(world, Sound::Cast, centre),
+        // Its sound, and each cast's, is its ability's `ability_used` rule.
+        Spell::FireMissile => {}
         Spell::ForcePush => {
             toys::wave::cast(world, centre, aim);
-            audio::play(world, Sound::Pushed, centre);
         }
         Spell::BlackHole => {
             toys::place_black_hole(world, at);
@@ -284,7 +280,6 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         }
         Spell::ToxicFlask => {
             toys::flask::throw(world, player, centre, at);
-            audio::play(world, Sound::FlaskThrown, centre);
         }
         Spell::Summon => {
             let summoned = summon_type(world);
@@ -299,11 +294,10 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
                     dummy::summon(world, summoned.prefab, at);
                 }
             }
-            audio::play(world, Sound::Summoned, at);
         }
         Spell::Flamethrower | Spell::IceSpray | Spell::SmallBalls => {}
     }
-    player::cast(world, player, aim, spell.gesture());
+    player::cast(world, player, spell.gesture());
 }
 
 /// `spells_held`, in `Update`: a spray shows from the frame its cast
@@ -357,14 +351,13 @@ pub fn held(world: &mut World) {
 
 /// `missile_adopt`, in `PreUpdate` before the shell's save: each missile
 /// the fire missile's spawn payload landed at the last flush joins the
-/// toys from where the payload set it, the caster's point plus the offset
-/// along the aim, its centre moved to the caster's centre's place.
+/// toys where the payload set it, centred on the caster's centre plus the
+/// offset along the aim.
 pub fn adopt(world: &mut World) {
     let fresh: Vec<Entity> = world
-        .query_filtered::<Entity, (With<FireMissile>, Without<SaveId>)>()
+        .query_filtered::<Entity, (With<FireMissile>, Without<Joined>)>()
         .collect();
-    let centre = player::body(world).centre;
     for missile in fresh {
-        toys::adopt_missile(world, missile, centre);
+        toys::adopt_missile(world, missile);
     }
 }

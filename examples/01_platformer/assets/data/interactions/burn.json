@@ -1,0 +1,18 @@
+{
+  "stimulus": "damage.fire",
+  "on": {
+    "none": [
+      "status.frozen",
+      "status.doused"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "burn_build",
+        "scale": 1,
+        "per": "status_threshold"
+      }
+    }
+  ]
+}

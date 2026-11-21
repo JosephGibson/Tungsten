@@ -19,13 +19,12 @@ mod visual;
 
 use std::path::{Path, PathBuf};
 
-use tungsten::core::{Config, Entity, Position, Transform, UserFolder, Velocity, With};
-use tungsten::kit::{Health, Source};
+use tungsten::core::{Config, Entity, Position, Transform, UserFolder, Velocity};
+use tungsten::kit::{Health, Source, Tags};
 use tungsten::testing::UiHarness;
 use tungsten::{App, StateId};
 use tungsten_template_basic::game;
 use tungsten_template_basic::sample::SampleRun;
-use tungsten_template_basic::sample::components::Player;
 use tungsten_template_basic::shell::{self as game_shell, Difficulty, GameInfo, RunStart};
 
 /// The game's config with its user folder set: `Off` unless a test checks
@@ -34,6 +33,14 @@ pub fn config(user_folder: UserFolder) -> Config {
     let mut config = Config::load("tungsten.json").expect("tungsten.json loads");
     config.game.user_folder = user_folder;
     config
+}
+
+/// `tungsten.json`'s `ui.scale`: the UI scale an unset setting applies as.
+pub fn shipped_ui_scale() -> f32 {
+    config(UserFolder::Off)
+        .ui
+        .scale
+        .expect("tungsten.json sets ui.scale")
 }
 
 /// What `main.rs` hands the shell: the window's title from `tungsten.json`.
@@ -147,9 +154,9 @@ pub fn start(harness: &mut UiHarness) {
 pub fn player(harness: &UiHarness) -> Option<[f32; 2]> {
     harness
         .world()
-        .query_filtered::<&Transform, With<Player>>()
-        .next()
-        .map(|transform| [transform.position.x, transform.position.y])
+        .query::<(&Transform, &Tags)>()
+        .find(|(_, tags)| tags.has("team.player"))
+        .map(|(transform, _)| [transform.position.x, transform.position.y])
 }
 
 /// The player's body position: where the mover left it, which the drawn

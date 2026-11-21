@@ -1,27 +1,32 @@
 //! The mine's elevator: the map's fifth moving platform, a cage resting in
 //! its shaft's collar that carries the player to the mine's upper level,
-//! the only way up there. A step onto it, its rider's
-//! [`ground`](PlatformerController::ground) turning to it, sends it to the
-//! other stop after [`BOARD_SECS`], on a fresh stop-mode path follower; at
-//! the top it goes back down [`RETURN_SECS`] after its rider leaves.
+//! the only way up there. It is the kit's two-way lift, its prefab's
+//! `path_follower`: a step onto it by the player, the rider its rule's
+//! filter takes, sends it to its other end after the rule's `board`
+//! seconds; the rider it carried there holds it until it steps off; and at
+//! the top it goes back down the rule's `back` seconds after its last rider
+//! left. Its `departed` and `arrived` cues play its start and stop sounds.
+//! 01's own rules for it stay here, on the kit's pause and turn-back, each
+//! step before the follower's.
 //!
 //! It moves only while every controller standing on it reports it as its
 //! ground and stands wholly over it with [`MARGIN`] to spare: the carry
-//! moves a rider uncast after its own move, so a rider past an edge would
-//! be lifted into the upper level's deck, and a loaded rider's still first
-//! step finds no ground. Such a trip holds until its riders are safe again.
+//! stops a rider who overhangs its edge under the upper level's deck, where
+//! the lift would rise on into it, and a loaded rider's still first step
+//! finds no ground. A lift with such a rider is paused until its riders are
+//! safe again.
 //!
 //! Core leaves a kinematic body's pairs unsolved, so it keeps the player out
 //! of its deck itself, each step before anything else: a player inside the
 //! deck by more than [`ON_TOP`] is set out above it, or below it when its
 //! centre is under the deck's, the other side when a tile or a wall fills
 //! that one; and a falling deck whose box, swept down by its eased path's
-//! fastest step, meets a player under it turns back to the top, from where
-//! it comes down again [`RETURN_SECS`] later, so a player who stays under
-//! it keeps it up.
+//! fastest step, meets a player under it turns back the way it came, to
+//! the top, from where it comes down again once it has stood there alone,
+//! so a player who stays under it keeps it up.
 
 use glam::Vec2;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tungsten::SceneEntity;
 use tungsten::core::{
     AssetRegistry, Collider, Entity, Position, PrevPosition, Shape, Sprite, Time, Transform,
@@ -30,15 +35,10 @@ use tungsten::core::{
 use tungsten::kit::{PathFollower, PlatformerController};
 use tungsten::physics::{SpatialFilter, overlap};
 
-use crate::features::audio::{self, components::Sound};
 use crate::features::enemies::WALL_LAYERS;
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
 
-/// Seconds a rider stands on it before it goes, and seconds it waits at the
-/// top after its rider left before it goes back down.
-pub const BOARD_SECS: f32 = 0.3;
-pub const RETURN_SECS: f32 = 4.0;
 /// How far inside its edges every rider's body must stand: one step's run
 /// at the player's speed and some.
 pub const MARGIN: f32 = 12.0;
@@ -54,67 +54,35 @@ const CABLE_Z: i32 = -5;
 /// Where the cable takes the cage: its crossbar's ring, from its top-left.
 const RING: Vec2 = Vec2::new(96.0, 4.0);
 
-/// The `elevator` scene component: how far it rises and how fast, in world
-/// pixels and pixels a second.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-pub struct ElevatorDef {
-    pub rise: f32,
-    pub speed: f32,
+/// The `elevator` scene component, a marker with no fields: the deck 01's
+/// own rules read ([`tick`]) and hang a cable from ([`look`]). Its motion,
+/// its riders and its sounds are its prefab's `path_follower` and `cues`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Lift {}
+
+/// The run's lifts' decks, listed once at its start ([`start`]), so no
+/// step queries for them.
+#[derive(Debug, Clone, Default)]
+pub struct Decks(Vec<Entity>);
+
+/// At a run's start: the lifts' decks listed.
+pub fn start(world: &mut World) {
+    let decks = world
+        .query::<(Entity, &Lift)>()
+        .map(|(entity, _)| entity)
+        .collect();
+    world.insert_resource(Decks(decks));
 }
 
-/// Where the elevator stands or goes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Stop {
-    Bottom,
-    Top,
-    Rising,
-    Falling,
-}
-
-/// The elevator's state, which a save keeps: its stop, a rider's boarding
-/// seconds left (none while nobody boards), the seconds it has stood at the
-/// top unridden, whether the player stood on it last step and whether a
-/// trip holds for an unsafe rider.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Elevator {
-    pub stop: Stop,
-    pub board: Option<f32>,
-    pub idle: f32,
-    pub ridden: bool,
-    pub held: bool,
-    /// Its point at rest and at the top, and its speed.
-    pub bottom: Vec2,
-    pub top: Vec2,
-    pub speed: f32,
+/// The `at`th of the run's decks.
+fn deck(world: &World, at: usize) -> Option<Entity> {
+    world.get_resource::<Decks>()?.0.get(at).copied()
 }
 
 /// The cable's sprite, which its look keeps: not saved.
 #[derive(Debug, Clone, Copy)]
 pub struct CableLook(Entity);
-
-/// At a run's start: each elevator at rest at the bottom.
-pub fn start(world: &mut World) {
-    let lifts: Vec<(Entity, ElevatorDef, Vec2)> = world
-        .query::<(Entity, &ElevatorDef, &Position)>()
-        .map(|(entity, def, at)| (entity, *def, at.0))
-        .collect();
-    for (entity, def, bottom) in lifts {
-        world.insert(
-            entity,
-            Elevator {
-                stop: Stop::Bottom,
-                board: None,
-                idle: 0.0,
-                ridden: false,
-                held: false,
-                bottom,
-                top: bottom - Vec2::new(0.0, def.rise),
-                speed: def.speed,
-            },
-        );
-    }
-}
 
 /// A body's box: its min and max corners.
 fn bounds(at: Vec2, collider: &Collider) -> Option<(Vec2, Vec2)> {
@@ -125,12 +93,9 @@ fn bounds(at: Vec2, collider: &Collider) -> Option<(Vec2, Vec2)> {
     Some((centre - half_extents, centre + half_extents))
 }
 
-/// Who stands on `deck`, whose box is `(min, max)`: whether the player
-/// stands wholly on it, and whether any controller on it is unsafe to move,
-/// past its margin or not yet finding it as its ground.
-fn riders(world: &World, deck: Entity, (min, max): (Vec2, Vec2)) -> (bool, bool) {
-    let player = world.get_resource::<Run>().map(|run| run.player);
-    let mut player_on = false;
+/// Whether any controller standing on `deck`, whose box is `(min, max)`,
+/// is unsafe to move: past its margin, or not yet finding it as its ground.
+fn riders(world: &World, deck: Entity, (min, max): (Vec2, Vec2)) -> bool {
     let mut unsafe_ = false;
     for (entity, controller, at, collider) in
         world.query::<(Entity, &PlatformerController, &Position, &Collider)>()
@@ -149,11 +114,9 @@ fn riders(world: &World, deck: Entity, (min, max): (Vec2, Vec2)) -> (bool, bool)
         let wholly = low.x >= min.x + MARGIN && high.x <= max.x - MARGIN;
         if !grounded || !wholly {
             unsafe_ = true;
-        } else if Some(entity) == player {
-            player_on = true;
         }
     }
-    (player_on, unsafe_)
+    unsafe_
 }
 
 /// Whether a tile or a wall fills `collider`'s box at `at`, a pixel in from
@@ -234,41 +197,21 @@ fn under(world: &World, player: Entity, (min, max): (Vec2, Vec2), reach: f32) ->
     })
 }
 
-/// Sends `deck` from where it stands toward `to`, a fresh follower.
-fn go(world: &mut World, deck: Entity, to: Vec2, speed: f32) {
-    let Some(from) = world.get::<Position>(deck).map(|at| at.0) else {
-        return;
-    };
-    if from.distance(to) < 0.01 {
-        return;
-    }
-    let follower =
-        PathFollower::new([from, to], speed).with_easing(tungsten::core::Easing::SineInOut);
-    world.insert(deck, follower);
-}
-
-/// Stops `deck`: no follower, no velocity.
-fn halt(world: &mut World, deck: Entity) {
-    world.remove_component::<PathFollower>(deck);
-    if let Some(velocity) = world.get_mut::<Velocity>(deck) {
-        velocity.0 = Vec2::ZERO;
-    }
-}
-
-/// `elevator_tick`, in the intent phase before the path follower: the
-/// player set out of a deck it is inside, a falling deck turned back over
-/// the player, then boards, returns, holds and arrivals.
+/// `elevator_tick`, in the intent phase before the path follower: for each
+/// lift's deck, the player set out of it when inside it; a deck on its way
+/// down turned back over the player ([`PathFollower::turn_back`]); then the
+/// lift paused while a rider on it is unsafe to move
+/// ([`PathFollower::set_paused`]). Its boarding, its return and its
+/// arrivals are the follower's.
 pub fn tick(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     if dt <= 0.0 {
         return;
     }
     let player = world.get_resource::<Run>().map(|run| run.player);
-    let lifts: Vec<(Entity, Elevator)> = world
-        .query::<(Entity, &Elevator)>()
-        .map(|(entity, lift)| (entity, *lift))
-        .collect();
-    for (deck, mut lift) in lifts {
+    let mut next = 0;
+    while let Some(deck) = deck(world, next) {
+        next += 1;
         let (Some(at), Some(collider)) = (
             world.get::<Position>(deck).map(|at| at.0),
             world.get::<Collider>(deck).copied(),
@@ -280,83 +223,23 @@ pub fn tick(world: &mut World) {
         };
         if let Some(player) = player {
             set_out(world, player, deck_box);
-            // The eased path's fastest step, at π/2 of its mean speed.
-            let reach = lift.speed * std::f32::consts::FRAC_PI_2 * dt + ON_TOP;
-            if lift.stop == Stop::Falling && under(world, player, deck_box, reach) {
-                halt(world, deck);
-                go(world, deck, lift.top, lift.speed);
-                lift.stop = Stop::Rising;
-                lift.held = false;
-                lift.board = None;
-                lift.idle = 0.0;
-                audio::play(world, Sound::LiftStarted, at);
-            }
-        }
-        let (player_on, unsafe_) = riders(world, deck, deck_box);
-        match lift.stop {
-            Stop::Bottom | Stop::Top => {
-                let at_top = lift.stop == Stop::Top;
-                if player_on && !lift.ridden {
-                    lift.board = Some(BOARD_SECS);
-                }
-                if !player_on {
-                    lift.board = None;
-                    if at_top {
-                        if lift.ridden {
-                            lift.idle = 0.0;
-                        }
-                        lift.idle += dt;
-                    }
-                }
-                let boarded = lift.board.is_some_and(|left| left - dt <= 1e-5);
-                lift.board = lift.board.map(|left| left - dt);
-                let returns = at_top && !player_on && lift.idle >= RETURN_SECS - 1e-4;
-                if (boarded || returns) && !unsafe_ {
-                    let (stop, to) = if at_top {
-                        (Stop::Falling, lift.bottom)
-                    } else {
-                        (Stop::Rising, lift.top)
-                    };
-                    go(world, deck, to, lift.speed);
-                    lift.stop = stop;
-                    lift.board = None;
-                    lift.idle = 0.0;
-                    audio::play(world, Sound::LiftStarted, at);
-                }
-            }
-            Stop::Rising | Stop::Falling => {
-                let to = if lift.stop == Stop::Rising {
-                    lift.top
-                } else {
-                    lift.bottom
-                };
-                if unsafe_ {
-                    if !lift.held {
-                        halt(world, deck);
-                        lift.held = true;
-                    }
-                } else if lift.held {
-                    go(world, deck, to, lift.speed);
-                    lift.held = false;
-                }
-                let arrived = world
-                    .get::<PathFollower>(deck)
-                    .map_or(at.distance(to) < 0.5, PathFollower::is_finished);
-                if arrived && !lift.held {
-                    halt(world, deck);
-                    lift.stop = if lift.stop == Stop::Rising {
-                        Stop::Top
-                    } else {
-                        Stop::Bottom
-                    };
-                    lift.idle = 0.0;
-                    audio::play(world, Sound::LiftStopped, at);
+            let falling = world
+                .get::<PathFollower>(deck)
+                .filter(|follower| follower.returning())
+                .map(PathFollower::speed);
+            if let Some(speed) = falling {
+                // The eased path's fastest step, at π/2 of its mean speed.
+                let reach = speed * std::f32::consts::FRAC_PI_2 * dt + ON_TOP;
+                if under(world, player, deck_box, reach)
+                    && let Some(follower) = world.get_mut::<PathFollower>(deck)
+                {
+                    follower.turn_back();
                 }
             }
         }
-        lift.ridden = player_on;
-        if let Some(own) = world.get_mut::<Elevator>(deck) {
-            *own = lift;
+        let held = riders(world, deck, deck_box);
+        if let Some(follower) = world.get_mut::<PathFollower>(deck) {
+            follower.set_paused(held);
         }
     }
 }
@@ -367,11 +250,13 @@ pub fn look(world: &mut World) {
     let Some(sheave) = super::marker(world, SHEAVE_MARKER) else {
         return;
     };
-    let lifts: Vec<(Entity, Vec2, Option<CableLook>)> = world
-        .query::<(Entity, &Elevator, &Transform, Option<&CableLook>)>()
-        .map(|(entity, _, transform, cable)| (entity, transform.position, cable.copied()))
-        .collect();
-    for (deck, at, cable) in lifts {
+    let mut next = 0;
+    while let Some(deck) = deck(world, next) {
+        next += 1;
+        let Some(at) = world.get::<Transform>(deck).map(|at| at.position) else {
+            continue;
+        };
+        let cable = world.get::<CableLook>(deck).copied();
         let ring = at + RING;
         let length = (ring.y - sheave.y).max(1.0);
         let cable = match cable {

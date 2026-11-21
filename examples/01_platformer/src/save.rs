@@ -2,1484 +2,1004 @@
 //! a live run becomes one ([`capture`]), the slot row's line ([`summary`])
 //! and how a loaded run takes it back ([`restore`]). The schema counts on
 //! from the template sample's 3, so a sample save reads as an older
-//! version's, never as a newer one's. Schema 7 marks 01 (d)'s map, whose
-//! objects take every save ID anew, so nothing older migrates (`D-202`);
-//! schema 8 gives the player the staff light, which [`SaveData::migrate`]
-//! adds to a schema 7 save. Schema 10 gives save IDs only to the map
-//! objects a save names, so an art change never moves one, and keeps the
-//! basins' crusts and the mine's elevator. Schema 11 keeps up to three open
-//! black holes, a list where schema 10 kept one. Schema 12 places the map's
-//! seven goblins before its placed orbs, which moves every later save ID,
-//! and keeps the crates, kegs, bombs and rocks. Schema 13 draws the player
-//! as the wizard on a 96 px frame, which moves the body's centre from the
-//! sprite's corner, the point a save keeps. Schema 14 drops the hints and
-//! carries 01 (i)'s tuning into an older run: the player's one maximum
-//! health and its wider reach, a crawler's harder touch, a troll's faster
-//! walk and the cold ladder's halved gates. Schema 15 walls the start
-//! (01 (k)) and sets a saved body from the wall, or from left of the map,
-//! on the clearing's floor. Schema 16 keeps the tomes the player holds
-//! (01 (l)) and sets a saved body from inside one of the books' three new
-//! supports on its top. Schema 19 (e01hollow) keeps the hollow's geysers
-//! and stones, moves the save IDs past its three new enemies and its
-//! geysers, and sets what the mouth's lowered lintel holds under it.
-//! Schema 22 moves the save IDs past the map's seven new enemies and
-//! lowers each wisp's health. Schema 23 gives the map's objects and the
-//! player the save IDs their names derive, so a change to the map moves
-//! none, and marks the map's own crates and kegs.
+//! version's, never as a newer one's.
 //!
-//! Every saved entity carries a [`SaveId`]: the map's objects a save names
-//! (its lava basins, decks, dummies, enemies, placed orbs and geysers) and
-//! the player take theirs from their names, which a load derives again,
-//! and whatever spawns later takes the run's next, which the save keeps: a
-//! fresh run's iron, crates, kegs and stones, set at the map's markers, the
-//! first. A save names
-//! another entity by its save ID, never by its entity: an effect's source
-//! too, which a load names again once every entity is back. Presentation
-//! is not saved: particles, lights, glows, flames, overlays and tints,
-//! animation and facing, flashes, shake, toasts, the HUD and the music.
+//! The run is the engine's `WorldSave` (`D-230`) beside 01's table of its
+//! balls. A run's start names the player, global, and the map's saved
+//! objects (its lava basins, decks, the elevator, the dummy, enemies, placed
+//! orbs and geysers) in the map's area, once its setup is done, so a
+//! capture writes each one's changes over its fresh spawn: their state is
+//! the components and resources 01 and the kit register, chemistry's queue
+//! among them. The run's spawns are the World save's records, whole: the
+//! kit's from a saved source (the gun's bullets, fire missiles and rolled
+//! orbs) and 01's own (summoned dummies and enemies, iron and its scraps,
+//! black holes, its own missiles, flasks and bullets, the props, planks,
+//! stones and snowballs), each taking the run's next save ID at its spawn.
+//! The small and bowling balls carry a kept identity, `Saved::kept` of the
+//! run's counter, which the engine's references name, and 01's table holds
+//! them, since a full pit's 12,000 as records would pass the save's bound;
+//! 7.14's prefab table takes them over. Schema 29 makes the run's spawns
+//! records, so `migrate_step` refuses every older save, which reads as an
+//! older version's (`D-204`); schema 30 moves arcane power's `spell_power`
+//! onto the kit's `damage_dealt`, and schema 31 an enemy's `heading` onto
+//! the kit's `facing`, each migrating the schema before.
+//!
+//! A save names another entity by its save ID, never by its entity.
+//! Presentation is not saved: particles, lights, glows, flames, overlays
+//! and tints, animation, flashes, shake, toasts, the HUD and the music.
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
-use tungsten::core::save::Value;
-use tungsten::core::{
-    CommandBuffer, Entity, Position, PrevPosition, SaveData, Transform, Velocity, Visibility, World,
+use tungsten::core::save::{
+    RestoreError, Value, WorldSave, capture_world, check_world, restore_world,
 };
-use tungsten::kit::{
-    Abilities, AilmentBuckets, ContactDamage, ContactTouch, Effects, Health, Hitbox, KitRng,
-    Knockback, Lifetime, LinearMotion, Oscillator, PathFollower, Pickup, PlatformerController,
-    Projectile, Resist, Shield, Source, StateMachine, Stats, Tags, TopDownMover,
-};
+use tungsten::core::{CameraController, DataRef, Entity, Position, SaveData, Velocity, World};
+use tungsten::kit::{EffectRequest, Health, ImpactDamage, Stats, carrier_of};
 
 use crate::features::dummy::{self, components::Dummy};
-use crate::features::elements::cascade::Cascades;
-use crate::features::elements::components::{BallBurn, Chill, Frozen};
-use crate::features::enemies::components::{
-    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Sight, Snowball, Throw, Throws,
+use crate::features::elements::components::ColdFace;
+use crate::features::elements::systems::{
+    arm_throw, coat_of, freeze_for, light, prefab_of, show_douse,
 };
-use crate::features::enemies::drops::{self, Orb, OrbKind};
-use crate::features::enemies::{self, crawler, snowball, troll, wisp};
-use crate::features::gun::components::{Bullet, Reload};
-use crate::features::gun::{self, BULLET_CENTRE, BulletShot};
-use crate::features::level::components::Doused;
-use crate::features::level::elevator::{Elevator, Stop};
-use crate::features::level::geyser::{self, Geyser, GeyserPhase};
+use crate::features::elements::{COAT, burn_left, ice_left};
+use crate::features::enemies::components::{Enemy, Holding, Throws};
+use crate::features::enemies::drops::{self, Orb};
+use crate::features::enemies::{self, troll};
+use crate::features::level::components::Hazard;
 use crate::features::level::lava::{self, Lava};
-use crate::features::player::STAFF_LIGHT;
-use crate::features::player::components::Lantern;
-use crate::features::props::{
-    self,
-    components::{Bomb, Crate, Fuel, Keg, MapProp, Plank, PropKind, Rock, Stone, StoneSize},
-};
+use crate::features::props;
 use crate::features::run::Run;
-use crate::features::spells::components::{Spell, Spellbook, Summon};
-use crate::features::tomes::{Tome, TomeKind, Tomes};
+use crate::features::tomes::{Tome, Tomes};
+use crate::features::toys;
 use crate::features::toys::components::{
-    Ball, BallHue, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall, ToxicFlask,
+    Ball, BallHue, IronScrap, PreviousVelocity, SmallBall, ToxicFlask,
 };
-use crate::features::toys::{self, MISSILE_SIZE};
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds};
+use crate::shared::{Joined, SaveId, Saved, despawn_tree};
 use crate::shell::{self, RunMeta};
 
-/// A save: the shell's run data and the game's, each list in save-ID order.
+/// A save: the shell's run data, the last area the player entered, the
+/// slot row's numbers, the engine's save of the run's World and the table
+/// of the balls, in save-ID order.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SaveGame {
     pub meta: RunMeta,
-    /// The save ID the run's next spawn takes.
-    pub next_id: u64,
-    /// The kit's random stream, its generator's words whole.
-    pub rng: KitRng,
     /// The last area the player entered, which a load does not announce.
     pub area: Option<String>,
-    /// The spell bar's selected slot.
-    pub spell: usize,
-    pub lantern: bool,
-    /// The staff light guttered out and waits for the relight; a schema 7
-    /// save, from before the light, has none.
-    #[serde(default)]
-    pub lantern_guttered: bool,
-    pub player: PlayerSave,
-    pub platforms: Vec<PlatformSave>,
-    pub hazards: Vec<HazardSave>,
+    /// The slot row's numbers: the player's health, and its mana and its
+    /// most.
+    pub health: Health,
+    pub mana: [f32; 2],
+    /// The named objects' changes over their fresh spawn, the run's spawns
+    /// whole and the saved resources.
+    pub world: WorldSave,
     pub balls: Vec<BallSave>,
-    pub blocks: Vec<BlockSave>,
-    /// The open black holes; schema 10 kept at most one, which its
-    /// migration moves into the list.
-    pub black_holes: Vec<HoleSave>,
-    pub missiles: Vec<MissileSave>,
-    pub bullets: Vec<BulletSave>,
-    pub dummies: Vec<DummySave>,
-    pub enemies: Vec<EnemySave>,
-    /// The throws in flight, by their bodies' save IDs.
-    pub throws: Vec<ThrowSave>,
-    pub orbs: Vec<OrbSave>,
-    /// The map's objects the run removed, by save ID: its placed dummies and
-    /// enemies no longer alive and its health orbs taken, which a load takes
-    /// off the map.
-    pub gone: Vec<u64>,
-    /// The element endings waiting, whole.
-    pub cascades: Cascades,
-    /// The summon slot's type, by its place in `SUMMONS`.
-    pub summon: usize,
-    /// Each lava basin's chill and crust; none before schema 10.
-    #[serde(default)]
-    pub basins: Vec<BasinSave>,
-    /// The mine's elevator; none before schema 10, which leaves it at rest.
-    #[serde(default)]
-    pub elevators: Vec<ElevatorSave>,
-    /// The hollow's geysers (e01hollow); none before schema 19, whose map
-    /// starts them at their offsets.
-    #[serde(default)]
-    pub geysers: Vec<GeyserSave>,
-    /// The crates, kegs, bombs and rocks; none before schema 12, whose map
-    /// adds none to an older save's run.
-    #[serde(default)]
-    pub props: Vec<PropSave>,
-    /// The crawlers' snowballs in flight, apart from `props`, whose bodies
-    /// a migration reads by kind; none in an older save, and none written
-    /// while none fly.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub snowballs: Vec<SnowballSave>,
-    /// The broken crates' planks (e01sfx), apart from `props` as the
-    /// snowballs are; none before schema 18, and none written while none
-    /// lie about.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub planks: Vec<PlankSave>,
-    /// The hollow's rubble stones (e01hollow), apart from `props` as the
-    /// planks are; none written while none lie about.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub stones: Vec<StoneSave>,
-    /// The toxic flasks in flight (e01flask), as the missiles are; none
-    /// before schema 21, and none written while none fly.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub flasks: Vec<FlaskSave>,
 }
-
-/// The dummies the map's `dummies` layer places.
-pub const MAP_DUMMIES: u64 = 1;
-/// The enemies the map's `enemies` layer places, and the health orbs its
-/// `pickups` layer places after them; and the geysers its `geysers` layer
-/// places, its last saved, after the tomes, which take none.
-pub const MAP_ENEMIES: u64 = 36;
-pub const MAP_PICKUPS: u64 = 8;
-pub const MAP_GEYSERS: u64 = 3;
-/// How far schema 9 moves every save ID at or above schema 8's player's:
-/// the thirteen map objects it added (five enemies and eight orbs), which
-/// take theirs before the player's.
-pub const SHIFT_9: u64 = 13;
-/// Schema 9's save IDs of the map objects a save names, every map object
-/// taking one then, its props first: the lake's and the shelf's lava, which
-/// an effect names as its source, the decks (the elevator's the last), the
-/// dummy, the enemies and the placed orbs, then the player's.
-const S9_LAKE: u64 = 839;
-const S9_SHELF: u64 = 840;
-const S9_DECKS: u64 = 841;
-const S9_ELEVATOR: u64 = 845;
-const S9_DUMMY: u64 = 859;
-const S9_ENEMIES: u64 = 860;
-const S9_PICKUPS: u64 = 878;
-const S9_PLAYER: u64 = 886;
-/// Schema 10's: only the map objects a save names take save IDs, in layer
-/// order, the three basins first. Frozen here, as schema 9's are, for the
-/// migration; `tests/game/saves.rs` holds them to the map. The lake's lava
-/// is now two pools, its west one first, and the shelf's the third.
-pub const S10_LAKE: u64 = 0;
-pub const S10_SHELF: u64 = 2;
-pub const S10_DECKS: u64 = 3;
-pub const S10_DUMMY: u64 = 8;
-pub const S10_ENEMIES: u64 = 9;
-pub const S10_PICKUPS: u64 = 28;
-pub const S10_PLAYER: u64 = 36;
-/// Schema 10's lava, where schema 9's player may stand in it or under it:
-/// on an old bed, in the lake's moved stone or on the old ground of a
-/// widened pool. Each lake's columns, its banks' row, and the columns where
-/// a player moved out of it stands on its banks and its stone, in tiles.
-type Lake = (f32, f32, f32, &'static [f32]);
-const S10_LAKES: [Lake; 2] = [
-    (230.0, 240.0, 63.0, &[229.5, 235.0, 240.5]),
-    (260.0, 263.0, 57.0, &[259.5, 263.5]),
-];
-/// How far schema 12 moves every save ID at or above schema 11's first
-/// placed orb's: the map's seven goblins, which take theirs after its other
-/// enemies, before the orbs.
-pub const SHIFT_12: u64 = 7;
-/// Schema 11's first placed orb's save ID, schema 10's layout kept; frozen
-/// for the migration, as schema 10's are.
-pub const S11_PICKUPS: u64 = 28;
-/// Where schema 12's player's body centre sat from its sprite's corner, the
-/// point a save keeps: the courier's 64 px frame's. Frozen for the
-/// migrations, which place a player by its body before schema 13 moves the
-/// point.
-pub const S12_BODY_OFFSET: Vec2 = Vec2::new(32.0, 33.0);
-/// Where schema 13's player's body centre sits from its sprite's corner,
-/// the wizard's 96 px frame's, which [`to_13`] moves a saved corner to;
-/// frozen, as the bodies' data may move the body since.
-pub const S13_BODY_OFFSET: Vec2 = Vec2::new(48.0, 65.0);
-/// Schema 10's player's body's half size, which [`to_10`] lifts a player
-/// out of a lake by; frozen likewise.
-pub const S10_PLAYER_HALF: Vec2 = Vec2::new(20.0, 28.0);
-/// Schema 14's start, which schema 15 walls (01 (k)): the wall's box over
-/// columns 0 and 1 from row 21 to the clearing's floor, min and max; the
-/// world left of the map, where the boundary stands, lies past its min x
-/// too. Frozen for the migration, as the boxes below are.
-pub const S15_WALL: [Vec2; 2] = [Vec2::new(0.0, 21.0 * 64.0), Vec2::new(128.0, 36.0 * 64.0)];
-/// The clearing's floor's top; the stretch of it from the wall's face to
-/// the terrace's, where a body out of the wall is set; and the moving
-/// deck's columns, which it skips, the deck coming down to 27 px over the
-/// floor.
-pub const S15_FLOOR: f32 = 36.0 * 64.0;
-pub const S15_SPAN: [f32; 2] = [128.0, 1024.0];
-pub const S15_DECK: [f32; 2] = [556.8, 723.2];
-/// A fresh run's spawn, the feet's point, where a player with no clear
-/// spot on the floor stands.
-pub const S15_SPAWN: Vec2 = Vec2::new(416.0, 36.0 * 64.0);
-/// Each saved body's box as schema 14 has it: its centre from its point
-/// and its half extents. A ball's and a goblin's bomb's and rock's are
-/// their circles' squares.
-const S15_PLAYER: [Vec2; 2] = [Vec2::new(48.0, 65.0), Vec2::new(20.0, 28.0)];
-const S15_DUMMY: [Vec2; 2] = [Vec2::new(32.0, 33.0), Vec2::new(14.0, 28.0)];
-const S15_ENEMIES: [(&str, [Vec2; 2]); 6] = [
-    ("wisp", [Vec2::new(32.0, 34.0), Vec2::new(12.0, 12.0)]),
-    ("crawler", [Vec2::new(32.0, 51.0), Vec2::new(24.0, 10.0)]),
-    ("beetle", [Vec2::new(32.0, 48.0), Vec2::new(24.0, 13.0)]),
-    ("bat", [Vec2::new(32.0, 28.0), Vec2::new(10.0, 9.0)]),
-    ("troll", [Vec2::new(74.0, 70.0), Vec2::new(28.0, 55.0)]),
-    ("goblin", [Vec2::new(34.0, 41.0), Vec2::new(9.0, 20.0)]),
-];
-const S15_BALL: [Vec2; 2] = [Vec2::splat(16.0), Vec2::splat(15.0)];
-const S15_SMALL_BALL: [Vec2; 2] = [Vec2::splat(8.0), Vec2::splat(7.5)];
-const S15_IRON: [Vec2; 2] = [Vec2::splat(64.0), Vec2::splat(60.0)];
-const S15_SCRAP: [Vec2; 2] = [Vec2::splat(16.0), Vec2::splat(15.0)];
-const S15_PROPS: [(&str, [Vec2; 2]); 4] = [
-    ("crate", [Vec2::splat(32.0), Vec2::splat(28.0)]),
-    ("keg", [Vec2::new(32.0, 35.0), Vec2::new(19.0, 25.0)]),
-    ("bomb", [Vec2::splat(8.0), Vec2::splat(6.0)]),
-    ("rock", [Vec2::splat(8.0), Vec2::splat(5.0)]),
-];
-const S15_ORB: [Vec2; 2] = [Vec2::splat(12.0), Vec2::splat(12.0)];
-/// A plank's box as schema 18 has it, which schema 19 reads with the rest.
-const S19_PLANK: [Vec2; 2] = [Vec2::new(16.0, 8.0), Vec2::new(14.0, 4.0)];
-/// Schema 18's first placed orb's save ID and its player's, its layout
-/// kept; frozen for the migration, as schema 11's are.
-pub const S18_PICKUPS: u64 = 35;
-pub const S18_PLAYER: u64 = 43;
-/// How far schema 19 moves the save IDs: every one at or above schema
-/// 18's player's by the three enemies and three geysers it places before
-/// the player, and every one from the first placed orb's below it by the
-/// three enemies, which take theirs before the orbs.
-pub const SHIFT_19: u64 = 6;
-pub const SHIFT_19_PICKUPS: u64 = 3;
-/// The row schema 19's lintel lowers into the hollow's mouth (e01hollow):
-/// `east_wall`'s new bottom row, columns 203 to 215, its box's min and max.
-/// Frozen for the migration, as schema 15's wall is.
-pub const S19_LINTEL: [Vec2; 2] = [
-    Vec2::new(203.0 * 64.0, 57.0 * 64.0),
-    Vec2::new(216.0 * 64.0, 58.0 * 64.0),
-];
-/// The ravine's bat c, schema 18's save ID 14, which roosted under the
-/// lintel's old row, and its new roost under row 58, its body's centre.
-pub const S18_BAT_C: u64 = 14;
-pub const S19_BAT_C_HOME: Vec2 = Vec2::new(13440.0, 3740.0);
-/// The tomes' supports, which schema 16 adds (01 (l)): `pact_shelf`,
-/// `bound_shelf` and `arcane_ledge`, each its cells' box, min and max.
-/// Frozen for the migration, as schema 15's wall is.
-pub const S16_SUPPORTS: [[Vec2; 2]; 3] = [
-    [
-        Vec2::new(231.0 * 64.0, 57.0 * 64.0),
-        Vec2::new(234.0 * 64.0, 58.0 * 64.0),
-    ],
-    [
-        Vec2::new(194.0 * 64.0, 40.0 * 64.0),
-        Vec2::new(196.0 * 64.0, 41.0 * 64.0),
-    ],
-    [
-        Vec2::new(117.0 * 64.0, 34.0 * 64.0),
-        Vec2::new(120.0 * 64.0, 35.0 * 64.0),
-    ],
-];
 
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and add its step to
-    /// `migrate_step`. Schema 7
-    /// is 01 (d)'s new map: its objects take every save ID anew and every
-    /// place moved, so `migrate_step` refuses each older schema and the slot
-    /// reads as an older version's (`D-204`). Schema 8 adds the staff light
-    /// to the player's abilities. Schema 9 places new map objects before
-    /// the player, which take the save IDs from schema 8's player's on.
-    /// Schema 10 gives save IDs only to what a save names, keeps the
-    /// basins' crusts and the elevator, and widens the basins. Schema 11
-    /// keeps the open black holes as a list (`to_11`). Schema 12 places the
-    /// map's goblins before its orbs and keeps the props
-    /// (`to_12`). Schema 13 moves the player's point for the wizard's frame
-    /// (`to_13`). Schema 14 drops the hints and moves the values 01 (i)
-    /// tuned that a save keeps (`to_14`). Schema 15 sets the bodies in the
-    /// start's new wall or past its boundary on the clearing's floor
-    /// (`to_15`). Schema 16 keeps the tomes held and sets the bodies inside
-    /// their supports on top (`to_16`). Schema 17 moves each crawler's run
-    /// to e01foes' (`to_17`). Schema 18 keeps a broken crate's planks
-    /// (`planks`), which an older save has none of. Schema 19 keeps the
-    /// hollow's geysers and stones, moves the save IDs past its new enemies
-    /// and geysers and sets what its lowered lintel holds under it
-    /// (`to_19`). Schema 20 puts the toxic flask fifth on the bar and gives
-    /// the player its ability (`to_20`). Schema 21 keeps the flasks in
-    /// flight and gives the living, the armoured and the bridge's armoured
-    /// troll their tags and table (`to_21`). Schema 22 moves the save IDs
-    /// past the map's seven new enemies and each wisp's health to its new
-    /// maximum (`to_22`). Schema 23 gives the map's objects and the player
-    /// the save IDs their names derive and marks the map's crates and kegs
-    /// (`to_23`). Schema 24 gives the player the stats its crit and blast
-    /// share are now (`to_24`).
-    const SCHEMA: u32 = 24;
+    /// `migrate_step`. Schema 28 moved the run onto the engine's saves and
+    /// 29 its spawns onto the World save's records: `migrate_step` refuses
+    /// every older schema, whose slot reads as an older version's
+    /// (`D-204`). Schema 30 moved arcane power's `spell_power` onto a
+    /// `damage_dealt` line ([`to_30`]), 31 an enemy's `heading` onto the
+    /// kit's `facing` ([`to_31`]), 32 a foe's rests and "!" onto the
+    /// kit's cooldowns and effects ([`to_32`]), 33 the crawler's
+    /// snowball onto the kit's projectile ([`to_33`]), 34 the lightning's
+    /// chain onto the kit's conduction ([`to_34`]), 35 the missile's and
+    /// the tracers' turns onto the kit's facing ([`to_35`]), 36 the
+    /// black hole's life onto a kit cooldown ([`to_36`]), 37 the props'
+    /// caps onto the kit's, marking their records ([`to_37`]), 38 iron's
+    /// and the black holes' ([`to_38`]), 39 the summoned dummies' and
+    /// enemies' ([`to_39`]), 40 the geysers' cycles onto the kit's timed
+    /// machine, their touch kept behind its switch ([`to_40`]), and 41 the
+    /// elevator onto the kit's two-way lift ([`to_41`]).
+    const SCHEMA: u32 = 41;
 
     fn migrate_step(
         from: u32,
         mut data: Value,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         match from {
-            7 => {
-                // The staff light's entry, last, ready, as a fresh run's.
-                let entries = data
-                    .pointer_mut("/player/abilities/entries")
-                    .and_then(Value::as_array_mut)
-                    .ok_or("schema 7: the player has no abilities")?;
-                let entry = format!(
-                    r#"{{"name": "{STAFF_LIGHT}", "ability": "{STAFF_LIGHT}", "cooldown_left": 0.0, "charges": null, "refill_left": 0.0, "interval_left": 0.0}}"#
-                );
-                entries.push(entry.parse()?);
+            29 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 29: the save has no world")?;
+                to_30(world);
+                Ok(data)
             }
-            8 => shift_ids(&mut data)?,
-            9 => to_10(&mut data)?,
-            10 => to_11(&mut data)?,
-            11 => to_12(&mut data),
-            12 => to_13(&mut data)?,
-            13 => to_14(&mut data)?,
-            14 => to_15(&mut data)?,
-            15 => to_16(&mut data)?,
-            16 => to_17(&mut data),
-            // Schema 18's planks read as none from an older save.
-            17 => {}
-            18 => to_19(&mut data)?,
-            19 => to_20(&mut data)?,
-            20 => to_21(&mut data),
-            21 => to_22(&mut data),
-            22 => to_23(&mut data),
-            23 => to_24(&mut data)?,
-            _ => {
-                return Err(
-                    format!("schema {from} has no migration to schema {}", Self::SCHEMA).into(),
-                );
+            30 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 30: the save has no world")?;
+                to_31(world);
+                Ok(data)
             }
+            31 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 31: the save has no world")?;
+                to_32(world);
+                Ok(data)
+            }
+            32 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 32: the save has no world")?;
+                to_33(world);
+                Ok(data)
+            }
+            33 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 33: the save has no world")?;
+                to_34(world);
+                Ok(data)
+            }
+            34 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 34: the save has no world")?;
+                to_35(world);
+                Ok(data)
+            }
+            35 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 35: the save has no world")?;
+                to_36(world);
+                Ok(data)
+            }
+            36 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 36: the save has no world")?;
+                to_37(world);
+                Ok(data)
+            }
+            37 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 37: the save has no world")?;
+                to_38(world);
+                Ok(data)
+            }
+            38 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 38: the save has no world")?;
+                to_39(world);
+                Ok(data)
+            }
+            39 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 39: the save has no world")?;
+                to_40(world);
+                Ok(data)
+            }
+            40 => {
+                let world = data
+                    .get_mut("world")
+                    .ok_or("schema 40: the save has no world")?;
+                to_41(world);
+                Ok(data)
+            }
+            _ => Err(format!("schema {from} has no migration to schema {}", from + 1).into()),
         }
-        Ok(data)
     }
 }
 
-/// The toxic flask's ability, which schema 20 gives the player.
-const TOXIC_FLASK: &str = Spell::ToxicFlask.ability();
-/// The bar's slot schema 20 puts the toxic flask in, the fifth (e01flask):
-/// a schema 19 save's from it on moved up one. Frozen for the migration.
-pub const S20_FLASK_SLOT: u64 = 4;
+/// The arcane tome's source on the player's stats, frozen for the
+/// migration.
+const S29_ARCANE: &str = "tome.arcane";
 
-/// Schema 19 to 20 (e01flask): the toxic flask takes the bar's fifth slot
-/// ([`S20_FLASK_SLOT`]), so a saved slot from it on moves up one, and the
-/// player's abilities take the flask's entry, ready, as a fresh run's, where
-/// it is absent; a duplicate would fail the load.
-fn to_20(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(spell) = data.pointer_mut("/spell")
-        && let Some(slot) = spell.as_u64()
-        && slot >= S20_FLASK_SLOT
-    {
-        *spell = Value::from(slot + 1);
+/// Schema 29 to 30 over a save's `world`: every saved `stats`, a record's
+/// or a patch's, loses its `spell_power`, and one whose `spell_power`
+/// carried the arcane tome's modifier takes the `damage_dealt` stat at base
+/// 1 with the tome's line of 2 on the `hit.spell` context, as the tome
+/// gives it now.
+fn to_30(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            if let Some(Value::Object(stats)) = object.get_mut("stats")
+                && let Some(power) = stats.remove("spell_power")
+            {
+                let arcane = power
+                    .get("modifiers")
+                    .and_then(Value::as_array)
+                    .is_some_and(|modifiers| {
+                        modifiers.iter().any(|modifier| {
+                            modifier.get(0).and_then(Value::as_str) == Some(S29_ARCANE)
+                        })
+                    });
+                if arcane {
+                    let line = Value::from(vec![
+                        Value::from(S29_ARCANE),
+                        Value::from_iter([
+                            (
+                                "modifier".to_owned(),
+                                Value::from_iter([("mul".to_owned(), Value::from(2.0))]),
+                            ),
+                            (
+                                "with".to_owned(),
+                                Value::from_iter([(
+                                    "all".to_owned(),
+                                    Value::from(vec![Value::from("hit.spell")]),
+                                )]),
+                            ),
+                        ]),
+                    ]);
+                    let dealt = Value::from_iter([
+                        ("base".to_owned(), Value::from(1.0)),
+                        ("min".to_owned(), Value::from(0.0)),
+                        ("max".to_owned(), Value::Null),
+                        ("lines".to_owned(), Value::from(vec![line])),
+                    ]);
+                    stats.insert("damage_dealt".to_owned(), dealt);
+                }
+            }
+            for inner in object.values_mut() {
+                to_30(inner);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                to_30(item);
+            }
+        }
+        _ => {}
     }
-    let entries = data
-        .pointer_mut("/player/abilities/entries")
-        .and_then(Value::as_array_mut)
-        .ok_or("schema 19: the player has no abilities")?;
-    if !entries.iter().any(|entry| entry["name"] == TOXIC_FLASK) {
-        let entry = format!(
-            r#"{{"name": "{TOXIC_FLASK}", "ability": "{TOXIC_FLASK}", "cooldown_left": 0.0, "charges": null, "refill_left": 0.0, "interval_left": 0.0}}"#
-        );
-        entries.push(entry.parse()?);
-    }
-    Ok(())
 }
 
-/// The bridge troll's save ID, which schema 21 makes the armoured troll
-/// (e01flask, Q2), and armour's table, its bases. Frozen for the migration.
-pub const S21_BRIDGE_TROLL: u64 = 21;
-pub const S21_ARMOUR: [(&str, f64); 5] = [
-    ("damage.physical", 0.25),
-    ("damage.fire", 0.75),
-    ("damage.cold", 0.75),
-    ("damage.shock", 0.75),
-    ("damage.poison", 0.75),
-];
-
-/// Schema 20 to 21 (e01flask): every saved enemy but a wisp, and every
-/// dummy, takes `living`, which poison needs; every beetle `armoured`; and
-/// the map's troll of [`S21_BRIDGE_TROLL`] becomes the armoured troll: its
-/// variant, `armoured` and armour's table ([`S21_ARMOUR`]) as its bases,
-/// its saved modifiers kept. Each part holds when it already has, since a
-/// schema 20 save from e01flask's own steps may carry some of it. A schema
-/// 20 save holds no flask.
-fn to_21(data: &mut Value) {
-    let tag = |entry: &mut Value, tag: &str| {
-        if let Some(tags) = entry["tags"].as_array_mut()
-            && !tags.iter().any(|held| held == tag)
-        {
-            tags.push(Value::from(tag));
+/// Schema 30 to 31 over a save's `world`: every saved `enemy`, a record's
+/// or a patch's, loses its `heading`, 1 right or -1 left, which becomes the
+/// kit's `facing` beside it, from an intent and snapped left or right, as
+/// the foes' prefabs give it at schema 31.
+fn to_31(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let heading = object
+                .get_mut("enemy")
+                .and_then(Value::as_object_mut)
+                .and_then(|enemy| enemy.remove("heading"));
+            if let Some(heading) = heading {
+                let left = heading.as_f64().is_some_and(|x| x < 0.0);
+                object.entry("facing").or_insert_with(|| s30_facing(left));
+            }
+            for inner in object.values_mut() {
+                to_31(inner);
+            }
         }
-    };
-    for dummy in each(data, "/dummies") {
-        tag(dummy, "living");
+        Value::Array(items) => {
+            for item in items {
+                to_31(item);
+            }
+        }
+        _ => {}
     }
-    for enemy in each(data, "/enemies") {
-        if enemy["kind"] != "wisp" {
-            tag(enemy, "living");
-        }
-        if enemy["kind"] == "beetle" {
-            tag(enemy, "armoured");
-        }
-        let bridge = enemy["id"].as_u64() == Some(S21_BRIDGE_TROLL)
-            && enemy["kind"] == "troll"
-            && enemy["map"].as_bool() == Some(true);
-        if !bridge {
-            continue;
-        }
-        enemy["enemy"]["variant"] = Value::from("armoured");
-        tag(enemy, "armoured");
-        if let Some(resist) = enemy["resist"].as_object_mut() {
-            for (name, base) in S21_ARMOUR {
-                match resist.get_mut(name) {
-                    Some(factor) if factor.is_object() => factor["base"] = Value::from(base),
-                    _ => {
-                        resist.insert(name.to_string(), Value::from(base));
+}
+
+/// A foe's `facing` as schema 31 saves it, facing left or right: frozen
+/// for the migration.
+fn s30_facing(left: bool) -> Value {
+    let x = if left { -1.0 } else { 1.0 };
+    Value::from_iter([
+        ("from".to_owned(), Value::from("intent")),
+        ("snap".to_owned(), Value::from("horizontal")),
+        ("turn".to_owned(), Value::from(false)),
+        ("offset".to_owned(), Value::from(0.0)),
+        ("min_speed".to_owned(), Value::from(1.0)),
+        (
+            "direction".to_owned(),
+            Value::from(vec![Value::from(x), Value::from(0.0)]),
+        ),
+    ])
+}
+
+/// The source of the bat's dive's speed on its `move_speed` at schema 31,
+/// frozen for the migration.
+const S31_DIVE: &str = "dive";
+
+/// Schema 31 to 32 over a save's `world`: every saved `brain`, a record's
+/// or a patch's, loses its `alerted`, `slam_cooldown` and `cooldown`. A
+/// rest left becomes the foe's kit `cooldown` beside it, of the rest's own
+/// seconds and spent by its one elapse, so it needs no kind and serves no
+/// later rest; the "!" is dropped. Every saved `stats` line from the bat's
+/// dive goes, its speed now an effect's.
+fn to_32(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let rest = object
+                .get_mut("brain")
+                .and_then(Value::as_object_mut)
+                .map(|brain| {
+                    brain.remove("alerted");
+                    ["slam_cooldown", "cooldown"]
+                        .map(|key| brain.remove(key).and_then(|left| left.as_f64()))
+                        .into_iter()
+                        .flatten()
+                        .fold(0.0_f64, f64::max)
+                });
+            if let Some(rest) = rest.filter(|rest| *rest > 0.0) {
+                object.insert("cooldown".to_owned(), s31_rest(rest));
+            }
+            if let Some(Value::Object(stats)) = object.get_mut("stats") {
+                for stat in stats.values_mut().filter_map(Value::as_object_mut) {
+                    for key in ["modifiers", "lines"] {
+                        if let Some(Value::Array(pairs)) = stat.get_mut(key) {
+                            pairs.retain(|pair| {
+                                pair.get(0).and_then(Value::as_str) != Some(S31_DIVE)
+                            });
+                        }
                     }
                 }
             }
-        }
-    }
-}
-
-/// Schema 21's first placed orb's save ID, its layout kept, and how far
-/// schema 22 moves every save ID from it on: past the map's seven new
-/// enemies (four crawlers, two wisps and a beetle), which take theirs
-/// before the orbs. Frozen for the migration, as schema 11's are.
-pub const S21_PICKUPS: u64 = 38;
-pub const SHIFT_22: u64 = 7;
-
-/// Schema 21 to 22: the map's seven new enemies take the save IDs from
-/// schema 21's first placed orb's on, so every one from it moves up by
-/// [`SHIFT_22`]; and each wisp's `max_health` base moves to
-/// [`wisp::MAX_HEALTH`], its maximum with it and its health keeping its
-/// share, its modifiers kept. A schema 21 save names no new enemy: the
-/// map's stand at home.
-fn to_22(data: &mut Value) {
-    map_ids(data, &|id| {
-        if id >= S21_PICKUPS { id + SHIFT_22 } else { id }
-    });
-    let full = f64::from(wisp::MAX_HEALTH);
-    for enemy in each(data, "/enemies") {
-        if enemy["kind"] != "wisp" {
-            continue;
-        }
-        let Some(base) = enemy["stats"]["max_health"]["base"].as_f64() else {
-            continue;
-        };
-        if base > 0.0 {
-            for key in ["current", "max"] {
-                if let Some(value) = enemy["health"][key].as_f64() {
-                    enemy["health"][key] = Value::from(value * full / base);
-                }
+            for inner in object.values_mut() {
+                to_32(inner);
             }
         }
-        enemy["stats"]["max_health"]["base"] = Value::from(full);
-    }
-}
-
-/// Schema 22's map objects a save names, in the order they spawned, which
-/// numbered them 0 to 56 (three lava pools, five decks, the dummy, 36
-/// enemies, eight placed orbs and three geysers), and then the player:
-/// the names schema 23 derives their save IDs from. Frozen for the
-/// migration, as schema 10's layout is; `tests/game/saves.rs` holds it to
-/// the map.
-pub const S22_NAMES: [&str; 57] = [
-    "lava_lake_west",
-    "lava_lake_east",
-    "lava_shelf",
-    "deck_clearing",
-    "deck_aqueduct_west",
-    "deck_aqueduct_east",
-    "deck_ravine",
-    "deck_elevator",
-    "training dummy",
-    "aqueduct crawler a",
-    "aqueduct crawler b",
-    "aqueduct crawler c",
-    "ravine bat a",
-    "ravine bat b",
-    "ravine bat c",
-    "hollow wisp a",
-    "hollow wisp b",
-    "hollow wisp c",
-    "cut beetle a",
-    "cut beetle b",
-    "cut beetle c",
-    "bridge troll",
-    "aqueduct bat a",
-    "aqueduct bat b",
-    "ravine bat d",
-    "ravine bat e",
-    "falls crawler",
-    "upper beetle",
-    "aqueduct goblin",
-    "upper goblin",
-    "cut goblin",
-    "meadow goblin",
-    "cut floor goblin",
-    "bridge goblin a",
-    "bridge goblin b",
-    "hollow goblin",
-    "hollow bat",
-    "hollow wisp d",
-    "aqueduct crawler d",
-    "aqueduct crawler e",
-    "channel crawler",
-    "pool crawler",
-    "hollow wisp e",
-    "hollow wisp f",
-    "cut top beetle",
-    "pit shelf orb",
-    "channel orb",
-    "rubble orb",
-    "falls orb",
-    "lake orb",
-    "shelf orb",
-    "bench orb",
-    "bridge orb",
-    "geyser_floor_west",
-    "geyser_floor_east",
-    "geyser_shelf",
-    "player",
-];
-/// Schema 22's own crates and kegs, by save ID: a fresh run set its nine
-/// crates and five kegs down after the player and the mine's four loose
-/// iron blocks. Frozen for the migration.
-pub const S22_MAP_PROPS: std::ops::Range<u64> = 61..75;
-
-/// Schema 22 to 23 (P7-9): the map's objects and the player take the save
-/// IDs their names derive ([`SaveId::authored`]), so schema 22's 0 to 56
-/// map through [`S22_NAMES`]. Every later one is a runtime spawn's, a fresh
-/// run's iron, crates, kegs and stones or anything spawned since, and keeps
-/// its number, as `next_id` does. Each list a map object's ID can sit in
-/// goes back in save-ID order, as [`SaveGame`] keeps them. A crate or keg
-/// in [`S22_MAP_PROPS`] is the map's own (`map`), any other prop not; a
-/// save from before schema 12 has no crates or kegs.
-fn to_23(data: &mut Value) {
-    map_ids(data, &|id| {
-        usize::try_from(id)
-            .ok()
-            .and_then(|at| S22_NAMES.get(at))
-            .map_or(id, |name| SaveId::authored(name).0)
-    });
-    let lists = [
-        "/platforms",
-        "/hazards",
-        "/basins",
-        "/elevators",
-        "/geysers",
-        "/dummies",
-        "/enemies",
-    ];
-    for (list, key) in lists
-        .map(|list| (list, "id"))
-        .into_iter()
-        .chain([("/throws", "body")])
-    {
-        if let Some(entries) = data.pointer_mut(list).and_then(Value::as_array_mut) {
-            entries.sort_by_key(|entry| entry[key].as_u64());
+        Value::Array(items) => {
+            for item in items {
+                to_32(item);
+            }
         }
-    }
-    if let Some(gone) = data.pointer_mut("/gone").and_then(Value::as_array_mut) {
-        gone.sort_by_key(Value::as_u64);
-    }
-    for prop in each(data, "/props") {
-        let own = prop["kind"] == "crate" || prop["kind"] == "keg";
-        let map = own
-            && prop["id"]
-                .as_u64()
-                .is_some_and(|id| S22_MAP_PROPS.contains(&id));
-        prop["map"] = Value::from(map);
+        _ => {}
     }
 }
 
-/// The stats schema 24 gives a player that lacks them, as a fresh run's
-/// `player.json` gives them (7.10a): its crit chance and multiplier and its
-/// `damage_taken`, halving a hit in the `hit.blast` context. Frozen for the
-/// migration.
-const S24_PLAYER_STATS: &str = r#"{
-    "crit_chance": { "base": 0.05, "min": 0.0, "max": 1.0 },
-    "crit_multiplier": { "base": 2.0, "min": 1.0, "max": null },
-    "damage_taken": {
-        "base": 1.0, "min": 0.0, "max": null,
-        "lines": [["base", { "modifier": { "mul": 0.5 }, "with": { "all": ["hit.blast"] } }]]
-    }
-}"#;
-
-/// Schema 23 to 24 (7.10a): the player's crit and the share of a blast it
-/// takes became its stats', read by the kit's rules, so a player whose
-/// saved stats lack one takes a fresh run's ([`S24_PLAYER_STATS`]); a stat
-/// it holds stays as saved.
-fn to_24(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let fresh: Value = S24_PLAYER_STATS.parse()?;
-    let stats = data
-        .pointer_mut("/player/stats")
-        .and_then(Value::as_object_mut)
-        .ok_or("schema 23: the player has no stats")?;
-    for (name, stat) in fresh.as_object().into_iter().flatten() {
-        stats.entry(name.clone()).or_insert_with(|| stat.clone());
-    }
-    Ok(())
-}
-
-/// Maps `id` through `to`, when it is a save ID.
-fn map_id(id: Option<&mut Value>, to: &impl Fn(u64) -> u64) {
-    if let Some(id) = id
-        && let Some(value) = id.as_u64()
-    {
-        *id = Value::from(to(value));
-    }
-}
-
-/// The elements of the array at `pointer` in `data`, none when it is
-/// missing or no array.
-fn each<'a>(data: &'a mut Value, pointer: &str) -> impl Iterator<Item = &'a mut Value> {
-    data.pointer_mut(pointer)
-        .and_then(Value::as_array_mut)
-        .into_iter()
-        .flatten()
-}
-
-/// Schema 8 to 9: every save ID at or above schema 8's player's, which the
-/// new map objects now take, moves up by [`SHIFT_9`].
-fn shift_ids(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let from = data
-        .pointer("/player/id")
-        .and_then(Value::as_u64)
-        .ok_or("schema 8: the player has no save ID")?;
-    map_ids(data, &|id| if id >= from { id + SHIFT_9 } else { id });
-    Ok(())
-}
-
-/// A schema 9 save ID as schema 10 numbers it: the lava, the decks, the
-/// dummy, the enemies and the placed orbs at their new places, each later
-/// ID down by the props and statics that no longer take one; any other
-/// names nothing a save holds.
-fn remap_9(id: u64) -> u64 {
-    if id == S9_LAKE {
-        S10_LAKE
-    } else if id == S9_SHELF {
-        S10_SHELF
-    } else if id >= S9_PLAYER {
-        id - S9_PLAYER + S10_PLAYER
-    } else if id >= S9_PICKUPS {
-        id - S9_PICKUPS + S10_PICKUPS
-    } else if id >= S9_ENEMIES {
-        id - S9_ENEMIES + S10_ENEMIES
-    } else if id == S9_DUMMY {
-        S10_DUMMY
-    } else if (S9_DECKS..S9_DUMMY).contains(&id) {
-        id - S9_DECKS + S10_DECKS
-    } else {
-        id
-    }
-}
-
-/// Schema 9 to 10: the elevator's old ping-pong deck dropped, so it starts
-/// at rest; every save ID through [`remap_9`]; and a player over a lake no
-/// higher than its banks, in its lava or under it, set at rest on the
-/// nearest of its banks and its stone.
-fn to_10(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(platforms) = data.pointer_mut("/platforms").and_then(Value::as_array_mut) {
-        platforms
-            .retain(|platform| platform.get("id").and_then(Value::as_u64) != Some(S9_ELEVATOR));
-    }
-    map_ids(data, &remap_9);
-    let Some(at) = data
-        .pointer("/player/position")
-        .and_then(Value::as_array)
-        .and_then(|xy| Some([xy.first()?.as_f64()? as f32, xy.get(1)?.as_f64()? as f32]))
-    else {
-        return Err("schema 9: the player has no position".into());
-    };
-    let centre = Vec2::from(at) + S12_BODY_OFFSET;
-    let half = S10_PLAYER_HALF;
-    let tile = crate::features::level::TILE;
-    for (left, right, bank, places) in S10_LAKES {
-        let over = centre.x + half.x > left * tile && centre.x - half.x < right * tile;
-        if !over || centre.y + half.y <= bank * tile - 1.0 {
-            continue;
+/// Schema 32 to 33 over a save's `world`: each saved snowball, a dynamic
+/// body's record whose `snowball` held its thrower, factor and seconds,
+/// goes, a body a load could not fly on the kit's projectile; at most
+/// eight were in flight, for at most 3 s.
+fn to_33(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            for inner in object.values_mut() {
+                to_33(inner);
+            }
         }
-        let to = |column: f32| (column * tile - centre.x).abs();
-        let nearest = places
-            .iter()
-            .copied()
-            .min_by(|a, b| to(*a).total_cmp(&to(*b)));
-        if let Some(column) = nearest {
-            let middle = Vec2::new(column * tile, bank * tile - half.y - 0.5);
-            let corner = middle - S12_BODY_OFFSET;
-            data["player"]["position"] = Value::from(vec![corner.x, corner.y]);
-            data["player"]["velocity"] = Value::from(vec![0.0_f32, 0.0]);
-        }
-    }
-    Ok(())
-}
-
-/// Schema 10 to 11: the one black hole a save kept becomes the list's
-/// only one, none an empty list, and the old key goes, since [`SaveGame`]
-/// denies unknown fields; a schema 9 save's hole took its new save ID in
-/// [`to_10`] first. The gun's magazine holds [`gun::MAGAZINE`] rounds now,
-/// so the player's `gun` keeps at most that many of a save's twelve, a
-/// reload left running running on.
-fn to_11(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let save = data
-        .as_object_mut()
-        .ok_or("schema 10: the save is no object")?;
-    let holes = match save.remove("black_hole") {
-        None | Some(Value::Null) => Vec::new(),
-        Some(hole) => vec![hole],
-    };
-    save.insert("black_holes".into(), Value::Array(holes));
-    for entry in each(data, "/player/abilities/entries") {
-        if entry.get("name").and_then(Value::as_str) == Some(gun::GUN)
-            && let Some(charges) = entry.get("charges").and_then(Value::as_u64)
-        {
-            entry["charges"] = Value::from(charges.min(u64::from(gun::MAGAZINE)));
-        }
-    }
-    Ok(())
-}
-
-/// Schema 11 to 12: the map's seven goblins take the save IDs from schema
-/// 11's first placed orb's on, so every save ID at or above it moves up by
-/// [`SHIFT_12`]. A schema 11 save names no goblin, in its lists or in
-/// `gone`, so the map's stand at their homes after the load, and it has no
-/// props, so its run has none of the map's crates and kegs.
-fn to_12(data: &mut Value) {
-    map_ids(data, &|id| {
-        if id >= S11_PICKUPS { id + SHIFT_12 } else { id }
-    });
-}
-
-/// Schema 12 to 13: the player is drawn on the wizard's 96 px frame, whose
-/// body centre sits at [`S13_BODY_OFFSET`] from its corner, so the saved corner moves by the two offsets'
-/// difference and the body stays where it stood. Nothing else saved names
-/// the frame.
-fn to_13(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let Some(at) = data
-        .pointer("/player/position")
-        .and_then(Value::as_array)
-        .and_then(|xy| Some([xy.first()?.as_f64()? as f32, xy.get(1)?.as_f64()? as f32]))
-    else {
-        return Err("schema 12: the player has no position".into());
-    };
-    let corner = Vec2::from(at) + S12_BODY_OFFSET - S13_BODY_OFFSET;
-    data["player"]["position"] = Value::from(vec![corner.x, corner.y]);
-    Ok(())
-}
-
-/// Schema 13 to 14 (01 (i)): the hints go; the player's maximum health is
-/// [`MAX_HEALTH`](crate::features::player::MAX_HEALTH) at every difficulty,
-/// its health keeping its share of the old maximum, as the kit's
-/// `Health::set_max` keeps it; its `pickup_radius` base, each crawler's
-/// `damage` base and each troll's `move_speed` base move to this stop's
-/// values, their modifiers kept; and every saved cold build-up, the
-/// player's, a dummy's or an enemy's, halves with the cold ladder's gates,
-/// keeping its share of them.
-fn to_14(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(save) = data.as_object_mut() {
-        save.remove("hints");
-    }
-    let health = |key: &str| {
-        data.pointer(&format!("/player/health/{key}"))
-            .and_then(Value::as_f64)
-    };
-    let (Some(current), Some(max)) = (health("current"), health("max")) else {
-        return Err("schema 13: the player has no health".into());
-    };
-    let full = f64::from(crate::features::player::MAX_HEALTH);
-    let player = &mut data["player"];
-    let share = if max > 0.0 { current / max } else { 1.0 };
-    player["health"]["current"] = Value::from((share * full).clamp(0.0, full));
-    player["health"]["max"] = Value::from(full);
-    player["stats"]["max_health"]["base"] = Value::from(full);
-    let reach = f64::from(crate::features::player::PICKUP_RADIUS);
-    player["stats"]["pickup_radius"]["base"] = Value::from(reach);
-    halve_cold(&mut player["buckets"]);
-    for dummy in data["dummies"].as_array_mut().into_iter().flatten() {
-        halve_cold(&mut dummy["buckets"]);
-    }
-    for enemy in data["enemies"].as_array_mut().into_iter().flatten() {
-        if enemy["kind"] == "crawler" {
-            enemy["stats"]["damage"]["base"] = Value::from(f64::from(crawler::DAMAGE));
-        }
-        if enemy["kind"] == "troll" {
-            enemy["stats"]["move_speed"]["base"] = Value::from(f64::from(troll::MOVE_SPEED));
-        }
-        halve_cold(&mut enemy["buckets"]);
-    }
-    Ok(())
-}
-
-/// A saved body: its list and place in it (`player` for the player), its
-/// save ID, its centre from its point and its half extents, its point, and
-/// whether the map placed it.
-struct Body {
-    list: &'static str,
-    index: usize,
-    id: u64,
-    offset: Vec2,
-    half: Vec2,
-    point: Vec2,
-    map: bool,
-}
-
-impl Body {
-    fn min(&self) -> Vec2 {
-        self.point + self.offset - self.half
-    }
-
-    fn max(&self) -> Vec2 {
-        self.point + self.offset + self.half
-    }
-}
-
-/// Every body a schema 14 or 15 save keeps, the player first: the dummies,
-/// the enemies, the balls, the blocks and scraps, the props and the orbs.
-fn bodies(data: &Value) -> Result<Vec<Body>, Box<dyn std::error::Error + Send + Sync>> {
-    let pair = |xy: Option<&Value>| -> Option<Vec2> {
-        let xy = xy?.as_array()?;
-        Some(Vec2::new(
-            xy.first()?.as_f64()? as f32,
-            xy.get(1)?.as_f64()? as f32,
-        ))
-    };
-    let player =
-        pair(data.pointer("/player/position")).ok_or("schema 14: the player has no position")?;
-    let mut out = vec![Body {
-        list: "player",
-        index: 0,
-        id: data
-            .pointer("/player/id")
-            .and_then(Value::as_u64)
-            .unwrap_or(0),
-        offset: S15_PLAYER[0],
-        half: S15_PLAYER[1],
-        point: player,
-        map: false,
-    }];
-    for list in [
-        "dummies", "enemies", "balls", "blocks", "props", "orbs", "planks",
-    ] {
-        for (index, entry) in data[list].as_array().into_iter().flatten().enumerate() {
-            let named = |table: &[(&str, [Vec2; 2])], key: &str| {
-                table
-                    .iter()
-                    .find(|(name, _)| entry[key].as_str() == Some(name))
-                    .map(|(_, sizes)| *sizes)
-            };
-            let (sizes, point) = match list {
-                "balls" => {
-                    let small = entry.get(1).and_then(Value::as_bool) == Some(true);
-                    let x = entry.get(2).and_then(Value::as_f64);
-                    let y = entry.get(3).and_then(Value::as_f64);
-                    let point = x.zip(y).map(|(x, y)| Vec2::new(x as f32, y as f32));
-                    (Some(if small { S15_SMALL_BALL } else { S15_BALL }), point)
-                }
-                "dummies" => (Some(S15_DUMMY), pair(entry.get("position"))),
-                "enemies" => (named(&S15_ENEMIES, "kind"), pair(entry.get("position"))),
-                "blocks" => (
-                    Some(if entry["scrap"].is_null() {
-                        S15_IRON
-                    } else {
-                        S15_SCRAP
-                    }),
-                    pair(entry.get("position")),
-                ),
-                "props" => (named(&S15_PROPS, "kind"), pair(entry.get("position"))),
-                "planks" => (Some(S19_PLANK), pair(entry.get("position"))),
-                _ => (Some(S15_ORB), pair(entry.get("position"))),
-            };
-            let (Some([offset, half]), Some(point)) = (sizes, point) else {
-                return Err(format!("schema 14: a body of /{list}/{index} has no box").into());
-            };
-            let id = if list == "balls" {
-                entry.get(0)
-            } else {
-                entry.get("id")
-            };
-            out.push(Body {
-                list,
-                index,
-                id: id.and_then(Value::as_u64).unwrap_or(0),
-                offset,
-                half,
-                point,
-                map: entry["map"].as_bool() == Some(true),
+        Value::Array(items) => {
+            items.retain(|item| {
+                item.get("components")
+                    .and_then(|components| components.get(S32_SNOWBALL))
+                    .is_none()
             });
+            for item in items {
+                to_33(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The name schema 32 saved a snowball's flight under, frozen for the
+/// migration.
+const S32_SNOWBALL: &str = "snowball";
+
+/// Schema 33 to 34 over a save's `world`: the saved `cascades` loses its
+/// `entries`, the lightning's jumps in flight, at most six a strike for at
+/// most 0.1 s each, which the kit's conduction cannot take up, as schema 33
+/// dropped the snowballs; and each record of iron, a scrap or a keg takes
+/// `conductive` into its `tags`, as their prefabs give it at schema 34, so
+/// the conduction finds it.
+fn to_34(world: &mut Value) {
+    if let Some(cascades) = world
+        .get_mut("resources")
+        .and_then(|resources| resources.get_mut(S33_CASCADES))
+        .and_then(Value::as_object_mut)
+    {
+        cascades.remove("entries");
+    }
+    metal_conducts(world);
+}
+
+/// Each record of [`S33_METAL`]'s prefabs within `value` takes
+/// [`S33_CONDUCTIVE`] into its `tags`.
+fn metal_conducts(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let metal = object
+                .get("prefab")
+                .and_then(Value::as_str)
+                .is_some_and(|prefab| S33_METAL.contains(&prefab));
+            if metal && let Some(Value::Object(components)) = object.get_mut("components") {
+                let mut tags: Vec<String> = components
+                    .get("tags")
+                    .and_then(Value::as_array)
+                    .map(|tags| {
+                        tags.iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                tags.push(S33_CONDUCTIVE.to_owned());
+                tags.sort();
+                tags.dedup();
+                components.insert(
+                    "tags".to_owned(),
+                    Value::from(tags.into_iter().map(Value::from).collect::<Vec<_>>()),
+                );
+            }
+            for inner in object.values_mut() {
+                metal_conducts(inner);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                metal_conducts(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The name schema 33 saved the cascades under, the prefabs of its metal
+/// and the tag the conduction finds metal by at schema 34, frozen for the
+/// migration.
+const S33_CASCADES: &str = "cascades";
+const S33_METAL: [&str; 3] = ["iron_block", "iron_scrap", "keg"];
+const S33_CONDUCTIVE: &str = "conductive";
+
+/// Schema 34 to 35 over a save's `world`: each record of a fire missile or
+/// a bullet in flight without a `facing` takes its prefab's, as schema 35
+/// saves it, so the kit turns its rocket or its tracer along its flight.
+fn to_35(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let facing = match object.get("prefab").and_then(Value::as_str) {
+                Some(S34_MISSILE) => Some(s34_facing(true)),
+                Some(S34_BULLET) => Some(s34_facing(false)),
+                _ => None,
+            };
+            if let (Some(facing), Some(Value::Object(components))) =
+                (facing, object.get_mut("components"))
+            {
+                components.entry("facing").or_insert(facing);
+            }
+            for inner in object.values_mut() {
+                to_35(inner);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                to_35(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Schema 35 to 36 over a save's `world`: each saved `black_hole`, a
+/// record's or a patch's, loses its `left`, which becomes the kit's
+/// `cooldown` beside it, the hole's life of [`S35_HOLE_LIFE`] with that
+/// left, at least 0, and its one elapse to go, as the prefab gives it at
+/// schema 36.
+fn to_36(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let left = object
+                .get_mut(S35_BLACK_HOLE)
+                .and_then(Value::as_object_mut)
+                .and_then(|hole| hole.remove("left"))
+                .and_then(|left| left.as_f64());
+            if let Some(left) = left {
+                object.insert("cooldown".to_owned(), s35_life(left.max(0.0)));
+            }
+            for inner in object.values_mut() {
+                to_36(inner);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                to_36(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The name schema 35 saved a black hole under and its life's seconds,
+/// frozen for the migration.
+const S35_BLACK_HOLE: &str = "black_hole";
+const S35_HOLE_LIFE: f64 = 6.0;
+
+/// A black hole's life at schema 35 as the kit's `cooldown`, `left`
+/// seconds of its six to go and one elapse: frozen for the migration.
+fn s35_life(left: f64) -> Value {
+    Value::from_iter([
+        ("seconds".to_owned(), Value::from(S35_HOLE_LIFE)),
+        ("left".to_owned(), Value::from(left)),
+        ("remaining".to_owned(), Value::from(1)),
+    ])
+}
+
+/// Schema 36 to 37 over a save's `world`: each record of a placed crate
+/// or keg (one without [`S36_MAP_PROP`]), of a goblin's rock and of a
+/// plank takes the kit's admission mark, [`S36_ADMITTED`], as schema 37
+/// gives each one placed, so a loaded older save's props count toward
+/// their prefabs' caps as they counted toward 01's; the map's own stay
+/// aside, and a record already marked keeps its one mark.
+fn to_37(value: &mut Value) {
+    mark_admitted(value, &S36_PROPS);
+}
+
+/// Schema 37 to 38 over a save's `world`: each record of an iron block,
+/// the map's among them, and of a black hole takes the kit's admission
+/// mark, [`S36_ADMITTED`], as schema 38 gives each one placed, so a
+/// loaded older save's iron and holes count toward their prefabs' caps
+/// as they counted toward 01's.
+fn to_38(value: &mut Value) {
+    mark_admitted(value, &S37_IRON_HOLES);
+}
+
+/// The prefabs of schema 37's iron and black holes, frozen for the
+/// migration.
+const S37_IRON_HOLES: [&str; 2] = ["iron_block", "black_hole"];
+
+/// Schema 38 to 39 over a save's `world`: each record of a dummy or an
+/// enemy, every one a summon's, the map's being named objects, takes the
+/// kit's admission mark, [`S36_ADMITTED`], as schema 39 gives each one
+/// summoned, so a loaded older save's summons count toward their
+/// prefabs' caps as they counted toward 01's.
+fn to_39(value: &mut Value) {
+    mark_admitted(value, &S38_SUMMONS);
+}
+
+/// The prefabs of schema 38's summons, frozen for the migration.
+const S38_SUMMONS: [&str; 8] = [
+    "dummy",
+    "wisp",
+    "crawler",
+    "beetle",
+    "bat",
+    "troll",
+    "goblin",
+    "troll_armoured",
+];
+
+/// Schema 39 to 40 over a save's `world`: each geyser's cycle moves onto
+/// the kit's timed machine, saved as `geyser_phase`, and its touch stays on
+/// it behind its switch. The global record and each area are walked for the
+/// map's geysers that hold a record ([`S39_GEYSERS`], in `named`) and for
+/// the spawns of [`S39_GEYSER`] ([`s39_geyser`]).
+fn to_40(world: &mut Value) {
+    if let Some(global) = world.get_mut("global") {
+        s39_area(global);
+    }
+    if let Some(Value::Object(areas)) = world.get_mut("areas") {
+        for area in areas.values_mut() {
+            s39_area(area);
         }
     }
-    Ok(out)
 }
 
-/// Schema 14 to 15 (01 (k)): the start's wall stands over columns 0 and 1
-/// from row 21, and the boundary left of the map. Each saved body whose box
-/// meets the wall's ([`S15_WALL`]) or lies past the map's left edge is set
-/// at rest on the clearing's floor, at the first x from the wall's face to
-/// the terrace's ([`S15_SPAN`]) where its box meets no other saved body's
-/// and skips the moving deck's columns ([`S15_DECK`]), the player first.
-/// A player with no such spot stands at the run's spawn, where the solver
-/// parts it from any body; any other body with no room is dropped, a map
-/// dummy or enemy taking its save ID into `gone` so the load takes the
-/// map's off too, and the log names each dropped save ID.
-fn to_15(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut bodies = bodies(data)?;
-    let [wall, face] = S15_WALL;
-    let inside = |body: &Body| {
-        let (min, max) = (body.min(), body.max());
-        min.x < 0.0 || (min.x < face.x && max.x > wall.x && min.y < face.y && max.y > wall.y)
-    };
-    let moving: Vec<usize> = (0..bodies.len()).filter(|&i| inside(&bodies[i])).collect();
-    if moving.is_empty() {
-        return Ok(());
-    }
-    let mut placed = vec![true; bodies.len()];
-    for &i in &moving {
-        placed[i] = false;
-    }
-    let mut dropped = Vec::new();
-    for &i in &moving {
-        let (offset, half) = (bodies[i].offset, bodies[i].half);
-        let y = S15_FLOOR - 0.5 - half.y;
-        let others: Vec<(Vec2, Vec2)> = (0..bodies.len())
-            .filter(|&j| j != i && placed[j])
-            .map(|j| (bodies[j].min(), bodies[j].max()))
-            .collect();
-        let fits = |left: f32| {
-            let (min, max) = (
-                Vec2::new(left, y - half.y),
-                Vec2::new(left + 2.0 * half.x, y + half.y),
-            );
-            max.x <= S15_SPAN[1]
-                && !(min.x < S15_DECK[1] && max.x > S15_DECK[0])
-                && others
-                    .iter()
-                    .all(|(a, b)| !(min.x < b.x && max.x > a.x && min.y < b.y && max.y > a.y))
-        };
-        let mut lefts: Vec<f32> = [S15_SPAN[0], S15_DECK[1]]
-            .into_iter()
-            .chain(others.iter().map(|(_, max)| max.x))
-            .filter(|&left| left >= S15_SPAN[0])
-            .collect();
-        lefts.sort_by(f32::total_cmp);
-        let centre = match lefts.into_iter().find(|&left| fits(left)) {
-            Some(left) => Vec2::new(left + half.x, y),
-            None if bodies[i].list == "player" => S15_SPAWN - Vec2::new(0.0, half.y + 0.5),
-            None => {
-                dropped.push(i);
-                continue;
+/// One area's geysers at schema 39: its named records by the map's names,
+/// each a patch over a fresh geyser at its offset, and its spawns of the
+/// geyser's prefab, each whole.
+fn s39_area(area: &mut Value) {
+    if let Some(Value::Object(named)) = area.get_mut("named") {
+        for (name, offset) in S39_GEYSERS {
+            if let Some(record) = named.get_mut(name) {
+                s39_geyser(record, Some(offset));
             }
-        };
-        bodies[i].point = centre - offset;
-        placed[i] = true;
+        }
     }
-    write_bodies(data, &bodies, &moving, &dropped);
-    let ids: Vec<u64> = dropped.iter().map(|&i| bodies[i].id).collect();
-    log::info!(
-        "schema 15: saved bodies set out of the start's wall on the clearing's floor: {}; dropped with no room: {ids:?}",
-        moving.len() - dropped.len()
-    );
-    Ok(())
-}
-
-/// Schema 15 to 16 (01 (l)): the tomes' three supports stand where a
-/// schema 15 run had open air. Each saved body whose box meets one
-/// ([`S16_SUPPORTS`]) is set at rest on that support's top, its x kept on
-/// it, where its box meets no other saved body's, the player first; a
-/// player with no room there stands at the run's spawn, and any other body
-/// is dropped, as [`to_15`] drops one.
-fn to_16(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut bodies = bodies(data)?;
-    let meets = |(min, max): (Vec2, Vec2), [low, high]: [Vec2; 2]| {
-        min.x < high.x && max.x > low.x && min.y < high.y && max.y > low.y
-    };
-    let moving: Vec<(usize, [Vec2; 2])> = (0..bodies.len())
-        .filter_map(|i| {
-            let boxed = (bodies[i].min(), bodies[i].max());
-            let support = S16_SUPPORTS.into_iter().find(|&s| meets(boxed, s))?;
-            Some((i, support))
-        })
-        .collect();
-    if moving.is_empty() {
-        return Ok(());
-    }
-    let mut placed = vec![true; bodies.len()];
-    for &(i, _) in &moving {
-        placed[i] = false;
-    }
-    let mut dropped = Vec::new();
-    for &(i, [low, high]) in &moving {
-        let (offset, half) = (bodies[i].offset, bodies[i].half);
-        // Its x on the support, which a body wider than it cannot keep.
-        let fits = 2.0 * half.x <= high.x - low.x;
-        let x = (bodies[i].point.x + offset.x)
-            .min(high.x - half.x)
-            .max(low.x + half.x);
-        let centre = Vec2::new(x, low.y - 0.5 - half.y);
-        let clear = (0..bodies.len()).filter(|&j| j != i && placed[j]).all(|j| {
-            !meets(
-                (centre - half, centre + half),
-                [bodies[j].min(), bodies[j].max()],
-            )
-        });
-        let centre = match (fits && clear, bodies[i].list) {
-            (true, _) => centre,
-            (false, "player") => S15_SPAWN - Vec2::new(0.0, half.y + 0.5),
-            (false, _) => {
-                dropped.push(i);
-                continue;
+    if let Some(Value::Array(spawns)) = area.get_mut("spawns") {
+        for spawn in spawns {
+            if spawn.get("prefab").and_then(Value::as_str) == Some(S39_GEYSER) {
+                s39_geyser(spawn, None);
             }
-        };
-        bodies[i].point = centre - offset;
-        placed[i] = true;
-    }
-    let moving: Vec<usize> = moving.into_iter().map(|(i, _)| i).collect();
-    write_bodies(data, &bodies, &moving, &dropped);
-    let ids: Vec<u64> = dropped.iter().map(|&i| bodies[i].id).collect();
-    log::info!(
-        "schema 16: saved bodies set out of the tomes' supports on top: {}; dropped with no room: {ids:?}",
-        moving.len() - dropped.len()
-    );
-    Ok(())
-}
-
-/// Schema 16 to 17 (e01foes): each saved crawler's `move_speed` base moves
-/// to [`crawler::MOVE_SPEED`], its modifiers kept, as [`to_14`] moved the
-/// troll's.
-fn to_17(data: &mut Value) {
-    for enemy in data["enemies"].as_array_mut().into_iter().flatten() {
-        if enemy["kind"] == "crawler" {
-            enemy["stats"]["move_speed"]["base"] = Value::from(f64::from(crawler::MOVE_SPEED));
         }
     }
 }
 
-/// Schema 18 to 19 (e01hollow): the map's three new enemies take the save
-/// IDs from schema 18's first placed orb's on and its three geysers those
-/// after the orbs, so every save ID at or above schema 18's player's moves
-/// up by [`SHIFT_19`] and every one from its first orb's below it by
-/// [`SHIFT_19_PICKUPS`]. The mouth's lintel comes down a row
-/// ([`S19_LINTEL`]): the ravine's bat c, which roosted under its old row,
-/// takes its new roost as its home ([`S19_BAT_C_HOME`]), and its body too
-/// when it meets the row, since a load puts both over the map's; every
-/// other saved body that meets the row is set at rest with its top 0.5 px
-/// under it, its x kept, where it meets no other saved body, a player with
-/// no room standing at the run's spawn and any other body dropped, as
-/// [`to_16`] drops one. A schema 18 save names no new enemy or geyser and
-/// holds no stone: the map's stand at home, the geysers start at their
-/// offsets and the hollow has no stones.
-fn to_19(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    map_ids(data, &|id| {
-        if id >= S18_PLAYER {
-            id + SHIFT_19
-        } else if id >= S18_PICKUPS {
-            id + SHIFT_19_PICKUPS
+/// One geyser's record from schema 39 to 40; `named` is a map geyser's
+/// offset, whose record is a patch, and none for a spawn's, which is whole.
+///
+/// The record's `geyser` is laid over what a fresh geyser held at schema
+/// 39: the phase and seconds left its offset gave, no chill, no choke,
+/// started. `geyser` keeps its offset, chill and `started`, written whole,
+/// since the form refuses the fields it lost. `geyser_phase` is the machine
+/// in that phase, entered when the cycle had started, the seconds spent in
+/// it the phase's length less the seconds left, or, choked, the choke's
+/// length less what was left of it; at least 0, since the old cycle's carry
+/// left up to 1e-5 s over and the machine's save refuses a negative time.
+/// Its touch is the save's own where it held one, erupting, else for a
+/// spawn the prefab's with its clock at 0, and takes its switch, on only in
+/// an eruption: a named record lies over a fresh geyser whose touch is off.
+fn s39_geyser(record: &mut Value, named: Option<f64>) {
+    let Value::Object(record) = record else {
+        return;
+    };
+    if let Some(Value::Array(removed)) = record.get_mut("removed") {
+        removed.retain(|name| name.as_str() != Some(S39_TOUCH));
+    }
+    let components = record
+        .entry("components")
+        .or_insert_with(|| Value::Object(Default::default()));
+    let Value::Object(components) = components else {
+        return;
+    };
+    let old = components.remove(S39_GEYSER);
+    let field = |key: &str| old.as_ref().and_then(|geyser| geyser.get(key));
+    let offset = field("offset")
+        .and_then(Value::as_f64)
+        .or(named)
+        .unwrap_or(0.0);
+    let (fresh, fresh_left) = s39_at_offset(offset);
+    let phase = field("phase").and_then(Value::as_str).unwrap_or(fresh);
+    let left = field("left").and_then(Value::as_f64).unwrap_or(fresh_left);
+    let cold = field("cold").and_then(Value::as_f64).unwrap_or(0.0);
+    let choked = field("choked").and_then(Value::as_f64).unwrap_or(0.0);
+    let started = field("started").and_then(Value::as_bool).unwrap_or(true);
+    let (state, elapsed) = if choked > 0.0 {
+        (S39_CHOKED, S39_CHOKE - choked)
+    } else {
+        let seconds = match phase {
+            "sputter" => S39_SPUTTER,
+            "erupt" => S39_ERUPT,
+            _ => S39_IDLE,
+        };
+        (phase, seconds - left)
+    };
+    let machine = Value::from_iter([
+        ("state".to_owned(), Value::from(state)),
+        ("previous".to_owned(), Value::Null),
+        ("elapsed".to_owned(), Value::from(elapsed.max(0.0))),
+        ("next".to_owned(), Value::Null),
+        ("entered".to_owned(), Value::from(started)),
+        ("held".to_owned(), Value::from(false)),
+    ]);
+    let erupting = state == "erupt";
+    let geyser = Value::from_iter([
+        ("offset".to_owned(), Value::from(offset)),
+        ("cold".to_owned(), Value::from(cold)),
+        ("started".to_owned(), Value::from(started)),
+    ]);
+    components.insert(S39_GEYSER.to_owned(), geyser);
+    components.insert(S39_PHASE.to_owned(), machine);
+    let touch = components.entry(S39_TOUCH).or_insert_with(|| {
+        if named.is_some() {
+            Value::Object(Default::default())
         } else {
-            id
+            s39_touch()
         }
     });
-    let [low, high] = S19_LINTEL;
-    let meets = |(min, max): (Vec2, Vec2), others: &[(Vec2, Vec2)]| {
-        let inside = |a: Vec2, b: Vec2| min.x < b.x && max.x > a.x && min.y < b.y && max.y > a.y;
-        others.iter().any(|&(a, b)| inside(a, b))
+    if let Value::Object(touch) = touch
+        && let Value::Object(contact) = touch
+            .entry("contact")
+            .or_insert_with(|| Value::Object(Default::default()))
+    {
+        contact.insert("on".to_owned(), Value::from(erupting));
+    }
+}
+
+/// The phase and its seconds left `offset` seconds into a cycle, as schema
+/// 39's geysers began: frozen for the migration.
+fn s39_at_offset(offset: f64) -> (&'static str, f64) {
+    let cycle = S39_IDLE + S39_SPUTTER + S39_ERUPT;
+    let t = offset.rem_euclid(cycle);
+    if t < S39_IDLE {
+        ("idle", S39_IDLE - t)
+    } else if t < S39_IDLE + S39_SPUTTER {
+        ("sputter", S39_IDLE + S39_SPUTTER - t)
+    } else {
+        ("erupt", cycle - t)
+    }
+}
+
+/// A geyser's touch as its prefab gave it at schema 39, its clock at 0:
+/// 12 fire every 0.5 s on the enemies and the player, thrown at 1,000 px/s
+/// past the window, over its plume's box. Frozen for the migration.
+fn s39_touch() -> Value {
+    let names = |names: [&str; 2]| Value::from(names.map(Value::from).to_vec());
+    let pair = |x: f64, y: f64| Value::from(vec![Value::from(x), Value::from(y)]);
+    let part = Value::from_iter([
+        ("amount".to_owned(), Value::from(12.0)),
+        (
+            "tags".to_owned(),
+            Value::from(vec![Value::from("damage.fire")]),
+        ),
+    ]);
+    let contact = Value::from_iter([
+        ("damage".to_owned(), Value::from(12.0)),
+        (
+            "filter".to_owned(),
+            Value::from_iter([("any".to_owned(), names(["team.enemy", "team.player"]))]),
+        ),
+        ("interval".to_owned(), Value::from(0.5)),
+        ("knockback".to_owned(), Value::from(1000.0)),
+        ("offset".to_owned(), pair(32.0, 32.0)),
+        ("parts".to_owned(), Value::from(vec![part])),
+        ("push_always".to_owned(), Value::from(true)),
+        (
+            "shape".to_owned(),
+            Value::from_iter([("aabb".to_owned(), pair(20.0, 176.0))]),
+        ),
+        ("tags".to_owned(), Value::from(Vec::<Value>::new())),
+    ]);
+    Value::from_iter([
+        ("clock".to_owned(), Value::from(0.0)),
+        ("contact".to_owned(), contact),
+    ])
+}
+
+/// Schema 39's geysers, frozen for the migration: the map's three by name,
+/// each with the seconds into its cycle its run began at; their prefab,
+/// which is also the name their state was saved under; the names of their
+/// touch and, at schema 40, of their machine and its choke; and the seconds
+/// of their three phases and of a choke.
+const S39_GEYSERS: [(&str, f64); 3] = [
+    ("geyser_floor_west", 0.0),
+    ("geyser_floor_east", 1.3),
+    ("geyser_shelf", 2.6),
+];
+const S39_GEYSER: &str = "geyser";
+const S39_TOUCH: &str = "contact_damage";
+const S39_PHASE: &str = "geyser_phase";
+const S39_CHOKED: &str = "choked";
+const S39_IDLE: f64 = 2.5;
+const S39_SPUTTER: f64 = 0.6;
+const S39_ERUPT: f64 = 0.8;
+const S39_CHOKE: f64 = 6.0;
+
+/// Schema 40 to 41 over a save's `world`: the mine's elevator moves onto
+/// the kit's two-way lift. Its saved component, [`S40_ELEVATOR`], leaves
+/// the components' versions, and its named record ([`S40_LIFT`]), where
+/// the global record or an area holds one, takes the lift's
+/// `path_follower` in its place ([`s40_lift`]). An untouched lift has no
+/// record and spawns fresh.
+fn to_41(world: &mut Value) {
+    if let Some(Value::Object(versions)) = world
+        .get_mut("versions")
+        .and_then(|versions| versions.get_mut("components"))
+    {
+        versions.remove(S40_ELEVATOR);
+    }
+    if let Some(global) = world.get_mut("global") {
+        s40_area(global);
+    }
+    if let Some(Value::Object(areas)) = world.get_mut("areas") {
+        for area in areas.values_mut() {
+            s40_area(area);
+        }
+    }
+}
+
+/// One area's lift at schema 40: its named record, a patch over a fresh
+/// lift.
+fn s40_area(area: &mut Value) {
+    if let Some(record) = area
+        .get_mut("named")
+        .and_then(|named| named.get_mut(S40_LIFT))
+    {
+        s40_lift(record);
+    }
+}
+
+/// The lift's record from schema 40 to 41.
+///
+/// Its `elevator` is laid over what a fresh one held at schema 40: at the
+/// bottom, nobody boarding, no seconds alone, not ridden, not held. Its
+/// time on the kit's path, the bottom to the top and back, each way
+/// [`s40_way`] seconds, is 0 at the bottom and the way out at the top; on
+/// a trip, the seconds along its way ([`s40_along`]), the way out added
+/// when falling. A trip that has reached its end, the step before the old
+/// tick named the stop, stands at that end, since a ping-pong refuses a
+/// time of its whole length. `path_follower` is written whole in the kit's
+/// saved form, the rider's rule as the prefab has it, with the hold's
+/// state: `boarding` and the seconds a boarding has counted; `carried`
+/// where the player rode it to the stop it stands at; else its seconds
+/// alone, which count toward the return at the top; and `paused` where a
+/// trip was held. `elevator` leaves the record and its `removed`; its
+/// `position`, `transform` and `velocity` stay.
+fn s40_lift(record: &mut Value) {
+    let Value::Object(record) = record else {
+        return;
     };
-    let lintel = [(low, high)];
-    let [offset, half] = S15_ENEMIES
-        .iter()
-        .find(|(kind, _)| *kind == "bat")
-        .map(|(_, sizes)| *sizes)
-        .ok_or("schema 18: no bat box")?;
-    for enemy in each(data, "/enemies") {
-        let bat_c = enemy["id"].as_u64() == Some(S18_BAT_C)
-            && enemy["kind"] == "bat"
-            && enemy["map"].as_bool() == Some(true);
-        if !bat_c {
-            continue;
-        }
-        enemy["enemy"]["home"] = Value::from(vec![S19_BAT_C_HOME.x, S19_BAT_C_HOME.y]);
-        let point = enemy["position"].as_array().and_then(|xy| {
-            Some(Vec2::new(
-                xy.first()?.as_f64()? as f32,
-                xy.get(1)?.as_f64()? as f32,
-            ))
-        });
-        if let Some(point) = point
-            && meets((point + offset - half, point + offset + half), &lintel)
-        {
-            let corner = S19_BAT_C_HOME - offset;
-            enemy["position"] = Value::from(vec![corner.x, corner.y]);
-            enemy["velocity"] = Value::from(vec![0.0_f32, 0.0]);
-        }
+    if let Some(Value::Array(removed)) = record.get_mut("removed") {
+        removed.retain(|name| name.as_str() != Some(S40_ELEVATOR));
     }
-    let mut bodies = bodies(data)?;
-    let bat_c = |body: &Body| body.list == "enemies" && body.id == S18_BAT_C && body.map;
-    let moving: Vec<usize> = (0..bodies.len())
-        .filter(|&i| !bat_c(&bodies[i]) && meets((bodies[i].min(), bodies[i].max()), &lintel))
-        .collect();
-    if moving.is_empty() {
-        return Ok(());
-    }
-    let mut placed = vec![true; bodies.len()];
-    for &i in &moving {
-        placed[i] = false;
-    }
-    let mut dropped = Vec::new();
-    for &i in &moving {
-        let (offset, half) = (bodies[i].offset, bodies[i].half);
-        let centre = Vec2::new(bodies[i].point.x + offset.x, high.y + 0.5 + half.y);
-        let others: Vec<(Vec2, Vec2)> = (0..bodies.len())
-            .filter(|&j| j != i && placed[j])
-            .map(|j| (bodies[j].min(), bodies[j].max()))
-            .collect();
-        let clear = !meets((centre - half, centre + half), &others);
-        let centre = match (clear, bodies[i].list) {
-            (true, _) => centre,
-            (false, "player") => S15_SPAWN - Vec2::new(0.0, half.y + 0.5),
-            (false, _) => {
-                dropped.push(i);
-                continue;
-            }
-        };
-        bodies[i].point = centre - offset;
-        placed[i] = true;
-    }
-    write_bodies(data, &bodies, &moving, &dropped);
-    let ids: Vec<u64> = dropped.iter().map(|&i| bodies[i].id).collect();
-    log::info!(
-        "schema 19: saved bodies set under the hollow's lowered lintel: {}; dropped with no room: {ids:?}",
-        moving.len() - dropped.len()
-    );
-    Ok(())
-}
-
-/// Writes the points [`to_15`] or [`to_16`] gave the `moving` bodies into
-/// `data`, at rest, and takes the `dropped` off their lists, a map dummy
-/// or enemy taking its save ID into `gone` so the load takes the map's off
-/// too.
-fn write_bodies(data: &mut Value, bodies: &[Body], moving: &[usize], dropped: &[usize]) {
-    for &i in moving {
-        let body = &bodies[i];
-        if dropped.contains(&i) {
-            continue;
-        }
-        let [x, y] = body.point.to_array();
-        if body.list == "balls" {
-            let ball = &mut data["balls"][body.index];
-            for (k, value) in [x, y, 0.0, 0.0].into_iter().enumerate() {
-                ball[2 + k] = Value::from(value);
-            }
-            continue;
-        }
-        let entry = if body.list == "player" {
-            &mut data["player"]
+    let components = record
+        .entry("components")
+        .or_insert_with(|| Value::Object(Default::default()));
+    let Value::Object(components) = components else {
+        return;
+    };
+    let old = components.remove(S40_ELEVATOR);
+    let field = |key: &str| old.as_ref().and_then(|lift| lift.get(key));
+    let stop = field("stop").and_then(Value::as_str).unwrap_or("bottom");
+    let board = field("board").and_then(Value::as_f64);
+    let idle = field("idle").and_then(Value::as_f64).unwrap_or(0.0);
+    let ridden = field("ridden").and_then(Value::as_bool).unwrap_or(false);
+    let held = field("held").and_then(Value::as_bool).unwrap_or(false);
+    let way = s40_way();
+    let falling = stop == "falling";
+    let (time, standing, trip) = if falling || stop == "rising" {
+        let along = s40_along(
+            components.get(S40_FOLLOWER),
+            components.get("position"),
+            falling,
+            way,
+        );
+        // The time the kit reads, an `f32`: at the way out or past it, the
+        // trip has reached its end.
+        if along as f32 >= way as f32 {
+            (if falling { 0.0 } else { way }, true, true)
         } else {
-            &mut data[body.list][body.index]
-        };
-        entry["position"] = Value::from(vec![x, y]);
-        if entry.get("velocity").is_some() {
-            entry["velocity"] = Value::from(vec![0.0_f32, 0.0]);
+            (if falling { way + along } else { along }, false, true)
+        }
+    } else {
+        (if stop == "top" { way } else { 0.0 }, true, false)
+    };
+    let pair = |[x, y]: [f64; 2]| Value::from(vec![Value::from(x), Value::from(y)]);
+    let rider = Value::from_iter([
+        ("board".to_owned(), Value::from(S40_BOARD)),
+        ("back".to_owned(), Value::from(S40_BACK)),
+        (
+            "filter".to_owned(),
+            Value::from_iter([("any".to_owned(), Value::from(vec![Value::from(S40_RIDER)]))]),
+        ),
+        ("two_way".to_owned(), Value::from(true)),
+    ]);
+    let mut follower = Value::from_iter([
+        (
+            "points".to_owned(),
+            Value::from(vec![pair(S40_BOTTOM), pair(S40_TOP)]),
+        ),
+        ("speed".to_owned(), Value::from(f64::from(S40_SPEED))),
+        ("mode".to_owned(), Value::from("ping_pong")),
+        ("easing".to_owned(), Value::from("sine_in_out")),
+        ("time".to_owned(), Value::from(time)),
+        ("rider".to_owned(), rider),
+    ]);
+    if let Value::Object(follower) = &mut follower {
+        if let Some(left) = board.filter(|_| !trip) {
+            follower.insert("boarding".to_owned(), Value::from(true));
+            follower.insert("hold".to_owned(), Value::from((S40_BOARD - left).max(0.0)));
+        } else if standing && ridden {
+            follower.insert("carried".to_owned(), Value::from(true));
+        } else if stop == "top" {
+            follower.insert("hold".to_owned(), Value::from(idle.max(0.0)));
+        }
+        if held && !standing {
+            follower.insert("paused".to_owned(), Value::from(true));
         }
     }
-    // The dropped, from each list's last, so the places hold.
-    let mut gone: Vec<u64> = Vec::new();
-    let mut order = dropped.to_vec();
-    order.sort_by_key(|&i| std::cmp::Reverse(bodies[i].index));
-    for i in order {
-        let body = &bodies[i];
-        if let Some(list) = data[body.list].as_array_mut() {
-            list.remove(body.index);
-        }
-        if body.map && matches!(body.list, "dummies" | "enemies") {
-            gone.push(body.id);
-        }
-    }
-    if !gone.is_empty()
-        && let Some(list) = data["gone"].as_array_mut()
-    {
-        list.extend(gone.into_iter().map(Value::from));
-        list.sort_by_key(|id| id.as_u64());
-    }
+    components.insert(S40_FOLLOWER.to_owned(), follower);
 }
 
-/// Halves the `damage.cold` fill in a saved `{damage type: fill}` map.
-fn halve_cold(buckets: &mut Value) {
-    if let Some(fill) = buckets.get_mut("damage.cold")
-        && let Some(value) = fill.as_f64()
+/// The seconds a schema 40 trip is along its way from the stop it left,
+/// the top when `falling`, `way` seconds from the other: its saved
+/// follower's time where that follower began at that stop; else, for a
+/// trip resumed or turned back mid-shaft, whose follower began there, and
+/// a held one, with none, the time whose eased point is its saved
+/// `position`, the sine's inverse of the share of the shaft it has
+/// covered.
+fn s40_along(follower: Option<&Value>, position: Option<&Value>, falling: bool, way: f64) -> f64 {
+    let (left, toward) = if falling {
+        (S40_TOP, S40_BOTTOM)
+    } else {
+        (S40_BOTTOM, S40_TOP)
+    };
+    let began = follower
+        .and_then(|follower| follower.get("points"))
+        .and_then(|points| points.get(0))
+        .and_then(|point| point.get(1))
+        .and_then(Value::as_f64);
+    let time = follower
+        .and_then(|follower| follower.get("time"))
+        .and_then(Value::as_f64);
+    if let (Some(began), Some(time)) = (began, time)
+        && (began - left[1]).abs() < 0.01
     {
-        *fill = Value::from(value * 0.5);
+        return time.max(0.0);
     }
+    // A record without a `position` stands where a fresh lift does.
+    let y = position
+        .and_then(|position| position.get(1))
+        .and_then(Value::as_f64)
+        .unwrap_or(S40_BOTTOM[1]);
+    let share = ((y - left[1]) / (toward[1] - left[1])).clamp(0.0, 1.0);
+    (1.0 - 2.0 * share).acos() / std::f64::consts::PI * way
 }
 
-/// Every save ID field of `data`, a save's JSON, through `to`; a field it
-/// lacks stays lacking. The migrations' walk, which the tests also take
-/// back to an older numbering.
-pub fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
-    map_id(data.get_mut("next_id"), to);
-    map_id(data.pointer_mut("/player/id"), to);
-    map_id(data.pointer_mut("/black_hole/id"), to);
-    for source in each(data, "/player/sources") {
-        map_id(source.get_mut(1), to);
-    }
-    for list in [
-        "/platforms",
-        "/hazards",
-        "/blocks",
-        "/black_holes",
-        "/orbs",
-        "/basins",
-        "/elevators",
-        "/geysers",
-        "/stones",
-    ] {
-        for entry in each(data, list) {
-            map_id(entry.get_mut("id"), to);
-        }
-    }
-    for prop in each(data, "/props") {
-        map_id(prop.get_mut("id"), to);
-        map_id(prop.get_mut("lighter"), to);
-        map_id(prop.pointer_mut("/fuel/lighter"), to);
-    }
-    for list in ["/missiles", "/bullets", "/flasks"] {
-        for entry in each(data, list) {
-            map_id(entry.get_mut("id"), to);
-            map_id(entry.get_mut("source"), to);
-        }
-    }
-    for list in ["/dummies", "/enemies"] {
-        for entry in each(data, list) {
-            map_id(entry.get_mut("id"), to);
-            for source in each(entry, "/sources") {
-                map_id(source.get_mut(1), to);
+/// The seconds the lift's path takes each way, in the kit's own sum: its
+/// rise over its speed in `f32`, widened, so a lift at its top reads as
+/// standing there.
+fn s40_way() -> f64 {
+    f64::from((S40_BOTTOM[1] - S40_TOP[1]) as f32 / S40_SPEED)
+}
+
+/// Schema 40's lift, frozen for the migration: its record's name in its
+/// area, its saved component and the kit's follower, its points at rest and
+/// at the top, its speed, and its rider's rule as schema 41's prefab has
+/// it: the seconds aboard before it goes, the seconds alone at the top
+/// before it comes back, and the tag its riders carry.
+const S40_LIFT: &str = "deck_elevator";
+const S40_ELEVATOR: &str = "elevator";
+const S40_FOLLOWER: &str = "path_follower";
+const S40_BOTTOM: [f64; 2] = [20160.0, 3351.0];
+const S40_TOP: [f64; 2] = [20160.0, 2327.0];
+const S40_SPEED: f32 = 320.0;
+const S40_BOARD: f64 = 0.3;
+const S40_BACK: f64 = 4.0;
+const S40_RIDER: &str = "team.player";
+
+/// Each record of `prefabs` within `value` the map did not set down
+/// takes [`S36_ADMITTED`].
+fn mark_admitted(value: &mut Value, prefabs: &[&str]) {
+    match value {
+        Value::Object(object) => {
+            let placed = object
+                .get("prefab")
+                .and_then(Value::as_str)
+                .is_some_and(|prefab| prefabs.contains(&prefab));
+            if placed
+                && let Some(Value::Object(components)) = object.get_mut("components")
+                && !components.contains_key(S36_MAP_PROP)
+            {
+                components
+                    .entry(S36_ADMITTED)
+                    .or_insert_with(|| Value::Object(Default::default()));
+            }
+            for inner in object.values_mut() {
+                mark_admitted(inner, prefabs);
             }
         }
-    }
-    for enemy in each(data, "/enemies") {
-        for target in each(enemy, "/hit") {
-            map_id(Some(target), to);
+        Value::Array(items) => {
+            for item in items {
+                mark_admitted(item, prefabs);
+            }
         }
-        for touch in each(enemy, "/touches") {
-            map_id(touch.get_mut(0), to);
-        }
-        map_id(enemy.get_mut("held"), to);
-    }
-    for throw in each(data, "/throws") {
-        map_id(throw.get_mut("body"), to);
-        map_id(throw.get_mut("thrower"), to);
-    }
-    for snowball in each(data, "/snowballs") {
-        map_id(snowball.get_mut("id"), to);
-        map_id(snowball.get_mut("thrower"), to);
-    }
-    for plank in each(data, "/planks") {
-        map_id(plank.get_mut("id"), to);
-        map_id(plank.pointer_mut("/fuel/lighter"), to);
-    }
-    for ball in each(data, "/balls") {
-        map_id(ball.get_mut(0), to);
-    }
-    for id in each(data, "/gone") {
-        map_id(Some(id), to);
-    }
-    for entry in each(data, "/cascades/entries") {
-        map_id(entry.get_mut("target"), to);
-        map_id(entry.get_mut("source"), to);
-        for member in each(entry, "/chain") {
-            map_id(Some(member), to);
-        }
+        _ => {}
     }
 }
 
-/// The player: its body's point and velocity, its controller, health,
-/// stats, effects with their sources, abilities, ailment buckets, tags,
-/// the gun's reload while one runs, the tomes held and the pact's shield.
-/// The tags hold what an effect grants, so a save during `casting` loads
-/// with the mana still paused.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlayerSave {
-    pub id: u64,
-    pub position: [f32; 2],
-    pub velocity: [f32; 2],
-    pub controller: PlatformerController,
-    pub health: Health,
-    pub stats: Stats,
-    pub effects: Effects,
-    /// Each effect instance's source: its serial and the source's save ID.
-    pub sources: Vec<(u64, u64)>,
-    pub abilities: Abilities,
-    pub buckets: AilmentBuckets,
-    pub tags: Tags,
-    /// The seconds the gun's reload has left; none while no reload runs.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reload: Option<f32>,
-    /// The tomes taken, in order; none before schema 16.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tomes: Vec<TomeKind>,
-    /// The pact's shield, with its recharge's wait; none without the pact.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shield: Option<Shield>,
+/// The kit's admission mark as schema 37 saves it, the name schema 36
+/// saved a map's prop's mark under and its placed props' prefabs, frozen
+/// for the migration.
+const S36_ADMITTED: &str = "cap_admitted";
+const S36_MAP_PROP: &str = "map_prop";
+const S36_PROPS: [&str; 4] = ["crate", "keg", "goblin_rock", "plank"];
+
+/// The prefabs of schema 34's shots, frozen for the migration.
+const S34_MISSILE: &str = "fire_missile";
+const S34_BULLET: &str = "bullet";
+
+/// A shot's `facing` as schema 35 saves it: from its motion, turning, the
+/// missile's mirrored past the vertical; facing right until its first
+/// frame turns it. Frozen for the migration.
+fn s34_facing(mirror: bool) -> Value {
+    let mut facing = Value::from_iter([
+        ("from".to_owned(), Value::from("motion")),
+        ("snap".to_owned(), Value::from("free")),
+        ("turn".to_owned(), Value::from(true)),
+        ("offset".to_owned(), Value::from(0.0)),
+        ("min_speed".to_owned(), Value::from(1.0)),
+        (
+            "direction".to_owned(),
+            Value::from(vec![Value::from(1.0), Value::from(0.0)]),
+        ),
+    ]);
+    if mirror && let Value::Object(fields) = &mut facing {
+        fields.insert("mirror".to_owned(), Value::from(true));
+    }
+    facing
 }
 
-/// A training dummy: one the map placed (`map`), found by its save ID, or
-/// a summoned one, spawned; its body, health, resistances, effects with
-/// their sources, ailment buckets and tags, which its statuses grant.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DummySave {
-    pub id: u64,
-    pub map: bool,
-    pub position: [f32; 2],
-    pub velocity: [f32; 2],
-    pub health: Health,
-    pub resist: Resist,
-    pub effects: Effects,
-    pub sources: Vec<(u64, u64)>,
-    pub buckets: AilmentBuckets,
-    pub tags: Tags,
-}
-
-/// An enemy: one the map placed (`map`), found by its save ID, or a
-/// summoned one, spawned; its body, its driver (a walker's controller or a
-/// flyer's mover, and a frozen flyer's mover set aside beside the
-/// controller it falls on), its machine, what it knows and sees, its
-/// health, stats, resistances, effects with their sources, ailment buckets,
-/// tags, abilities, knockback, its hitbox with the targets its activation
-/// has hit and its touches' times, by save ID, and what a troll holds.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct EnemySave {
-    pub id: u64,
-    pub kind: EnemyKind,
-    pub map: bool,
-    pub position: [f32; 2],
-    pub velocity: [f32; 2],
-    pub controller: Option<PlatformerController>,
-    pub mover: Option<TopDownMover>,
-    pub displaced: Option<TopDownMover>,
-    pub machine: StateMachine<EnemyState>,
-    pub enemy: Enemy,
-    pub brain: Brain,
-    pub sight: Sight,
-    pub health: Health,
-    pub stats: Stats,
-    pub resist: Resist,
-    pub effects: Effects,
-    pub sources: Vec<(u64, u64)>,
-    pub buckets: AilmentBuckets,
-    pub tags: Tags,
-    pub abilities: Option<Abilities>,
-    pub knockback: Option<Knockback>,
-    pub hitbox: Option<Hitbox>,
-    /// Its hitbox's activation's targets.
-    pub hit: Vec<u64>,
-    /// Each target its touch times: (save ID, seconds since its hit, since
-    /// they met).
-    pub touches: Vec<(u64, f32, f32)>,
-    /// What a troll holds over its head, by save ID.
-    pub held: Option<u64>,
-}
-
-/// An orb: its save ID, kind, point and the seconds before it fades.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct OrbSave {
-    pub id: u64,
-    pub kind: OrbKind,
-    pub position: [f32; 2],
-    pub left: f32,
-}
-
-/// A throw in flight: the body's and the thrower's save IDs, the
-/// thrower's damage factor at the throw and the seconds it still credits.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ThrowSave {
-    pub body: u64,
-    pub thrower: u64,
-    pub factor: f32,
-    pub left: f32,
-}
-
-/// A moving platform: where it is and where its path has it going.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlatformSave {
-    pub id: u64,
-    pub position: [f32; 2],
-    pub follower: PathFollower,
-}
-
-/// A lava basin: the cold spray's seconds on it and its crust's seconds
-/// left, while set.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BasinSave {
-    pub id: u64,
-    pub cold: f32,
-    pub crust: Option<f32>,
-}
-
-/// A geyser: its phase, the phase's seconds left, the cold spray's seconds
-/// on it and its choke's seconds left (e01hollow).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct GeyserSave {
-    pub id: u64,
-    pub phase: GeyserPhase,
-    pub left: f32,
-    pub cold: f32,
-    pub choked: f32,
-}
-
-/// The mine's elevator: its deck's point, its stop, a boarding's seconds
-/// left, its seconds unridden at the top, its rider last step, a held trip
-/// and the trip's follower, while one runs.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ElevatorSave {
-    pub id: u64,
-    pub position: [f32; 2],
-    pub stop: Stop,
-    pub board: Option<f32>,
-    pub idle: f32,
-    pub ridden: bool,
-    pub held: bool,
-    pub follower: Option<PathFollower>,
-}
-
-/// A fire hazard on its oscillator: where it is and its clock, since the
-/// oscillator adds its change to the point, and the seconds cold has put it
-/// out for yet.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HazardSave {
-    pub id: u64,
-    pub position: [f32; 2],
-    pub oscillator: Oscillator,
-    pub doused: Option<f32>,
+/// A foe's rest left at schema 31 as the kit's `cooldown` of its own
+/// seconds, one elapse to go: frozen for the migration.
+fn s31_rest(seconds: f64) -> Value {
+    Value::from_iter([
+        ("seconds".to_owned(), Value::from(seconds)),
+        ("left".to_owned(), Value::from(seconds)),
+        ("remaining".to_owned(), Value::from(1)),
+    ])
 }
 
 /// A small ball or a bowling ball, its hue, its fire and its ice. A full
@@ -1496,7 +1016,8 @@ pub struct BallSave {
     pub position: [f32; 2],
     pub velocity: [f32; 2],
     pub hue: Option<BallHue>,
-    pub burn: Option<BallBurn>,
+    /// Its burn's seconds left, 0 once spent; none for one never lit.
+    pub burn: Option<f32>,
     pub ice: Option<f32>,
 }
 
@@ -1522,10 +1043,7 @@ impl From<BallRecord> for BallSave {
             position: [x, y],
             velocity: [vx, vy],
             hue: hue.zip(speed).map(|(hue, speed)| BallHue { hue, speed }),
-            burn: burn.map(|remaining| BallBurn {
-                remaining,
-                exposed: true,
-            }),
+            burn,
             ice,
         }
     }
@@ -1545,7 +1063,7 @@ impl From<BallSave> for BallRecord {
             vy,
             hue.map(|(hue, _)| hue),
             hue.map(|(_, speed)| speed),
-            ball.burn.map(|burn| burn.remaining),
+            ball.burn,
             ball.ice,
         )
     }
@@ -1616,595 +1134,105 @@ impl<'de> serde::de::Visitor<'de> for BallVisitor {
     }
 }
 
-/// A body's ice as a save writes it: 1 plus the seconds its freeze has
-/// left, else its chill.
-fn ice_of(chill: Option<&Chill>, frozen: Option<&Frozen>) -> Option<f32> {
-    frozen
-        .map(|frozen| 1.0 + frozen.left.max(0.0))
-        .or_else(|| chill.map(|chill| chill.amount))
+/// A body's coat as a save writes it, its `chill`'s intensity; none
+/// without one.
+fn chill_of(world: &World, entity: Entity) -> Option<f32> {
+    let coat = coat_of(world, entity);
+    (coat > 0.0).then_some(coat)
+}
+
+/// A body's ice as a save writes it: 1 plus the seconds its freeze (its
+/// `ice`) has left, else its coat.
+fn ice_of(world: &World, entity: Entity) -> Option<f32> {
+    ice_left(world, entity)
+        .map(|left| 1.0 + left.max(0.0))
+        .or_else(|| chill_of(world, entity))
+}
+
+/// Puts a saved coat back on `entity`, as its `chill`'s intensity.
+fn set_chill(world: &mut World, entity: Entity, amount: Option<f32>) {
+    if let Some(amount) = amount.filter(|&amount| amount > 0.0) {
+        EffectRequest::new(entity, DataRef::by_id(COAT))
+            .with_amount(amount)
+            .apply(world);
+    }
+}
+
+/// Puts a saved freeze back on `entity`: its `ice` for the seconds `left`
+/// had.
+fn set_frozen(world: &mut World, entity: Entity, left: Option<f32>) {
+    if let Some(left) = left {
+        freeze_for(world, entity, left.max(0.0));
+    }
 }
 
 /// Puts a saved ice back on `entity`.
 fn set_ice(world: &mut World, entity: Entity, ice: Option<f32>) {
     match ice {
-        Some(ice) if ice >= 1.0 => world.insert(entity, Frozen { left: ice - 1.0 }),
-        Some(amount) => world.insert(
-            entity,
-            Chill {
-                amount,
-                held: false,
-            },
-        ),
-        None => {}
+        Some(ice) if ice >= 1.0 => set_frozen(world, entity, Some(ice - 1.0)),
+        amount => set_chill(world, entity, amount),
     }
 }
 
-/// An iron block, or a scrap of one by its variant, its frost and the
-/// seconds its freeze has left.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BlockSave {
-    pub id: u64,
-    pub scrap: Option<usize>,
-    pub position: [f32; 2],
-    pub velocity: [f32; 2],
-    pub chill: Option<f32>,
-    pub frozen: Option<f32>,
+/// Whether `entity` carries a kept identity: one of 01's own spawns, which
+/// its records save, not a name's or an engine record's.
+fn kept(world: &World, entity: Entity) -> bool {
+    world
+        .get::<Saved>(entity)
+        .is_some_and(|saved| saved.prefab().is_none() && !saved.id().is_authored())
 }
 
-/// An open black hole: where it is open and for how long yet.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HoleSave {
-    pub id: u64,
-    pub position: [f32; 2],
-    pub left: f32,
+/// Each live kept entity `T` marks, by save ID.
+fn kept_of<T: 'static>(world: &World) -> Vec<(u64, Entity)> {
+    let mut found: Vec<(u64, Entity)> = world
+        .query::<(Entity, &T, &Saved)>()
+        .filter(|&(entity, ..)| kept(world, entity))
+        .map(|(entity, _, saved)| (saved.id().0, entity))
+        .collect();
+    found.sort_unstable_by_key(|&(id, _)| id);
+    found
 }
 
-/// A fire missile in flight, and the save ID of what fired it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MissileSave {
-    pub id: u64,
-    pub position: [f32; 2],
-    pub projectile: Projectile,
-    pub motion: LinearMotion,
-    pub source: Option<u64>,
-}
-
-/// A toxic flask in flight (e01flask), as a missile is: its point, its
-/// flight and its range so far, and the save ID of what threw it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct FlaskSave {
-    pub id: u64,
-    pub position: [f32; 2],
-    pub projectile: Projectile,
-    pub motion: LinearMotion,
-    pub source: Option<u64>,
-}
-
-/// A bullet in flight: its point, its flight and its range so far, the
-/// times it turned off iron, and the save ID of what fired it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BulletSave {
-    pub id: u64,
-    pub position: [f32; 2],
-    pub projectile: Projectile,
-    pub motion: LinearMotion,
-    pub ricochets: u32,
-    pub source: Option<u64>,
-}
-
-/// A crate, a keg, or a goblin's bomb or rock: its kind, whether the map
-/// set it down ([`MapProp`]), a crate's or a rock's art, its body, its
-/// frost and the seconds its freeze has left, a crate's fire, a keg's or a
-/// bomb's lit fuse and the save ID its fire or blast credits, and the
-/// seconds a douse keeps a keg from lighting. A thrown rock's credit is its
-/// throw's (`throws`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PropSave {
-    pub id: u64,
-    pub kind: PropKind,
-    pub map: bool,
-    pub variant: usize,
-    pub position: [f32; 2],
-    pub velocity: [f32; 2],
-    pub chill: Option<f32>,
-    pub frozen: Option<f32>,
-    pub fuel: Option<Fuel>,
-    pub fuse: Option<f32>,
-    pub lighter: Option<u64>,
-    pub doused: f32,
-}
-
-/// A crawler's snowball in flight: its body and its [`Snowball`]: its
-/// thrower's save ID, the thrower's damage factor and its seconds left.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SnowballSave {
-    pub id: u64,
-    pub position: [f32; 2],
-    pub velocity: [f32; 2],
-    pub thrower: Option<u64>,
-    pub factor: f32,
-    pub left: f32,
-}
-
-/// A broken crate's plank: its body, its art's variant, its frost and its
-/// fire, whole.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlankSave {
-    pub id: u64,
-    pub variant: usize,
-    pub position: [f32; 2],
-    pub velocity: [f32; 2],
-    pub chill: Option<f32>,
-    pub frozen: Option<f32>,
-    pub fuel: Fuel,
-}
-
-/// A rubble stone: its size, its art's variant and its body.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StoneSave {
-    pub id: u64,
-    pub size: StoneSize,
-    pub variant: usize,
-    pub position: [f32; 2],
-    pub velocity: [f32; 2],
-}
-
-/// The live run as a save; `None` with no run or a dead player.
+/// The live run as a save; `None` with no run, a dead player, or a frame
+/// whose commands are still queued, which the engine's capture refuses
+/// with a warning (`D-197`).
 #[must_use]
 pub fn capture(world: &World) -> Option<SaveGame> {
     let meta = shell::run_meta(world)?;
     let run = world.get_resource::<Run>()?;
-    let player = capture_player(world, run.player)?;
-    let id_of = |entity: Entity| world.get::<SaveId>(entity).map(|id| id.0);
-    let mut platforms: Vec<PlatformSave> = world
-        .query_filtered::<(&SaveId, &Position, &PathFollower), tungsten::core::Without<Elevator>>()
-        .map(|(id, at, follower)| PlatformSave {
-            id: id.0,
-            position: at.0.to_array(),
-            follower: follower.clone(),
-        })
-        .collect();
-    platforms.sort_by_key(|platform| platform.id);
-    let mut basins: Vec<BasinSave> = world
-        .query::<(&SaveId, &Lava)>()
-        .map(|(id, lava)| BasinSave {
-            id: id.0,
-            cold: lava.cold,
-            crust: lava.crust.as_ref().map(|crust| crust.left),
-        })
-        .collect();
-    basins.sort_by_key(|basin| basin.id);
-    let mut geysers: Vec<GeyserSave> = world
-        .query::<(&SaveId, &Geyser)>()
-        .map(|(id, state)| GeyserSave {
-            id: id.0,
-            phase: state.phase,
-            left: state.left,
-            cold: state.cold,
-            choked: state.choked,
-        })
-        .collect();
-    geysers.sort_by_key(|geyser| geyser.id);
-    let mut elevators: Vec<ElevatorSave> = world
-        .query::<(&SaveId, &Position, &Elevator, Option<&PathFollower>)>()
-        .map(|(id, at, lift, follower)| ElevatorSave {
-            id: id.0,
-            position: at.0.to_array(),
-            stop: lift.stop,
-            board: lift.board,
-            idle: lift.idle,
-            ridden: lift.ridden,
-            held: lift.held,
-            follower: follower.cloned(),
-        })
-        .collect();
-    elevators.sort_by_key(|lift| lift.id);
-    let mut hazards: Vec<HazardSave> = world
-        .query::<(&SaveId, &Position, &Oscillator, Option<&Doused>)>()
-        .map(|(id, at, oscillator, doused)| HazardSave {
-            id: id.0,
-            position: at.0.to_array(),
-            oscillator: oscillator.clone(),
-            doused: doused.map(|doused| doused.left),
-        })
-        .collect();
-    hazards.sort_by_key(|hazard| hazard.id);
-    let mut balls: Vec<BallSave> = world
-        .query::<(
-            Entity,
-            &SaveId,
-            &Ball,
-            &Position,
-            &Velocity,
-            Option<&SmallBall>,
-            Option<&BallHue>,
-            Option<&BallBurn>,
-        )>()
-        .map(|(entity, id, _, at, velocity, small, hue, burn)| BallSave {
-            id: id.0,
-            small: small.is_some(),
-            position: at.0.to_array(),
-            velocity: velocity.0.to_array(),
-            hue: hue.copied(),
-            burn: burn.copied(),
-            ice: ice_of(world.get::<Chill>(entity), world.get::<Frozen>(entity)),
-        })
-        .collect();
-    balls.sort_by_key(|ball| ball.id);
-    let mut blocks: Vec<BlockSave> = world
-        .query::<(
-            &SaveId,
-            &Position,
-            &Velocity,
-            Option<&IronBlock>,
-            Option<&IronScrap>,
-            Option<&Chill>,
-            Option<&Frozen>,
-        )>()
-        .filter(|(_, _, _, block, scrap, ..)| block.is_some() || scrap.is_some())
-        .map(|(id, at, velocity, _, scrap, chill, frozen)| BlockSave {
-            id: id.0,
-            scrap: scrap.map(|scrap| scrap.variant),
-            position: at.0.to_array(),
-            velocity: velocity.0.to_array(),
-            chill: chill.map(|chill| chill.amount),
-            frozen: frozen.map(|frozen| frozen.left),
-        })
-        .collect();
-    blocks.sort_by_key(|block| block.id);
-    let mut black_holes: Vec<HoleSave> = world
-        .query::<(&SaveId, &Transform, &BlackHole)>()
-        .map(|(id, at, hole)| HoleSave {
-            id: id.0,
-            position: at.position.to_array(),
-            left: hole.left,
-        })
-        .collect();
-    black_holes.sort_by_key(|hole| hole.id);
-    let mut missiles: Vec<MissileSave> = world
-        .query::<(
-            &SaveId,
-            &FireMissile,
-            &Position,
-            &Projectile,
-            &LinearMotion,
-            Option<&Source>,
-        )>()
-        .map(|(id, _, at, projectile, motion, source)| MissileSave {
-            id: id.0,
-            position: at.0.to_array(),
-            projectile: projectile.clone(),
-            motion: motion.clone(),
-            source: source.and_then(|source| id_of(source.entity())),
-        })
-        .collect();
-    missiles.sort_by_key(|missile| missile.id);
-    let mut flasks: Vec<FlaskSave> = world
-        .query::<(
-            &SaveId,
-            &ToxicFlask,
-            &Position,
-            &Projectile,
-            &LinearMotion,
-            Option<&Source>,
-        )>()
-        .map(|(id, _, at, projectile, motion, source)| FlaskSave {
-            id: id.0,
-            position: at.0.to_array(),
-            projectile: projectile.clone(),
-            motion: motion.clone(),
-            source: source.and_then(|source| id_of(source.entity())),
-        })
-        .collect();
-    flasks.sort_by_key(|flask| flask.id);
-    let mut bullets: Vec<BulletSave> = world
-        .query::<(
-            &SaveId,
-            &Bullet,
-            &Position,
-            &Projectile,
-            &LinearMotion,
-            Option<&Source>,
-        )>()
-        .filter(|(.., projectile, _, _)| !projectile.is_spent())
-        .map(|(id, bullet, at, projectile, motion, source)| BulletSave {
-            id: id.0,
-            position: at.0.to_array(),
-            projectile: projectile.clone(),
-            motion: motion.clone(),
-            ricochets: bullet.ricochets,
-            source: source.and_then(|source| id_of(source.entity())),
-        })
-        .collect();
-    bullets.sort_by_key(|bullet| bullet.id);
-    let mut props: Vec<PropSave> = props::all(world)
-        .into_iter()
-        .filter(|&entity| !world.has::<Plank>(entity) && !world.has::<Stone>(entity))
-        .filter_map(|entity| capture_prop(world, entity))
-        .collect();
-    props.sort_by_key(|prop| prop.id);
-    let mut planks: Vec<PlankSave> = world
-        .query::<(Entity, &Plank, &SaveId, &Fuel)>()
-        .filter_map(|(entity, plank, id, fuel)| {
-            Some(PlankSave {
-                id: id.0,
-                variant: plank.variant,
-                position: world.get::<Position>(entity)?.0.to_array(),
-                velocity: world.get::<Velocity>(entity)?.0.to_array(),
-                chill: world.get::<Chill>(entity).map(|chill| chill.amount),
-                frozen: world.get::<Frozen>(entity).map(|frozen| frozen.left),
-                fuel: *fuel,
-            })
-        })
-        .collect();
-    planks.sort_by_key(|plank| plank.id);
-    let mut stones: Vec<StoneSave> = world
-        .query::<(Entity, &Stone, &SaveId, &Position, &Velocity)>()
-        .map(|(_, stone, id, at, velocity)| StoneSave {
-            id: id.0,
-            size: stone.size,
-            variant: stone.variant,
-            position: at.0.to_array(),
-            velocity: velocity.0.to_array(),
-        })
-        .collect();
-    stones.sort_by_key(|stone| stone.id);
-    let snowballs = snowball::flying(world)
-        .into_iter()
-        .filter_map(|(id, entity)| {
-            let ball = world.get::<Snowball>(entity)?;
-            Some(SnowballSave {
-                id,
-                position: world.get::<Position>(entity)?.0.to_array(),
-                velocity: world.get::<Velocity>(entity)?.0.to_array(),
-                thrower: ball.thrower,
-                factor: ball.factor,
-                left: ball.left,
-            })
-        })
-        .collect();
-    let dummies = dummy::live(world)
-        .into_iter()
-        .filter_map(|(id, entity)| capture_dummy(world, id, entity))
-        .collect();
-    let enemies = enemies::live(world)
-        .into_iter()
-        .filter_map(|(id, entity)| capture_enemy(world, id, entity))
-        .collect();
-    let mut throws: Vec<ThrowSave> = world
-        .get_resource::<Throws>()
-        .map(|throws| {
-            throws
-                .0
-                .iter()
-                .filter_map(|throw| {
-                    Some(ThrowSave {
-                        body: world.get::<SaveId>(throw.body)?.0,
-                        thrower: throw.thrower,
-                        factor: throw.factor,
-                        left: throw.left,
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    throws.sort_by_key(|throw| throw.body);
-    let mut orbs: Vec<OrbSave> = world
-        .query::<(&Orb, &SaveId, &Position, &Lifetime, &Pickup)>()
-        .filter(|(.., pickup)| !pickup.is_collected())
-        .map(|(orb, id, at, lifetime, _)| OrbSave {
-            id: id.0,
-            kind: orb.kind,
-            position: at.0.to_array(),
-            left: lifetime.timer().remaining(),
-        })
-        .collect();
-    orbs.sort_by_key(|orb| orb.id);
-    let mut gone = dummy::gone(world);
-    gone.extend(enemies::gone(world));
-    gone.extend(enemies::drops::gone(world));
-    gone.sort_unstable();
-    Some(SaveGame {
-        meta,
-        next_id: world.resource::<SaveIds>().peek(),
-        rng: world.get_resource::<KitRng>().cloned().unwrap_or_default(),
-        area: run.area.clone(),
-        spell: world
-            .get::<Spellbook>(run.player)
-            .map_or(0, |book| book.slot),
-        lantern: world
-            .get::<Lantern>(run.player)
-            .is_none_or(|lantern| lantern.on),
-        lantern_guttered: world
-            .get::<Lantern>(run.player)
-            .is_some_and(|lantern| lantern.guttered),
-        player,
-        platforms,
-        hazards,
-        balls,
-        blocks,
-        black_holes,
-        missiles,
-        bullets,
-        dummies,
-        enemies,
-        throws,
-        orbs,
-        gone,
-        cascades: world
-            .get_resource::<Cascades>()
-            .cloned()
-            .unwrap_or_default(),
-        summon: world
-            .get_resource::<Summon>()
-            .map_or(0, |summon| summon.selected),
-        basins,
-        elevators,
-        geysers,
-        props,
-        snowballs,
-        planks,
-        stones,
-        flasks,
-    })
-}
-
-/// A crate's, a keg's, a bomb's or a rock's part.
-fn capture_prop(world: &World, entity: Entity) -> Option<PropSave> {
-    let keg = world.get::<Keg>(entity);
-    let bomb = world.get::<Bomb>(entity);
-    let variant = world
-        .get::<Crate>(entity)
-        .map(|own| own.variant)
-        .or_else(|| world.get::<Rock>(entity).map(|own| own.variant));
-    Some(PropSave {
-        id: world.get::<SaveId>(entity)?.0,
-        kind: props::kind(world, entity)?,
-        map: world.has::<MapProp>(entity),
-        variant: variant.unwrap_or(0),
-        position: world.get::<Position>(entity)?.0.to_array(),
-        velocity: world.get::<Velocity>(entity)?.0.to_array(),
-        chill: world.get::<Chill>(entity).map(|chill| chill.amount),
-        frozen: world.get::<Frozen>(entity).map(|frozen| frozen.left),
-        fuel: world.get::<Fuel>(entity).copied(),
-        fuse: keg
-            .and_then(|keg| keg.fuse)
-            .or_else(|| bomb.and_then(|bomb| bomb.fuse)),
-        lighter: keg
-            .and_then(|keg| keg.lighter)
-            .or_else(|| bomb.and_then(|bomb| bomb.lighter)),
-        doused: keg.map_or(0.0, |keg| keg.doused),
-    })
-}
-
-/// Each of `entity`'s effect instances that names a source with a save ID:
-/// its serial and the source's save ID.
-fn sources(world: &World, entity: Entity) -> Vec<(u64, u64)> {
-    world
-        .get::<Effects>(entity)
-        .map_or_else(Vec::new, |effects| {
-            effects
-                .instances()
-                .filter_map(|instance| {
-                    let source = world.get::<SaveId>(instance.source()?)?;
-                    Some((instance.serial(), source.0))
-                })
-                .collect()
-        })
-}
-
-/// A live dummy's part.
-fn capture_dummy(world: &World, id: u64, entity: Entity) -> Option<DummySave> {
-    Some(DummySave {
-        id,
-        map: dummy::placed(world, id),
-        position: world.get::<Position>(entity)?.0.to_array(),
-        velocity: world.get::<Velocity>(entity)?.0.to_array(),
-        health: world.get::<Health>(entity)?.clone(),
-        resist: world.get::<Resist>(entity).cloned().unwrap_or_default(),
-        effects: world.get::<Effects>(entity).cloned().unwrap_or_default(),
-        sources: sources(world, entity),
-        buckets: world
-            .get::<AilmentBuckets>(entity)
-            .cloned()
-            .unwrap_or_default(),
-        tags: world.get::<Tags>(entity).cloned().unwrap_or_default(),
-    })
-}
-
-/// A live enemy's part.
-fn capture_enemy(world: &World, id: u64, entity: Entity) -> Option<EnemySave> {
-    let id_of = |entity: Entity| world.get::<SaveId>(entity).map(|id| id.0);
-    let hitbox = world.get::<Hitbox>(entity).cloned();
-    let hit = hitbox.as_ref().map_or_else(Vec::new, |hitbox| {
-        hitbox
-            .hit_targets()
-            .iter()
-            .filter_map(|&target| id_of(target))
-            .collect()
-    });
-    let touches = world
-        .get::<ContactDamage>(entity)
-        .or_else(|| world.get::<HeldTouch>(entity).map(|held| &held.0))
-        .map_or_else(Vec::new, |contact| {
-            contact
-                .touches()
-                .filter_map(|touch| {
-                    Some((id_of(touch.target())?, touch.since_hit(), touch.since_met()))
-                })
-                .collect()
-        });
-    let enemy = *world.get::<Enemy>(entity)?;
-    Some(EnemySave {
-        id,
-        kind: enemy.kind,
-        map: enemies::placed(world, id),
-        position: world.get::<Position>(entity)?.0.to_array(),
-        velocity: world.get::<Velocity>(entity)?.0.to_array(),
-        controller: world.get::<PlatformerController>(entity).cloned(),
-        mover: world.get::<TopDownMover>(entity).cloned(),
-        displaced: world
-            .get::<Displaced>(entity)
-            .map(|displaced| displaced.0.clone()),
-        machine: world.get::<StateMachine<EnemyState>>(entity)?.clone(),
-        enemy,
-        brain: *world.get::<Brain>(entity)?,
-        sight: *world.get::<Sight>(entity)?,
-        health: world.get::<Health>(entity)?.clone(),
-        stats: world.get::<Stats>(entity)?.clone(),
-        resist: world.get::<Resist>(entity).cloned().unwrap_or_default(),
-        effects: world.get::<Effects>(entity).cloned().unwrap_or_default(),
-        sources: sources(world, entity),
-        buckets: world
-            .get::<AilmentBuckets>(entity)
-            .cloned()
-            .unwrap_or_default(),
-        tags: world.get::<Tags>(entity).cloned().unwrap_or_default(),
-        abilities: world.get::<Abilities>(entity).cloned(),
-        knockback: world.get::<Knockback>(entity).cloned(),
-        hitbox,
-        hit,
-        touches,
-        held: troll::held(world, entity).and_then(id_of),
-    })
-}
-
-/// The player's part, or `None` while it is dead.
-fn capture_player(world: &World, player: Entity) -> Option<PlayerSave> {
-    let health = world.get::<Health>(player)?;
+    let health = world.get::<Health>(run.player)?;
     if health.is_dead() {
         return None;
     }
-    Some(PlayerSave {
-        id: world.get::<SaveId>(player)?.0,
-        position: world.get::<Position>(player)?.0.to_array(),
-        velocity: world.get::<Velocity>(player)?.0.to_array(),
-        controller: world.get::<PlatformerController>(player)?.clone(),
+    let stats = world.get::<Stats>(run.player)?;
+    let mana = [
+        stats.base("mana").unwrap_or(0.0),
+        stats.get("max_mana").unwrap_or(0.0),
+    ];
+    let saved = capture_world(world)
+        .inspect_err(|err| log::warn!("The run was not saved: {err}"))
+        .ok()?;
+    let balls = kept_of::<Ball>(world)
+        .into_iter()
+        .filter_map(|(id, entity)| {
+            Some(BallSave {
+                id,
+                small: world.has::<SmallBall>(entity),
+                position: world.get::<Position>(entity)?.0.to_array(),
+                velocity: world.get::<Velocity>(entity)?.0.to_array(),
+                hue: world.get::<BallHue>(entity).copied(),
+                burn: burn_left(world, entity),
+                ice: ice_of(world, entity),
+            })
+        })
+        .collect();
+    Some(SaveGame {
+        meta,
+        area: run.area.clone(),
         health: health.clone(),
-        stats: world.get::<Stats>(player)?.clone(),
-        effects: world.get::<Effects>(player)?.clone(),
-        sources: sources(world, player),
-        abilities: world.get::<Abilities>(player)?.clone(),
-        buckets: world
-            .get::<AilmentBuckets>(player)
-            .cloned()
-            .unwrap_or_default(),
-        tags: world.get::<Tags>(player)?.clone(),
-        reload: world.get::<Reload>(player).map(|reload| reload.left),
-        tomes: world
-            .get::<Tomes>(player)
-            .map(|tomes| tomes.0.clone())
-            .unwrap_or_default(),
-        shield: world.get::<Shield>(player).cloned(),
+        mana,
+        world: saved,
+        balls,
     })
 }
 
@@ -2212,14 +1240,13 @@ fn capture_player(world: &World, player: Entity) -> Option<PlayerSave> {
 /// / max", the area left out before the player names one.
 #[must_use]
 pub fn summary(save: &SaveGame) -> String {
-    let health = &save.player.health;
-    let stats = &save.player.stats;
-    let mana = stats.base("mana").unwrap_or(0.0).floor();
-    let most = stats.get("max_mana").unwrap_or(0.0);
+    let health = &save.health;
+    let [mana, most] = save.mana;
     let meters = format!(
-        "HP {} / {} · Mana {mana} / {most}",
+        "HP {} / {} · Mana {} / {most}",
         crate::features::spells::hud::whole_health(Some(health)),
-        health.max()
+        health.max(),
+        mana.floor()
     );
     match &save.area {
         Some(area) => format!("{area} · {meters}"),
@@ -2227,538 +1254,213 @@ pub fn summary(save: &SaveGame) -> String {
     }
 }
 
-/// Takes `save` back into the run gameplay has just spawned, its map and
-/// `player` at the save's point: the map's objects it names gone taken off,
-/// each saved state over the map object with its save ID, the player's
-/// over the player, and each dynamic entity spawned from its prefab at its
-/// saved point with its saved components over the prefab's; then every
-/// effect's source named again, once every entity is back. Every restored
-/// point writes `Position` and `PrevPosition` together, so nothing draws
-/// sliding there.
-pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
-    let mut by_id: std::collections::HashMap<u64, Entity> = world
-        .query::<(Entity, &SaveId)>()
-        .map(|(entity, id)| (id.0, entity))
-        .collect();
-    for id in &save.gone {
-        if let Some(entity) = by_id.remove(id) {
-            crate::shared::despawn_tree(world, entity);
-        }
-    }
-    let p = &save.player;
-    place(world, player, p.position);
-    world.insert_bundle(
-        player,
-        (
-            SaveId(p.id),
-            Velocity(Vec2::from(p.velocity)),
-            p.controller.clone(),
-            p.health.clone(),
-            p.stats.clone(),
-            p.effects.clone(),
-            p.abilities.clone(),
-            p.buckets.clone(),
-            p.tags.clone(),
-        ),
-    );
-    crate::features::player::shove_bodies(world, player);
-    let lantern = Lantern {
-        on: save.lantern,
-        guttered: save.lantern_guttered,
-    };
-    world.insert_bundle(player, (Spellbook { slot: save.spell }, lantern));
-    if let Some(left) = p.reload {
-        world.insert(player, Reload { left });
-    }
-    if let Some(shield) = &p.shield {
-        world.insert(player, shield.clone());
-    }
-    // The books the player holds leave the map, which spawned all three.
-    if !p.tomes.is_empty() {
-        world.insert(player, Tomes(p.tomes.clone()));
-        let taken: Vec<Entity> = world
-            .query::<(Entity, &Tome)>()
-            .filter(|(_, tome)| p.tomes.contains(&tome.kind))
-            .map(|(book, _)| book)
-            .collect();
-        for book in taken {
-            crate::shared::despawn_tree(world, book);
-        }
-    }
-    for platform in &save.platforms {
-        if let Some(&entity) = by_id.get(&platform.id) {
-            place(world, entity, platform.position);
-            world.insert(entity, platform.follower.clone());
-        }
-    }
-    for basin in &save.basins {
-        if let Some(&entity) = by_id.get(&basin.id) {
-            if let Some(left) = basin.crust {
-                lava::harden(world, entity, left);
-            }
-            if let Some(lava) = world.get_mut::<Lava>(entity) {
-                lava.cold = basin.cold;
+/// Takes `save` back into the run gameplay has just spawned and named, in
+/// three passes, once the engine's checks pass (`check_world`), so a save
+/// that cannot load stages nothing: no ball, and none of the queue entries
+/// its statuses would add. First the balls come back under their kept
+/// identities, at their saved points, their burn and ice put back through
+/// 01's setters: before the engine's restore replaces chemistry's queue and
+/// the request queues with the saved ones, so what a status put back queues
+/// gives way to the saved entries. Then the engine lays the named objects'
+/// changes over their fresh spawn, spawns its records and puts the saved
+/// resources and every reference back (`restore_world`), its report's lines
+/// logged. Last it gives each restored entity what its spawn gives beyond
+/// its saved state ([`rebuild`]).
+///
+/// # Errors
+///
+/// The engine's [`RestoreError`] for a save whose World does not restore,
+/// found by the check before the first pass, with the World as it was.
+pub fn restore(world: &mut World, save: &SaveGame) -> Result<(), RestoreError> {
+    check_world(world, &save.world)?;
+    let staged = spawn_balls(world, save);
+    let scene = (SceneEntity { state_id: GAMEPLAY }, Joined);
+    match restore_world(world, &save.world, &scene) {
+        Ok(report) => {
+            for line in &report.dropped {
+                log::warn!("The save's run: {line}");
             }
         }
-    }
-    for saved in &save.geysers {
-        if let Some(&entity) = by_id.get(&saved.id) {
-            geyser::set(world, entity, saved.phase, saved.left, saved.choked);
-            if let Some(state) = world.get_mut::<Geyser>(entity) {
-                state.cold = saved.cold;
+        // The check passed, so this is a bug: what the first pass staged
+        // goes, and the run starts fresh.
+        Err(err) => {
+            log::error!("A checked save failed to restore: {err}");
+            for entity in staged {
+                despawn_tree(world, entity);
             }
+            return Err(err);
         }
     }
-    for saved in &save.elevators {
-        let Some(&entity) = by_id.get(&saved.id) else {
-            continue;
-        };
-        place(world, entity, saved.position);
-        if let Some(lift) = world.get_mut::<Elevator>(entity) {
-            (lift.stop, lift.board, lift.idle) = (saved.stop, saved.board, saved.idle);
-            (lift.ridden, lift.held) = (saved.ridden, saved.held);
-        }
-        match &saved.follower {
-            Some(follower) => world.insert(entity, follower.clone()),
-            None => {
-                world.remove_component::<PathFollower>(entity);
-            }
-        }
-    }
-    for hazard in &save.hazards {
-        if let Some(&entity) = by_id.get(&hazard.id) {
-            place(world, entity, hazard.position);
-            world.insert(entity, hazard.oscillator.clone());
-            if let Some(left) = hazard.doused {
-                crate::features::elements::douse_hazard(world, entity);
-                if let Some(doused) = world.get_mut::<Doused>(entity) {
-                    doused.left = left;
-                }
-            }
-        }
-    }
-    for saved in &save.dummies {
-        let entity = match by_id.get(&saved.id) {
-            Some(&entity) if saved.map && world.has::<Dummy>(entity) => entity,
-            _ => {
-                let entity = dummy::spawn(world, Vec2::from(saved.position));
-                by_id.insert(saved.id, entity);
-                entity
-            }
-        };
-        place(world, entity, saved.position);
-        world.insert_bundle(
-            entity,
-            (
-                SaveId(saved.id),
-                Velocity(Vec2::from(saved.velocity)),
-                saved.health.clone(),
-                saved.resist.clone(),
-                saved.effects.clone(),
-                saved.buckets.clone(),
-                saved.tags.clone(),
-            ),
-        );
-    }
-    for saved in &save.enemies {
-        let entity = match by_id.get(&saved.id) {
-            Some(&entity) if saved.map && world.has::<Enemy>(entity) => entity,
-            _ => {
-                let corner = Vec2::from(saved.position);
-                let (kind, variant, id) = (saved.kind, saved.enemy.variant, SaveId(saved.id));
-                let Some(entity) = enemies::spawn_as(world, kind, variant, corner, id) else {
-                    continue;
-                };
-                by_id.insert(saved.id, entity);
-                entity
-            }
-        };
-        restore_enemy(world, entity, saved);
-    }
+    rebuild(world);
+    Ok(())
+}
+
+/// The first pass: the balls back under their kept identities, with their
+/// hue, burn and ice. The entities it spawned.
+fn spawn_balls(world: &mut World, save: &SaveGame) -> Vec<Entity> {
+    let mut staged = Vec::with_capacity(save.balls.len());
     for ball in &save.balls {
         let entity = toys::restore_ball(world, ball.small, Vec2::from(ball.position));
         world.insert_bundle(
             entity,
-            (SaveId(ball.id), Velocity(Vec2::from(ball.velocity))),
+            (
+                Saved::kept(SaveId(ball.id)),
+                Velocity(Vec2::from(ball.velocity)),
+            ),
         );
         if let Some(hue) = ball.hue {
             world.insert(entity, hue);
         }
-        if let Some(burn) = ball.burn {
-            world.insert(entity, burn);
+        // A burn with seconds left lights on for them; a spent one keeps
+        // its `kindled` alone.
+        if let Some(left) = ball.burn {
+            light(world, entity, left.max(0.0));
         }
         set_ice(world, entity, ball.ice);
+        staged.push(entity);
     }
-    for block in &save.blocks {
-        let at = Vec2::from(block.position);
-        let entity = match block.scrap {
-            Some(variant) => toys::restore_scrap(world, at, variant),
-            None => toys::restore_iron(world, at),
-        };
-        world.insert_bundle(
-            entity,
-            (SaveId(block.id), Velocity(Vec2::from(block.velocity))),
-        );
-        if let Some(amount) = block.chill {
-            world.insert(
-                entity,
-                Chill {
-                    amount,
-                    held: false,
-                },
-            );
-        }
-        if let Some(left) = block.frozen {
-            world.insert(entity, Frozen { left });
-        }
-    }
-    for prop in &save.props {
-        restore_prop(world, prop);
-    }
-    for plank in &save.planks {
-        restore_plank(world, plank);
-    }
-    for stone in &save.stones {
-        let at = Vec2::from(stone.position);
-        let kind = PropKind::Stone(stone.size);
-        let entity = props::restore(world, kind, at, SaveId(stone.id), stone.variant);
-        world.insert(entity, Velocity(Vec2::from(stone.velocity)));
-    }
-    for saved in &save.snowballs {
-        let ball = snowball::spawn(world, Vec2::from(saved.position));
-        let flying = Snowball {
-            thrower: saved.thrower,
-            factor: saved.factor,
-            left: saved.left,
-        };
-        world.insert_bundle(
-            ball,
-            (
-                SaveId(saved.id),
-                Velocity(Vec2::from(saved.velocity)),
-                flying,
-            ),
-        );
-    }
-    for orb in &save.orbs {
-        drops::spawn(
-            world,
-            orb.kind,
-            Vec2::from(orb.position),
-            SaveId(orb.id),
-            orb.left,
-        );
-    }
-    for hole in &save.black_holes {
-        let entity = toys::restore_hole(world, Vec2::from(hole.position));
-        world.insert_bundle(entity, (SaveId(hole.id), BlackHole { left: hole.left }));
-    }
-    for missile in &save.missiles {
-        restore_missile(
-            world,
-            missile,
-            missile.source.and_then(|id| by_id.get(&id).copied()),
-        );
-    }
-    for flask in &save.flasks {
-        let source = flask.source.and_then(|id| by_id.get(&id).copied());
-        restore_flask(world, flask, source);
-    }
-    for bullet in &save.bullets {
-        let shot = BulletShot {
-            id: SaveId(bullet.id),
-            centre: Vec2::from(bullet.position) + BULLET_CENTRE,
-            motion: bullet.motion.clone(),
-            projectile: Some(bullet.projectile.clone()),
-            ricochets: bullet.ricochets,
-        };
-        let source = bullet.source.and_then(|id| by_id.get(&id).copied());
-        gun::spawn(world, shot, source);
-    }
-    let by_id: std::collections::HashMap<u64, Entity> = world
-        .query::<(Entity, &SaveId)>()
-        .map(|(entity, id)| (id.0, entity))
+    staged
+}
+
+/// The last pass: what each restored entity's spawn gives beyond its saved
+/// state, read off the restored state and never by applying it again: a
+/// record's `PreviousVelocity`, a dummy's and every enemy's body, an
+/// enemy's hold on rock, a scrap's, a crate's, a rock's, a stone's and a
+/// plank's look; what an older save's records lack of their prefabs, an
+/// enemy's disarm, a dropped orb's fall, a flask's end, shape and body
+/// walls and a body's or an enemy's impact rule, a body's credited to the
+/// player; each live throw's rule set as the throw set it; a crusted basin's body layers, mask, touch and glow, a
+/// doused hazard's touch, glow and trail; a troll's hold lifted again; the taken tomes' books off the
+/// map; the bodies the player stands in shoved; and the camera on the
+/// player where the save left it.
+fn rebuild(world: &mut World) {
+    let recorded: Vec<Entity> = world
+        .query::<(Entity, &Saved)>()
+        .filter(|(_, saved)| saved.prefab().is_some())
+        .map(|(entity, _)| entity)
         .collect();
-    let named = std::iter::once((player, &p.sources))
-        .chain(
-            save.dummies
-                .iter()
-                .filter_map(|saved| Some((*by_id.get(&saved.id)?, &saved.sources))),
-        )
-        .chain(
-            save.enemies
-                .iter()
-                .filter_map(|saved| Some((*by_id.get(&saved.id)?, &saved.sources))),
-        );
-    let named: Vec<(Entity, Vec<(u64, u64)>)> = named
-        .map(|(entity, sources)| (entity, sources.clone()))
+    for &entity in &recorded {
+        if !world.has::<PreviousVelocity>(entity) {
+            world.insert(entity, PreviousVelocity::default());
+        }
+        // The face the cold last met, where a freeze's frost bursts: a
+        // chilled or frozen record's, at its centre.
+        if (coat_of(world, entity) > 0.0 || ice_left(world, entity).is_some())
+            && !world.has::<ColdFace>(entity)
+            && let Some(centre) = crate::shared::body_centre(world, entity)
+        {
+            world.insert(entity, ColdFace(centre));
+        }
+        if world.has::<IronScrap>(entity) {
+            toys::restored_scrap(world, entity);
+        } else if world.has::<Dummy>(entity) {
+            dummy::restored(world, entity);
+        } else if props::is_prop(world, entity) {
+            props::restored(world, entity);
+        } else if world.has::<Orb>(entity) {
+            drops::restored(world, entity);
+        } else if world.has::<ToxicFlask>(entity) {
+            toys::flask::restored(world, entity);
+        }
+    }
+    let foes: Vec<Entity> = world
+        .query::<(Entity, &Enemy)>()
+        .map(|(entity, _)| entity)
         .collect();
-    for (entity, sources) in named {
-        name_sources(world, entity, &sources, &by_id);
+    for &enemy in &foes {
+        enemies::restored(world, enemy);
     }
-    for saved in &save.enemies {
-        if let Some(&entity) = by_id.get(&saved.id) {
-            name_targets(world, entity, saved, &by_id);
-        }
-    }
-    // Each troll's hold again, the object put back at its hands.
-    for saved in &save.enemies {
-        let held = saved.held.and_then(|id| by_id.get(&id).copied());
-        if let (Some(&entity), Some(held)) = (by_id.get(&saved.id), held) {
-            troll::pick_up(world, entity, held);
-        }
-    }
-    let throws = save
-        .throws
-        .iter()
-        .filter_map(|throw| {
-            Some(Throw {
-                body: *by_id.get(&throw.body)?,
-                thrower: throw.thrower,
-                factor: throw.factor,
-                left: throw.left,
-            })
-        })
+    impact_rules(world, recorded.iter().chain(&foes).copied());
+    let basins: Vec<Entity> = world
+        .query::<(Entity, &Lava)>()
+        .map(|(entity, _)| entity)
         .collect();
-    world.insert_resource(Throws(throws));
-    world.insert_resource(save.cascades.clone());
-    world.insert_resource(Summon {
-        selected: save.summon,
-    });
-    world.insert_resource(save.rng.clone());
-    world.insert_resource(SaveIds::starting_at(save.next_id));
-}
-
-/// A saved crate, keg, bomb or rock, spawned at once at its saved point
-/// with its state over its prefab's: before the load names its held and
-/// thrown bodies by save ID.
-fn restore_prop(world: &mut World, saved: &PropSave) {
-    let at = Vec2::from(saved.position);
-    let entity = props::restore(world, saved.kind, at, SaveId(saved.id), saved.variant);
-    world.insert(entity, Velocity(Vec2::from(saved.velocity)));
-    if saved.map {
-        world.insert(entity, MapProp);
-    }
-    if let Some(amount) = saved.chill {
-        world.insert(
-            entity,
-            Chill {
-                amount,
-                held: false,
-            },
-        );
-    }
-    if let Some(left) = saved.frozen {
-        world.insert(entity, Frozen { left });
-    }
-    if let Some(fuel) = saved.fuel {
-        world.insert(entity, fuel);
-    }
-    match saved.kind {
-        PropKind::Crate | PropKind::Rock | PropKind::Plank | PropKind::Stone(_) => {}
-        PropKind::Keg => world.insert(
-            entity,
-            Keg {
-                fuse: saved.fuse,
-                lighter: saved.lighter,
-                doused: saved.doused,
-            },
-        ),
-        PropKind::Bomb => world.insert(
-            entity,
-            Bomb {
-                fuse: saved.fuse,
-                lighter: saved.lighter,
-            },
-        ),
-    }
-}
-
-/// A saved plank, spawned at once at its saved point with its state over
-/// its prefab's, at rest from its tumble.
-fn restore_plank(world: &mut World, saved: &PlankSave) {
-    let at = Vec2::from(saved.position);
-    let entity = props::restore(world, PropKind::Plank, at, SaveId(saved.id), saved.variant);
-    world.insert_bundle(entity, (Velocity(Vec2::from(saved.velocity)), saved.fuel));
-    if let Some(amount) = saved.chill {
-        world.insert(
-            entity,
-            Chill {
-                amount,
-                held: false,
-            },
-        );
-    }
-    if let Some(left) = saved.frozen {
-        world.insert(entity, Frozen { left });
-    }
-}
-
-/// Puts a saved enemy's state over `entity`: its point, its driver or
-/// drivers, its machine and the rest; its targets wait for every entity to
-/// be back ([`name_targets`]).
-fn restore_enemy(world: &mut World, entity: Entity, saved: &EnemySave) {
-    place(world, entity, saved.position);
-    world.insert_bundle(
-        entity,
-        (
-            SaveId(saved.id),
-            Velocity(Vec2::from(saved.velocity)),
-            saved.machine.clone(),
-            saved.enemy,
-            saved.brain,
-            saved.sight,
-            saved.health.clone(),
-            saved.stats.clone(),
-            saved.resist.clone(),
-            saved.effects.clone(),
-            saved.buckets.clone(),
-            saved.tags.clone(),
-        ),
-    );
-    match &saved.controller {
-        Some(controller) => {
-            world.insert(entity, controller.clone());
-            enemies::walk_on_rock(world, entity);
-        }
-        None => {
-            world.remove_component::<PlatformerController>(entity);
+    for basin in basins {
+        if lava::crusted(world, basin) {
+            lava::show_crust(world, basin);
         }
     }
-    match &saved.mover {
-        Some(mover) => world.insert(entity, mover.clone()),
-        None => {
-            world.remove_component::<TopDownMover>(entity);
+    let hazards: Vec<Entity> = world
+        .query::<(Entity, &Hazard)>()
+        .filter(|(_, hazard)| hazard.fire)
+        .map(|(entity, _)| entity)
+        .collect();
+    for hazard in hazards {
+        show_douse(world, hazard);
+    }
+    let holds: Vec<(Entity, Entity)> = world
+        .query::<(Entity, &Holding)>()
+        .map(|(troll, holding)| (troll, holding.0))
+        .collect();
+    for (troll, object) in holds {
+        world.remove_component::<Holding>(troll);
+        if !world.is_alive(object) {
+            continue;
+        }
+        // The kit's `carried` brings an engine record back held with no
+        // body until its first step: let it go at rest and lift it again at
+        // once, so a paused load shows it held, as a kept ball, whose hold
+        // no save captures, is lifted.
+        if carrier_of(world, object) == Some(troll) {
+            tungsten::kit::release(world, troll, Vec2::ZERO);
+        }
+        if carrier_of(world, object).is_none() {
+            troll::pick_up(world, troll, object);
         }
     }
-    if let Some(mover) = &saved.displaced {
-        world.insert(entity, Displaced(mover.clone()));
+    if let Some(throws) = world.get_resource_mut::<Throws>() {
+        throws.0.retain(|throw| throw.body != Entity::PLACEHOLDER);
     }
-    if let Some(abilities) = &saved.abilities {
-        world.insert(entity, abilities.clone());
-    }
-    if let Some(knockback) = &saved.knockback {
-        world.insert(entity, knockback.clone());
-    }
-    if let Some(hitbox) = &saved.hitbox {
-        world.insert(entity, hitbox.clone());
-    }
-}
-
-/// Names a loaded enemy's targets again from their save IDs: its hitbox's
-/// activation's, so it hits none twice, and its touches', so each keeps its
-/// schedule.
-fn name_targets(
-    world: &mut World,
-    entity: Entity,
-    saved: &EnemySave,
-    by_id: &std::collections::HashMap<u64, Entity>,
-) {
-    if let Some(hitbox) = world.get_mut::<Hitbox>(entity) {
-        hitbox.set_hit_targets(saved.hit.iter().filter_map(|id| by_id.get(id).copied()));
-    }
-    if let Some(contact) = world.get_mut::<ContactDamage>(entity) {
-        contact.set_touches(
-            saved
-                .touches
-                .iter()
-                .filter_map(|&(id, hit, met)| Some(ContactTouch::new(*by_id.get(&id)?, hit, met))),
-        );
-    }
-}
-
-/// Names each of `entity`'s effect instances' source again, from its saved
-/// serial and the source's save ID.
-fn name_sources(
-    world: &mut World,
-    entity: Entity,
-    sources: &[(u64, u64)],
-    by_id: &std::collections::HashMap<u64, Entity>,
-) {
-    let Some(effects) = world.get_mut::<Effects>(entity) else {
+    let Some(player) = world.get_resource::<Run>().map(|run| run.player) else {
         return;
     };
-    for &(serial, source) in sources {
-        if let Some(&source) = by_id.get(&source) {
-            effects.set_source(serial, Some(source));
+    // The books the player holds leave the map, which spawned all three.
+    if let Some(tomes) = world.get::<Tomes>(player).cloned() {
+        let taken: Vec<Entity> = world
+            .query::<(Entity, &Tome)>()
+            .filter(|(_, tome)| tomes.0.contains(&tome.kind))
+            .map(|(book, _)| book)
+            .collect();
+        for book in taken {
+            despawn_tree(world, book);
         }
+    }
+    if let Some(centre) = crate::shared::body_centre(world, player)
+        && let Some(camera) = world.get_resource_mut::<CameraController>()
+    {
+        camera.cut_to(centre);
     }
 }
 
-/// Puts `entity`'s point at `position`, its last step's with it.
-fn place(world: &mut World, entity: Entity, position: [f32; 2]) {
-    let at = Vec2::from(position);
-    if let Some(point) = world.get_mut::<Position>(entity) {
-        point.0 = at;
-    }
-    if let Some(prev) = world.get_mut::<PrevPosition>(entity) {
-        prev.0 = at;
-    }
-    if let Some(transform) = world.get_mut::<Transform>(entity) {
-        transform.position = at;
-    }
-}
-
-/// A saved missile, spawned at the frame's flush from what fired it, as
-/// the spell's payload spawned it, so its source and its emitter return:
-/// its save ID, flight and look are its own, so the spell's
-/// `missile_adopt` leaves it be.
-/// A saved flask set back in flight, from `source` when it lives, at the
-/// load's flush, as a missile is.
-fn restore_flask(world: &mut World, flask: &FlaskSave, source: Option<Entity>) {
-    let at = Vec2::from(flask.position);
-    let Ok(prepared) = world.prepare_prefab(toys::flask::FLASK_PREFAB, at.to_array()) else {
-        return;
-    };
-    let prepared = prepared.with((
-        Transform::from_position(at),
-        Position(at),
-        PrevPosition(at),
-        SaveId(flask.id),
-        flask.projectile.clone(),
-        flask.motion.clone(),
-        toys::components::PreviousVelocity::default(),
-        SceneEntity { state_id: GAMEPLAY },
-    ));
-    let commands = world.resource_mut::<CommandBuffer>();
-    match source {
-        Some(source) => {
-            commands.spawn_prefab_from(source, prepared);
+/// What an older save's bodies and enemies lack of their impact rules: a
+/// record or an enemy without one takes its prefab's, and a body's rule
+/// without a credit the run's player's, as its spawn gives them; then each
+/// live throw's body takes its throw's rule ([`arm_throw`]), as the throw
+/// set it.
+fn impact_rules(world: &mut World, restored: impl Iterator<Item = Entity>) {
+    let player = world.get_resource::<Run>().map(|run| run.player);
+    for entity in restored.collect::<Vec<_>>() {
+        let enemy = world.has::<Enemy>(entity) || world.has::<Dummy>(entity);
+        if !world.has::<ImpactDamage>(entity) {
+            let Some(rule) =
+                prefab_of(world, entity).and_then(|prefab| toys::prefab_rule(world, &prefab))
+            else {
+                continue;
+            };
+            world.insert(entity, rule);
         }
-        None => {
-            commands.spawn_prefab(prepared);
+        if !enemy
+            && let Some(rule) = world.get_mut::<ImpactDamage>(entity)
+            && rule.credit().is_none()
+        {
+            rule.set_credit(player);
         }
     }
-}
-
-fn restore_missile(world: &mut World, missile: &MissileSave, source: Option<Entity>) {
-    let at = Vec2::from(missile.position);
-    let Ok(prepared) = world.prepare_prefab(toys::FIRE_MISSILE_PREFAB, at.to_array()) else {
-        return;
-    };
-    let transform = Transform {
-        position: at,
-        rotation: 0.0,
-        scale: Vec2::splat(MISSILE_SIZE / 64.0),
-    };
-    let prepared = prepared.with((
-        transform,
-        Position(at),
-        PrevPosition(at),
-        SaveId(missile.id),
-        missile.projectile.clone(),
-        missile.motion.clone(),
-        toys::components::PreviousVelocity::default(),
-        Visibility { visible: true },
-        SceneEntity { state_id: GAMEPLAY },
-    ));
-    let commands = world.resource_mut::<CommandBuffer>();
-    match source {
-        Some(source) => {
-            commands.spawn_prefab_from(source, prepared);
-        }
-        None => {
-            commands.spawn_prefab(prepared);
-        }
+    let throws = world
+        .get_resource::<Throws>()
+        .map(|throws| throws.0.clone())
+        .unwrap_or_default();
+    for throw in &throws {
+        arm_throw(world, throw);
     }
 }

@@ -7,6 +7,20 @@
     "enemy": {
       "kind": "beetle"
     },
+    "brain": {},
+    "sight": {},
+    "enemy_state": {
+      "state": "patrol",
+      "elapsed": 0,
+      "entered": false,
+      "held": false
+    },
+    "shown": {},
+    "previous_velocity": {},
+    "facing": {
+      "from": "intent",
+      "snap": "horizontal"
+    },
     "tags": [
       "team.enemy",
       "freezable",
@@ -14,7 +28,8 @@
       "brittle",
       "beetle",
       "living",
-      "armoured"
+      "armoured",
+      "level.saved"
     ],
     "rigid_body": {
       "kind": "kinematic",
@@ -32,17 +47,25 @@
     },
     "platformer_controller": {
       "run_speed": 90,
-      "jump_speed": 600
+      "jump_speed": 600,
+      "shove_mass": 120,
+      "shove_share": 0.0666666701,
+      "step_height": 32,
+      "without": [
+        4
+      ]
     },
     "health": {
       "max": 120,
       "invulnerability": 0,
-      "despawn_on_death": 0
+      "despawn_on_death": 0,
+      "disarm": true
     },
     "stats": {
       "max_health": 120,
       "damage": 30,
-      "move_speed": 90
+      "move_speed": 90,
+      "status_threshold": 30
     },
     "hurtbox": {
       "shape": {
@@ -81,9 +104,6 @@
       "damage.fire": 0.5,
       "damage.shock": 2
     },
-    "ailment_threshold": {
-      "flat": 30
-    },
     "knockback": {
       "seconds": 0.2,
       "resist": 0.5
@@ -119,9 +139,194 @@
           "shake": 0.15
         },
         {
-          "roll": "enemy_drops"
+          "roll": {
+            "table": "enemy_drops",
+            "centred": true,
+            "at": "centre"
+          }
         }
       ]
+    },
+    "impact_damage": {
+      "kind": "damage.physical",
+      "speed": 400,
+      "per_mass": 0.002,
+      "most": 120,
+      "floor": 2,
+      "mass": 120,
+      "prepare": "armour",
+      "scale": 0
+    },
+    "character_animator": {
+      "idle": {
+        "right": "ex10_beetle_walk",
+        "left": "ex10_beetle_walk_left"
+      },
+      "min_speed": 1,
+      "rules": [
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_beetle_stripped_paw",
+            "left": "ex10_beetle_stripped_paw_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_beetle_stripped_charge",
+            "left": "ex10_beetle_stripped_charge_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded"
+            ]
+          },
+          "clip": {
+            "right": "ex10_beetle_stripped_walk",
+            "left": "ex10_beetle_stripped_walk_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_beetle_paw",
+            "left": "ex10_beetle_paw_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_beetle_charge",
+            "left": "ex10_beetle_charge_left"
+          }
+        }
+      ],
+      "hold": {
+        "all": [
+          "state.held"
+        ]
+      }
+    },
+    "effects": [],
+    "looks": [
+      {
+        "when": {
+          "all": [
+            "mark.alert"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "sprite": "ex10_mark_alert",
+            "offset": [
+              0,
+              -46
+            ],
+            "flip": false,
+            "bob": {
+              "height": 2,
+              "seconds": 0.5
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "all": [
+            "mark.search"
+          ],
+          "none": [
+            "mark.alert"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "sprite": "ex10_mark_search",
+            "offset": [
+              0,
+              -46
+            ],
+            "flip": false
+          }
+        }
+      },
+      {
+        "when": {
+          "all": [
+            "state.attack"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "animation": "ex10_charge_streak",
+            "offset": [
+              -60,
+              16
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "all": [
+            "state.windup"
+          ]
+        },
+        "look": {
+          "particles": {
+            "config": "ex10_paw_dust",
+            "offset": [
+              14.4,
+              25
+            ]
+          }
+        }
+      },
+      {
+        "when": {
+          "all": [
+            "state.attack"
+          ]
+        },
+        "look": {
+          "particles": {
+            "config": "ex10_charge_dust",
+            "offset": [
+              -12,
+              25
+            ]
+          }
+        }
+      }
+    ],
+    "cap": {
+      "group": "summon.foes",
+      "max": 10,
+      "count_dead": false
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

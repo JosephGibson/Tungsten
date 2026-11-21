@@ -38,7 +38,7 @@ use tungsten_core::assets::{
     FontRegistry, LoadedManifest, ParticleConfigRegistry, ParticleMeshRegistry, ResolvedManifest,
     RoomGenerator, ShaderRegistry, SoundRegistry, TilemapRegistry,
 };
-use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
+use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig, Position};
 use tungsten_core::post::{PostPass, PostStack, PostTail};
 use tungsten_core::save::SaveOptions;
 use tungsten_core::ui::{
@@ -47,9 +47,9 @@ use tungsten_core::ui::{
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, Binding, CameraController, CameraState,
     CommandBuffer, ComponentRegistry, Config, ConfigError, DebugDraw, DebugShape, DisplayMode,
-    DisplayState, InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin,
-    PluginSet, RawInput, RoutedInput, SaveSlots, Schedule, Settings, Stage, SystemDesc, Time,
-    TimeConfig, Transform, Visibility, World, WorldLabels, WorldRngSeed, system,
+    DisplayState, Entity, InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget,
+    Plugin, PluginSet, RawInput, RoutedInput, SaveSlots, Schedule, Settings, Stage, SystemDesc,
+    Time, TimeConfig, Transform, Visibility, World, WorldLabels, WorldRngSeed, system,
 };
 use tungsten_render::renderer::RenderError;
 use tungsten_render::sprite::TextureHandles;
@@ -809,7 +809,7 @@ impl App {
         // Redo 7.9: the saved components every game draws with.
         world.register_saved_with(
             "transform",
-            SaveOptions::<Transform>::form::<SavedTransform>(),
+            SaveOptions::<Transform>::form::<SavedTransform>().capture_as(body_transform),
         );
         world.register_saved_with(
             "visibility",
@@ -2375,8 +2375,9 @@ impl App {
     }
 
     /// Applies `tungsten.json`'s `ui.theme` to the tree once its asset has
-    /// loaded (redo 7.17); a later reload re-applies it as it does any
-    /// theme the tree follows (`D-148`), and a game may set another after.
+    /// loaded (redo 7.17), at the start of each frame's update and after its
+    /// hot reload; a later reload re-applies it as it does any theme the
+    /// tree follows (`D-148`), and a game may set another after.
     fn apply_configured_theme(&mut self) {
         let Some(id) = self.pending_theme.as_deref() else {
             return;
@@ -2823,6 +2824,9 @@ impl App {
         self.apply_pending_display_request();
 
         self.stage_time(clock);
+        // Before the update, so a screen built on the first frame after the
+        // load has its theme (redo 7.11).
+        self.apply_configured_theme();
         let (update_start, mut systems, fixed_steps, exit) = self.stage_update();
         if exit {
             return FrameEnd::ExitRequested;
@@ -3038,7 +3042,6 @@ fn manifest_reload_roots(roots: &[PathBuf], manifest_path: Option<&Path>) -> Vec
     }
 }
 
-/// True when the canonical path `canon` names one of `reload_roots`.
 /// `Transform` in a save.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -3066,6 +3069,18 @@ impl From<SavedTransform> for Transform {
             scale: saved.scale.into(),
         }
     }
+}
+
+/// A body's transform as a save holds it: at its `Position`, not the point
+/// the frame drew between its last two steps, which a load cannot draw
+/// again (`D-033`); its rotation and scale as they are. An entity without
+/// a `Position` saves its transform as it is.
+fn body_transform(world: &World, entity: Option<Entity>, live: &Transform) -> Option<Transform> {
+    let &Position(at) = world.get::<Position>(entity?)?;
+    (live.position != at).then_some(Transform {
+        position: at,
+        ..*live
+    })
 }
 
 /// `Visibility` in a save: whether it is drawn.

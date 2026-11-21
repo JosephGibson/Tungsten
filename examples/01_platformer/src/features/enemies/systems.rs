@@ -1,29 +1,30 @@
 //! The enemies' systems: the state machine and the hooks every kind
-//! shares, the sight, the alerts, the hold, the deaths and the clips.
+//! shares, the sight, the alerts, the hold, the deaths, the tags their
+//! clips and looks read, and the steps and drawing their clips need.
 
 use glam::Vec2;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, BodyKind, Entity, EventCursor, EventQueue, Position,
-    RigidBody, Sprite, Time, Transform, Visibility, World,
+    AnimationState, BodyKind, DataRef, Entity, EventCursor, EventQueue, Position, PrefabRegistry,
+    RigidBody, Time, Transform, Visibility, World,
 };
 use tungsten::kit::{
-    ContactDamage, Damaged, Health, Hitbox, PathFollower, PlatformerController, StateMachine,
-    StateMachinePlugin, TopDownMover,
+    ContactDamage, Cooldown, Damaged, EffectRequest, Health, Hitbox, PathFollower,
+    PlatformerController, StateMachine, StateMachinePlugin, Steering, Tags, Target, TopDownMover,
+    end_effect, steered_direction,
 };
 use tungsten::physics::{SpatialFilter, cast_ray};
 
 use super::components::{
-    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Shown, Sight, Spotted, Variant,
+    Brain, Displaced, Enemy, EnemyKind, EnemyState, Shown, Sight, Spotted, Strike,
 };
 use super::{
-    ALERT_MARK_SECS, ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP,
-    WALL_LAYERS, bat, beetle, centre, crawler, goblin, troll, wisp,
+    ALERT_REACH, ARRIVED, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP,
+    WALL_LAYERS, bat, beetle, centre, crawler, goblin, heading_of, troll, turn, wisp,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{BURNING, CORRODED, FROZEN, STUNNED, has_status};
+use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements;
-use crate::features::level::elevator::Elevator;
 use crate::features::props::components::{Crate, Keg};
 use crate::features::run::Run;
 use crate::features::toys::components::{IronBlock, IronScrap};
@@ -91,20 +92,20 @@ pub fn sees(world: &World, enemy: Entity) -> bool {
     world.get::<Sight>(enemy).is_some_and(|sight| sight.sees)
 }
 
-/// Turns `enemy` to face `x`.
+/// Turns `enemy` to face `x` from its body's centre, past a pixel's dead
+/// zone, by its `Facing` ([`turn`]).
 pub fn face(world: &mut World, enemy: Entity, x: f32) {
     let Some(at) = centre(world, enemy) else {
         return;
     };
-    if let Some(mine) = world.get_mut::<Enemy>(enemy)
-        && (x - at.x).abs() > 1.0
-    {
-        mine.heading = (x - at.x).signum();
+    if (x - at.x).abs() > 1.0 {
+        turn(world, enemy, (x - at.x).signum());
     }
 }
 
 /// Stops `enemy`'s mover: a walker's run at rest, a flyer's direction at
-/// rest.
+/// rest and its steering off, so a held flyer, frozen on a borrowed
+/// controller too, is steered by none.
 pub fn rest(world: &mut World, enemy: Entity) {
     if let Some(controller) = world.get_mut::<PlatformerController>(enemy) {
         controller.set_run(0.0);
@@ -112,6 +113,38 @@ pub fn rest(world: &mut World, enemy: Entity) {
     if let Some(mover) = world.get_mut::<TopDownMover>(enemy) {
         mover.set_direction(Vec2::ZERO);
     }
+    if let Some(steering) = world.get_mut::<Steering>(enemy) {
+        steering.set_on(false);
+    }
+}
+
+/// Flies `flyer` toward `point` at `pace` of its speed on the kit's
+/// steering, its prefab's arrive easing in over its last 20 px: the
+/// steering's target the point less the body's centre, so its centre
+/// arrives there, at `pace`, switched on; it faces the point while the
+/// direction its mover takes from it points across. At rest with no point
+/// ([`rest`]). Whether its centre is within [`ARRIVED`] of the point.
+pub fn fly(world: &mut World, flyer: Entity, point: Option<Vec2>, pace: f32) -> bool {
+    let (Some(at), Some(point), Some(from)) = (
+        centre(world, flyer),
+        point,
+        world.get::<Position>(flyer).map(|position| position.0),
+    ) else {
+        rest(world, flyer);
+        return true;
+    };
+    let Some(steering) = world.get_mut::<Steering>(flyer) else {
+        rest(world, flyer);
+        return true;
+    };
+    steering.set_target(Target::point(point - (at - from)));
+    steering.set_pace(pace);
+    steering.set_on(true);
+    let dt = world.resource::<Time>().delta();
+    if steered_direction(world, flyer, dt).is_some_and(|direction| direction.x.abs() > 0.05) {
+        face(world, flyer, point.x);
+    }
+    at.distance(point) <= ARRIVED
 }
 
 /// The most dynamic bodies [`solid`]'s ray looks past.
@@ -136,9 +169,7 @@ pub(crate) fn solid(world: &World, from: Vec2, direction: Vec2, distance: f32, m
         match world.get::<RigidBody>(entity).map(|body| body.kind) {
             Some(BodyKind::Static) => return true,
             // A moving platform or the elevator's deck, not a character.
-            Some(BodyKind::Kinematic)
-                if world.has::<PathFollower>(entity) || world.has::<Elevator>(entity) =>
-            {
+            Some(BodyKind::Kinematic) if world.has::<PathFollower>(entity) => {
                 return true;
             }
             Some(BodyKind::Dynamic) => {
@@ -178,9 +209,7 @@ pub fn stride(world: &mut World, walker: Entity, heading: f32, pace: f32) -> boo
         rest(world, walker);
         return false;
     }
-    if let Some(mine) = world.get_mut::<Enemy>(walker) {
-        mine.heading = heading;
-    }
+    turn(world, walker, heading);
     if let Some(controller) = world.get_mut::<PlatformerController>(walker) {
         controller.set_run(heading * pace);
     }
@@ -190,7 +219,7 @@ pub fn stride(world: &mut World, walker: Entity, heading: f32, pace: f32) -> boo
 /// Walks `walker` its ground at `pace`, turning at each end and at walls;
 /// in the air it waits to land.
 pub fn pace(world: &mut World, walker: Entity, pace: f32) {
-    let Some(heading) = world.get::<Enemy>(walker).map(|mine| mine.heading) else {
+    let Some(heading) = heading_of(world, walker) else {
         return;
     };
     let grounded = world
@@ -218,7 +247,7 @@ fn patrol(world: &mut World, enemy: Entity) {
 /// Its tell on spotting the player: it stops and faces where the alert
 /// came from; a wisp flares, a troll roars, a goblin cackles. A fresh
 /// alert, from its patrol or its way home, never from a search, shows its
-/// "!" for [`ALERT_MARK_SECS`] and stings: the cue's interval makes the
+/// "!", its [`ALERT_MARK`] effect, and stings: the cue's interval makes the
 /// spotter's and its neighbours' one sting.
 fn enter_alert(world: &mut World, enemy: Entity) {
     rest(world, enemy);
@@ -237,9 +266,7 @@ fn enter_alert(world: &mut World, enemy: Entity) {
                 .is_none_or(|before| matches!(before, EnemyState::Patrol | EnemyState::Return))
         });
     if fresh {
-        if let Some(brain) = world.get_mut::<Brain>(enemy) {
-            brain.alerted = ALERT_MARK_SECS;
-        }
+        EffectRequest::new(enemy, DataRef::by_id(ALERT_MARK)).apply(world);
         if let Some(at) = centre(world, enemy) {
             audio::play(world, Sound::Alerted, at);
         }
@@ -258,7 +285,7 @@ fn alert(world: &mut World, enemy: Entity) {
         return;
     };
     rest(world, enemy);
-    if elapsed(world, enemy) >= kind.info().alert {
+    if elapsed(world, enemy) >= super::info(world, kind).alert {
         if let Some(brain) = world.get_mut::<Brain>(enemy) {
             // A neighbour's alert gives it the point to chase toward.
             if brain.last_seen.is_none() {
@@ -339,7 +366,7 @@ fn recover(world: &mut World, enemy: Entity) {
         return;
     }
     rest(world, enemy);
-    if elapsed(world, enemy) >= kind.info().recover - 1e-4 {
+    if elapsed(world, enemy) >= super::info(world, kind).recover - 1e-4 {
         let next = if sees(world, enemy) {
             EnemyState::Chase
         } else {
@@ -507,8 +534,8 @@ pub fn clear(world: &World, seer: Entity, from: Vec2, to: Vec2) -> bool {
 #[must_use]
 pub fn eye(world: &World, enemy: Entity) -> Option<Vec2> {
     let at = world.get::<Position>(enemy)?.0;
-    let mine = world.get::<Enemy>(enemy)?;
-    Some(at + super::body(world, mine.kind).point("eye", mine.heading)?)
+    let kind = world.get::<Enemy>(enemy)?.kind;
+    Some(at + super::body(world, kind).point("eye", heading_of(world, enemy)?)?)
 }
 
 /// `enemy_sight`, in the intent phase: every [`SIGHT_EVERY`] seconds an
@@ -542,7 +569,8 @@ pub fn sight(world: &mut World) {
             }
             continue;
         }
-        let sees = eye.distance(target) <= kind.info().sight && clear(world, enemy, eye, target);
+        let sees = eye.distance(target) <= super::info(world, kind).sight
+            && clear(world, enemy, eye, target);
         let was = world.get::<Sight>(enemy).is_some_and(|sight| sight.sees);
         if let Some(sight) = world.get_mut::<Sight>(enemy) {
             sight.next = SIGHT_EVERY;
@@ -622,29 +650,54 @@ pub fn alerts(world: &mut World, cursor: &mut EventCursor<Spotted>) {
     }
 }
 
-/// `enemy_marks`, in the intent phase before the machine: each fresh
-/// alert's "!" runs down by the step.
-pub fn marks(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    if dt <= 0.0 {
-        return;
-    }
-    for brain in world.query_mut::<&mut Brain>() {
-        if brain.alerted > 0.0 {
-            brain.alerted = (brain.alerted - dt).max(0.0);
-        }
+/// The effect a fresh alert's "!" is: [`ALERTED`] for its seconds, on the
+/// kit's clock, saved with its time.
+pub const ALERT_MARK: &str = "alert_mark";
+/// The tag a foe holds while its "!" shows.
+pub const ALERTED: &str = "mark.alert";
+
+/// Starts `foe`'s rest after an attack: a fresh [`Cooldown`] of its
+/// prefab's `cooldown.seconds` that elapses once, over the one it holds or
+/// in its place, which the kit's tick spends before the machine each step,
+/// held or not. A foe whose prefab names no cooldown rests nothing.
+pub fn start_rest(world: &mut World, foe: Entity) {
+    if let Some(seconds) = rest_seconds(world, foe) {
+        world.insert(foe, Cooldown::new(seconds).with_count(1));
     }
 }
 
-/// `enemy_cooldowns`, in the intent phase before the machine: each enemy's
-/// cooldowns run down by the step, a troll's slam's and the next
-/// snowball's, throw's or dash-in's.
-pub fn cooldowns(world: &mut World) {
-    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
-    for brain in world.query_mut::<&mut Brain>() {
-        brain.slam_cooldown = (brain.slam_cooldown - dt).max(0.0);
-        brain.cooldown = (brain.cooldown - dt).max(0.0);
-    }
+/// Whether `foe` may attack again: its cooldown has no elapse left, or it
+/// holds none, as a fresh foe's spent one and an older record's stripped
+/// one stand.
+#[must_use]
+pub fn rested(world: &World, foe: Entity) -> bool {
+    world
+        .get::<Cooldown>(foe)
+        .is_none_or(|cooldown| cooldown.remaining() == Some(0))
+}
+
+/// The seconds of `foe`'s rest, its prefab's `cooldown.seconds`, read from
+/// the prefab registry as [`super::restored`] reads its health's policy.
+fn rest_seconds(world: &World, foe: Entity) -> Option<f32> {
+    let mine = world.get::<Enemy>(foe)?;
+    let seconds = world
+        .get_resource::<PrefabRegistry>()?
+        .get(super::prefab(mine.kind, mine.variant))?
+        .components
+        .get("cooldown")?
+        .get("seconds")?
+        .as_f64()?;
+    (seconds > 0.0).then_some(seconds as f32)
+}
+
+/// Whether `foe`'s windowed attack still hits: its hitbox's window, which
+/// its ability's `hitbox` payload opened, runs. The bat's dive and the
+/// beetle's charge end once it disarms.
+#[must_use]
+pub fn armed(world: &World, foe: Entity) -> bool {
+    world
+        .get::<Hitbox>(foe)
+        .is_some_and(|hitbox| hitbox.window().is_some() && hitbox.is_armed())
 }
 
 /// `enemy_hold`, in the intent phase before the machine: each enemy that
@@ -653,9 +706,9 @@ pub fn cooldowns(world: &mut World) {
 /// tell with the recovery, so the attack never lands; a freeze holds it,
 /// so the tell resumes at the thaw with the time it had left. A frozen
 /// flyer falls on a borrowed controller, its own mover set aside until the
-/// thaw; a frozen bat shatters once it lands. A frozen enemy's touch is set
-/// aside until the thaw too, so a frozen crawler chills nothing and a
-/// thrown one hurts by the throw.
+/// thaw; a frozen bat shatters once it lands. A frozen enemy's touch is
+/// switched off until the thaw too, so a frozen crawler chills nothing and
+/// a thrown one hurts by the throw.
 pub fn hold(world: &mut World) {
     let player = player(world).map(|(_, at)| at);
     for enemy in enemies(world) {
@@ -684,7 +737,7 @@ pub fn hold(world: &mut World) {
 /// input, so it falls, its own mover set aside; thawed, its own mover back
 /// where it is.
 fn swap_driver(world: &mut World, enemy: Entity, frozen: bool) {
-    let flyer = kind(world, enemy).is_some_and(|kind| kind.info().flyer);
+    let flyer = kind(world, enemy).is_some_and(|kind| super::info(world, kind).flyer);
     if !flyer {
         return;
     }
@@ -695,29 +748,35 @@ fn swap_driver(world: &mut World, enemy: Entity, frozen: bool) {
             let borrowed = PlatformerController::new(1.0, 1.0).with_filter(super::walk_filter());
             world.insert(enemy, borrowed);
         }
-    } else if let Some(Displaced(mover)) = world.get::<Displaced>(enemy).cloned() {
+    } else if let Some(Displaced(mut mover)) = world.get::<Displaced>(enemy).cloned() {
         world.remove_component::<Displaced>(enemy);
         world.remove_component::<PlatformerController>(enemy);
+        // A mover set aside has run, since movers run before effects land
+        // in a step; a load's leaves the flag out, so its first step back
+        // would stand still.
+        mover.set_started(true);
         world.insert(enemy, mover);
     }
 }
 
-/// An enemy's touch for its state: frozen, set aside; thawed, back with
-/// its targets' times.
+/// An enemy's touch for its state: frozen, switched off, its targets'
+/// times kept; thawed, on again with them; dead, left off, as its death
+/// policy's `disarm` switched it.
 fn swap_touch(world: &mut World, enemy: Entity, frozen: bool) {
-    if frozen {
-        if let Some(touch) = world.remove_component::<ContactDamage>(enemy) {
-            world.insert(enemy, HeldTouch(touch));
-        }
-    } else if let Some(HeldTouch(touch)) = world.remove_component::<HeldTouch>(enemy) {
-        world.insert(enemy, touch);
+    if world.get::<Health>(enemy).is_some_and(Health::is_dead) {
+        return;
+    }
+    if let Some(touch) = world.get_mut::<ContactDamage>(enemy)
+        && touch.is_on() == frozen
+    {
+        touch.set_on(!frozen);
     }
 }
 
 /// `enemy_deaths`, in the react phase after the step's reactions: each
-/// enemy a hit killed stops hurting at once, since its despawn comes at the
-/// next step's end and its touch and hitbox would act until then; it ends
-/// in one burst by its state, and its sprite goes with it.
+/// enemy a hit killed, whose death policy's `disarm` switched its touch
+/// and hitbox off at the kill, ends in one burst by its state, and its
+/// sprite goes with it.
 pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     let Some(events) = world.get_resource::<EventQueue<Damaged>>() else {
         return;
@@ -728,9 +787,6 @@ pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
         .map(|hit| hit.entity)
         .collect();
     for enemy in killed {
-        world.remove_component::<ContactDamage>(enemy);
-        world.remove_component::<HeldTouch>(enemy);
-        world.remove_component::<Hitbox>(enemy);
         end(world, enemy);
     }
 }
@@ -739,6 +795,7 @@ pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
 /// it this step, a burn-out if burning, a poof otherwise; its sprite
 /// hidden.
 fn end(world: &mut World, enemy: Entity) {
+    end_effect(world, enemy, &DataRef::by_id(ALERT_MARK));
     let Some(at) = centre(world, enemy) else {
         return;
     };
@@ -757,108 +814,131 @@ fn end(world: &mut World, enemy: Entity) {
     }
 }
 
-/// The clip `enemy` shows now: its kind's clip for its state, facing its
-/// heading; the armoured troll's its own, and once Corrosive has taken it
-/// a beetle's and an armoured troll's their stripped clips, the iron eaten
-/// away (e01flask).
-fn clip(world: &World, enemy: Entity) -> Option<String> {
-    let mine = world.get::<Enemy>(enemy)?;
-    let state = world.get::<StateMachine<EnemyState>>(enemy)?.state();
-    let clip = match mine.kind {
-        EnemyKind::Wisp => wisp::clip(state),
-        EnemyKind::Crawler => crawler::clip(world, enemy, state),
-        EnemyKind::Beetle => beetle::clip(state),
-        EnemyKind::Bat => bat::clip(world, enemy, state),
-        EnemyKind::Troll => {
-            let shown = world.get::<Shown>(enemy).map_or("", |shown| &shown.clip);
-            troll::clip(world, enemy, state, shown)
-        }
-        EnemyKind::Goblin => goblin::clip(world, enemy, state),
+/// The tag a live foe holds while its machine is held: dead, dormant,
+/// frozen or stunned ([`hold`]), which its animator holds its clip by.
+pub const HELD: &str = "state.held";
+/// The tags a troll holds while it holds something over its head, a
+/// crawler while it stands inside its fear's edge and a bat while it hangs
+/// at its roost.
+pub const TROLL_HOLDING: &str = "troll.holding";
+pub const CRAWLER_AFRAID: &str = "crawler.afraid";
+pub const BAT_ROOSTING: &str = "bat.roosting";
+/// The tag a live foe holds while its search has run
+/// [`SEARCH_MARK_AFTER`](super::SEARCH_MARK_AFTER), on its machine's saved
+/// and held-aware time: its "?" look shows while it holds it and no "!".
+pub const SEARCHING: &str = "mark.search";
+
+/// Every tag [`foe_tags`] keeps.
+fn foe_tag_names() -> impl Iterator<Item = &'static str> {
+    EnemyState::ALL
+        .into_iter()
+        .map(EnemyState::tag)
+        .chain([HELD])
+        .chain(Strike::ALL.into_iter().map(Strike::tag))
+        .chain([TROLL_HOLDING, CRAWLER_AFRAID, BAT_ROOSTING, SEARCHING])
+}
+
+/// The tags `foe` holds now: none dead; else its state's, [`HELD`] while
+/// its machine is held, its brain's strike's, its kind's own while
+/// [`troll::held`], [`crawler::afraid`] or [`bat::roosting`] says so, and
+/// [`SEARCHING`] once its search has run its first
+/// [`SEARCH_MARK_AFTER`](super::SEARCH_MARK_AFTER).
+fn wanted_tags(world: &World, foe: Entity) -> [Option<&'static str>; 5] {
+    let live = world
+        .get::<Health>(foe)
+        .is_some_and(|health| !health.is_dead());
+    let Some(machine) = world.get::<StateMachine<EnemyState>>(foe).filter(|_| live) else {
+        return [None; 5];
     };
-    let side = if mine.heading < 0.0 { "_left" } else { "" };
-    let stripped = has_status(world, enemy, CORRODED);
-    match (mine.kind, mine.variant) {
-        (EnemyKind::Troll, Variant::Armoured) => {
-            let part = clip.trim_start_matches("troll_");
-            let stem = if stripped {
-                "troll_stripped"
-            } else {
-                "troll_armoured"
-            };
-            Some(format!("ex10_{stem}_{part}{side}"))
+    let strike = world.get::<Brain>(foe).and_then(|brain| brain.strike);
+    let own = match kind(world, foe) {
+        Some(EnemyKind::Troll) => troll::held(world, foe).is_some().then_some(TROLL_HOLDING),
+        Some(EnemyKind::Crawler) => crawler::afraid(world, foe).then_some(CRAWLER_AFRAID),
+        Some(EnemyKind::Bat) => bat::roosting(world, foe).then_some(BAT_ROOSTING),
+        _ => None,
+    };
+    let searching = machine.state() == EnemyState::Search
+        && machine.elapsed() >= super::SEARCH_MARK_AFTER - 1e-4;
+    [
+        Some(machine.state().tag()),
+        machine.is_held().then_some(HELD),
+        strike.map(Strike::tag),
+        own,
+        searching.then_some(SEARCHING),
+    ]
+}
+
+/// `foe_tags`, in the react phase after the deaths: each foe's tags from
+/// its machine, its brain and its kind's rules, which its prefab's clip
+/// rules and looks read (`D-247`): `state.<state>`, [`HELD`], its strike's
+/// `strike.<strike>` and its kind's own; a dead one holds none. Only a
+/// changed tag is inserted or removed. `foes` is the step's scratch list.
+pub fn foe_tags(world: &mut World, foes: &mut Vec<Entity>) {
+    foes.clear();
+    foes.extend(world.query::<(Entity, &Enemy)>().map(|(entity, _)| entity));
+    for &foe in foes.iter() {
+        let wanted = wanted_tags(world, foe);
+        let Some(tags) = world.get_mut::<Tags>(foe) else {
+            continue;
+        };
+        for tag in foe_tag_names() {
+            let want = wanted.contains(&Some(tag));
+            if want != tags.has(tag) {
+                if want {
+                    tags.insert(tag);
+                } else {
+                    tags.remove(tag);
+                }
+            }
         }
-        (EnemyKind::Beetle, _) if stripped => {
-            let part = clip.trim_start_matches("beetle_");
-            Some(format!("ex10_beetle_stripped_{part}{side}"))
-        }
-        _ => Some(format!("ex10_{clip}{side}")),
     }
 }
 
 /// The troll's walk frames its feet land on, where its steps sound.
 const TROLL_STEPS: [usize; 2] = [0, 4];
+/// The troll's walks, the armoured and the stripped one's too.
+const TROLL_WALKS: [&str; 3] = [
+    "ex10_troll_walk",
+    "ex10_troll_armoured_walk",
+    "ex10_troll_stripped_walk",
+];
 
-/// `enemy_clips`, in the present phase after the kit's animation tick: each
-/// enemy shows its state's clip, from its first frame when it changes, and
-/// holds its frame while it thinks nothing; a wisp's flare lights a second
-/// ember emitter, and a troll's feet sound as they land. A `_left` frame is
-/// its right one mirrored, so a kind whose body is off its frame's centre
-/// (the troll) draws a left frame shifted by twice the difference, its body
-/// over its box; the physics sync writes the transform again each frame.
+/// `enemy_clips`, in the present phase after the kit's character animator,
+/// which shows each enemy's clip by the rules its prefab holds over the
+/// tags [`foe_tags`] keeps, holding its frame while [`HELD`], and before
+/// the late look pass: a troll's feet sound as they land, and a kind whose
+/// body is off its frame's centre (the troll) draws a `_left` frame, its
+/// right one mirrored, shifted by twice the difference, its body over its
+/// box, where the looks and the bar find it. The physics sync writes the
+/// transform again each frame.
 pub fn clips(world: &mut World) {
-    let Some(registry) = world.remove_resource::<AnimationRegistry>() else {
-        return;
-    };
     for enemy in enemies(world) {
-        let Some(wanted) = clip(world, enemy) else {
-            continue;
-        };
-        let held = world
-            .get::<StateMachine<EnemyState>>(enemy)
-            .is_some_and(StateMachine::is_held);
-        let current = world
-            .get::<AnimationState>(enemy)
-            .map(|state| state.animation_id.clone());
-        if current.as_deref() != Some(wanted.as_str()) {
-            let state = AnimationState::new(wanted.clone());
-            let frame = state.current_sprite(&registry);
-            world.insert(enemy, state);
-            if let (Some(frame), Some(sprite)) = (frame, world.get_mut::<Sprite>(enemy)) {
-                sprite.asset_id = frame;
-            }
-        }
-        if let Some(state) = world.get_mut::<AnimationState>(enemy) {
-            state.playing = !held;
-        }
-        steps(world, enemy, &wanted);
-        if let Some(shown) = world.get_mut::<Shown>(enemy) {
-            shown.clip = wanted;
-        }
+        steps(world, enemy);
         mirror(world, enemy);
-        wisp::flare_embers(world, enemy);
     }
-    world.insert_resource(registry);
 }
 
-/// A troll's step, when its walk reaches a frame its foot lands on.
-fn steps(world: &mut World, enemy: Entity, wanted: &str) {
-    let frame = world
-        .get::<AnimationState>(enemy)
-        .map_or(0, |state| state.frame_index);
-    let last = world
-        .get::<Shown>(enemy)
-        .map(|shown| (shown.frame, shown.clip == wanted));
+/// A troll's step, when its walk reaches a frame its foot lands on: the
+/// clip and frame its animator shows against those [`Shown`] kept.
+fn steps(world: &mut World, enemy: Entity) {
+    let (Some(state), Some(shown)) = (
+        world.get::<AnimationState>(enemy),
+        world.get::<Shown>(enemy),
+    ) else {
+        return;
+    };
+    let frame = state.frame_index;
+    let walking = TROLL_WALKS
+        .iter()
+        .any(|walk| state.animation_id.starts_with(walk));
+    let changed = (shown.clip != state.animation_id).then(|| state.animation_id.clone());
+    let landed = changed.is_some() || shown.frame != frame;
     if let Some(shown) = world.get_mut::<Shown>(enemy) {
         shown.frame = frame;
+        if let Some(clip) = changed {
+            shown.clip = clip;
+        }
     }
-    let walking = [
-        "ex10_troll_walk",
-        "ex10_troll_armoured_walk",
-        "ex10_troll_stripped_walk",
-    ]
-    .iter()
-    .any(|walk| wanted.starts_with(walk));
-    let landed = last.is_some_and(|(was, same)| !same || was != frame);
     if walking
         && landed
         && TROLL_STEPS.contains(&frame)
@@ -876,7 +956,7 @@ fn mirror(world: &mut World, enemy: Entity) {
     };
     let body = super::body(world, mine.kind);
     let shift = 2.0 * body.centre.x - body.frame.x;
-    if mine.heading < 0.0
+    if heading_of(world, enemy) == Some(-1.0)
         && shift != 0.0
         && let Some(transform) = world.get_mut::<Transform>(enemy)
     {

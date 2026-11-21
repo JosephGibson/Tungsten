@@ -2176,6 +2176,111 @@ fn a_riders_carry_stops_at_a_ceiling() {
     }
 }
 
+/// [`rig`] with the path follower beside the controller.
+fn lift_rig() -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, GRAVITY),
+        ..PhysicsConfig::default()
+    });
+    world.insert_resource(TilemapRegistry::new());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    crate::PathFollowerPlugin.build(&mut schedule, &mut world);
+    PlatformerControllerPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+/// A deck 120 px wide, its top at y 0: a lift 120 px up in a second,
+/// boarding after 0.3 s and back a second after its last rider, its riders
+/// the controllers `filter` passes.
+fn filtered_lift(world: &mut World, filter: crate::TagFilter) -> Entity {
+    let from = Vec2::new(200.0, 10.0);
+    let follower = PathFollower::new([from, from - Vec2::new(0.0, 120.0)], 120.0)
+        .ping_pong()
+        .with_rider(0.3, 1.0)
+        .with_rider_filter(filter);
+    world.spawn_with(
+        RigidBodyBundle::kinematic(Position(from), Collider::aabb(Vec2::new(60.0, 10.0)))
+            .with((follower,)),
+    )
+}
+
+#[test]
+fn a_controller_marks_a_lift_only_through_its_filter() {
+    let walker = || PlatformerController::new(RUN, JUMP);
+    let feet = |world: &World, entity: Entity| position(world, entity).y + HALF.y;
+    // The steps until `lift` leaves the height `y`.
+    let leaves = |world: &mut World, schedule: &mut Schedule, lift: Entity, y: f32| {
+        for taken in 1..=120 {
+            step(world, schedule);
+            if (position(world, lift).y - y).abs() > 1e-3 {
+                return taken;
+            }
+        }
+        panic!("it stays at {y}");
+    };
+
+    // A lift filtered to `team.player`: an untagged controller stands on it
+    // 2 s, its ground, and it stays at its first point.
+    let (mut world, mut schedule) = lift_rig();
+    let lift = filtered_lift(&mut world, crate::TagFilter::new().any(["team.player"]));
+    let other = hero(&mut world, Vec2::new(230.0, 0.0), walker());
+    for _ in 0..120 {
+        step(&mut world, &mut schedule);
+        assert_eq!(position(&world, lift).y, 10.0, "no rider of its filter");
+    }
+    assert_eq!(state(&world, other).ground(), Some(lift));
+    // A tagged hero boards it in 0.3 s: two steps to find its ground, then
+    // the kit's nineteen marked steps.
+    let rider = hero(&mut world, Vec2::new(170.0, 0.0), walker());
+    world.insert(rider, crate::Tags::new(["team.player"]));
+    let boarded = leaves(&mut world, &mut schedule, lift, 10.0);
+    assert!((20..=23).contains(&boarded), "0.3 s aboard: {boarded}");
+    // The untagged one rides by the carry: at the last point both stand on
+    // the deck, which the hero holds there.
+    for _ in 0..100 {
+        step(&mut world, &mut schedule);
+    }
+    assert!(
+        (position(&world, lift).y + 110.0).abs() < 1e-3,
+        "up, and held"
+    );
+    for entity in [rider, other] {
+        let on = feet(&world, entity) - (position(&world, lift).y - 10.0);
+        assert!(on.abs() < 1.0, "on the deck: {on}");
+        assert_eq!(state(&world, entity).ground(), Some(lift));
+    }
+    // The hero gone, the untagged one alone does not hold it: it comes
+    // back a second later, the untagged one riding down.
+    world.despawn(rider);
+    let alone = leaves(&mut world, &mut schedule, lift, -110.0);
+    assert!((60..=64).contains(&alone), "a second alone: {alone}");
+    for _ in 0..100 {
+        step(&mut world, &mut schedule);
+    }
+    assert!((position(&world, lift).y - 10.0).abs() < 1e-3, "back down");
+    assert!((feet(&world, other)).abs() < 1.0, "carried down");
+
+    // A lift filtered `{ none: [team.enemy] }` refuses a controller tagged
+    // `team.enemy` and takes an untagged one: without `Tags` it passes a
+    // filter with no `all` and no `any`.
+    let (mut world, mut schedule) = lift_rig();
+    let lift = filtered_lift(&mut world, crate::TagFilter::new().none(["team.enemy"]));
+    let foe = hero(&mut world, Vec2::new(230.0, 0.0), walker());
+    world.insert(foe, crate::Tags::new(["team.enemy"]));
+    for _ in 0..120 {
+        step(&mut world, &mut schedule);
+        assert_eq!(position(&world, lift).y, 10.0, "an enemy is no rider");
+    }
+    assert_eq!(state(&world, foe).ground(), Some(lift));
+    hero(&mut world, Vec2::new(170.0, 0.0), walker());
+    let boarded = leaves(&mut world, &mut schedule, lift, 10.0);
+    assert!((20..=23).contains(&boarded), "0.3 s aboard: {boarded}");
+}
+
 #[test]
 fn a_kinematic_body_pushes_the_controller_out() {
     // A deck coming down at 120 px/s, 2 px a step, onto a floating

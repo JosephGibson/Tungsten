@@ -10,7 +10,7 @@ import math
 
 from PIL import Image
 
-from art import PALETTE, rng_for
+from art import PALETTE, clip, rng_for
 from pixels import (Part, compose, despeckle, dither, fbm, grade, outline, packed_stones, ramp, shade, smoothstep,
                     to_image, unit)
 from terrain import (BREAK_LIPS, COPING_TOP, DECK, FROND, LEAF, TILE, coursed, darker, ellipse, from_image,
@@ -24,11 +24,9 @@ BRASS = dict(base='a', light='A', shadow='(', back='(')
 LEAF_RAMP = 'tTgGm'
 
 
-def cut(images, name, canvas, columns, rows):
-    im = to_image(canvas, (columns * 64, rows * 64))
-    for row in range(rows):
-        for col in range(columns):
-            images[f'{name}_big_{row}_{col}'] = im.crop((col * 64, row * 64, (col + 1) * 64, (row + 1) * 64))
+def whole(images, name, canvas, columns, rows):
+    """`canvas`, `columns` by `rows` tiles, as the one sprite `<name>_big`."""
+    images[f'{name}_big'] = to_image(canvas, (columns * 64, rows * 64))
 
 
 def blocks(inside, course=10, seed='blocks', offset=0):
@@ -493,28 +491,20 @@ def spikes():
 
 
 def build_scenery(images, lit, animations):
-    frames = [lamp_post(i) for i in range(6)]
-    for i, im in enumerate(frames):
-        images['lantern' if i == 0 else f'lantern_{i}'] = im
-    animations['torch_flicker'] = {'looping': True, 'frames': [
-        {'sprite': 'ex10_' + ('lantern' if i == 0 else f'lantern_{i}'), 'duration_ms': 100} for i in range(6)]}
-    for i in range(4):
-        images['vines' if i == 0 else f'vines_{i}'] = ivy(i)
-    animations['vines_sway'] = {'looping': True, 'frames': [
-        {'sprite': 'ex10_' + ('vines' if i == 0 else f'vines_{i}'), 'duration_ms': 200} for i in (0, 1, 2, 3)]}
+    clip(images, animations, 'torch_flicker', [lamp_post(i) for i in range(6)], 100,
+         names=['lantern' if i == 0 else f'lantern_{i}' for i in range(6)])
+    clip(images, animations, 'vines_sway', [ivy(i) for i in range(4)], 200,
+         names=['vines' if i == 0 else f'vines_{i}' for i in range(4)])
     images['marker'] = waystone()
-    cut(images, 'gate', summit_gate(), 3, 3)
-    cut(images, 'oak', oak(), 3, 3)
-    cut(images, 'arch', ruined_arch(), 4, 3)
-    cut(images, 'roots', root_curtain(), 3, 2)
+    whole(images, 'gate', summit_gate(), 3, 3)
+    whole(images, 'oak', oak(), 3, 3)
+    whole(images, 'arch', ruined_arch(), 4, 3)
+    whole(images, 'roots', root_curtain(), 3, 2)
     for name, draw in (('fern', fern), ('grass', grass), ('flowers', flowers), ('mushrooms', mushrooms),
                        ('rubble', rubble), ('crystal', crystal), ('hanging_moss', hanging_moss),
                        ('spikes', spikes)):
         images[name] = draw()
-    for i, im in enumerate(waterfall_frames()):
-        images[f'waterfall_flow_{i}'] = im
-    animations['waterfall_flow'] = {'looping': True, 'frames': [
-        {'sprite': f'ex10_waterfall_flow_{i}', 'duration_ms': 100} for i in range(4)]}
+    clip(images, animations, 'waterfall_flow', waterfall_frames(), 100)
     for name in images:
         if name.startswith(('lantern', 'vines', 'marker', 'gate_big', 'oak_big', 'arch_big', 'roots_big',
                             'fern', 'grass', 'flowers', 'rubble', 'hanging_moss', 'spikes')):
@@ -525,8 +515,8 @@ def build_scenery(images, lit, animations):
 # ---------------------------------------------------------------------------
 # M76 (01 (d)): the new level's scenery and its water and lava, drawn as the
 # art review's sixth draw drew them (`perf-runs/20261021-e01d-art-review/`).
-# A prop wider or taller than a tile is cut `<name>_big_<row>_<col>`; one
-# that fits sits in a tile, on its foot (or hung from its top). Water and
+# A prop wider or taller than a tile is drawn whole, `<name>_big`, padded to
+# whole tiles; one that fits sits in a tile, on its foot (or hung from its top). Water and
 # lava are looping clips whose frames repeat every 64 pixels across and
 # down, so tiles of them join.
 
@@ -4088,32 +4078,15 @@ def rails_worn():
 
 
 def placed(images, name, im, hang=False):
-    """`im` as tiles: in one when it fits, its foot on the tile's floor (or
-    its top on the tile's ceiling, `hang`), centred; else padded the same
-    way to whole tiles and cut `<name>_big_<row>_<col>`."""
+    """`im` padded to whole tiles, centred, its foot on their floor (or its
+    top on their ceiling, `hang`): `name` when it fits in one, else the one
+    sprite `<name>_big`."""
     cols, rows = -(-im.width // TILE), -(-im.height // TILE)
     canvas = Image.new('RGBA', (cols * TILE, rows * TILE))
     canvas.alpha_composite(im, ((cols * TILE - im.width) // 2, 0 if hang else rows * TILE - im.height))
-    if (cols, rows) == (1, 1):
-        images[name] = canvas
-        return [name]
-    names = []
-    for row in range(rows):
-        for col in range(cols):
-            piece = f'{name}_big_{row}_{col}'
-            images[piece] = canvas.crop((col * TILE, row * TILE, (col + 1) * TILE, (row + 1) * TILE))
-            names.append(piece)
-    return names
-
-
-def clip(images, animations, name, frames, duration):
-    """Frames `<name>_<i>` and their looping animation `<name>`."""
-    names = []
-    for i, im in enumerate(frames):
-        images[f'{name}_{i}'] = im
-        names.append(f'{name}_{i}')
-    animations[name] = {'looping': True, 'frames': [{'sprite': 'ex10_' + n, 'duration_ms': duration} for n in names]}
-    return names
+    name = name if (cols, rows) == (1, 1) else f'{name}_big'
+    images[name] = canvas
+    return [name]
 
 
 # Standing props: name and drawing; then the hung ones.
@@ -4212,8 +4185,7 @@ def haze(width, height, seed, strength, phase=0.0, gaps=()):
 # light.
 MISTS = ()
 # The rising mist, unlit and animated: the falls' plume, drawn at a phase,
-# `MIST_FRAMES` frames through one cycle, each tile of its cut a clip of its
-# own.
+# `MIST_FRAMES` frames through one cycle, each prop one clip.
 RISING = (
     ('plume', lambda t: plume(300, 170, 1.3, 1.5, t)),
     # The heat off the lava lake and the shelf's lava (e01hollow, round 3),
@@ -4224,21 +4196,16 @@ RISING = (
 MIST_FRAMES, MIST_MS = 6, 150
 
 
-def rising_clips(images, animations, name, frames, duration):
-    """`frames` padded as `placed` pads one, foot on the floor, and cut into
-    tiles: each tile's frames `<name>_big_<row>_<col>_<i>` and its looping
-    animation `<name>_big_<row>_<col>`."""
+def rising_clip(images, animations, name, frames, duration):
+    """`frames` each padded as `placed` pads one, foot on the floor: the
+    looping clip `<name>_big` of frames `<name>_big_<i>`."""
     cols, rows = -(-frames[0].width // TILE), -(-frames[0].height // TILE)
-    pieces = {}
+    padded = []
     for im in frames:
         canvas = Image.new('RGBA', (cols * TILE, rows * TILE))
         canvas.alpha_composite(im, ((cols * TILE - im.width) // 2, rows * TILE - im.height))
-        for row in range(rows):
-            for col in range(cols):
-                pieces.setdefault((row, col), []).append(
-                    canvas.crop((col * TILE, row * TILE, (col + 1) * TILE, (row + 1) * TILE)))
-    for (row, col), tiles in pieces.items():
-        clip(images, animations, f'{name}_big_{row}_{col}', tiles, duration)
+        padded.append(canvas)
+    clip(images, animations, f'{name}_big', padded, duration)
 
 
 def far_lantern():
@@ -4267,7 +4234,7 @@ def build_level_scenery(images, lit, animations):
     for name, draw in MISTS:
         placed(images, name, draw())
     for name, draw in RISING:
-        rising_clips(images, animations, name, [draw(k / MIST_FRAMES) for k in range(MIST_FRAMES)], MIST_MS)
+        rising_clip(images, animations, name, [draw(k / MIST_FRAMES) for k in range(MIST_FRAMES)], MIST_MS)
     for name, draw in FAR_PROPS:
         placed(images, name, draw())
     clip(images, animations, 'campfire', [campfire(f * 1.6) for f in range(4)], 120)
@@ -4281,18 +4248,10 @@ def build_level_scenery(images, lit, animations):
         lit.add(f'river_dark_{k}')
     for kind, name in (('calm', 'pool'), ('foam', 'pool_foam'), ('edge_left', 'pool_edge_left')):
         lit.update(clip(images, animations, name, [pool_frame(f, kind) for f in range(4)], 160))
-    # The pool's east shore, each tile with any of its art a clip.
-    shore = [pool_shore(f) for f in range(4)]
-    for row in range(2):
-        for col in range(3):
-            tiles = [im.crop((col * TILE, row * TILE, (col + 1) * TILE, (row + 1) * TILE)) for im in shore]
-            if any(tile.getbbox() for tile in tiles):
-                lit.update(clip(images, animations, f'pool_shore_big_{row}_{col}', tiles, 160))
-    # The aqueduct's small pool (e01hollow), each tile a clip.
-    basin = [pool_basin(f) for f in range(4)]
-    for col in range(BASIN[0] // TILE):
-        tiles = [im.crop((col * TILE, 0, (col + 1) * TILE, TILE)) for im in basin]
-        lit.update(clip(images, animations, f'pool_basin_big_0_{col}', tiles, 160))
+    # The pool's east shore, 3 x 2 tiles, and the aqueduct's small pool
+    # (e01hollow), 3 x 1, each one clip.
+    lit.update(clip(images, animations, 'pool_shore_big', [pool_shore(f) for f in range(4)], 160))
+    lit.update(clip(images, animations, 'pool_basin_big', [pool_basin(f) for f in range(4)], 160))
     falls = [dict(falls_tiles(f)) for f in range(4)]
     for name in falls[0]:
         lit.update(clip(images, animations, name, [frames[name] for frames in falls], 80))

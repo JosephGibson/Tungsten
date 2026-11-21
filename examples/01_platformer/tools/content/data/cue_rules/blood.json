@@ -1,0 +1,36 @@
+[
+  {
+    "on": "damaged_part",
+    "filter": {
+      "any": [
+        "team.player",
+        "flesh"
+      ]
+    },
+    "kind": {
+      "any": [
+        "damage.physical"
+      ]
+    },
+    "periodic": false,
+    "min_interval": 0.001,
+    "do": [
+      {
+        "burst": "ex10_blood_burst"
+      }
+    ]
+  },
+  {
+    "on": "effect_applied",
+    "effect": "bleeding",
+    "do": [
+      {
+        "burst": {
+          "particles": "ex10_blood_spurt",
+          "key": false,
+          "at": "centre"
+        }
+      }
+    ]
+  }
+]

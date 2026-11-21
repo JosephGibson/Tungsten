@@ -1,0 +1,13 @@
+{
+  "stimulus": "damage.fire",
+  "on": {
+    "all": [
+      "status.frozen"
+    ]
+  },
+  "outputs": [
+    {
+      "handler": "thermal_shock"
+    }
+  ]
+}

@@ -83,6 +83,7 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
         ("contact_damage", "ContactDamage"),
         ("projectile", "Projectile"),
         ("pickup", "Pickup"),
+        ("impact_damage", "ImpactDamage"),
         ("resist", "Resist"),
         ("shield", "Shield"),
         ("penetration", "Penetration"),
@@ -90,7 +91,6 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
         ("effects", "Effects"),
         ("abilities", "Abilities"),
         ("level", "Level"),
-        ("ailment_threshold", "AilmentThreshold"),
     ] {
         assert!(described.get(scene).is_some(), "{scene} is described");
         assert!(labels.contains(&label), "{scene} has rows under {label}");

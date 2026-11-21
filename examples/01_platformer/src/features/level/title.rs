@@ -8,24 +8,25 @@
 
 use glam::Vec2;
 use tungsten::core::{
-    Entity, Particle, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Time,
-    Transform, World,
+    Bundle, Entity, Particle, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState,
+    Position, PrevPosition, Time, Transform, World,
 };
+use tungsten::kit::{Lifetime, LinearMotion};
 use tungsten::{SceneEntity, WindowSize};
 
-use super::components::SceneTime;
+use super::components::AreaLight;
 use super::draw::START_VIEW;
 use super::{CAMERA_ROWS, TILE};
 use crate::shell::{self, title::TITLE};
 
 /// The title's sky, while no run is live: its own clock, in real seconds,
-/// the shooting stars it has sent, the one in flight, with its start and
-/// the clock at its birth, and the title's camera.
+/// the shooting stars it has sent, the one in flight, and the title's
+/// camera.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TitleSky {
     pub clock: f32,
     pub meteors: u32,
-    pub meteor: Option<(Entity, Vec2, f32)>,
+    pub meteor: Option<Entity>,
     pub camera: Option<Entity>,
 }
 
@@ -53,10 +54,10 @@ const TWINKLE_PHASE: f32 = 7.0;
 pub const SKY_LIFT: f32 = 80.0;
 /// A shooting star: one every so many seconds, crossing down and right at
 /// this speed for this long.
-const METEOR_EVERY: f32 = 4.0;
-const METEOR_SPEED: f32 = 1500.0;
-const METEOR_SECS: f32 = 0.7;
-const METEOR_HEADING: Vec2 = Vec2::new(1.0, 0.42);
+pub const METEOR_EVERY: f32 = 4.0;
+pub const METEOR_SPEED: f32 = 1500.0;
+pub const METEOR_SECS: f32 = 0.7;
+pub const METEOR_HEADING: Vec2 = Vec2::new(1.0, 0.42);
 
 /// The world box the title holds: its corner and its size, the base
 /// zoom's [`CAMERA_ROWS`] rows tall, [`SKY_LIFT`] rows above the start's
@@ -76,19 +77,15 @@ pub fn sky_view(world: &World) -> (Vec2, Vec2) {
     (corner, Vec2::new(width, height))
 }
 
-/// A value in [0, 1) hashed from `a` and `b`: a star's place.
+/// A value in [0, 1) drawn from `a` and `b`: a star's place.
 fn unit(a: u32, b: u32) -> f32 {
-    let mut h = a.wrapping_mul(0x9e37_79b9) ^ b.wrapping_mul(0x85eb_ca6b);
-    h ^= h >> 15;
-    h = h.wrapping_mul(0x2c1b_3c6d);
-    h ^= h >> 12;
-    (h % 10_000) as f32 / 10_000.0
+    crate::shared::unit(u64::from(a) << 32 | u64::from(b))
 }
 
-/// An emitter of the config `name` at `at`, seeded, owned by the title,
-/// its continuous emission starting `phase` emissions along: below 0, so
-/// many later.
-fn emitter(world: &mut World, name: &str, at: Vec2, seed: u64, phase: f32) -> Option<Entity> {
+/// An emitter of the config `name` at `at`, as its spawn's bundle: seeded,
+/// owned by the title, its continuous emission starting `phase` emissions
+/// along: below 0, so many later. `None` while no such config is loaded.
+fn emitter(world: &World, name: &str, at: Vec2, seed: u64, phase: f32) -> Option<impl Bundle> {
     let config = world
         .get_resource::<ParticleConfigRegistry>()?
         .id_for_name(name)?;
@@ -96,12 +93,12 @@ fn emitter(world: &mut World, name: &str, at: Vec2, seed: u64, phase: f32) -> Op
         continuous_accum: phase,
         ..ParticleEmitterState::default()
     };
-    Some(world.spawn_with((
+    Some((
         Transform::from_position(at),
         ParticleEmitter::with_seed(config, seed),
         state,
         SceneEntity { state_id: TITLE },
-    )))
+    ))
 }
 
 /// The emitters of the configs `names`.
@@ -147,10 +144,12 @@ fn twinkle_size(i: u32) -> &'static str {
 /// [`TWINKLES`] at hashed points over its view's upper half, thinning
 /// toward the treeline, each of a hashed size ([`TWINKLE_SIZES`]) and
 /// starting at a hashed phase, and while it is on top a shooting star every
-/// [`METEOR_EVERY`] seconds, which crosses down and right and goes. The first frame a run is live the sky goes,
-/// and with it the stars' emitters and every particle they left.
+/// [`METEOR_EVERY`] seconds, which the kit flies down and right on the game
+/// clock, in fixed steps (its `LinearMotion`), and ends [`METEOR_SECS`] on
+/// (its `Lifetime`). The first frame a run is live the sky goes, and with
+/// it the stars' emitters and every particle they left.
 pub fn sky(world: &mut World) {
-    if world.has_resource::<SceneTime>() {
+    if world.has_resource::<AreaLight>() {
         if world.remove_resource::<TitleSky>().is_some() {
             clear(world);
         }
@@ -158,8 +157,12 @@ pub fn sky(world: &mut World) {
     }
     let dt = world.resource::<Time>().real_delta();
     let mut sky = world.remove_resource::<TitleSky>().unwrap_or_default();
-    sky.clock += dt;
     let on_top = shell::top(world) == Some(TITLE);
+    // The stars' clock counts while the title is on top, so a cover leaves
+    // none owed.
+    if on_top {
+        sky.clock += dt;
+    }
     if on_top && !sky.camera.is_some_and(|camera| world.is_alive(camera)) {
         sky.camera = world
             .prepare_prefab(TITLE_CAMERA, Vec2::ZERO)
@@ -175,26 +178,30 @@ pub fn sky(world: &mut World) {
                     (0.03 + 0.55 * unit(i, 2).powf(1.5)) * size.y,
                 );
             let phase = 1.0 - TWINKLE_PHASE * unit(i, 3);
-            emitter(world, twinkle_size(i), at, 0x7100 + u64::from(i), phase);
+            if let Some(twinkle) = emitter(world, twinkle_size(i), at, 0x7100 + u64::from(i), phase)
+            {
+                world.spawn_with(twinkle);
+            }
         }
     }
-    if let Some((meteor, start, born)) = sky.meteor {
-        let t = sky.clock - born;
-        if t > METEOR_SECS || !world.is_alive(meteor) {
-            if world.is_alive(meteor) {
-                world.despawn(meteor);
-            }
-            sky.meteor = None;
-        } else if let Some(at) = world.get_mut::<Transform>(meteor) {
-            at.position = start + METEOR_HEADING.normalize() * METEOR_SPEED * t;
-        }
+    if sky.meteor.is_some_and(|meteor| !world.is_alive(meteor)) {
+        sky.meteor = None;
     }
     if on_top && sky.meteor.is_none() && sky.clock >= (sky.meteors + 1) as f32 * METEOR_EVERY {
         let k = sky.meteors;
         let start = corner + Vec2::new((0.15 + 0.5 * unit(k, 7)) * size.x, 0.06 * size.y);
         sky.meteors += 1;
-        sky.meteor = emitter(world, METEOR, start, 0x7200 + u64::from(k), 0.0)
-            .map(|meteor| (meteor, start, sky.clock));
+        // The kit flies it and ends it: a linear motion on the game clock,
+        // drawn between its steps, and a lifetime.
+        sky.meteor = emitter(world, METEOR, start, 0x7200 + u64::from(k), 0.0).map(|meteor| {
+            let flight = (
+                LinearMotion::new(METEOR_HEADING.normalize() * METEOR_SPEED),
+                Position(start),
+                PrevPosition(start),
+                Lifetime::new(METEOR_SECS),
+            );
+            world.spawn_with(meteor.with(flight))
+        });
     }
     world.insert_resource(sky);
 }

@@ -8,7 +8,10 @@
   "spell_cost": {
     "min": 0
   },
-  "spell_power": {
+  "status_threshold": {
+    "min": 0
+  },
+  "fuel": {
     "min": 0
   }
 }

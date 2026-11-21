@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 1,
+    "decay": 0.3333333333333333
+  },
+  "bands": [
+    {
+      "at": 0.9999,
+      "enter": [
+        {
+          "apply": {
+            "status": "corrupted"
+          }
+        },
+        {
+          "remove": "corrupt_build"
+        }
+      ]
+    }
+  ]
+}

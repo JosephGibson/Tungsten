@@ -74,19 +74,20 @@ pub(crate) enum Driver {
     /// A follower or an orbit, which run after the oscillator and set a
     /// goal with its offset folded in.
     Placer,
-    /// A controller, a top-down mover or a steering, which run after the
-    /// oscillator and set the velocity outright.
+    /// A controller, a top-down mover or a steering that is on, which run
+    /// after the oscillator and set the velocity outright.
     Late,
 }
 
 /// The kit mover that drives `entity`: a placer first, since it runs last
-/// of the drivers and sets the point outright.
+/// of the drivers and sets the point outright. A steering switched off
+/// drives nothing.
 pub(crate) fn driver_of(world: &World, entity: Entity) -> Driver {
     if world.has::<Follow>(entity) || world.has::<Orbit>(entity) {
         Driver::Placer
     } else if world.has::<PlatformerController>(entity)
         || world.has::<TopDownMover>(entity)
-        || world.has::<Steering>(entity)
+        || world.get::<Steering>(entity).is_some_and(Steering::is_on)
     {
         Driver::Late
     } else if world.has::<PathFollower>(entity) || world.has::<LinearMotion>(entity) {
@@ -182,8 +183,13 @@ pub fn centre_of(world: &World, entity: Entity) -> Option<Vec2> {
 }
 
 /// Where prefab `id`'s centre sits from its point: its `rigid_body`'s
-/// `offset`, else its sprite's drawn centre at scale 1 with no turn or
-/// flip, as a spawn places it, else none; read from its registry entry.
+/// `offset`; else, bodiless, the offset of its own shape, its `hurtbox`'s,
+/// `hitbox`'s, `pickup`'s or projectile `shape`'s, the first it has, art
+/// loaded or not (7.13c's foes); else its sprite's drawn centre at the
+/// prefab's `scale` with no turn or flip, as a spawn places it, by its
+/// registered size and anchor or, headless, those noted for it
+/// ([`AssetRegistry::sprite_size`]), else none; read from its registry
+/// entry.
 pub(crate) fn prefab_centre(world: &World, id: &str) -> Vec2 {
     let Some(data) = world
         .get_resource::<PrefabRegistry>()
@@ -191,20 +197,40 @@ pub(crate) fn prefab_centre(world: &World, id: &str) -> Vec2 {
     else {
         return Vec2::ZERO;
     };
-    if let Some(body) = data.components.get("rigid_body") {
-        return body
-            .get("offset")
+    let offset = |item: &serde_json::Value| {
+        item.get("offset")
             .and_then(|offset| serde_json::from_value::<[f32; 2]>(offset.clone()).ok())
-            .map_or(Vec2::ZERO, Vec2::from);
+            .map_or(Vec2::ZERO, Vec2::from)
+    };
+    if let Some(body) = data.components.get("rigid_body") {
+        return offset(body);
+    }
+    let shaped = ["hurtbox", "hitbox", "pickup"]
+        .iter()
+        .find_map(|name| data.components.get(*name))
+        .or_else(|| {
+            data.components.get("projectile").filter(|projectile| {
+                projectile
+                    .get("shape")
+                    .is_some_and(|shape| !shape.is_null())
+            })
+        });
+    if let Some(shape) = shaped {
+        return offset(shape);
     }
     data.sprite
         .as_ref()
         .and_then(|sprite| {
             let assets = world.get_resource::<AssetRegistry>()?;
-            assets.sprite(assets.sprite_id(&sprite.asset_id)?)
+            let id = assets.sprite_id(&sprite.asset_id)?;
+            Some((assets.sprite_size(id)?, assets.sprite_anchor(id)))
         })
-        .map_or(Vec2::ZERO, |asset| {
-            sprite_centre(asset, &Transform::default(), false)
+        .map_or(Vec2::ZERO, |((width, height), anchor)| {
+            // At the prefab's own scale, unturned and unflipped, as its
+            // spawn draws it: the anchor on the point, else the top-left.
+            let scale = Vec2::from(data.scale);
+            let size = Vec2::new(width as f32, height as f32) * scale;
+            size * 0.5 - anchor.map_or(Vec2::ZERO, |anchor| Vec2::from(anchor) * scale)
         })
 }
 

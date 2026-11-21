@@ -2,7 +2,8 @@
 //! in; cold and a black hole put one out with its fuel kept; a lit keg
 //! blows after its fuse and its neighbours follow in waves; a bullet, a
 //! hard landing and lightning each set a keg off, a blow by its weight, a
-//! small ball's never and a short fall's not; a frozen keg shatters in
+//! small ball's never and a short fall's not; a lit keg shot goes off at
+//! once and a lit keg put out stays whole; a frozen keg shatters in
 //! fire and never blows; a detonation's credit passes through the endings
 //! it sets off; two kegs blowing in one step blow once each; and a bomb
 //! rolls with its fuse turning on it, while a goblin's rock stays a body
@@ -15,33 +16,29 @@
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::Kind;
 use example_01_platformer::features::elements;
-use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades};
-use example_01_platformer::features::elements::components::{BallBurn, Frozen};
+use example_01_platformer::features::elements::is_frozen;
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::EnemyKind;
 use example_01_platformer::features::gun;
 use example_01_platformer::features::level;
 use example_01_platformer::features::lightning;
-use example_01_platformer::features::props::components::{
-    Fuel, FuseEmitter, MapProp, PropKind, StoneSize,
-};
-use example_01_platformer::features::props::systems::bomb_tip;
-use example_01_platformer::features::props::{
-    self, BOMB_RADIUS, BURN_SECS, CRATE_HALF, KEG_BLAST, KEG_HALF, ROCK_CAP, ROCK_RADIUS,
-    SPREAD_AFTER, STONE_HALVES,
-};
+use example_01_platformer::features::props::components::{MapProp, PropFire, PropKind, StoneSize};
+use example_01_platformer::features::props::{self, KEG_BLAST, SPREAD_AFTER, STONE_PREFABS};
 use example_01_platformer::features::spells::components::Spell;
-use example_01_platformer::features::toys::{self, SMALL_BALL_RADIUS};
-use example_01_platformer::shared::{SaveId, SaveIds};
+use example_01_platformer::features::toys;
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
-use tungsten::core::{Collider, Entity, Position, RigidBody, Shape, Transform, Velocity, World};
+use tungsten::core::{
+    Collider, Entity, ParticleConfigRegistry, ParticleEmitter, Position, RigidBody, Shape,
+    Transform, Velocity, World,
+};
 use tungsten::kit::{DamagedPart, ImmunePart, Stats};
 use tungsten::testing::UiHarness;
 
 use super::combat::{TOP, apply, dummy_at};
 use super::kind_body;
 use super::{aim_at, ball, body, bursts, choose, floor, ground, pin_camera, run, stand};
+use super::{prefab_box, prefab_number};
 
 /// A run on the sky's ground at one step a frame, the courier at `x`, the
 /// camera held over it, with mana to spare.
@@ -60,20 +57,28 @@ fn sky(x: f32) -> (UiHarness, Entity) {
 
 /// A prop of `kind` resting on the sky's ground, its centre at `x`.
 fn prop(harness: &mut UiHarness, kind: PropKind, x: f32) -> Entity {
-    let half = props::half(kind);
+    let half = prefab_box(props::prefab(kind)).0;
     props::spawn(harness.world_mut(), kind, Vec2::new(x, TOP - half.y))
 }
 
-fn fuel(harness: &UiHarness, crate_: Entity) -> Fuel {
-    *harness.world().get::<Fuel>(crate_).expect("a crate's fuel")
+fn fuel(harness: &UiHarness, crate_: Entity) -> PropFire {
+    props::fire(harness.world(), crate_).expect("a crate's fuel")
 }
 
 fn alive(harness: &UiHarness, entity: Entity) -> bool {
     harness.world().is_alive(entity)
 }
 
+/// The most `prop`'s prefab's kit `cap` holds, as `prop` carries it.
+fn cap_of(harness: &UiHarness, prop: Entity) -> usize {
+    let cap = harness.world().get::<tungsten::kit::Cap>(prop);
+    cap.expect("a capped prop").max() as usize
+}
+
 fn id_of(world: &World, entity: Entity) -> u64 {
-    world.get::<SaveId>(entity).expect("a save ID").0
+    example_01_platformer::shared::save_id(world, entity)
+        .expect("a save ID")
+        .0
 }
 
 /// The sounds of `sound` this frame.
@@ -116,13 +121,17 @@ fn a_crate_set_alight_burns_down_and_falls_in() {
     let near = prop(
         &mut harness,
         PropKind::Crate,
-        600.0 - 2.0 * CRATE_HALF.x - 3.0,
+        600.0 - 2.0 * prefab_box("crate").0.x - 3.0,
     );
     // A small ball resting 1 px off its right face, under the flames' aim.
-    let edge = 600.0 + CRATE_HALF.x + 1.0 + SMALL_BALL_RADIUS;
-    let small = ball(&mut harness, Vec2::new(edge, TOP - SMALL_BALL_RADIUS), true);
+    let edge = 600.0 + prefab_box("crate").0.x + 1.0 + prefab_box("small_ball").0.x;
+    let small = ball(
+        &mut harness,
+        Vec2::new(edge, TOP - prefab_box("small_ball").0.x),
+        true,
+    );
     harness.step(2);
-    let face = Vec2::new(600.0 + CRATE_HALF.x, TOP - 50.0);
+    let face = Vec2::new(600.0 + prefab_box("crate").0.x, TOP - 50.0);
     assert!(
         spray_until(&mut harness, Spell::Flamethrower, face, 60, |h| fuel(
             h, lit
@@ -133,13 +142,13 @@ fn a_crate_set_alight_burns_down_and_falls_in() {
     assert!(
         harness
             .world()
-            .get::<BallBurn>(small)
-            .is_some_and(|burn| burn.remaining > 0.0),
+            .get::<tungsten::kit::Tags>(small)
+            .is_some_and(|tags| tags.has("status.burning")),
         "the ball by its box at once"
     );
     assert!(!fuel(&harness, near).lit, "its neighbour not yet");
     let (mut caught, mut fell) = (None, None);
-    for frame in 1..=(BURN_SECS * 60.0) as u32 + 30 {
+    for frame in 1..=(prefab_number("crate", "/components/stats/fuel") * 60.0) as u32 + 30 {
         harness.step(1);
         if caught.is_none() && alive(&harness, near) && fuel(&harness, near).lit {
             caught = Some(frame);
@@ -153,7 +162,7 @@ fn a_crate_set_alight_burns_down_and_falls_in() {
     let caught = caught.expect("its neighbour caught");
     assert!(caught.abs_diff(spread) <= 1, "3 px away at 2 s: {caught}");
     let fell = fell.expect("it burned down");
-    let burn = (BURN_SECS * 60.0) as u32;
+    let burn = (prefab_number("crate", "/components/stats/fuel") * 60.0) as u32;
     assert!(fell.abs_diff(burn) <= 1, "8 s: {fell}");
 }
 
@@ -173,7 +182,7 @@ fn cold_and_a_hole_put_a_crate_out_with_its_fuel_kept() {
     assert!(bursts(&harness, "ex10_steam_burst") > steam, "with steam");
     let kept = fuel(&harness, wet).left;
     assert!(
-        (kept - (BURN_SECS - 1.0)).abs() < 0.1,
+        (kept - (prefab_number("crate", "/components/stats/fuel") - 1.0)).abs() < 0.1,
         "its fuel kept: {kept}"
     );
     // It cannot light for the douse's 4 s, then it burns its fuel out.
@@ -295,6 +304,40 @@ fn a_bullet_a_hard_landing_and_lightning_each_set_a_keg_off() {
 }
 
 #[test]
+fn a_lit_keg_shot_goes_off_at_once_and_a_lit_keg_doused_stays_whole() {
+    // Round 1's finding 3 and round 2's 4: a `jolt` sets a lit keg off
+    // before its fuse runs out, and a fuse put out ends with the keg whole.
+    let (mut harness, _) = sky(300.0);
+    let shot = prop(&mut harness, PropKind::Keg, 700.0);
+    let doused = prop(&mut harness, PropKind::Keg, 1700.0);
+    harness.step(2);
+    let world = harness.world_mut();
+    assert!(props::light(world, shot, None) && props::light(world, doused, None));
+    let target = body(&harness, shot);
+    aim_at(&mut harness, target);
+    harness.harness_mut().press_action(gun::SHOOT);
+    harness.step(1);
+    harness.harness_mut().release_action(gun::SHOOT);
+    let mut frames = 1;
+    while alive(&harness, shot) && frames < 90 {
+        harness.step(1);
+        frames += 1;
+    }
+    assert!(frames < 30, "the shot set it off at once: {frames} frames");
+    assert!(
+        props::put_out(harness.world_mut(), doused),
+        "its fuse burned"
+    );
+    let mut booms = 0;
+    for _ in 0..180 {
+        harness.step(1);
+        booms += sounds(&harness, Sound::KegBlasted);
+    }
+    assert!(alive(&harness, doused), "put out, it stays whole");
+    assert_eq!(booms, 0, "its fuse's end never came");
+}
+
+#[test]
 fn a_keg_blows_from_a_blow_as_hard_as_its_weight_asks() {
     // Q46: by the other body's mass.
     assert!(!elements::blows_keg(1.0, 10_000.0), "a small ball never");
@@ -319,15 +362,15 @@ fn a_keg_blows_from_a_blow_as_hard_as_its_weight_asks() {
     let dropped = props::spawn(
         harness.world_mut(),
         PropKind::Keg,
-        Vec2::new(700.0, TOP - KEG_HALF.y - 120.0),
+        Vec2::new(700.0, TOP - prefab_box("keg").0.y - 120.0),
     );
     let pelted = prop(&mut harness, PropKind::Keg, 1100.0);
     let bowled = prop(&mut harness, PropKind::Keg, 1500.0);
     harness.step(2);
     let world = harness.world_mut();
-    let small = toys::spawn_ball(world, Vec2::new(1000.0, TOP - KEG_HALF.y), true);
+    let small = toys::spawn_ball(world, Vec2::new(1000.0, TOP - prefab_box("keg").0.y), true);
     world.get_mut::<Velocity>(small).unwrap().0 = Vec2::X * 2700.0;
-    let bowling = toys::spawn_ball(world, Vec2::new(1400.0, TOP - KEG_HALF.y), false);
+    let bowling = toys::spawn_ball(world, Vec2::new(1400.0, TOP - prefab_box("keg").0.y), false);
     world.get_mut::<Velocity>(bowling).unwrap().0 = Vec2::X * 1200.0;
     for _ in 0..60 {
         harness.step(1);
@@ -343,13 +386,10 @@ fn a_frozen_keg_shatters_in_fire_and_never_blows() {
     let keg = prop(&mut harness, PropKind::Keg, 600.0);
     harness.step(2);
     elements::freeze_iron(harness.world_mut(), keg);
-    assert!(harness.world().has::<Frozen>(keg), "frozen through");
+    assert!(is_frozen(harness.world(), keg), "frozen through");
     let world = harness.world_mut();
     assert!(!props::light(world, keg, None), "its fuse never lights");
-    assert!(
-        !props::set_off(world, keg, None, None),
-        "nor does it go off"
-    );
+    assert!(!props::set_off(world, keg, None), "nor does it go off");
     let at = body(&harness, keg);
     let mut blasts = (0, 0);
     let gone = spray_until(&mut harness, Spell::Flamethrower, at, 30, |h| {
@@ -365,9 +405,7 @@ fn a_frozen_keg_shatters_in_fire_and_never_blows() {
 /// An enemy of `kind` with its body's centre at `centre`.
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
-    let entity =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let entity = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);
     entity
 }
@@ -382,7 +420,7 @@ fn a_detonations_credit_passes_through_the_endings_it_sets_off() {
     // fire); the dummy's explosion reaches the second keg, past the first's.
     let small = ball(
         &mut harness,
-        Vec2::new(1060.0, TOP - SMALL_BALL_RADIUS),
+        Vec2::new(1060.0, TOP - prefab_box("small_ball").0.x),
         true,
     );
     let frozen = dummy_at(&mut harness, 880.0);
@@ -400,7 +438,7 @@ fn a_detonations_credit_passes_through_the_endings_it_sets_off() {
     apply(&mut harness, frozen, "frozen", None);
     apply(&mut harness, wisp, "frozen", None);
     let mut hits: Vec<(Entity, Option<Entity>, bool)> = Vec::new();
-    let mut entries: Vec<(CascadeKind, Option<u64>)> = Vec::new();
+    let mut booms = 0;
     for _ in 0..12 {
         harness.step(1);
         let landed = harness.harness().events::<DamagedPart>();
@@ -415,24 +453,19 @@ fn a_detonations_credit_passes_through_the_endings_it_sets_off() {
                 .filter(|part| !part.periodic)
                 .map(|part| (part.entity, part.source, part.crit)),
         );
-        let queue = harness.world().resource::<Cascades>();
-        entries.extend(queue.entries.iter().map(|entry| (entry.kind, entry.source)));
+        booms += sounds(&harness, Sound::KegBlasted);
     }
     assert!(
         !alive(&harness, keg) && !alive(&harness, second),
         "both blew"
     );
-    for kind in [CascadeKind::Explosion, CascadeKind::Detonation] {
-        assert!(entries.iter().any(|&(k, _)| k == kind), "{kind:?} queued");
-    }
-    // A hard landing's shatter deals no hit; every blast credits the lighter.
-    assert!(
-        entries
-            .iter()
-            .filter(|&&(kind, _)| kind != CascadeKind::Shatter)
-            .all(|&(_, source)| source == Some(credit)),
-        "every blast credits the lighter: {entries:?}"
-    );
+    // The kegs' blasts are chemistry's `detonate` handler's (7.13a), each
+    // with its boom.
+    assert_eq!(booms, 2, "both detonated");
+    // The frozen things' thermal shocks are chemistry's rules now, each
+    // credited by its stimulus: the frozen ball's went.
+    assert!(!alive(&harness, small), "the frozen ball exploded");
+    // Every blast credits the lighter: every hit below is from it.
     for target in [frozen, wisp] {
         assert!(
             hits.iter().any(|&(entity, ..)| entity == target),
@@ -450,7 +483,11 @@ fn a_detonations_credit_passes_through_the_endings_it_sets_off() {
 fn two_kegs_blowing_in_one_step_blow_once_each() {
     let (mut harness, _) = sky(100.0);
     let a = prop(&mut harness, PropKind::Keg, 1000.0);
-    let b = prop(&mut harness, PropKind::Keg, 1000.0 + 2.0 * KEG_HALF.x);
+    let b = prop(
+        &mut harness,
+        PropKind::Keg,
+        1000.0 + 2.0 * prefab_box("keg").0.x,
+    );
     harness.step(2);
     let world = harness.world_mut();
     assert!(props::light(world, a, None) && props::light(world, b, None));
@@ -470,7 +507,11 @@ fn two_kegs_blowing_in_one_step_blow_once_each() {
 fn a_bomb_rolls_with_its_fuse_and_a_rock_stays_a_body_that_rolls() {
     let (mut harness, _) = sky(300.0);
     let world = harness.world_mut();
-    let bomb = props::spawn_bomb(world, Vec2::new(900.0, TOP - BOMB_RADIUS - 0.5), None);
+    let bomb = props::spawn_bomb(
+        world,
+        Vec2::new(900.0, TOP - prefab_box("goblin_bomb").0.x - 0.5),
+        None,
+    );
     world.get_mut::<Velocity>(bomb).unwrap().0 = Vec2::new(240.0, 0.0);
     let rock = props::lob_rock(
         world,
@@ -488,15 +529,23 @@ fn a_bomb_rolls_with_its_fuse_and_a_rock_stays_a_body_that_rolls() {
     assert!(travelled > 20.0, "it rolls on: {travelled} px");
     let at = world.get::<Transform>(bomb).unwrap();
     let turned = (at.rotation - turn0).rem_euclid(std::f32::consts::TAU);
-    let rolled = (travelled / BOMB_RADIUS).rem_euclid(std::f32::consts::TAU);
+    let rolled = (travelled / prefab_box("goblin_bomb").0.x).rem_euclid(std::f32::consts::TAU);
     let off = (turned - rolled)
         .abs()
         .min(std::f32::consts::TAU - (turned - rolled).abs());
     assert!(off < 0.25, "turned {turned} for a roll of {rolled}");
-    let tip = bomb_tip(at.position, at.rotation);
+    // Its frames' `fuse` point, from the art's top-left upright, turned
+    // with it about its body's centre, its prefab's offset.
+    let manifest = super::json("manifest.json");
+    let fuse = super::pair(&manifest, "/sprites/ex10_goblin_bomb_0/points/fuse");
+    let centre = prefab_box("goblin_bomb").1;
+    let tip = at.position + centre + Vec2::from_angle(at.rotation).rotate(fuse - centre);
+    // Its `lit` status's look's sparks and its prefab's smoke (7.13a).
+    let registry = world.resource::<ParticleConfigRegistry>();
+    let fuse = ["ex10_fuse_sparks", "ex10_fuse_smoke"].map(|name| registry.id_for_name(name));
     let emitters: Vec<Vec2> = world
-        .query::<(&FuseEmitter, &Transform)>()
-        .filter(|(emitter, _)| emitter.prop == bomb)
+        .query::<(&ParticleEmitter, &Transform)>()
+        .filter(|(emitter, _)| fuse.contains(&Some(emitter.config)))
         .map(|(_, at)| at.position)
         .collect();
     assert_eq!(emitters.len(), 2, "its sparks and its smoke");
@@ -509,12 +558,13 @@ fn a_bomb_rolls_with_its_fuse_and_a_rock_stays_a_body_that_rolls() {
     assert!(world.is_alive(rock), "the rock stays");
     assert!(world.get::<RigidBody>(rock).is_some(), "a body");
     assert!(
-        world.get::<Transform>(rock).unwrap().rotation.abs() > 0.1 / ROCK_RADIUS,
+        world.get::<Transform>(rock).unwrap().rotation.abs() > 0.1 / prefab_box("goblin_rock").0.x,
         "turned as it rolled"
     );
-    // Past the cap, the oldest crumbles.
+    // Past the cap, its prefab's as the rock holds it, the oldest crumbles.
+    let cap = cap_of(&harness, rock);
     let world = harness.world_mut();
-    for i in 0..ROCK_CAP {
+    for i in 0..cap {
         let at = Vec2::new(1500.0 + 20.0 * i as f32, TOP - 300.0);
         props::lob_rock(world, at, Vec2::ZERO);
     }
@@ -523,7 +573,7 @@ fn a_bomb_rolls_with_its_fuse_and_a_rock_stays_a_body_that_rolls() {
         .world()
         .query::<&example_01_platformer::features::props::components::Rock>()
         .count();
-    assert_eq!(rocks, ROCK_CAP);
+    assert_eq!(rocks, cap);
 }
 
 #[test]
@@ -554,14 +604,17 @@ pub fn summons_spare_the_maps_crates(harness: &mut UiHarness) {
             Some(PropKind::Crate | PropKind::Keg)
         )
     }));
-    let crates = own
+    let crates: Vec<Entity> = own
         .iter()
-        .filter(|&&prop| props::kind(world, prop) == Some(PropKind::Crate))
-        .count();
-    assert!(crates > 0, "the map sets crates down");
+        .copied()
+        .filter(|&prop| props::kind(world, prop) == Some(PropKind::Crate))
+        .collect();
+    assert!(!crates.is_empty(), "the map sets crates down");
+    // The crates' cap, their prefab's as a map crate holds it.
+    let cap = cap_of(harness, crates[0]);
     let mut summoned = Vec::new();
-    for i in 0..=props::CRATE_CAP {
-        let at = Vec2::new(700.0 + 80.0 * i as f32, TOP - CRATE_HALF.y);
+    for i in 0..=cap {
+        let at = Vec2::new(700.0 + 80.0 * i as f32, TOP - prefab_box("crate").0.y);
         summoned.push(props::place(harness.world_mut(), PropKind::Crate, at));
     }
     let world = harness.world();
@@ -612,7 +665,8 @@ fn a_tossed_bowling_ball_breaks_a_crate_into_five_planks() {
             harness.step(1);
             // From `gap` px off the crate's side, level with its centre.
             let centre = body(&harness, crate_);
-            let start = centre + Vec2::X * side * (CRATE_HALF.x + toys::BALL_RADIUS + gap);
+            let start = centre
+                + Vec2::X * side * (prefab_box("crate").0.x + prefab_box("bowling_ball").0.x + gap);
             let aim = Vec2::X * -side;
             let world = harness.world_mut();
             toys::toss_bowling_ball(world, start - aim * toys::TOSS_OFFSET, aim).expect("a ball");
@@ -630,16 +684,15 @@ fn a_tossed_bowling_ball_breaks_a_crate_into_five_planks() {
 
 #[test]
 fn heavy_blows_break_a_crate_and_light_or_resting_ones_do_not() {
-    use example_01_platformer::features::toys::IRON_HALF;
     use example_01_platformer::features::toys::components::PreviousVelocity;
-    let top = TOP - 2.0 * CRATE_HALF.y;
+    let top = TOP - 2.0 * prefab_box("crate").0.y;
     // Iron dropped 16 px onto a crate, its speed the step before the touch
     // between 300 and 600 px/s, with iron's weight (A32).
     let (mut harness, _) = sky(200.0);
     let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);
     let iron = toys::place_iron(
         harness.world_mut(),
-        Vec2::new(1000.0, top - 16.0 - IRON_HALF.y),
+        Vec2::new(1000.0, top - 16.0 - prefab_box("iron_block").0.y),
     );
     let mut speed = 0.0;
     let (left, _) = until_broken(&mut harness, crate_, 30, |h| {
@@ -657,7 +710,7 @@ fn heavy_blows_break_a_crate_and_light_or_resting_ones_do_not() {
     let keg = prop(
         &mut harness,
         PropKind::Keg,
-        1000.0 - CRATE_HALF.x - KEG_HALF.x - 2.0,
+        1000.0 - prefab_box("crate").0.x - prefab_box("keg").0.x - 2.0,
     );
     harness.step(1);
     harness.world_mut().get_mut::<Velocity>(keg).unwrap().0 = Vec2::new(400.0, 0.0);
@@ -677,19 +730,25 @@ fn heavy_blows_break_a_crate_and_light_or_resting_ones_do_not() {
     let ball = toys::spawn_ball(
         world,
         Vec2::new(
-            1000.0 - CRATE_HALF.x - toys::BALL_RADIUS - 4.0,
-            TOP - CRATE_HALF.y,
+            1000.0 - prefab_box("crate").0.x - prefab_box("bowling_ball").0.x - 4.0,
+            TOP - prefab_box("crate").0.y,
         ),
         false,
     );
     world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(500.0, 0.0);
     toys::place_iron(
         world,
-        Vec2::new(1400.0 + CRATE_HALF.x + IRON_HALF.x + 0.5, TOP - IRON_HALF.y),
+        Vec2::new(
+            1400.0 + prefab_box("crate").0.x + prefab_box("iron_block").0.x + 0.5,
+            TOP - prefab_box("iron_block").0.y,
+        ),
     );
     let rider = toys::place_iron(
         world,
-        Vec2::new(1800.0, TOP - 600.0 - CRATE_HALF.y - IRON_HALF.y - 0.5),
+        Vec2::new(
+            1800.0,
+            TOP - 600.0 - prefab_box("crate").0.y - prefab_box("iron_block").0.y - 0.5,
+        ),
     );
     for body in [carried, rider] {
         world.get_mut::<Velocity>(body).unwrap().0 = Vec2::new(0.0, 400.0);
@@ -720,7 +779,7 @@ fn a_thrown_crate_breaks_on_landing_and_a_dropped_one_stays_whole() {
     let dropped = props::spawn(
         harness.world_mut(),
         PropKind::Crate,
-        Vec2::new(1400.0, TOP - CRATE_HALF.y - 150.0),
+        Vec2::new(1400.0, TOP - prefab_box("crate").0.y - 150.0),
     );
     let world = harness.world_mut();
     world.get_mut::<Velocity>(thrown).unwrap().0 = Vec2::new(0.0, 700.0);
@@ -742,6 +801,33 @@ fn a_thrown_crate_breaks_on_landing_and_a_dropped_one_stays_whole() {
 }
 
 #[test]
+fn a_thrown_crate_inside_an_area_zone_touching_nothing_stays_whole_its_first_step() {
+    use example_01_platformer::features::enemies::components::{Throw, Throws};
+    use example_01_platformer::features::level::components::Area;
+    use tungsten::core::BodyKind;
+    let (mut harness, _) = sky(200.0);
+    let at = Vec2::new(1000.0, TOP - 200.0);
+    let thrown = props::spawn(harness.world_mut(), PropKind::Crate, at);
+    let world = harness.world_mut();
+    let in_zone = world
+        .query::<(&Area, &Position, &Collider, &RigidBody)>()
+        .any(|(_, position, collider, body)| {
+            let offset = at - (position.0 + collider.offset);
+            body.kind == BodyKind::Sensor && offset.abs().cmplt(collider.shape.half_extents()).all()
+        });
+    assert!(in_zone, "inside an area's zone sensor");
+    world.get_mut::<Velocity>(thrown).unwrap().0 = Vec2::new(elements::SHATTER_SPEED + 100.0, 0.0);
+    world.resource_mut::<Throws>().0.push(Throw {
+        body: thrown,
+        thrower: 0,
+        factor: 1.0,
+        left: 2.0,
+    });
+    harness.step(1);
+    assert!(alive(&harness, thrown), "whole after its first step");
+}
+
+#[test]
 fn a_frozen_crate_shatters_into_no_planks() {
     let (mut harness, _) = sky(200.0);
     let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);
@@ -751,8 +837,8 @@ fn a_frozen_crate_shatters_into_no_planks() {
     let ball = toys::spawn_ball(
         world,
         Vec2::new(
-            1000.0 - CRATE_HALF.x - toys::BALL_RADIUS - 40.0,
-            TOP - CRATE_HALF.y,
+            1000.0 - prefab_box("crate").0.x - prefab_box("bowling_ball").0.x - 40.0,
+            TOP - prefab_box("crate").0.y,
         ),
         false,
     );
@@ -764,7 +850,6 @@ fn a_frozen_crate_shatters_into_no_planks() {
 
 #[test]
 fn a_burning_crate_s_planks_burn_and_fall_in_quietly() {
-    use example_01_platformer::features::props::PLANK_BURN_SECS;
     let (mut harness, _) = sky(200.0);
     let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);
     harness.step(1);
@@ -775,10 +860,14 @@ fn a_burning_crate_s_planks_burn_and_fall_in_quietly() {
     assert_eq!(lit.len(), 5);
     for &plank in &lit {
         let fuel = fuel(&harness, plank);
-        assert!(fuel.lit && fuel.left <= PLANK_BURN_SECS && fuel.lighter == Some(7));
+        assert!(
+            fuel.lit
+                && fuel.left <= prefab_number("plank", "/components/stats/fuel")
+                && fuel.lighter == Some(7)
+        );
     }
     let mut collapsed = 0;
-    for _ in 0..(PLANK_BURN_SECS * 60.0) as u32 + 4 {
+    for _ in 0..(prefab_number("plank", "/components/stats/fuel") * 60.0) as u32 + 4 {
         harness.step(1);
         collapsed += sounds(&harness, Sound::CrateCollapsed);
     }
@@ -791,7 +880,6 @@ fn a_burning_crate_s_planks_burn_and_fall_in_quietly() {
 
 #[test]
 fn nine_crates_broken_leave_forty_planks_the_oldest_gone() {
-    use example_01_platformer::features::props::PLANK_CAP;
     let (mut harness, _) = sky(200.0);
     let crates: Vec<Entity> = (0..9)
         .map(|i| prop(&mut harness, PropKind::Crate, 400.0 + 200.0 * i as f32))
@@ -804,10 +892,90 @@ fn nine_crates_broken_leave_forty_planks_the_oldest_gone() {
             first = planks(&harness);
         }
     }
-    assert_eq!(planks(&harness).len(), PLANK_CAP);
+    // The planks' cap, their prefab's as a plank holds it.
+    let cap = cap_of(&harness, planks(&harness)[0]);
+    assert_eq!(planks(&harness).len(), cap);
     assert!(
         first.iter().all(|&plank| !alive(&harness, plank)),
         "the oldest went"
+    );
+}
+
+/// The poofs alive within a pixel of `at`.
+fn poofs_at(harness: &UiHarness, at: Vec2) -> usize {
+    use example_01_platformer::shared::Burst;
+    let world = harness.world();
+    let config = world
+        .resource::<ParticleConfigRegistry>()
+        .id_for_name("ex10_poof");
+    world
+        .query::<(&Burst, &ParticleEmitter, &Transform)>()
+        .filter(|(_, emitter, transform)| {
+            Some(emitter.config) == config && transform.position.distance(at) < 1.0
+        })
+        .count()
+}
+
+#[test]
+fn a_capped_prop_counts_through_a_load() {
+    use example_01_platformer::save;
+    use example_01_platformer::shell::{self as game_shell, RunStart};
+    use tungsten::core::Time;
+    let (mut harness, _) = sky(300.0);
+    let world = harness.world();
+    let map: Vec<u64> = props::all(world)
+        .into_iter()
+        .filter(|&prop| world.has::<MapProp>(prop))
+        .map(|prop| id_of(world, prop))
+        .collect();
+    let crate_ = props::all(world)
+        .into_iter()
+        .find(|&prop| props::kind(world, prop) == Some(PropKind::Crate))
+        .expect("the map's crates");
+    // The crates' cap, their prefab's as a map crate holds it.
+    let cap = cap_of(&harness, crate_);
+    let at = |i: usize| Vec2::new(700.0 + 80.0 * i as f32, TOP - prefab_box("crate").0.y);
+    let summoned: Vec<u64> = (0..cap)
+        .map(|i| {
+            let crate_ = props::place(harness.world_mut(), PropKind::Crate, at(i));
+            id_of(harness.world(), crate_)
+        })
+        .collect();
+    harness.step(1);
+    let saved = save::capture(harness.world()).expect("a live run captures");
+    // Loaded as Continue loads it, the clock held and the test's ground back.
+    let mut fresh = super::harness();
+    fresh.world_mut().resource_mut::<Time>().pause();
+    game_shell::start_run(fresh.world_mut(), RunStart::from(saved), None);
+    super::settle(&mut fresh);
+    fresh.step(1);
+    ground(&mut fresh, TOP);
+    let by_id = |harness: &UiHarness, id: u64| {
+        let world = harness.world();
+        props::all(world)
+            .into_iter()
+            .find(|&prop| id_of(world, prop) == id)
+    };
+    let oldest = by_id(&fresh, summoned[0]).expect("the oldest summoned loaded");
+    let centre = body(&fresh, oldest);
+    let poofs = poofs_at(&fresh, centre);
+    props::place(fresh.world_mut(), PropKind::Crate, at(cap));
+    assert!(
+        !fresh.world().is_alive(oldest),
+        "the oldest summoned gone at once"
+    );
+    assert_eq!(
+        poofs_at(&fresh, centre),
+        poofs + 1,
+        "one poof at its centre"
+    );
+    assert!(
+        summoned[1..].iter().all(|&id| by_id(&fresh, id).is_some()),
+        "the rest summoned stay"
+    );
+    assert!(
+        map.iter().all(|&id| by_id(&fresh, id).is_some()),
+        "the map's crates and kegs untouched"
     );
 }
 
@@ -826,7 +994,9 @@ fn each_stone_size_spawns_at_its_mass_and_box_and_rests_on_the_ground() {
         .collect();
     harness.step(60);
     let world = harness.world();
-    let wanted = [10.0, 15.0, 20.0].into_iter().zip(STONE_HALVES);
+    let wanted = [10.0, 15.0, 20.0]
+        .into_iter()
+        .zip(STONE_PREFABS.map(|stone| prefab_box(stone).0));
     for ((size, stone), (mass, half)) in stones.into_iter().zip(wanted) {
         let body = world.get::<RigidBody>(stone).unwrap();
         assert!(
@@ -868,7 +1038,7 @@ fn the_force_push_throws_a_large_stone_off_a_ledge_onto_the_dummy() {
     harness.step(10);
     // Over the ledge's east end but 5 px of it, which the push's few px
     // slide clears, and the dummy under it.
-    let half = STONE_HALVES[2];
+    let half = prefab_box(STONE_PREFABS[2]).0;
     let at = Vec2::new(900.0 + half.x - 5.0, ledge - half.y - 0.5);
     let large = props::spawn(harness.world_mut(), PropKind::Stone(StoneSize::Large), at);
     let dummy = dummy_at(&mut harness, 935.0);
@@ -910,13 +1080,13 @@ fn the_flamethrower_held_on_a_stone_lights_nothing() {
     assert!(!came && lit == 0, "nothing catches");
     let world = harness.world();
     assert!(world.is_alive(rubble), "the stone stays");
-    assert!(!world.has::<Fuel>(rubble) && !world.has::<Frozen>(rubble));
+    assert!(props::fire(world, rubble).is_none() && !is_frozen(world, rubble));
 }
 
 #[test]
 fn a_stone_landing_from_three_hundred_pixels_knocks() {
     let (mut harness, _) = sky(300.0);
-    let half = STONE_HALVES[0];
+    let half = prefab_box(STONE_PREFABS[0]).0;
     let at = Vec2::new(900.0, TOP - 300.0 - half.y);
     let rubble = props::spawn(harness.world_mut(), PropKind::Stone(StoneSize::Small), at);
     let mut knocks = 0;

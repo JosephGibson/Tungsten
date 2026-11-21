@@ -3,28 +3,28 @@
 //! cull, the small balls' rainbow beside the bowling balls' own colours,
 //! and the rainbow's pure primaries.
 
-use example_01_platformer::features::level::WORLD_MAX;
-use example_01_platformer::features::player::systems::escaped;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{BallHue, BlackHole, SmallBall};
-use example_01_platformer::features::toys::systems::{ball_look, bounds, pull, rainbow_rgba, tick};
-use example_01_platformer::features::toys::{self, BALL_RADIUS, HOLE_RADIUS, HOLE_SECS};
+use example_01_platformer::features::toys::systems::{ball_look, pull, rainbow_rgba, tick};
+use example_01_platformer::features::toys::{self, HOLE_RADIUS};
+use example_01_platformer::shared::despawn_tree;
 use glam::Vec2;
 use tungsten::core::{
     AnimationRegistry, AssetRegistry, AudioCommand, Collider, Entity, Position, RigidBodyBundle,
     SoundRegistry, Sprite, Time, Transform, Velocity,
 };
 use tungsten::extract_sprites_default;
-use tungsten::kit::Children;
+use tungsten::kit::{Children, Cooldown};
 use tungsten::testing::UiHarness;
 
+use super::prefab_box;
 use super::{aim_at, ball, choose, mock_sprite, pin_camera, run, teleport};
 
 /// A plain dynamic body of unit mass about `centre`.
 fn body(harness: &mut UiHarness, centre: Vec2) -> Entity {
     harness.world_mut().spawn_with(RigidBodyBundle::dynamic(
         Position(centre),
-        Collider::circle(BALL_RADIUS),
+        Collider::circle(prefab_box("bowling_ball").0.x),
     ))
 }
 
@@ -38,7 +38,7 @@ fn rainbow_ball_hue_system_advances_each_ball_hue() {
         speed: 0.2,
     };
     world.resource_mut::<Time>().advance_frame(0.5);
-    tick(world);
+    tick(world, &mut tungsten::core::EventCursor::new());
     let hue = world.get::<BallHue>(e).unwrap();
     assert!((hue.hue - 0.05).abs() < 1e-6, "{}", hue.hue);
 }
@@ -77,7 +77,11 @@ fn black_hole_lifetime_system_despawns_expired_hole() {
         .iter()
         .collect();
     assert_eq!(dust.len(), 1);
-    harness.world_mut().get_mut::<BlackHole>(hole).unwrap().left = 0.01;
+    harness
+        .world_mut()
+        .get_mut::<Cooldown>(hole)
+        .unwrap()
+        .set_left(0.01);
     harness.step(1);
     let world = harness.world();
     assert!(!world.is_alive(hole));
@@ -86,25 +90,40 @@ fn black_hole_lifetime_system_despawns_expired_hole() {
 }
 
 #[test]
+fn a_tree_despawn_takes_the_children_in_its_own_call() {
+    let (mut harness, _) = run();
+    let hole = toys::place_black_hole(harness.world_mut(), Vec2::new(1200.0, 600.0));
+    harness.step(1);
+    let dust: Vec<Entity> = harness
+        .world()
+        .get::<Children>(hole)
+        .expect("its dust")
+        .iter()
+        .collect();
+    assert_eq!(dust.len(), 1);
+    // No step runs between the call and the reads, so no propagation pass
+    // has had the chance to take a dead parent's child.
+    despawn_tree(harness.world_mut(), hole);
+    let world = harness.world();
+    assert!(!world.is_alive(hole));
+    assert!(!world.is_alive(dust[0]), "its dust goes in the same call");
+}
+
+#[test]
 fn despawn_out_of_bounds_culls_escaped_balls_and_keeps_in_bounds_balls() {
     let (mut harness, _) = run();
     let inside = ball(&mut harness, Vec2::new(1000.0, 1000.0), false);
-    let partly = ball(
-        &mut harness,
-        Vec2::new(100.0, WORLD_MAX.y + BALL_RADIUS - 1.0),
-        false,
-    );
-    let outside = ball(
-        &mut harness,
-        Vec2::new(100.0, WORLD_MAX.y + BALL_RADIUS + 1.0),
-        false,
-    );
+    // The kit's rule, each ball's prefab's, tests a body's point, its
+    // `Position`, against the run's `WorldBounds`: one 4 px short of the
+    // box's foot, one 4 px past it.
+    let partly = ball(&mut harness, Vec2::new(100.0, 1000.0), false);
+    let outside = ball(&mut harness, Vec2::new(300.0, 1000.0), false);
     let world = harness.world_mut();
-    for (e, kept) in [(inside, true), (partly, true), (outside, false)] {
-        let at = world.get::<Position>(e).unwrap().0;
-        assert_eq!(escaped(at, world.get::<Collider>(e)), !kept);
-    }
-    bounds(world);
+    let foot = world.resource::<tungsten::kit::WorldBounds>().max().y;
+    world.get_mut::<Position>(partly).unwrap().0 = Vec2::new(100.0, foot - 4.0);
+    world.get_mut::<Position>(outside).unwrap().0 = Vec2::new(300.0, foot + 4.0);
+    harness.step(1);
+    let world = harness.world();
     assert!(world.is_alive(inside) && world.is_alive(partly));
     assert!(!world.is_alive(outside));
 }
@@ -189,13 +208,13 @@ fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
     harness.step(1);
     harness.harness_mut().release_action("cast");
     let world = harness.world();
-    let holes: Vec<(Entity, BlackHole)> = world
-        .query::<(Entity, &BlackHole)>()
-        .map(|(e, hole)| (e, *hole))
+    let holes: Vec<(Entity, Cooldown)> = world
+        .query::<(Entity, &BlackHole, &Cooldown)>()
+        .map(|(e, _, life)| (e, life.clone()))
         .collect();
     assert_eq!(holes.len(), 1);
-    let (hole, life) = holes[0];
-    assert_eq!(life.left, HOLE_SECS);
+    let (hole, life) = holes[0].clone();
+    assert_eq!(life.left(), life.seconds(), "its whole life");
     let placed = world.get::<Transform>(hole).unwrap().position;
     assert!((placed - at).length() < 1e-3, "at the cursor: {placed}");
     let sound = world

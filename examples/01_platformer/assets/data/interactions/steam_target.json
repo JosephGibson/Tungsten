@@ -1,0 +1,16 @@
+{
+  "stimulus": "damage.cold",
+  "on": {
+    "all": [
+      "status.burning"
+    ]
+  },
+  "outputs": [
+    {
+      "remove": "burning"
+    },
+    {
+      "handler": "steam"
+    }
+  ]
+}

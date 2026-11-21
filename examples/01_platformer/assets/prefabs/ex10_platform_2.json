@@ -28,7 +28,10 @@
         ],
         "kind": "aabb"
       }
-    }
+    },
+    "tags": [
+      "level.saved"
+    ]
   },
   "sprite": {
     "asset_id": "ex10_lift_deck_2",

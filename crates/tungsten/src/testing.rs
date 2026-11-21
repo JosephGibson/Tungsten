@@ -39,7 +39,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use tungsten_core::assets::SoundRegistry;
-use tungsten_core::assets::{FilterMode, ResolvedManifest, TextureHandle};
+use tungsten_core::assets::{FilterMode, ResolvedManifest, RoomRegistry, TextureHandle};
 use tungsten_core::post::PostPass;
 use tungsten_core::script::{Ending, Report, Script};
 use tungsten_core::ui::PaintList;
@@ -125,17 +125,27 @@ impl Harness {
         handle
     }
 
-    /// Loads the manifest at `path` without the renderer: its animations,
-    /// UI themes, sounds, tilemaps and particle configs, in the order a
-    /// window's startup loads them; each `materials` entry's metadata (its
-    /// ID, source manifest, shader ID and uniform defaults) in the
-    /// `MaterialRegistry`, with no upload, then the stock glow's and, unless
-    /// the manifest declares it, the engine's `damage_flash`, so a kit
-    /// `HitFlash` finds it headless; then the prefabs and data entries in two
-    /// phases, every ID checked ([`load_prefabs`](asset_loader::load_prefabs)).
-    /// What needs the renderer is skipped: sprites, fonts, shaders and
-    /// particle meshes; a prefab's sprite name is interned at its spawn. A
-    /// manifest that fails to load is the error the loader gives.
+    /// Loads the manifest at `path` without the renderer: first every
+    /// sprite name it names, sheet frames included, interned in sorted
+    /// order as a window's load interns them, then the reserved
+    /// `engine_white` after them, so a load-time sprite check (an ability's
+    /// `icon`, a prefab's sprite and `variants`) passes headless; then its
+    /// animations, UI themes, sounds, tilemaps and particle configs, in the
+    /// order a window's startup loads them; each `materials` entry's
+    /// metadata (its ID, source manifest, shader ID and uniform defaults) in
+    /// the `MaterialRegistry`, with no upload, then the stock glow's and,
+    /// unless the manifest declares it, the engine's `damage_flash`, so a kit
+    /// `HitFlash` finds it headless; then the physics layer and material
+    /// names and, when it has rooms or tilesets, a fresh `RoomRegistry` with
+    /// each tileset and then each room, sorted, as a window's load registers
+    /// them, so a test spawns a manifest room; then the prefabs and data
+    /// entries in two phases, every ID checked
+    /// ([`load_prefabs`](asset_loader::load_prefabs)).
+    /// What needs the renderer is skipped: the sprites themselves, none
+    /// registered (no size, no texture; [`note_sprite_sizes`](Self::note_sprite_sizes)
+    /// notes their sizes, [`register_sprites`](Self::register_sprites)
+    /// registers them to draw), fonts, shaders and particle meshes. A manifest
+    /// that fails to load is the error the loader gives.
     ///
     /// Call it after the plugins are built, as the window's startup does,
     /// so the prefabs check against every registered component and data
@@ -143,6 +153,12 @@ impl Harness {
     pub fn load_manifest(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
         let manifest = ResolvedManifest::load(path)?;
         let world = self.app.world_mut();
+        if let Some(assets) = world.get_resource_mut::<AssetRegistry>() {
+            assets.intern_sprites(manifest.sprites.keys().map(String::as_str));
+            // The reserved white texel after the manifest's names, as a
+            // window's load interns it, so a prefab may name it.
+            assets.intern_sprite(asset_loader::ENGINE_WHITE);
+        }
         asset_loader::load_animations(&manifest, world)?;
         asset_loader::load_ui_themes(&manifest, world)?;
         asset_loader::load_ui_screens(&manifest, world)?;
@@ -168,6 +184,16 @@ impl Harness {
         asset_loader::load_sounds(&manifest, world)?;
         asset_loader::load_tilemaps(&manifest, world)?;
         asset_loader::load_particles(&manifest, world)?;
+        asset_loader::load_physics_names(&manifest, world);
+        if asset_loader::room::has_rooms(&manifest) {
+            world.insert_resource(RoomRegistry::new());
+            for id in asset_loader::sorted_keys(&manifest.tilesets) {
+                asset_loader::room::load_tileset_unit(&manifest, id, world)?;
+            }
+            for id in asset_loader::sorted_keys(&manifest.rooms) {
+                asset_loader::room::load_room_unit(&manifest, id, world)?;
+            }
+        }
         asset_loader::load_prefabs(&manifest, world)
     }
 
@@ -193,17 +219,7 @@ impl Harness {
             self.allocate_texture_handle(),
             self.allocate_texture_handle(),
         ];
-        let mut ids: Vec<&String> = manifest.sprites.keys().collect();
-        ids.sort();
-        let mut sizes: HashMap<&Path, (u32, u32)> = HashMap::new();
-        for id in &ids {
-            let file = manifest.sprites[*id].path.as_path();
-            if !sizes.contains_key(file) {
-                let size = image::image_dimensions(file)
-                    .map_err(|e| anyhow::anyhow!("Failed to read '{}': {e}", file.display()))?;
-                sizes.insert(file, size);
-            }
-        }
+        let (ids, sizes) = sorted_with_sizes(&manifest)?;
         let registry = self.app.world_mut().resource_mut::<AssetRegistry>();
         registry.intern_sprites(ids.iter().map(|id| id.as_str()));
         for id in ids {
@@ -231,6 +247,34 @@ impl Harness {
                 None,
                 None,
             );
+        }
+        Ok(())
+    }
+
+    /// Notes the size and anchor of each sprite and sheet frame the
+    /// manifest at `path` names, in sorted order as
+    /// [`register_sprites`](Self::register_sprites) takes them: its size
+    /// from its image's header, each file read once, a frame's its rect's,
+    /// and its anchor from the manifest
+    /// ([`AssetRegistry::note_sprite_size`]). Nothing is registered, so
+    /// nothing draws: no texture handle is taken and no `engine_white`
+    /// registered. A test whose code reads a sprite's size headless (a
+    /// prefab's centre, a HUD laid out by its art) calls this once, after
+    /// [`load_manifest`](Self::load_manifest).
+    ///
+    /// # Errors
+    ///
+    /// The manifest's load error, or an image whose header does not read.
+    pub fn note_sprite_sizes(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+        let manifest = ResolvedManifest::load(path)?;
+        let (ids, sizes) = sorted_with_sizes(&manifest)?;
+        let registry = self.app.world_mut().resource_mut::<AssetRegistry>();
+        registry.intern_sprites(ids.iter().map(|id| id.as_str()));
+        for id in ids {
+            let sprite = &manifest.sprites[id];
+            let (width, height) =
+                asset_loader::check::frame_size(sprite, sizes[sprite.path.as_path()]);
+            registry.note_sprite_size(id, width, height, sprite.anchor);
         }
         Ok(())
     }
@@ -555,6 +599,25 @@ impl Harness {
             .get_resource_mut::<InputState>()
             .expect("InputState resource missing")
     }
+}
+
+/// The manifest's sprite names, sorted, and each one's file size from its
+/// image's header, each file read once.
+type SortedSizes<'a> = (Vec<&'a String>, HashMap<&'a Path, (u32, u32)>);
+
+fn sorted_with_sizes(manifest: &ResolvedManifest) -> anyhow::Result<SortedSizes<'_>> {
+    let mut ids: Vec<&String> = manifest.sprites.keys().collect();
+    ids.sort();
+    let mut sizes: HashMap<&Path, (u32, u32)> = HashMap::new();
+    for id in &ids {
+        let file = manifest.sprites[*id].path.as_path();
+        if !sizes.contains_key(file) {
+            let size = image::image_dimensions(file)
+                .map_err(|e| anyhow::anyhow!("Failed to read '{}': {e}", file.display()))?;
+            sizes.insert(file, size);
+        }
+    }
+    Ok((ids, sizes))
 }
 
 /// What a frame would have drawn: the plain data its extract handed the

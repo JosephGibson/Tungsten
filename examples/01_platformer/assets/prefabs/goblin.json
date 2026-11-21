@@ -7,11 +7,26 @@
     "enemy": {
       "kind": "goblin"
     },
+    "brain": {},
+    "sight": {},
+    "enemy_state": {
+      "state": "patrol",
+      "elapsed": 0,
+      "entered": false,
+      "held": false
+    },
+    "shown": {},
+    "previous_velocity": {},
+    "facing": {
+      "from": "intent",
+      "snap": "horizontal"
+    },
     "tags": [
       "team.enemy",
       "flesh",
       "freezable",
-      "living"
+      "living",
+      "level.saved"
     ],
     "rigid_body": {
       "kind": "kinematic",
@@ -29,17 +44,25 @@
     },
     "platformer_controller": {
       "run_speed": 110,
-      "jump_speed": 600
+      "jump_speed": 600,
+      "shove_mass": 50,
+      "shove_share": 0.159999996,
+      "step_height": 32,
+      "without": [
+        4
+      ]
     },
     "health": {
       "max": 40,
       "invulnerability": 0,
-      "despawn_on_death": 0
+      "despawn_on_death": 0,
+      "disarm": true
     },
     "stats": {
       "max_health": 40,
       "damage": 8,
-      "move_speed": 110
+      "move_speed": 110,
+      "status_threshold": 15
     },
     "hurtbox": {
       "shape": {
@@ -54,9 +77,6 @@
       ]
     },
     "resist": {},
-    "ailment_threshold": {
-      "flat": 15
-    },
     "knockback": {
       "seconds": 0.2
     },
@@ -91,9 +111,216 @@
           "shake": 0.15
         },
         {
-          "roll": "enemy_drops"
+          "roll": {
+            "table": "enemy_drops",
+            "centred": true,
+            "at": "centre"
+          }
         }
       ]
+    },
+    "impact_damage": {
+      "kind": "damage.physical",
+      "speed": 400,
+      "per_mass": 0.002,
+      "most": 120,
+      "floor": 2,
+      "mass": 50,
+      "prepare": "armour",
+      "scale": 0
+    },
+    "character_animator": {
+      "idle": {
+        "right": "ex10_goblin_idle",
+        "left": "ex10_goblin_idle_left"
+      },
+      "move": {
+        "right": "ex10_goblin_walk",
+        "left": "ex10_goblin_walk_left"
+      },
+      "min_speed": 1,
+      "rules": [
+        {
+          "when": {
+            "all": [
+              "state.panic"
+            ]
+          },
+          "clip": {
+            "right": "ex10_goblin_panic",
+            "left": "ex10_goblin_panic_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup",
+              "strike.bomb"
+            ]
+          },
+          "clip": {
+            "right": "ex10_goblin_windup_bomb",
+            "left": "ex10_goblin_windup_bomb_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup",
+              "strike.stab"
+            ]
+          },
+          "clip": {
+            "right": "ex10_goblin_stab_windup",
+            "left": "ex10_goblin_stab_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup",
+              "strike.dash"
+            ]
+          },
+          "clip": {
+            "right": "ex10_goblin_dash_windup",
+            "left": "ex10_goblin_dash_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_goblin_windup",
+            "left": "ex10_goblin_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack",
+              "strike.stab"
+            ]
+          },
+          "clip": {
+            "right": "ex10_goblin_stab",
+            "left": "ex10_goblin_stab_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack",
+              "strike.dash"
+            ]
+          },
+          "clip": {
+            "right": "ex10_goblin_dash",
+            "left": "ex10_goblin_dash_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_goblin_throw",
+            "left": "ex10_goblin_throw_left"
+          }
+        },
+        {
+          "motion": "rise",
+          "clip": {
+            "right": "ex10_goblin_hop",
+            "left": "ex10_goblin_hop_left"
+          }
+        },
+        {
+          "motion": "fall",
+          "clip": {
+            "right": "ex10_goblin_hop",
+            "left": "ex10_goblin_hop_left"
+          }
+        },
+        {
+          "when": {
+            "any": [
+              "state.alert",
+              "state.recover"
+            ]
+          },
+          "clip": {
+            "right": "ex10_goblin_idle",
+            "left": "ex10_goblin_idle_left"
+          }
+        }
+      ],
+      "hold": {
+        "all": [
+          "state.held"
+        ]
+      }
+    },
+    "effects": [],
+    "cooldown": {
+      "seconds": 2.5,
+      "count": 0
+    },
+    "looks": [
+      {
+        "when": {
+          "all": [
+            "mark.alert"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "sprite": "ex10_mark_alert",
+            "offset": [
+              2,
+              -46
+            ],
+            "flip": false,
+            "bob": {
+              "height": 2,
+              "seconds": 0.5
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "all": [
+            "mark.search"
+          ],
+          "none": [
+            "mark.alert"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "sprite": "ex10_mark_search",
+            "offset": [
+              2,
+              -46
+            ],
+            "flip": false
+          }
+        }
+      }
+    ],
+    "cap": {
+      "group": "summon.foes",
+      "max": 10,
+      "count_dead": false
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

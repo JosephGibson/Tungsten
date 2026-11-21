@@ -12,7 +12,7 @@ pub mod hud;
 pub mod systems;
 
 use tungsten::Plugin;
-use tungsten::core::{DataRegistry, Entity, Schedule, Stage, World, system};
+use tungsten::core::{DataRegistry, Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{ABILITY_TICK, Ability, Phase, Stats, ensure_phases};
 
 use components::{Spell, Spellbook};
@@ -108,11 +108,10 @@ pub struct SummonType {
 
 /// An enemy's summon type.
 const fn enemy(kind: EnemyKind) -> SummonType {
-    let info = kind.info();
     SummonType {
         name: kind.name(),
-        prefab: info.prefab,
-        icon: info.icon,
+        prefab: crate::features::enemies::prefab(kind, Variant::Plain),
+        icon: crate::features::enemies::icon(kind, Variant::Plain),
         summoned: Summoned::Enemy(kind),
     }
 }
@@ -171,6 +170,8 @@ pub struct SpellsPlugin;
 impl Plugin for SpellsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_component::<Spellbook>("spellbook");
+        world.register_saved::<Spellbook>("spellbook");
+        world.register_saved_resource::<components::Summon>("summon");
         ensure_phases(schedule);
         let cast = system("spells_cast", systems::cast).after(ABILITY_TICK);
         schedule.add(Stage::FixedUpdate, Phase::Intent.join(cast));
@@ -178,10 +179,13 @@ impl Plugin for SpellsPlugin {
         let adopt = system("missile_adopt", systems::adopt).before("shell_save");
         schedule.add(Stage::PreUpdate, adopt);
         schedule.add(Stage::Update, system("spells_held", systems::held));
-        schedule.add(
-            Stage::Update,
-            system("spells_hud", hud::update).after("spells_held"),
-        );
+        // The ready edges are read each frame, with no HUD too.
+        let mut ready = EventCursor::new();
+        let spells_hud = system("spells_hud", move |world: &mut World| {
+            hud::ready(world, &mut ready);
+            hud::update(world);
+        });
+        schedule.add(Stage::Update, spells_hud.after("spells_held"));
     }
 }
 

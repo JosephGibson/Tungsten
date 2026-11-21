@@ -6,38 +6,40 @@
 //! its sound; holes pull iron slowly and scraps as balls; a fast drop
 //! plows through a pile; iron is set only where it fits, at no cost where it
 //! does not; a falling block knocks back what it does not kill and bursts
-//! in gore what it does; and a thrown block falls on the troll's arc.
+//! in gore what it does; a thrown block falls on the troll's arc; and a
+//! scrap tumbles by its tween, its frost with it, resting at a load.
+
+use std::collections::BTreeMap;
 
 use example_01_platformer::features::combat::{self, Kind};
 use example_01_platformer::features::elements::systems::crush;
 use example_01_platformer::features::elements::{self, CRUSH_SPEED, SHATTER_SPEED, SMASH_KEEP};
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
 use example_01_platformer::features::enemies::{self, troll};
-use example_01_platformer::features::level::GRAVITY;
 use example_01_platformer::features::player::components::Lantern;
 use example_01_platformer::features::spells::components::Spell;
+use example_01_platformer::features::toys;
 use example_01_platformer::features::toys::components::{
-    IronBlock, IronScrap, PreviousVelocity, ScrapTumble, SmallBall,
+    IronBlock, IronScrap, PreviousVelocity, SmallBall,
 };
 use example_01_platformer::features::toys::systems::pull;
-use example_01_platformer::features::toys::{
-    self, BALL_RADIUS, IRON_HALF, IRON_MASS, IRON_PULL, SCRAP_HALF, SCRAP_MASS, SCRAP_PULL,
-    SMALL_BALL_RADIUS,
-};
-use example_01_platformer::shared::SaveIds;
-use example_01_platformer::shell::Difficulty;
+use example_01_platformer::shared::Saved;
+use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
+use example_01_platformer::{game, save};
 use glam::Vec2;
 use tungsten::core::{
-    AudioCommand, Collider, Entity, Position, RigidBody, RigidBodyBundle, SoundRegistry, Velocity,
+    AudioCommand, Collider, Entity, PhysicsConfig, Position, RigidBody, RigidBodyBundle,
+    SoundRegistry, Time, Transform, Tween, Velocity, World,
 };
-use tungsten::kit::{Abilities, Health, Knockback, StateMachine, Stats};
+use tungsten::kit::{Abilities, Children, Health, Knockback, StateMachine, Stats};
 use tungsten::testing::UiHarness;
 
 use super::{
-    aim_at, ball, body, bursts, calm, cascades, choose, contact, floor, ground, kick, mana,
-    pin_camera, player_entity, run, teleport,
+    aim_at, ball, body, bursts, calm, choose, contact, floor, ground, kick, mana, pin_camera,
+    player_entity, run, settle, teleport, top,
 };
 use super::{kind_body, player_half};
+use super::{prefab_box, prefab_number};
 
 /// The sky's ground the iron tests stand things on.
 const TOP: f32 = 1000.0;
@@ -47,9 +49,7 @@ const TOP: f32 = 1000.0;
 fn standing(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
     let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
-    let enemy =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let enemy = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, enemy, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(enemy);
     enemy
@@ -113,8 +113,13 @@ fn surface_blasts_throw_scraps_away_from_the_contact_and_keep_parent_velocity() 
         let iron = block(&mut harness, centre);
         kick(&mut harness, iron, inherited);
         elements::freeze_iron(harness.world_mut(), iron);
-        elements::thermal_shatter(harness.world_mut(), centre - direction * IRON_HALF.x, 72.0);
-        cascades(&mut harness);
+        elements::thermal_shatter(
+            harness.world_mut(),
+            centre - direction * prefab_box("iron_block").0.x,
+            72.0,
+        );
+        // The endings are chemistry's, which runs with the step.
+        harness.step(1);
         let world = harness.world();
         let kicks: Vec<Vec2> = world
             .query::<(&IronScrap, &Velocity)>()
@@ -157,7 +162,11 @@ fn a_floor_level_explosion_disperses_sixteen_scraps_through_real_physics() {
         max - min > 400.0,
         "the fracture spread across several tiles"
     );
-    assert!(positions.iter().all(|p| p.y <= 560.0 - SCRAP_HALF.y + 1.0));
+    assert!(
+        positions
+            .iter()
+            .all(|p| p.y <= 560.0 - prefab_box("iron_scrap").0.y + 1.0)
+    );
 }
 
 #[test]
@@ -174,14 +183,20 @@ fn frozen_iron_breaks_only_under_a_fast_head_on_iron_impact() {
         let (mut harness, _) = run();
         let o = Vec2::new(900.0, 500.0);
         let striker = block(&mut harness, o);
-        let target = block(&mut harness, o + Vec2::X * (IRON_HALF.x * 2.0));
+        let target = block(
+            &mut harness,
+            o + Vec2::X * (prefab_box("iron_block").0.x * 2.0),
+        );
         moving(&mut harness, striker, velocity);
         moving(&mut harness, target, target_velocity);
         if frozen {
             elements::freeze_iron(harness.world_mut(), target);
         }
         crush(harness.world_mut());
-        cascades(&mut harness);
+        // What the crush left the striker, before the step moves it.
+        let kept = harness.world().get::<Velocity>(striker).unwrap().0;
+        // The endings are chemistry's, which runs with the step.
+        harness.step(1);
         let world = harness.world();
         assert_eq!(
             !world.is_alive(target),
@@ -191,10 +206,7 @@ fn frozen_iron_breaks_only_under_a_fast_head_on_iron_impact() {
         assert!(world.is_alive(striker));
         assert_eq!(scraps(&harness).len(), if breaks { 16 } else { 0 });
         if breaks {
-            assert_eq!(
-                world.get::<Velocity>(striker).unwrap().0,
-                velocity * SMASH_KEEP
-            );
+            assert_eq!(kept, velocity * SMASH_KEEP);
         }
     }
 }
@@ -220,7 +232,8 @@ fn frozen_iron_shatters_once_from_solver_contacts_in_either_pair_order() {
         }
         crush(harness.world_mut());
         crush(harness.world_mut());
-        cascades(&mut harness);
+        // The endings are chemistry's, which runs with the step.
+        harness.step(1);
         assert!(!harness.world().is_alive(target));
         assert!(harness.world().is_alive(striker));
         assert_eq!(scraps(&harness).len(), 16);
@@ -256,11 +269,14 @@ fn a_fast_brick_hurts_the_player_and_smashes_a_ball_and_a_resting_one_does_neith
     let blocks = [
         block(
             &mut harness,
-            at - Vec2::new(0.0, player_half().y + IRON_HALF.y),
+            at - Vec2::new(0.0, player_half().y + prefab_box("iron_block").0.y),
         ),
         block(
             &mut harness,
-            at + Vec2::new(400.0, -(SMALL_BALL_RADIUS + IRON_HALF.y)),
+            at + Vec2::new(
+                400.0,
+                -(prefab_box("small_ball").0.x + prefab_box("iron_block").0.y),
+            ),
         ),
     ];
     let drive = |harness: &mut UiHarness, speed: f32| {
@@ -282,9 +298,20 @@ fn a_fast_brick_hurts_the_player_and_smashes_a_ball_and_a_resting_one_does_neith
 /// A plain dynamic body of `mass` about `at`.
 fn mass(harness: &mut UiHarness, at: Vec2, mass: f32) -> Entity {
     harness.world_mut().spawn_with(
-        RigidBodyBundle::dynamic(Position(at), Collider::circle(BALL_RADIUS))
-            .with_body(RigidBody::dynamic().with_mass(mass)),
+        RigidBodyBundle::dynamic(
+            Position(at),
+            Collider::circle(prefab_box("bowling_ball").0.x),
+        )
+        .with_body(RigidBody::dynamic().with_mass(mass)),
     )
+}
+
+/// The share of a hole's pull `body`'s prefab gives it, warm.
+fn pull_share(world: &tungsten::core::World, body: Entity) -> f32 {
+    world
+        .get::<example_01_platformer::features::toys::components::Pull>(body)
+        .expect("its pull")
+        .taken(false)
 }
 
 #[test]
@@ -303,12 +330,12 @@ fn black_holes_move_iron_more_slowly_than_balls_and_skip_static_bodies() {
     // Both centres sit at the same point: the same pull, scaled.
     let iron_pull = world.get::<Velocity>(iron).unwrap().0;
     assert!(
-        (iron_pull - ball_pull * IRON_PULL).length() < 0.5,
+        (iron_pull - ball_pull * pull_share(world, iron)).length() < 0.5,
         "{iron_pull} vs {ball_pull}"
     );
     assert_eq!(
         world.get::<RigidBody>(iron).unwrap().inv_mass,
-        1.0 / IRON_MASS
+        1.0 / prefab_number("iron_block", "/components/rigid_body/mass")
     );
     assert!(
         world
@@ -324,13 +351,8 @@ fn black_holes_gather_warm_and_frozen_scraps_as_readily_as_balls() {
     let at = hole + Vec2::new(120.0, 0.0);
     let iron = block(&mut harness, at);
     let plain = mass(&mut harness, at, 1.0);
-    let tumble = ScrapTumble {
-        born_at: 0.0,
-        initial_angle: 0.0,
-        total_turn: 0.0,
-    };
     let pieces = [false, true].map(|frozen| {
-        let e = toys::spawn_scrap(harness.world_mut(), at, Vec2::ZERO, 0, tumble);
+        let e = toys::spawn_scrap(harness.world_mut(), at, Vec2::ZERO, 0, 0.0, 0.0);
         if frozen {
             elements::freeze_iron(harness.world_mut(), e);
         }
@@ -345,13 +367,13 @@ fn black_holes_gather_warm_and_frozen_scraps_as_readily_as_balls() {
     for scrap in pieces {
         let v = world.get::<Velocity>(scrap).unwrap().0;
         assert!(
-            (v - ball_pull * SCRAP_PULL).length() < 0.5,
+            (v - ball_pull * pull_share(world, scrap)).length() < 0.5,
             "{v} vs {ball_pull}"
         );
         assert!(v.length() > iron_pull.length() * 4.9);
         assert_eq!(
             world.get::<RigidBody>(scrap).unwrap().inv_mass,
-            1.0 / SCRAP_MASS
+            1.0 / prefab_number("iron_scrap", "/components/rigid_body/mass")
         );
     }
     assert!(world.has::<IronBlock>(iron));
@@ -386,7 +408,10 @@ fn faster_slams_crush_more_marble_contacts_keep_momentum_and_throttle_audio() {
             .collect();
         let heavy = ball(
             &mut harness,
-            o + Vec2::new(0.0, IRON_HALF.y + BALL_RADIUS),
+            o + Vec2::new(
+                0.0,
+                prefab_box("iron_block").0.y + prefab_box("bowling_ball").0.x,
+            ),
             false,
         );
         crush(harness.world_mut());
@@ -512,7 +537,7 @@ fn a_falling_block_knocks_back_the_crawler_it_does_not_kill() {
     // Over its left half, so the closing line leans right.
     block(
         &mut harness,
-        Vec2::new(1230.0, TOP - 20.0 - IRON_HALF.y - 100.0),
+        Vec2::new(1230.0, TOP - 20.0 - prefab_box("iron_block").0.y - 100.0),
     );
     let mut pushed = Vec2::ZERO;
     for _ in 0..60 {
@@ -542,7 +567,7 @@ fn gore_follows_only_the_blow_that_kills() {
     tungsten::kit::damage(harness.world_mut(), crawler, 55.0);
     block(
         &mut harness,
-        Vec2::new(1300.0, TOP - 20.0 - IRON_HALF.y - 100.0),
+        Vec2::new(1300.0, TOP - 20.0 - prefab_box("iron_block").0.y - 100.0),
     );
     let mut died = false;
     for _ in 0..60 {
@@ -561,7 +586,10 @@ fn gore_follows_only_the_blow_that_kills() {
     let crawler = standing(&mut harness, EnemyKind::Crawler, 1300.0);
     harness.step(1);
     let top = body(&harness, crawler).y - 10.0;
-    let iron = block(&mut harness, Vec2::new(1300.0, top - IRON_HALF.y - 0.5));
+    let iron = block(
+        &mut harness,
+        Vec2::new(1300.0, top - prefab_box("iron_block").0.y - 0.5),
+    );
     kick(&mut harness, iron, Vec2::new(0.0, 430.0));
     combat::Hit::new(crawler, [(Kind::Physical, 100.0)]).queue(harness.world_mut());
     harness.step(1);
@@ -574,7 +602,8 @@ fn gore_follows_only_the_blow_that_kills() {
 #[test]
 fn a_thrown_block_falls_on_the_trolls_arc() {
     let mut harness = iron_arena();
-    let step_fall = GRAVITY / 60.0;
+    let gravity = harness.world().resource::<PhysicsConfig>().gravity.y;
+    let step_fall = gravity / 60.0;
     // Falling free, a block falls harder than the world's gravity.
     let free = block(&mut harness, Vec2::new(1700.0, 300.0));
     kick(&mut harness, free, Vec2::new(0.0, 100.0));
@@ -586,7 +615,10 @@ fn a_thrown_block_falls_on_the_trolls_arc() {
     assert!(fall(&mut harness, free) > step_fall + 1.0, "its own weight");
     // Thrown, it falls by the world's gravity alone, as the troll aimed it.
     let thrower = standing(&mut harness, EnemyKind::Troll, 900.0);
-    let thrown = block(&mut harness, Vec2::new(1000.0, TOP - IRON_HALF.y - 1.0));
+    let thrown = block(
+        &mut harness,
+        Vec2::new(1000.0, TOP - prefab_box("iron_block").0.y - 1.0),
+    );
     harness.step(1);
     let world = harness.world_mut();
     assert!(troll::pick_up(world, thrower, thrown), "it lifts it");
@@ -604,4 +636,98 @@ fn a_thrown_block_falls_on_the_trolls_arc() {
         }
     }
     assert!(checked >= 5, "it fell on its arc");
+}
+
+/// Each scrap's rotation and its frost children's, by save ID.
+fn scrap_turns(world: &World) -> BTreeMap<u64, (f32, Vec<f32>)> {
+    world
+        .query::<(&IronScrap, &Saved, &Transform, Option<&Children>)>()
+        .map(|(_, saved, transform, children)| {
+            let frost = children.map_or_else(Vec::new, |children| {
+                children
+                    .iter()
+                    .map(|child| world.get::<Transform>(child).unwrap().rotation)
+                    .collect()
+            });
+            (saved.id().0, (transform.rotation, frost))
+        })
+        .collect()
+}
+
+#[test]
+fn a_scrap_tumbles_by_its_tween() {
+    let mut harness = iron_arena();
+    // One scrap turned to 0.7 and tumbling on by 4: at its angle at once,
+    // on the old curve, and still once its tween ends.
+    let centre = Vec2::new(300.0, TOP - prefab_box("iron_scrap").0.y - 0.5);
+    let scrap = toys::spawn_scrap(harness.world_mut(), centre, Vec2::ZERO, 0, 0.7, 4.0);
+    let turn = |h: &UiHarness| h.world().get::<Transform>(scrap).unwrap().rotation;
+    assert_eq!(turn(&harness), 0.7);
+    let mut frames = 0;
+    for (at, frame) in [(0.25, 15), (1.0, 60)] {
+        harness.step(frame - frames);
+        frames = frame;
+        let want = 0.7 + 4.0 * (1.0 - (-4.0_f32 * at).exp());
+        let off = (turn(&harness) - want).abs();
+        assert!(off < 0.001, "at {at} s: {} not {want}", turn(&harness));
+    }
+    harness.step(120 - frames);
+    assert!((turn(&harness) - 4.7).abs() < 1e-5, "{}", turn(&harness));
+    assert!(harness.world().get::<Tween>(scrap).is_none());
+
+    // A shattered block's sixteen scraps start at fifteen nonzero angles,
+    // their frost turning with them once it lands at the flush.
+    let at = Vec2::new(900.0, TOP - 200.0);
+    let iron = block(&mut harness, at);
+    elements::freeze_iron(harness.world_mut(), iron);
+    elements::systems::shatter_iron(harness.world_mut(), iron, None);
+    let started: Vec<f32> = scrap_turns(harness.world())
+        .into_values()
+        .map(|(angle, _)| angle)
+        .collect();
+    assert_eq!(started.len(), 17, "the first scrap and sixteen");
+    let nonzero = started.iter().filter(|angle| **angle != 0.0).count();
+    // The first scrap rests at 4.7; one of the sixteen starts at 0.
+    assert_eq!(nonzero, 16, "{started:?}");
+    harness.step(2);
+    let shards = scrap_turns(harness.world());
+    let mut turning = 0;
+    for (id, (angle, frost)) in &shards {
+        assert!(!frost.is_empty(), "scrap {id} has its frost");
+        for child in frost {
+            assert_eq!(child, angle, "scrap {id}'s frost turns with it");
+        }
+        turning += usize::from(
+            harness
+                .world()
+                .query::<(&Saved, &Tween)>()
+                .any(|(saved, _)| saved.id().0 == *id),
+        );
+    }
+    assert_eq!(turning, 16, "the shatter's sixteen tumble");
+
+    // Saved mid-tumble and loaded: each scrap and its rebuilt frost at its
+    // saved angle, with no tween.
+    let saved = save::capture(harness.world()).expect("a live run captures");
+    let mut loaded = super::harness();
+    loaded.world_mut().resource_mut::<Time>().pause();
+    game_shell::start_run(loaded.world_mut(), RunStart::from(saved), None);
+    settle(&mut loaded);
+    loaded.step(1);
+    assert_eq!(top(&loaded), Some(game::GAMEPLAY));
+    // The first step spawns the frost, which lands at its flush, after
+    // that frame's look; the next frame turns it.
+    loaded.world_mut().resource_mut::<Time>().resume();
+    loaded.step(2);
+    let back = scrap_turns(loaded.world());
+    assert_eq!(back.len(), shards.len());
+    for (id, (angle, _)) in &shards {
+        let (again, frost) = &back[id];
+        assert_eq!(again, angle, "scrap {id} rests at its saved angle");
+        assert!(!frost.is_empty(), "scrap {id}'s frost is rebuilt");
+        for child in frost {
+            assert_eq!(child, angle, "scrap {id}'s frost at its angle");
+        }
+    }
+    assert_eq!(loaded.world().query::<(&IronScrap, &Tween)>().count(), 0);
 }

@@ -6,7 +6,6 @@ use tungsten::core::ScaleFactor;
 use tungsten::core::ui::{ScreenFile, UiKey, UiScreenRegistry, Visibility, screen_build};
 use tungsten::kit::{Hit, damage};
 use tungsten::testing::UiHarness;
-use tungsten_template_basic::shell::theme;
 
 use tungsten_template_basic::shell::settings::{SETTINGS, SettingsView, TABS};
 
@@ -33,7 +32,7 @@ fn every_screen_file_fits() {
             harness
                 .world_mut()
                 .insert_resource(WindowSize { width, height });
-            for ui in [1.0, theme::UI_SCALE] {
+            for ui in [1.0, super::shipped_ui_scale()] {
                 let world = harness.world_mut();
                 world.resource_mut::<ScaleFactor>().set_ui_scale(ui);
                 harness.assert_fits(&format!("{id} at {width}x{height}, UI scale {ui}"));

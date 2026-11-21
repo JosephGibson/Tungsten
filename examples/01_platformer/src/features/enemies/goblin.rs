@@ -7,16 +7,16 @@
 //! cackles on sight. It keeps its distance: closer than
 //! [`KEEP_OFF`] across it backs away, hopping what it can, farther than
 //! [`CLOSE_IN`] it closes, and between them it rests facing the player
-//! while its [`COOLDOWN`] runs; then, the player within [`THROW_RISE`] up
+//! while its rest runs, its prefab's `cooldown`; then, the player within [`THROW_RISE`] up
 //! or down, it approaches. One `KitRng` draw picks a dash-in under
-//! [`DASH_CHANCE`]: a crouch for [`DASH_TELL`], then a sprint at
+//! [`DASH_CHANCE`]: a crouch for its clip ([`DASH_TELL_CLIP`]), then a sprint at
 //! [`DASH_SPEED`] for at most [`DASH_MOST`] that ends in its stab once
-//! within the stab's reach. Else it winds up a throw for [`TELL_SECS`]: the
+//! within the stab's reach. Else it winds up a throw for its clip ([`TELL_CLIP`]): the
 //! tell's draw picks a bomb under [`BOMB_CHANCE`], else a rock, which its
 //! brain keeps as its strike; its attack throws that from its hand at the
-//! courier's centre on a ballistic arc, then it recovers for [`RECOVER`].
+//! courier's centre on a ballistic arc, then it recovers for its kind's `recover` (`data/enemy_kinds/goblin.json`).
 //! A courier within [`STAB_REACH`] across and [`STAB_RISE`] up or down
-//! gets its knife at once: a [`STAB_TELL`] tell, a stab of [`STAB_DAMAGE`]
+//! gets its knife at once: a tell for its clip ([`STAB_TELL_CLIP`]), a stab of [`STAB_DAMAGE`]
 //! in a box ahead of it, and a leap back. Below [`FLEE_SHARE`] of its
 //! health it runs from a courier within [`FLEE_REACH`] across rather than
 //! throw; burning, it panics, running from the player, flailing, until the
@@ -32,16 +32,18 @@
 
 use glam::Vec2;
 use tungsten::core::{Collider, Entity, PhysicsConfig, Position, Time, Velocity, World};
-use tungsten::kit::{Health, KitRng, PlatformerController, StateMachine, Stats, Tags};
+use tungsten::kit::{
+    Health, KitRng, PlatformerController, StateMachine, Stats, Tags, lob_velocity,
+};
 
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike, Throw, Throws};
 use super::hop::{self, Hops, grounded};
-use super::systems::{elapsed, face, go, player, rest, sees};
-use super::{ARRIVED, centre, troll};
+use super::systems::{elapsed, face, go, player, rest, rested, sees, start_rest};
+use super::{ARRIVED, centre, heading_of, troll, turn};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, Hit, Kind, has_status};
 use crate::features::props;
-use crate::shared::{SaveId, spawn_burst};
+use crate::shared::{Saved, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.6;
@@ -52,10 +54,11 @@ pub const SEARCH_PACE: f32 = 0.8;
 pub const KEEP_OFF: f32 = 140.0;
 pub const CLOSE_IN: f32 = 420.0;
 pub const THROW_RISE: f32 = 200.0;
-/// Its throw's tell, the throw's clip and its recovery, seconds.
-pub const TELL_SECS: f32 = 0.45;
-pub const THROW_SECS: f32 = 0.25;
-pub const RECOVER: f32 = 0.9;
+/// Its throw's tell and the throw's clips, which their states run (S-170),
+/// a bomb's tell its own.
+pub const TELL_CLIP: &str = "ex10_goblin_windup";
+pub const BOMB_TELL_CLIP: &str = "ex10_goblin_windup_bomb";
+pub const THROW_CLIP: &str = "ex10_goblin_throw";
 /// The share of its throws that are bombs: one draw at each tell.
 pub const BOMB_CHANCE: f32 = 0.2;
 /// A rock's flight's seconds a pixel to the player, at least and at most,
@@ -74,8 +77,8 @@ pub const ROCK_CREDIT: f32 = 2.0;
 /// body's centre, mirrored as it faces.
 pub const STAB_REACH: f32 = 56.0;
 pub const STAB_RISE: f32 = 40.0;
-pub const STAB_TELL: f32 = 0.2;
-pub const STAB_SECS: f32 = 0.22;
+pub const STAB_TELL_CLIP: &str = "ex10_goblin_stab_windup";
+pub const STAB_CLIP: &str = "ex10_goblin_stab";
 pub const STAB_DAMAGE: f32 = 6.0;
 pub const STAB_PUSH: Vec2 = Vec2::new(320.0, -120.0);
 pub const STAB_HALF: Vec2 = Vec2::new(20.0, 16.0);
@@ -107,14 +110,13 @@ pub const SKIP: f32 = 420.0;
 /// [`FLEE_REACH`] across rather than throw.
 pub const FLEE_SHARE: f32 = 0.3;
 pub const FLEE_REACH: f32 = 260.0;
-/// The seconds after a throw's release or a dash-in's end before it may
-/// approach again (V26), and the share of its approaches that are a
-/// dash-in: one draw at each.
-pub const COOLDOWN: f32 = 2.5;
+/// The share of its approaches that are a dash-in: one draw at each, after
+/// the rest a throw's release or a dash-in's end starts, its prefab's
+/// `cooldown` (V26).
 pub const DASH_CHANCE: f32 = 1.0 / 3.0;
 /// Its dash-in: its crouch, seconds; its sprint's speed, px/s, and the most
 /// seconds it runs, its input locked; the scuff of dust at its heels.
-pub const DASH_TELL: f32 = 0.3;
+pub const DASH_TELL_CLIP: &str = "ex10_goblin_dash_windup";
 pub const DASH_SPEED: f32 = 560.0;
 pub const DASH_MOST: f32 = 0.6;
 pub const DASH_DUST: &str = "ex10_dash_dust";
@@ -126,20 +128,20 @@ pub const PANIC_HOP: f32 = 300.0;
 /// standing to look back for [`FIDGET_PAUSE`] or skipping in place, in
 /// turn, timed by its patrol's seconds, which its machine saves.
 pub fn patrol(world: &mut World, goblin: Entity) {
-    let Some(mine) = world.get::<Enemy>(goblin).copied() else {
+    let (Some(mine), Some(heading)) = (
+        world.get::<Enemy>(goblin).copied(),
+        heading_of(world, goblin),
+    ) else {
         return;
     };
     if let (Some(leash), Some(at)) = (mine.leash, centre(world, goblin)) {
         let out = at.x - mine.home().x;
-        if out.abs() >= leash
-            && out.signum() == mine.heading
-            && let Some(enemy) = world.get_mut::<Enemy>(goblin)
-        {
-            enemy.heading = -mine.heading;
+        if out.abs() >= leash && out.signum() == heading {
+            turn(world, goblin, -heading);
         }
     }
     let dt = world.resource::<Time>().delta();
-    let id = world.get::<SaveId>(goblin).map_or(0, |id| id.0);
+    let id = crate::shared::save_id(world, goblin).map_or(0, |id| id.0);
     let every = FIDGET_EVERY + 0.4 * (id % 3) as f32;
     let t = elapsed(world, goblin);
     // The fidget's cycle now and a step before, each counted from its start.
@@ -150,8 +152,8 @@ pub fn patrol(world: &mut World, goblin: Entity) {
     if now && !before {
         if looking {
             // It looks back over its shoulder, turned round for the pause.
-            if let Some(enemy) = world.get_mut::<Enemy>(goblin) {
-                enemy.heading = -enemy.heading;
+            if let Some(heading) = heading_of(world, goblin) {
+                turn(world, goblin, -heading);
             }
         } else {
             skip(world, goblin);
@@ -159,8 +161,8 @@ pub fn patrol(world: &mut World, goblin: Entity) {
     }
     if before && !now && cycle(t - dt) % 2 == 0 {
         // The look's end: it turns back the way it walked.
-        if let Some(enemy) = world.get_mut::<Enemy>(goblin) {
-            enemy.heading = -enemy.heading;
+        if let Some(heading) = heading_of(world, goblin) {
+            turn(world, goblin, -heading);
         }
     }
     if now && looking {
@@ -174,7 +176,7 @@ pub fn patrol(world: &mut World, goblin: Entity) {
 /// stopped, hopping what it can; in the air it keeps its run until it
 /// lands.
 fn wander(world: &mut World, goblin: Entity, pace: f32) {
-    let Some(heading) = world.get::<Enemy>(goblin).map(|mine| mine.heading) else {
+    let Some(heading) = heading_of(world, goblin) else {
         return;
     };
     if !grounded(world, goblin) {
@@ -218,7 +220,7 @@ fn hurt(world: &World, goblin: Entity) -> bool {
 /// or down gets its stab's tell; badly hurt, it runs from one within
 /// [`FLEE_REACH`]; closer than [`KEEP_OFF`] across it backs away, farther
 /// than [`CLOSE_IN`] it closes, each hopping what it can; else it rests
-/// facing the player, and with its [`COOLDOWN`] spent and the player within
+/// facing the player, and with its rest spent and the player within
 /// [`THROW_RISE`] up or down it approaches: one draw of the kit's stream, a
 /// dash-in's tell under [`DASH_CHANCE`], else a throw's. It searches once
 /// it loses sight.
@@ -258,10 +260,7 @@ pub fn chase(world: &mut World, goblin: Entity) {
     }
     rest(world, goblin);
     face(world, goblin, target.x);
-    let cooling = world
-        .get::<Brain>(goblin)
-        .is_some_and(|brain| brain.cooldown > 0.0);
-    if cooling || rise.abs() > THROW_RISE {
+    if !rested(world, goblin) || rise.abs() > THROW_RISE {
         return;
     }
     let dash = world
@@ -303,16 +302,18 @@ pub fn enter_windup(world: &mut World, goblin: Entity) {
     }
 }
 
-/// The tell lasts [`STAB_TELL`] for a stab, [`DASH_TELL`] for a dash-in,
-/// else [`TELL_SECS`], then the attack.
+/// The tell lasts its clip, [`STAB_TELL_CLIP`] for a stab,
+/// [`DASH_TELL_CLIP`] for a dash-in, [`BOMB_TELL_CLIP`] for a bomb, else
+/// [`TELL_CLIP`], then the attack.
 pub fn windup(world: &mut World, goblin: Entity) {
     rest(world, goblin);
     let tell = match strike(world, goblin) {
-        Some(Strike::Stab) => STAB_TELL,
-        Some(Strike::Dash) => DASH_TELL,
-        _ => TELL_SECS,
+        Some(Strike::Stab) => STAB_TELL_CLIP,
+        Some(Strike::Dash) => DASH_TELL_CLIP,
+        Some(Strike::Bomb) => BOMB_TELL_CLIP,
+        _ => TELL_CLIP,
     };
-    if elapsed(world, goblin) >= tell - 1e-4 {
+    if elapsed(world, goblin) >= super::clip_secs(world, tell) - 1e-4 {
         go(world, goblin, EnemyState::Attack);
     }
 }
@@ -332,7 +333,7 @@ pub fn enter_attack(world: &mut World, goblin: Entity) {
 /// locked for [`DASH_MOST`], with its dust at its heels and its sound; a
 /// body stops it dead.
 fn dash(world: &mut World, goblin: Entity) {
-    let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, goblin).unwrap_or(1.0);
     if let Some(controller) = world.get_mut::<PlatformerController>(goblin) {
         controller.launch(Vec2::new(heading * DASH_SPEED, 0.0));
         controller.lock_input(DASH_MOST);
@@ -345,12 +346,12 @@ fn dash(world: &mut World, goblin: Entity) {
 }
 
 /// Ends its dash-in with `next` as its strike, `None` for its recovery, a
-/// stab for its attack entered again; its [`COOLDOWN`] starts.
+/// stab for its attack entered again; its rest starts.
 fn end_dash(world: &mut World, goblin: Entity, next: Option<Strike>) {
     if let Some(brain) = world.get_mut::<Brain>(goblin) {
         brain.strike = next;
-        brain.cooldown = COOLDOWN;
     }
+    start_rest(world, goblin);
     let state = if next.is_some() {
         EnemyState::Attack
     } else {
@@ -361,9 +362,9 @@ fn end_dash(world: &mut World, goblin: Entity, next: Option<Strike>) {
 
 /// The dash-in runs until a courier is within [`STAB_REACH`] across and
 /// [`STAB_RISE`] up or down, where it stops and its attack starts again as
-/// the stab, or for [`DASH_MOST`], then the recovery. The stab's clip runs
-/// [`STAB_SECS`], then it spends its strike and leaps back into its
-/// recovery; the throw's runs [`THROW_SECS`], then the recovery.
+/// the stab, or for [`DASH_MOST`], then the recovery. The stab's clip
+/// ([`STAB_CLIP`]) runs out, then it spends its strike and leaps back into
+/// its recovery; the throw's ([`THROW_CLIP`]), then the recovery.
 pub fn attack(world: &mut World, goblin: Entity) {
     rest(world, goblin);
     if strike(world, goblin) == Some(Strike::Dash) {
@@ -385,8 +386,8 @@ pub fn attack(world: &mut World, goblin: Entity) {
         return;
     }
     let stabbing = strike(world, goblin) == Some(Strike::Stab);
-    let clip = if stabbing { STAB_SECS } else { THROW_SECS };
-    if elapsed(world, goblin) < clip - 1e-4 {
+    let clip = if stabbing { STAB_CLIP } else { THROW_CLIP };
+    if elapsed(world, goblin) < super::clip_secs(world, clip) - 1e-4 {
         return;
     }
     if stabbing {
@@ -401,7 +402,7 @@ pub fn attack(world: &mut World, goblin: Entity) {
 /// A leap back from where it faces: up and away at [`LEAP_BACK`], its input
 /// locked for [`LEAP_LOCK`].
 fn leap_back(world: &mut World, goblin: Entity) {
-    let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, goblin).unwrap_or(1.0);
     if let Some(controller) = world.get_mut::<PlatformerController>(goblin) {
         controller.launch(Vec2::new(-heading * LEAP_BACK.x, -LEAP_BACK.y));
         controller.lock_input(LEAP_LOCK);
@@ -412,7 +413,7 @@ fn leap_back(world: &mut World, goblin: Entity) {
 #[must_use]
 pub fn hand(world: &World, goblin: Entity) -> Option<Vec2> {
     let at = world.get::<Position>(goblin)?.0;
-    let heading = world.get::<Enemy>(goblin)?.heading;
+    let heading = heading_of(world, goblin)?;
     Some(at + super::body(world, EnemyKind::Goblin).point("hand", heading)?)
 }
 
@@ -421,7 +422,7 @@ pub fn hand(world: &World, goblin: Entity) -> Option<Vec2> {
 #[must_use]
 pub fn stab_box(world: &World, goblin: Entity) -> Option<Vec2> {
     let at = centre(world, goblin)?;
-    let heading = world.get::<Enemy>(goblin)?.heading;
+    let heading = heading_of(world, goblin)?;
     Some(at + Vec2::new(STAB_AT.x * heading, STAB_AT.y))
 }
 
@@ -432,9 +433,9 @@ pub fn stab(world: &mut World, goblin: Entity) {
     let Some(box_at) = stab_box(world, goblin) else {
         return;
     };
-    let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, goblin).unwrap_or(1.0);
     let mut near: Vec<(u64, Entity, Vec2)> = world
-        .query::<(Entity, &SaveId, &Position, &Collider, &Health)>()
+        .query::<(Entity, &Saved, &Position, &Collider, &Health)>()
         .filter(|&(entity, .., health)| entity != goblin && !health.is_dead())
         .filter(|&(entity, ..)| {
             !world
@@ -443,7 +444,7 @@ pub fn stab(world: &mut World, goblin: Entity) {
         })
         .filter_map(|(entity, id, position, collider, _)| {
             let at = position.0 + collider.offset;
-            troll::meets(at, collider.shape, box_at, STAB_HALF).then_some((id.0, entity, at))
+            troll::meets(at, collider.shape, box_at, STAB_HALF).then_some((id.id().0, entity, at))
         })
         .collect();
     near.sort_unstable_by_key(|&(id, ..)| id);
@@ -482,13 +483,12 @@ pub fn throw(world: &mut World, goblin: Entity) -> Option<Entity> {
         .unwrap_or(Strike::Rock);
     let (_, target) = player(world)?;
     let from = hand(world, goblin)?;
-    let thrower = world.get::<SaveId>(goblin).map(|id| id.0);
+    let thrower = crate::shared::save_id(world, goblin).map(|id| id.0);
     let gravity = world
         .get_resource::<PhysicsConfig>()
         .map_or(Vec2::ZERO, |config| config.gravity);
     let thrown = if strike == Strike::Bomb {
-        let velocity =
-            troll::ballistic(from, target, troll::flight(from.distance(target)), gravity);
+        let velocity = lob_velocity(from, target, troll::flight(from.distance(target)), gravity);
         let bomb = props::spawn_bomb(world, from, thrower);
         if let Some(own) = world.get_mut::<Velocity>(bomb) {
             own.0 = velocity;
@@ -496,7 +496,7 @@ pub fn throw(world: &mut World, goblin: Entity) -> Option<Entity> {
         bomb
     } else {
         let time = (from.distance(target) * ROCK_PACE).clamp(ROCK_LEAST, ROCK_MOST);
-        let velocity = troll::ballistic(from, target, time, gravity);
+        let velocity = lob_velocity(from, target, time, gravity);
         let rock = props::lob_rock(world, from, velocity);
         let throw = Throw {
             body: rock,
@@ -507,11 +507,10 @@ pub fn throw(world: &mut World, goblin: Entity) -> Option<Entity> {
         if let Some(throws) = world.get_resource_mut::<Throws>() {
             throws.0.push(throw);
         }
+        crate::features::elements::systems::arm_throw(world, &throw);
         rock
     };
-    if let Some(brain) = world.get_mut::<Brain>(goblin) {
-        brain.cooldown = COOLDOWN;
-    }
+    start_rest(world, goblin);
     audio::play(world, Sound::RockThrown, from);
     Some(thrown)
 }
@@ -532,35 +531,6 @@ pub fn seek(world: &mut World, goblin: Entity, point: Option<Vec2>) -> bool {
         return false;
     }
     !scurry(world, goblin, across.signum(), SEARCH_PACE)
-}
-
-/// Its clip for `state`: its panic, in the air too; its stab's, its
-/// dash-in's or its throw's tell, a rock or a lit bomb, by the strike its
-/// brain keeps; the stab, the dash or the throw through its attack; a hop
-/// while it is in the air; standing while alert or recovering; else
-/// walking or standing as it moves.
-#[must_use]
-pub fn clip(world: &World, goblin: Entity, state: EnemyState) -> &'static str {
-    match state {
-        EnemyState::Panic => "goblin_panic",
-        EnemyState::WindUp => match strike(world, goblin) {
-            Some(Strike::Bomb) => "goblin_windup_bomb",
-            Some(Strike::Stab) => "goblin_stab_windup",
-            Some(Strike::Dash) => "goblin_dash_windup",
-            _ => "goblin_windup",
-        },
-        EnemyState::Attack if strike(world, goblin) == Some(Strike::Stab) => "goblin_stab",
-        EnemyState::Attack if strike(world, goblin) == Some(Strike::Dash) => "goblin_dash",
-        EnemyState::Attack => "goblin_throw",
-        _ if !grounded(world, goblin) => "goblin_hop",
-        EnemyState::Alert | EnemyState::Recover => "goblin_idle",
-        _ => {
-            let moving = world
-                .get::<Velocity>(goblin)
-                .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
-            if moving { "goblin_walk" } else { "goblin_idle" }
-        }
-    }
 }
 
 /// `goblin_panic`, in the intent phase after the hold and before the
@@ -588,7 +558,7 @@ pub fn panics(world: &mut World) {
 
 /// The way from the player across, else its heading.
 fn away(world: &World, goblin: Entity) -> f32 {
-    let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, goblin).unwrap_or(1.0);
     match (player(world), centre(world, goblin)) {
         (Some((_, target)), Some(at)) if (at.x - target.x).abs() > 1.0 => {
             (at.x - target.x).signum()
@@ -609,9 +579,7 @@ pub fn enter_panic(world: &mut World, goblin: Entity) {
         return;
     }
     let away = away(world, goblin);
-    if let Some(mine) = world.get_mut::<Enemy>(goblin) {
-        mine.heading = away;
-    }
+    turn(world, goblin, away);
     let run = world
         .get::<Stats>(goblin)
         .and_then(|stats| stats.get(Stats::MOVE_SPEED))

@@ -336,8 +336,10 @@ pub(crate) fn ensure_grid(schedule: &mut Schedule) {
 /// of both, so a fast blow skips nothing. Each hit sends [`Struck`] and,
 /// when its damage is above 0, queues a
 /// [`DamageRequest`](crate::DamageRequest) of its damage and tags, from
-/// its entity's [`Source`](crate::Source) or the entity itself, pushing the
-/// target away by its knockback. A hitbox of damage 0 is a trigger: its
+/// its entity's [`Source`](crate::Source) or the entity itself, or, with a
+/// [`live credit`](Self::with_live_credit), from its source while that
+/// lives and is not dead by its [`Health`](crate::Health), else from
+/// nobody, pushing the target away by its knockback. A hitbox of damage 0 is a trigger: its
 /// `hit` cues run and nothing is hurt. It never hits its own entity, the
 /// entity that spawned it or its spawn chain's origin. An activation lasts
 /// until [`rearm`](Self::rearm); a [`Projectile`](crate::Projectile)'s
@@ -368,7 +370,8 @@ pub(crate) fn ensure_grid(schedule: &mut Schedule) {
 /// none by default; `facing`, `"mirror"` or `"turn"`, places its offset,
 /// written for an entity facing right, by its entity's [`Facing`]
 /// ([`mirrored`](Self::mirrored), [`turned`](Self::turned)), none by
-/// default. It is data, without the targets it has hit, which are
+/// default; `credit`, `"source"` (the default) or `"live"`, whom its hits
+/// credit ([`with_live_credit`](Self::with_live_credit)). It is data, without the targets it has hit, which are
 /// entities: a loaded one starts a fresh activation unless the game names
 /// them again by its own IDs through
 /// [`set_hit_targets`](Self::set_hit_targets), from the
@@ -422,6 +425,25 @@ pub struct Hitbox {
     /// It hits: off, it hits nothing, armed or not, its activation and
     /// window kept.
     on: bool,
+    /// Whom its hits credit.
+    credit: Credit,
+}
+
+/// Whom a hitbox's hits credit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Credit {
+    /// Its [`Source`](crate::Source), dead or alive, else its entity.
+    #[default]
+    Source,
+    /// Its source while that lives and is not dead, else nobody.
+    Live,
+}
+
+// The reference is serde's `skip_serializing_if` signature.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_source_credit(credit: &Credit) -> bool {
+    *credit == Credit::Source
 }
 
 /// How a hitbox's offset, written for an entity facing right, follows its
@@ -637,6 +659,8 @@ struct HitboxFields {
     facing: Option<HitFacing>,
     #[serde(default = "switched_on", skip_serializing_if = "is_on")]
     on: bool,
+    #[serde(default, skip_serializing_if = "is_source_credit")]
+    credit: Credit,
 }
 
 // The reference is serde's `skip_serializing_if` signature.
@@ -681,6 +705,7 @@ impl TryFrom<HitboxFields> for Hitbox {
             },
             facing: fields.facing,
             on: fields.on,
+            credit: fields.credit,
         })
     }
 }
@@ -700,6 +725,7 @@ impl PartialEq for Hitbox {
             && self.armed_left == other.armed_left
             && self.facing == other.facing
             && self.on == other.on
+            && self.credit == other.credit
     }
 }
 
@@ -769,6 +795,7 @@ impl From<Hitbox> for HitboxFields {
             armed_left: hitbox.armed_left,
             facing: hitbox.facing,
             on: hitbox.on,
+            credit: hitbox.credit,
         }
     }
 }
@@ -801,7 +828,25 @@ impl Hitbox {
             armed_left: 0.0,
             facing: None,
             on: true,
+            credit: Credit::Source,
         }
+    }
+
+    /// The hitbox, its hits credited to its [`Source`](crate::Source) only
+    /// while that lives and, holding [`Health`](crate::Health), is not
+    /// dead, else to nobody, never to its own entity: a snowball whose
+    /// thrower died hurts from no one.
+    #[must_use]
+    pub fn with_live_credit(mut self) -> Self {
+        self.credit = Credit::Live;
+        self
+    }
+
+    /// Whether its hits credit a live source alone
+    /// ([`with_live_credit`](Self::with_live_credit)).
+    #[must_use]
+    pub fn credits_live(&self) -> bool {
+        self.credit == Credit::Live
     }
 
     /// Whether it hits: on unless switched off.
@@ -1388,6 +1433,8 @@ struct HitboxScene {
     facing: Option<HitFacing>,
     #[serde(default = "switched_on")]
     on: bool,
+    #[serde(default)]
+    credit: Credit,
 }
 
 /// `components.hitbox`, checked.
@@ -1406,6 +1453,7 @@ struct HitboxDef {
     window: Option<f32>,
     facing: Option<HitFacing>,
     on: bool,
+    credit: Credit,
 }
 
 impl TryFrom<HitboxScene> for HitboxDef {
@@ -1425,6 +1473,7 @@ impl TryFrom<HitboxScene> for HitboxDef {
             window: scene.window,
             facing: scene.facing,
             on: scene.on,
+            credit: scene.credit,
         })
     }
 }
@@ -1450,6 +1499,7 @@ impl From<HitboxDef> for Hitbox {
         }
         hitbox.facing = def.facing;
         hitbox.on = def.on;
+        hitbox.credit = def.credit;
         hitbox
     }
 }
@@ -1634,6 +1684,14 @@ impl Plugin for HitPlugin {
                     "it hits; off, it hits nothing, armed or not, its activation and window kept, as a death policy's `disarm` leaves it",
                 )
                 .default("true"),
+            )
+            .field(
+                FieldDescription::new(
+                    "credit",
+                    FieldType::Enum(&["source", "live"]),
+                    "whom its hits credit: `source` its source, dead or alive, else its entity; `live` its source while that lives and is not dead, else nobody",
+                )
+                .default("\"source\""),
             )
             .event("Struck")
             .genre(PLATFORMER)

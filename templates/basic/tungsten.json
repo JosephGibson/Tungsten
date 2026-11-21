@@ -3,5 +3,6 @@
   "window": { "title": "Tungsten template", "width": 1280, "height": 720 },
   "render": { "clear_color": [0.0, 0.0, 0.0, 1.0] },
   "audio": { "master_volume": 0.8, "bus_volumes": { "music": 0.8, "effects": 0.8 } },
-  "assets": { "manifest": "assets/manifest.json" }
+  "assets": { "manifest": "assets/manifest.json" },
+  "ui": { "theme": "shell", "reference_height": 720, "min_viewport": [731, 411], "scale": 0.75, "hud_corner": "top_right" }
 }

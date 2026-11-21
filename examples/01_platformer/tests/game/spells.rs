@@ -14,7 +14,7 @@ use example_01_platformer::features::audio::HOLE_HUM;
 use example_01_platformer::features::audio::components::Music;
 use example_01_platformer::features::combat::Kind;
 use example_01_platformer::features::elements;
-use example_01_platformer::features::elements::components::BallBurn;
+use example_01_platformer::features::elements::burn_left;
 use example_01_platformer::features::elements::systems::douse;
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
@@ -28,10 +28,9 @@ use example_01_platformer::features::toys::components::{
 };
 use example_01_platformer::features::toys::flask;
 use example_01_platformer::features::toys::{
-    self, BALL_RADIUS, BROOM_MOST, HOLE_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS,
-    PUSH_SPEED, RING_CAP,
+    self, BROOM_MOST, HOLE_RADIUS, PUSH_RADIUS, PUSH_SPEED, RING_CAP,
 };
-use example_01_platformer::shared::{BURST_CAP, Burst, SaveIds};
+use example_01_platformer::shared::{BURST_CAP, Burst};
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::{
@@ -49,6 +48,8 @@ use example_01_platformer::features::spells::components::Spell;
 use tungsten::kit::Tags;
 
 use super::kind_body;
+use super::prefab_box;
+use super::prefab_number;
 use super::{
     aim_at, ball, body, calm, centre, choose, floor, ground, mana, pin_camera, run, stand,
 };
@@ -72,6 +73,20 @@ fn rings(harness: &UiHarness, kind: Ring) -> usize {
         .count()
 }
 
+/// The fire missile's speed, its spell's spawn payload's.
+fn missile_speed() -> f32 {
+    let ability = super::json("data/abilities/fire_missile.json");
+    super::number(&ability, "/payload/1/spawn/speed")
+}
+
+/// The fire missile's drawn size, its prefab's `scale` of its sprite's.
+fn missile_size(harness: &UiHarness) -> Vec2 {
+    let prefab = super::json("prefabs/fire_missile.json");
+    let sprite = prefab["sprite"]["asset_id"].as_str().expect("its sprite");
+    let size = example_01_platformer::shared::sprite_size(harness.world(), sprite);
+    size * super::pair(&prefab, "/scale")
+}
+
 #[test]
 fn fireball_contact_explodes_and_ignites_small_balls() {
     let (mut harness, _) = run();
@@ -83,18 +98,13 @@ fn fireball_contact_explodes_and_ignites_small_balls() {
         Vec2::new(12.0, 5.0),
     );
     let target = ball(&mut harness, o + Vec2::new(200.0, 0.0), true);
-    let missile = toys::fire_missile(harness.world_mut(), o, Vec2::X * MISSILE_SPEED).unwrap();
+    let missile = toys::fire_missile(harness.world_mut(), o, Vec2::X * missile_speed()).unwrap();
     for _ in 0..30 {
         harness.step(1);
     }
     assert!(!harness.world().is_alive(missile));
     assert_eq!(rings(&harness, Ring::Fireball), 1, "one blast");
-    assert!(
-        harness
-            .world()
-            .get::<BallBurn>(target)
-            .is_some_and(|b| b.remaining > 0.0)
-    );
+    assert!(burn_left(harness.world(), target).is_some_and(|left| left > 0.0));
 }
 
 #[test]
@@ -116,7 +126,7 @@ fn black_hole_leaves_burning_balls_inside_its_radius_spent() {
     elements::ignite(harness.world_mut(), outside);
     douse(harness.world_mut());
     elements::ignite(harness.world_mut(), inside);
-    let burn = |e| harness.world().get::<BallBurn>(e).unwrap().remaining;
+    let burn = |e| burn_left(harness.world(), e).unwrap();
     assert_eq!(burn(inside), 0.0);
     assert!(burn(outside) > 0.0);
 }
@@ -127,20 +137,32 @@ fn a_blast_pushes_dynamic_bodies_away_by_distance_and_mass() {
     let o = Vec2::new(1200.0, 600.0);
     let spawn = |harness: &mut UiHarness, at: Vec2, mass: f32| -> Entity {
         harness.world_mut().spawn_with(
-            RigidBodyBundle::dynamic(Position(o + at), Collider::circle(BALL_RADIUS))
-                .with_body(RigidBody::dynamic().with_mass(mass)),
+            RigidBodyBundle::dynamic(
+                Position(o + at),
+                Collider::circle(prefab_box("bowling_ball").0.x),
+            )
+            .with_body(RigidBody::dynamic().with_mass(mass)),
         )
     };
     let near = spawn(&mut harness, Vec2::new(40.0, 0.0), 1.0);
     let far = spawn(&mut harness, Vec2::new(120.0, 0.0), 1.0);
-    let heavy = spawn(&mut harness, Vec2::new(-40.0, 0.0), IRON_MASS);
+    let heavy = spawn(
+        &mut harness,
+        Vec2::new(-40.0, 0.0),
+        prefab_number("iron_block", "/components/rigid_body/mass"),
+    );
     let beyond = spawn(&mut harness, Vec2::new(0.0, PUSH_RADIUS + 1.0), 1.0);
     toys::explode(harness.world_mut(), o);
     let v = |harness: &UiHarness, e| harness.world().get::<Velocity>(e).unwrap().0;
     let falloff = 1.0 - 40.0 / PUSH_RADIUS;
     assert!((v(&harness, near) - Vec2::new(PUSH_SPEED * falloff, 0.0)).length() < 1e-3);
     assert!(v(&harness, far).x > 0.0 && v(&harness, far).x < v(&harness, near).x);
-    assert!((v(&harness, heavy).x + v(&harness, near).x / IRON_MASS).abs() < 1e-3);
+    assert!(
+        (v(&harness, heavy).x
+            + v(&harness, near).x / prefab_number("iron_block", "/components/rigid_body/mass"))
+        .abs()
+            < 1e-3
+    );
     assert_eq!(v(&harness, beyond), Vec2::ZERO);
     // The step carries the push into the body's place.
     harness.step(1);
@@ -211,8 +233,8 @@ fn mouse4_casts_a_fireball_toward_the_cursor() {
     let (missile, at, velocity) = missiles[0];
     let aim = (target - from).normalize();
     assert!(velocity.normalize().dot(aim) > 0.999);
-    assert!((velocity.length() - MISSILE_SPEED).abs() < 1.0);
-    let start = at + Vec2::splat(toys::MISSILE_SIZE * 0.5);
+    assert!((velocity.length() - missile_speed()).abs() < 1.0);
+    let start = at + missile_size(&harness) * 0.5;
     assert!(
         (start - (from + aim * 24.0)).length() < 1.0,
         "it leaves the courier's centre at the payload's offset: {start}"
@@ -228,6 +250,99 @@ fn mouse4_casts_a_fireball_toward_the_cursor() {
     let before = distance(&harness);
     harness.step(1);
     assert!(distance(&harness) < before);
+}
+
+/// A missile fired level from `from`, its centre, at its speed with its
+/// fall taken off, and where its one blast is, its blast flare's point,
+/// within half a second.
+fn level_blast(harness: &mut UiHarness, from: Vec2) -> Vec2 {
+    use example_01_platformer::features::toys::components::Flare;
+    use tungsten::core::Transform;
+    let world = harness.world_mut();
+    let velocity = Vec2::X * missile_speed();
+    let missile = toys::fire_missile(world, from, velocity).unwrap();
+    world.insert(missile, LinearMotion::new(velocity));
+    let blasts = |harness: &UiHarness| -> Vec<Vec2> {
+        harness
+            .world()
+            .query::<(&Flare, &Transform)>()
+            .filter(|(flare, _)| flare.blast)
+            .map(|(_, at)| at.position)
+            .collect()
+    };
+    assert!(until(harness, 30, |h| !blasts(h).is_empty()), "it blasts");
+    let found = blasts(harness);
+    assert_eq!(found.len(), 1, "one blast: {found:?}");
+    assert!(!harness.world().is_alive(missile));
+    found[0]
+}
+
+#[test]
+fn a_missile_blasts_where_its_circle_first_meets_a_wall() {
+    use tungsten::core::assets::LayerKind;
+    use tungsten::core::{TilemapData, TilemapInstance, TilemapRegistry};
+    let radius = toys::MISSILE_RADIUS;
+    let near = |at: Vec2, want: Vec2, what: &str| {
+        assert!(
+            at.distance(want) <= 0.5,
+            "{what}: blast at {at}, want {want}"
+        );
+    };
+    // A wall's face: the circle's centre a radius short of it.
+    let (mut harness, _) = run();
+    let face = 900.0;
+    floor(
+        &mut harness,
+        Vec2::new(face + 10.0, 500.0),
+        Vec2::new(10.0, 100.0),
+    );
+    harness.step(1);
+    let at = level_blast(&mut harness, Vec2::new(face - 80.0, 500.0));
+    near(at, Vec2::new(face - radius, 500.0), "the wall");
+    // A lone tile whose top lies 6 px under the centre's path: the circle
+    // meets its corner 8 px short of its side, where samples of the centre
+    // and the leading point flew over it.
+    let (mut harness, _) = run();
+    let (side, top) = (1000.0, 506.0);
+    let mut map = TilemapData::new(64, 64, 1, 1);
+    let tile = map.add_tile("ex10_ground");
+    let layer = map.add_layer("collision", LayerKind::Collision);
+    map.set_tile(layer, 0, 0, tile);
+    let world = harness.world_mut();
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("lone".into(), map);
+    world.spawn_with((TilemapInstance::new("lone", Vec2::new(side, top)),));
+    harness.step(1);
+    let path = top - 6.0;
+    let at = level_blast(&mut harness, Vec2::new(side - 40.0, path));
+    near(at, Vec2::new(side - 8.0, path), "the tile's corner");
+    // A crate under a path 9 px over its top: the circle meets its rounded
+    // corner 4.36 px short of its side.
+    let (mut harness, _) = run();
+    let rest = 520.0;
+    floor(
+        &mut harness,
+        Vec2::new(1200.0, rest + 20.0),
+        Vec2::new(100.0, 20.0),
+    );
+    harness.step(1);
+    let at = Vec2::new(1200.0, rest - prefab_box("crate").0.y - 0.5);
+    let crate_ = props::spawn(harness.world_mut(), PropKind::Crate, at);
+    harness.step(30);
+    let half = harness
+        .world()
+        .get::<Collider>(crate_)
+        .unwrap()
+        .shape
+        .half_extents();
+    let middle = body(&harness, crate_);
+    let (side, top) = (middle.x - half.x, middle.y - half.y);
+    let path = top - 9.0;
+    let at = level_blast(&mut harness, Vec2::new(side - 60.0, path));
+    let short = (radius * radius - 81.0).sqrt();
+    assert!((short - 4.36).abs() < 0.01);
+    near(at, Vec2::new(side - short, path), "the crate's corner");
 }
 
 #[test]
@@ -345,11 +460,7 @@ fn three_black_holes_stay_open_and_a_fourth_collapses_the_oldest() {
     assert_eq!(holes(&harness), 3, "three stay open");
     let fourth = toys::place_black_hole(harness.world_mut(), Vec2::new(2100.0, 500.0));
     harness.step(1);
-    let collapsed = harness
-        .harness()
-        .events::<Sounded>()
-        .filter(|sounded| sounded.sound == Sound::HoleCollapsed)
-        .count();
+    let collapsed = super::player::plays(&harness, "ex10_black_hole_collapse_sfx");
     assert_eq!(collapsed, 1, "the fourth's opening collapses one");
     let world = harness.world();
     assert!(!world.is_alive(opened[0]), "the oldest gone");
@@ -357,6 +468,104 @@ fn three_black_holes_stay_open_and_a_fourth_collapses_the_oldest() {
     assert!(world.is_alive(fourth));
     assert_eq!(holes(&harness), 3);
     assert_eq!(rings(&harness, Ring::Collapse), 1, "its ring");
+}
+
+/// The iron blocks alive, in save-ID order.
+fn iron_blocks(harness: &UiHarness) -> Vec<Entity> {
+    use example_01_platformer::features::toys::components::IronBlock;
+    let world = harness.world();
+    let mut blocks: Vec<(u64, Entity)> = world
+        .query::<(Entity, &IronBlock, &example_01_platformer::shared::Saved)>()
+        .map(|(entity, _, id)| (id.id().0, entity))
+        .collect();
+    blocks.sort_unstable_by_key(|&(id, _)| id);
+    blocks.into_iter().map(|(_, entity)| entity).collect()
+}
+
+/// The poofs alive within a pixel of `at`.
+fn poofs_at(harness: &UiHarness, at: Vec2) -> usize {
+    let world = harness.world();
+    let config = world
+        .resource::<tungsten::core::ParticleConfigRegistry>()
+        .id_for_name("ex10_poof");
+    world
+        .query::<(
+            &Burst,
+            &tungsten::core::ParticleEmitter,
+            &tungsten::core::Transform,
+        )>()
+        .filter(|(_, emitter, transform)| {
+            Some(emitter.config) == config && transform.position.distance(at) < 1.0
+        })
+        .count()
+}
+
+#[test]
+fn iron_past_its_cap_ends_the_oldest_the_maps_first() {
+    use example_01_platformer::save;
+    use example_01_platformer::shell::{self as game_shell, RunStart};
+    use tungsten::core::Time;
+    use tungsten::kit::Cap;
+    let (mut harness, _) = run();
+    ground(&mut harness, SKY);
+    let map = iron_blocks(&harness);
+    let markers = example_01_platformer::features::level::markers(
+        harness.world(),
+        example_01_platformer::features::level::IRON_MARKER,
+    );
+    assert_eq!(map.len(), markers.len(), "the map's own, one a marker");
+    // Its prefab's cap, as the map's first block holds it.
+    let cap = harness.world().get::<Cap>(map[0]).expect("its cap").max() as usize;
+    // Along the sky's ground, a second row over the first.
+    let at = |i: usize| {
+        let (column, row) = ((i % 18) as f32, (i / 18) as f32);
+        Vec2::new(
+            150.0 + 125.0 * column,
+            SKY - prefab_box("iron_block").0.y - 1.0 - 130.0 * row,
+        )
+    };
+    for i in map.len()..cap {
+        toys::place_iron(harness.world_mut(), at(i - map.len()));
+    }
+    harness.step(1);
+    assert_eq!(iron_blocks(&harness).len(), cap);
+    let saved = save::capture(harness.world()).expect("a live run captures");
+    let first = example_01_platformer::shared::save_id(harness.world(), map[0]).unwrap();
+    // One more, here and after a save and a load: the map's first goes.
+    let mut fresh = super::harness();
+    fresh.world_mut().resource_mut::<Time>().pause();
+    game_shell::start_run(fresh.world_mut(), RunStart::from(saved), None);
+    super::settle(&mut fresh);
+    fresh.step(1);
+    ground(&mut fresh, SKY);
+    for harness in [&mut harness, &mut fresh] {
+        let blocks = iron_blocks(harness);
+        let oldest = blocks[0];
+        assert_eq!(
+            example_01_platformer::shared::save_id(harness.world(), oldest),
+            Some(first),
+            "the map's first is the oldest"
+        );
+        let centre = body(harness, oldest);
+        let poofs = poofs_at(harness, centre);
+        toys::place_iron(harness.world_mut(), at(cap - map.len()));
+        assert!(!harness.world().is_alive(oldest), "gone at once");
+        assert_eq!(
+            poofs_at(harness, centre),
+            poofs + 1,
+            "one poof at its centre"
+        );
+        assert_eq!(
+            iron_blocks(harness).len(),
+            cap,
+            "the cap's twenty-four left"
+        );
+        assert!(
+            blocks[1..]
+                .iter()
+                .all(|&block| harness.world().is_alive(block))
+        );
+    }
 }
 
 #[test]
@@ -441,7 +650,11 @@ fn the_holes_hum_on_one_voice_that_falls_silent_when_the_last_closes() {
         "{heard:?}"
     );
     for hole in near {
-        harness.world_mut().get_mut::<BlackHole>(hole).unwrap().left = 0.01;
+        harness
+            .world_mut()
+            .get_mut::<tungsten::kit::Cooldown>(hole)
+            .unwrap()
+            .set_left(0.01);
     }
     heard.clear();
     listen(&mut harness, 10, &mut heard);
@@ -452,20 +665,70 @@ fn the_holes_hum_on_one_voice_that_falls_silent_when_the_last_closes() {
 
 /// Presses `cast` until a fixed step has read it, then lets it go: the
 /// sounds those frames made.
-fn cast_once(harness: &mut UiHarness) -> Vec<Sound> {
-    let mut heard = Vec::new();
+fn cast_once(harness: &mut UiHarness) -> Heard {
+    let mut heard = Heard::default();
     harness.harness_mut().press_action("cast");
     for _ in 0..4 {
         harness.step(1);
-        heard.extend(harness.harness().events::<Sounded>().map(|s| s.sound));
+        heard.listen(harness);
         if super::steps_this_frame(harness) > 0 {
             break;
         }
     }
     harness.harness_mut().release_action("cast");
     harness.step(1);
-    heard.extend(harness.harness().events::<Sounded>().map(|s| s.sound));
+    heard.listen(harness);
     heard
+}
+
+/// What a cast's frames sounded: the `Sounded` events, and the audio log's
+/// one-shot plays, each sound with its volume, read as the slice of the
+/// first.
+#[derive(Debug, Default)]
+struct Heard {
+    sounds: Vec<Sound>,
+    plays: Vec<(tungsten::core::AudioHandle, f32)>,
+}
+
+impl Heard {
+    /// The frame's `Sounded` events and one-shot plays.
+    fn listen(&mut self, harness: &UiHarness) {
+        self.sounds
+            .extend(harness.harness().events::<Sounded>().map(|s| s.sound));
+        self.plays.extend(
+            harness
+                .harness()
+                .audio()
+                .iter()
+                .filter_map(|command| match command {
+                    AudioCommand::Play {
+                        handle,
+                        volume,
+                        looping: false,
+                        ..
+                    } => Some((*handle, *volume)),
+                    _ => None,
+                }),
+        );
+    }
+
+    /// The volumes the manifest sound `id` played at.
+    fn plays(&self, harness: &UiHarness, id: &str) -> Vec<f32> {
+        let sound = harness.world().resource::<SoundRegistry>().get_by_id(id);
+        self.plays
+            .iter()
+            .filter(|&&(handle, _)| Some(handle) == sound)
+            .map(|&(_, volume)| volume)
+            .collect()
+    }
+}
+
+impl std::ops::Deref for Heard {
+    type Target = [Sound];
+
+    fn deref(&self) -> &[Sound] {
+        &self.sounds
+    }
 }
 
 #[test]
@@ -497,15 +760,15 @@ fn a_refused_cast_says_why_and_spends_nothing() {
     set_mana(&mut harness, 0.0);
     let before = spent(&harness, Spell::FireMissile);
     let heard = cast_once(&mut harness);
-    assert_eq!(count(&heard, Sound::NoMana), 1, "{heard:?}");
+    assert_eq!(heard.plays(&harness, NO_MANA_SFX).len(), 1, "{heard:?}");
     assert_eq!(spent(&harness, Spell::FireMissile), before, "nothing spent");
     // A cooldown: a second missile at once is not ready, once.
     set_mana(&mut harness, 100.0);
     cast_once(&mut harness);
     let before = spent(&harness, Spell::FireMissile);
     let heard = cast_once(&mut harness);
-    assert_eq!(count(&heard, Sound::NotReady), 1, "{heard:?}");
-    assert_eq!(count(&heard, Sound::Cast), 0, "{heard:?}");
+    assert_eq!(heard.plays(&harness, NOT_READY_SFX).len(), 1, "{heard:?}");
+    assert!(heard.plays(&harness, CAST_SFX).is_empty(), "{heard:?}");
     assert_eq!(spent(&harness, Spell::FireMissile), before, "nothing spent");
     // Iron in a wall fizzles at the cursor, once.
     aim_at(&mut harness, slab);
@@ -530,10 +793,10 @@ fn props_of(harness: &UiHarness, kind: PropKind) -> Vec<Entity> {
         .query::<(
             Entity,
             &tungsten::core::Position,
-            &example_01_platformer::shared::SaveId,
+            &example_01_platformer::shared::Saved,
         )>()
         .filter(|&(entity, ..)| props::kind(world, entity) == Some(kind))
-        .map(|(entity, _, id)| (id.0, entity))
+        .map(|(entity, _, id)| (id.id().0, entity))
         .collect();
     live.sort_unstable_by_key(|&(id, _)| id);
     live.into_iter().map(|(_, entity)| entity).collect()
@@ -606,7 +869,10 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
     assert!(body(&harness, kegs[0]).distance(at) < 2.0, "at the cursor");
     harness.step(61);
     // In a wall, and on iron, it fizzles and spends nothing.
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1400.0, 1000.0 - IRON_HALF.y));
+    let iron = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(1400.0, 1000.0 - prefab_box("iron_block").0.y),
+    );
     harness.step(2);
     for at in [Vec2::new(1150.0, 1040.0), super::body(&harness, iron)] {
         let before = mana(&harness);
@@ -627,10 +893,16 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
     // Past its cap, the oldest crate goes in a poof.
     turn(&mut harness, SUMMON_PREV);
     let first = props_of(&harness, PropKind::Crate)[0];
-    for i in 1..props::CRATE_CAP {
+    // The crates' cap, their prefab's as the first holds it.
+    let cap = harness
+        .world()
+        .get::<tungsten::kit::Cap>(first)
+        .expect("its cap")
+        .max() as usize;
+    for i in 1..cap {
         summon_at(&mut harness, Vec2::new(1440.0 + 60.0 * i as f32, 960.0));
     }
-    assert_eq!(props_of(&harness, PropKind::Crate).len(), props::CRATE_CAP);
+    assert_eq!(props_of(&harness, PropKind::Crate).len(), cap);
     assert!(harness.world().is_alive(first), "the cap holds it");
     aim_at(&mut harness, Vec2::new(1700.0, 600.0));
     harness.harness_mut().press_action("cast");
@@ -638,12 +910,22 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
     harness.harness_mut().release_action("cast");
     assert!(!harness.world().is_alive(first), "the oldest went");
     assert!(super::bursts(&harness, "ex10_poof") > 0, "in a poof");
-    assert_eq!(props_of(&harness, PropKind::Crate).len(), props::CRATE_CAP);
+    assert_eq!(props_of(&harness, PropKind::Crate).len(), cap);
 }
 
 /// The sky's ground for the spray tests, and the flamethrower's and the ice
 /// spray's slots.
 const SKY: f32 = 1000.0;
+/// The five pressed casts' sounds, their abilities' `ability_used` rules'.
+const CAST_SFX: &str = "ex10_fireball_cast_sfx";
+const PUSH_SFX: &str = "ex10_force_push_sfx";
+const FLASK_SFX: &str = "ex10_flask_throw_sfx";
+const TOSS_SFX: &str = "ex10_toss_sfx";
+const SUMMON_SFX: &str = "ex10_summon_sfx";
+/// A pressed spell's refusals' sounds, its abilities' `ability_refused`
+/// rules'.
+const NO_MANA_SFX: &str = "ex10_no_mana_sfx";
+const NOT_READY_SFX: &str = "ex10_not_ready_sfx";
 const FLAMETHROWER: Spell = Spell::Flamethrower;
 const ICE_SPRAY: Spell = Spell::IceSpray;
 
@@ -765,24 +1047,24 @@ fn the_sprays_reach_further_and_burst_on_what_they_hit() {
 
 #[test]
 fn a_spray_bursts_its_surface_hit_on_a_crate() {
+    use example_01_platformer::features::props;
     use example_01_platformer::features::props::components::PropKind;
-    use example_01_platformer::features::props::{self, CRATE_HALF};
     for (slot, surface) in [
         (FLAMETHROWER, "ex10_flame_wall_hit"),
         (ICE_SPRAY, "ex10_frost_wall_hit"),
     ] {
         let (mut harness, player, _) = spray_range(None);
         let me = centre(&harness, player);
-        let at = Vec2::new(me.x + 180.0, SKY - CRATE_HALF.y - 0.5);
+        let at = Vec2::new(me.x + 180.0, SKY - prefab_box("crate").0.y - 0.5);
         let crate_ = props::spawn(harness.world_mut(), PropKind::Crate, at);
         harness.step(1);
         choose(&mut harness, slot);
         let middle = body(&harness, crate_);
         aim_at(&mut harness, middle);
         harness.harness_mut().press_action("cast");
-        let face = middle.x - CRATE_HALF.x;
+        let face = middle.x - prefab_box("crate").0.x;
         let burst = until(&mut harness, 18, |h| {
-            bursts_on_face(h, surface, face, middle.y, CRATE_HALF.y)
+            bursts_on_face(h, surface, face, middle.y, prefab_box("crate").0.y)
         });
         harness.harness_mut().release_action("cast");
         assert!(burst, "{slot:?}: {surface} at the crate within 0.3 s");
@@ -926,9 +1208,20 @@ fn a_hole_lifts_bowling_balls_within_200_px_and_leaves_iron() {
     harness.step(1);
     // Three holes 800 px apart, out of each other's reach: one 180 px over a
     // bowling ball, one 230 px over another and one 120 px over iron.
-    let near = ball(&mut harness, Vec2::new(600.0, FLOOR - BALL_RADIUS), false);
-    let far = ball(&mut harness, Vec2::new(1400.0, FLOOR - BALL_RADIUS), false);
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(2200.0, FLOOR - IRON_HALF.y));
+    let near = ball(
+        &mut harness,
+        Vec2::new(600.0, FLOOR - prefab_box("bowling_ball").0.x),
+        false,
+    );
+    let far = ball(
+        &mut harness,
+        Vec2::new(1400.0, FLOOR - prefab_box("bowling_ball").0.x),
+        false,
+    );
+    let iron = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(2200.0, FLOOR - prefab_box("iron_block").0.y),
+    );
     harness.step(2);
     let starts = [near, far, iron].map(|entity| body(&harness, entity));
     for (thing, over) in [(starts[0], 180.0), (starts[1], 230.0), (starts[2], 120.0)] {
@@ -966,15 +1259,14 @@ fn flask_range() -> (UiHarness, Entity) {
 /// difficulty, still: its state machine taken off.
 fn still_foe(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
-    let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre, id).unwrap();
+    let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre).unwrap();
     enemies::scale(world, foe, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(foe);
     foe
 }
 
 /// Tosses the flask at `at` with one press: the sounds those frames made.
-fn toss_flask(harness: &mut UiHarness, at: Vec2) -> Vec<Sound> {
+fn toss_flask(harness: &mut UiHarness, at: Vec2) -> Heard {
     aim_at(harness, at);
     choose(harness, Spell::ToxicFlask);
     cast_once(harness)
@@ -1042,6 +1334,13 @@ fn flask_flight(harness: &mut UiHarness, frames: u32) -> Flight {
     flight
 }
 
+/// The flask's splash's reach: its prefab's end blast's radius.
+fn splash_radius(harness: &UiHarness) -> f32 {
+    let prefabs = harness.world().resource::<tungsten::core::PrefabRegistry>();
+    let projectile = &prefabs.get(flask::FLASK_PREFAB).unwrap().components["projectile"];
+    projectile["end"]["blast"]["radius"].as_f64().unwrap() as f32
+}
+
 /// A flask's centre.
 fn body_point(harness: &UiHarness, flask: Entity) -> Vec2 {
     harness.world().get::<Position>(flask).unwrap().0 + flask::FLASK_CENTRE
@@ -1053,7 +1352,7 @@ fn a_flask_at_a_cursor_on_the_floor_400_px_off_bursts_within_24_px_of_it() {
     let me = centre(&harness, player);
     let cursor = Vec2::new(me.x + 400.0, SKY);
     let heard = toss_flask(&mut harness, cursor);
-    assert!(heard.contains(&Sound::FlaskThrown), "{heard:?}");
+    assert!(!heard.plays(&harness, FLASK_SFX).is_empty(), "{heard:?}");
     let flight = flask_flight(&mut harness, 90);
     let at = flight.burst.expect("it bursts");
     assert!(at.distance(cursor) <= 24.0, "{at} for {cursor}");
@@ -1165,11 +1464,11 @@ fn the_flask_splash_spares_the_wizard_and_a_wisp_beside_the_goblin() {
     let flight = flask_flight(&mut harness, 30);
     let burst = flight.burst.expect("it bursts");
     assert!(
-        burst.distance(me) <= flask::SPLASH_RADIUS,
+        burst.distance(me) <= splash_radius(&harness),
         "the wizard in reach"
     );
     assert!(
-        burst.distance(body(&harness, wisp)) <= flask::SPLASH_RADIUS,
+        burst.distance(body(&harness, wisp)) <= splash_radius(&harness),
         "the wisp in reach"
     );
     assert_eq!(flight.took(goblin).len(), 1, "the goblin's splash");
@@ -1183,15 +1482,93 @@ fn the_flask_splash_spares_the_wizard_and_a_wisp_beside_the_goblin() {
 }
 
 #[test]
+fn a_flask_after_its_wizards_death_credits_nobody() {
+    use tungsten::kit::KitRng;
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    let kind = EnemyKind::Goblin;
+    let at = Vec2::new(me.x + 300.0, SKY - kind_body(kind).half.y - 0.5);
+    let goblin = still_foe(&mut harness, kind, at);
+    harness.step(1);
+    toss_flask(&mut harness, at);
+    assert_eq!(flask::count(harness.world()), 1, "in flight");
+    // The wizard killed while it flies; two frames for his death's own
+    // reactions.
+    tungsten::kit::kill(harness.world_mut(), player);
+    harness.step(2);
+    assert_eq!(flask::count(harness.world()), 1, "still in flight");
+    let mut landed = None;
+    for _ in 0..60 {
+        let draws = harness.world().resource::<KitRng>().draws();
+        harness.step(1);
+        let took: Vec<(Option<Entity>, bool)> = harness
+            .harness()
+            .events::<DamagedPart>()
+            .filter(|part| part.entity == goblin && !part.periodic)
+            .map(|part| {
+                (
+                    part.source,
+                    part.kinds.has(harness.world(), Kind::Poison.tag()),
+                )
+            })
+            .collect();
+        if !took.is_empty() {
+            landed = Some((took, draws));
+            break;
+        }
+    }
+    let (took, draws) = landed.expect("it splashes the goblin");
+    assert_eq!(took, [(None, true)], "its poison from nobody");
+    assert_eq!(
+        harness.world().resource::<KitRng>().draws(),
+        draws,
+        "no crit drawn: the next draw the one before the burst"
+    );
+}
+
+/// S-85: a toss is aimed by the acceleration the flask flies by, its
+/// prefab's, so the world's gravity, `tungsten.json`'s, does not move it.
+#[test]
+fn a_flask_is_tossed_by_its_prefabs_acceleration_whatever_the_worlds_gravity() {
+    use tungsten::core::PhysicsConfig;
+    use tungsten::kit::lob_velocity;
+    let (mut harness, player) = flask_range();
+    let fall = Vec2::new(0.0, 3600.0);
+    assert_eq!(flask::acceleration(harness.world()), fall, "its prefab's");
+    let world = harness.world_mut();
+    let gravity = world.resource::<PhysicsConfig>().gravity;
+    assert_eq!(gravity, fall, "the world's, as `tungsten.json` has it");
+    world.resource_mut::<PhysicsConfig>().gravity = gravity * 0.5;
+    let from = centre(&harness, player);
+    let to = Vec2::new(from.x + 400.0, SKY - 120.0);
+    let flight = flask::flight(harness.world(), from.distance(to));
+    let tossed = flask::throw(harness.world_mut(), player, from, to).expect("a flask");
+    let motion = harness
+        .world()
+        .get::<LinearMotion>(tossed)
+        .expect("its motion");
+    let aimed = lob_velocity(from, to, flight, fall);
+    assert!(
+        (motion.velocity() - aimed).length() < 1e-3,
+        "tossed at {}, aimed at {aimed}",
+        motion.velocity()
+    );
+    assert_eq!(motion.acceleration(), fall, "it flies by its prefab's");
+}
+
+#[test]
 fn a_fourth_flask_with_three_in_flight_is_refused_and_spends_nothing() {
-    use tungsten::kit::Abilities;
+    use tungsten::kit::{Abilities, Cap};
     let (mut harness, player) = flask_range();
     let me = centre(&harness, player);
     let far = Vec2::new(me.x + 1400.0, SKY);
-    for _ in 0..flask::FLASK_CAP {
+    let first = flask::throw(harness.world_mut(), player, me, far).expect("a flask");
+    // Its prefab's cap, as the flask holds it.
+    let cap = harness.world().get::<Cap>(first).expect("its cap").max() as usize;
+    for _ in 1..cap {
         assert!(flask::throw(harness.world_mut(), player, me, far).is_some());
     }
-    assert_eq!(flask::count(harness.world()), flask::FLASK_CAP);
+    assert_eq!(flask::count(harness.world()), cap);
     aim_at(&mut harness, far);
     choose(&mut harness, Spell::ToxicFlask);
     let spent = |h: &UiHarness| {
@@ -1204,9 +1581,276 @@ fn a_fourth_flask_with_three_in_flight_is_refused_and_spends_nothing() {
     let before = spent(&harness);
     let heard = cast_once(&mut harness);
     assert!(heard.contains(&Sound::Fizzled), "{heard:?}");
-    assert!(!heard.contains(&Sound::FlaskThrown), "{heard:?}");
+    assert!(heard.plays(&harness, FLASK_SFX).is_empty(), "{heard:?}");
     let after = spent(&harness);
     assert!(after.0 >= before.0, "no mana spent: {before:?} → {after:?}");
     assert_eq!(after.1, before.1, "no cooldown");
-    assert!(flask::count(harness.world()) <= flask::FLASK_CAP);
+    assert!(flask::count(harness.world()) <= cap);
+}
+
+#[test]
+fn a_seventh_missile_is_refused_before_the_spend() {
+    use tungsten::kit::Abilities;
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    // Up and to the right over the open sky, so six stay in flight.
+    aim_at(&mut harness, me + Vec2::new(400.0, -300.0));
+    choose(&mut harness, Spell::FireMissile);
+    let ability = Spell::FireMissile.ability();
+    let ready = |h: &UiHarness| h.world().get::<Abilities>(player).unwrap().ready(ability);
+    let spent = |h: &UiHarness| {
+        let abilities = h.world().get::<Abilities>(player).unwrap();
+        (mana(h), abilities.cooldown_left(ability).unwrap_or(0.0))
+    };
+    let flying = |h: &UiHarness| toys::missile_count(h.world());
+    let count = |heard: &[Sound], sound: Sound| heard.iter().filter(|&&s| s == sound).count();
+    for cast in 1..=6 {
+        assert!(until(&mut harness, 60, ready), "cast {cast}: ready");
+        cast_once(&mut harness);
+        assert_eq!(flying(&harness), cast, "cast {cast}: in flight");
+    }
+    // Pressed during the sixth's cooldown: the cap's check comes first.
+    assert!(!ready(&harness));
+    let before = spent(&harness);
+    let heard = cast_once(&mut harness);
+    assert_eq!(count(&heard, Sound::Fizzled), 1, "{heard:?}");
+    assert!(heard.plays(&harness, NOT_READY_SFX).is_empty(), "{heard:?}");
+    let after = spent(&harness);
+    assert!(after.0 >= before.0, "no mana spent: {before:?} → {after:?}");
+    assert!(after.1 <= before.1, "the cooldown not begun again");
+    assert_eq!(flying(&harness), 6, "no seventh");
+    // Once the cooldown has run out: refused still, nothing spent.
+    assert!(until(&mut harness, 60, ready));
+    let before = spent(&harness);
+    let fizzles = bursts(&harness);
+    let heard = cast_once(&mut harness);
+    assert_eq!(count(&heard, Sound::Fizzled), 1, "{heard:?}");
+    let after = spent(&harness);
+    assert!(after.0 >= before.0, "no mana spent: {before:?} → {after:?}");
+    assert!(after.1 <= 0.0, "no cooldown begun: {after:?}");
+    assert_eq!(flying(&harness), 6, "no seventh");
+    assert_eq!(bursts(&harness), fizzles + 1, "one fizzle");
+}
+
+#[test]
+fn each_cast_sounds_from_its_ability() {
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.set_base("max_mana", 1000.0);
+    stats.set_base("mana", 1000.0);
+    let volume = |h: &UiHarness, id: &str| {
+        let registry = h.world().resource::<SoundRegistry>();
+        registry.get_volume(registry.get_by_id(id).expect(id))
+    };
+    let casts = [
+        (Spell::FireMissile, CAST_SFX),
+        (Spell::ForcePush, PUSH_SFX),
+        (Spell::ToxicFlask, FLASK_SFX),
+        (Spell::BowlingBall, TOSS_SFX),
+        (Spell::Summon, SUMMON_SFX),
+    ];
+    // Each over the open sky, its sound once at full gain, from no
+    // `Sounded`.
+    for (spell, id) in casts {
+        aim_at(&mut harness, me + Vec2::new(300.0, -200.0));
+        choose(&mut harness, spell);
+        harness.step(70);
+        let heard = cast_once(&mut harness);
+        assert_eq!(
+            heard.plays(&harness, id),
+            [volume(&harness, id)],
+            "{spell:?}: {heard:?}"
+        );
+        assert!(heard.is_empty(), "{spell:?}: no `Sounded`: {heard:?}");
+    }
+    // Refused for mana, none of them.
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.set_base("max_mana", 0.0);
+    stats.set_base("mana", 0.0);
+    for (spell, _) in casts {
+        choose(&mut harness, spell);
+        harness.step(70);
+        let heard = cast_once(&mut harness);
+        for (_, id) in casts {
+            assert!(
+                heard.plays(&harness, id).is_empty(),
+                "{spell:?}: {id}: {heard:?}"
+            );
+        }
+        assert!(
+            !heard.plays(&harness, NO_MANA_SFX).is_empty(),
+            "{spell:?}: {heard:?}"
+        );
+    }
+}
+
+#[test]
+fn a_pressed_refusal_sounds_once_from_its_rule() {
+    use example_01_platformer::features::gun;
+    use example_01_platformer::features::spells::hud::Hud;
+    use example_01_platformer::features::spells::slot_of;
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    let set_mana = |h: &mut UiHarness, amount: f32| {
+        let stats = h.world_mut().get_mut::<Stats>(player).unwrap();
+        stats.set_base("max_mana", amount);
+        stats.set_base("mana", amount);
+    };
+    aim_at(&mut harness, me + Vec2::new(300.0, -200.0));
+    choose(&mut harness, Spell::FireMissile);
+    // A missile at no mana: its no-mana sound, once.
+    set_mana(&mut harness, 0.0);
+    let heard = cast_once(&mut harness);
+    assert_eq!(heard.plays(&harness, NO_MANA_SFX).len(), 1, "{heard:?}");
+    assert!(heard.plays(&harness, NOT_READY_SFX).is_empty(), "{heard:?}");
+    // One on its cooldown: not ready, once, its slot flashing red.
+    set_mana(&mut harness, 100.0);
+    cast_once(&mut harness);
+    let heard = cast_once(&mut harness);
+    assert_eq!(heard.plays(&harness, NOT_READY_SFX).len(), 1, "{heard:?}");
+    assert!(heard.plays(&harness, NO_MANA_SFX).is_empty(), "{heard:?}");
+    let hud = *harness.world().resource::<Hud>();
+    let flash = hud.slots[slot_of(Spell::FireMissile).unwrap()]
+        .flash
+        .expect("the missile's flash");
+    let colors = harness.tree().theme().tokens.colors;
+    let red = harness
+        .tree()
+        .overrides(flash)
+        .and_then(|style| style.background)
+        .expect("a red flash");
+    assert_eq!(red[..3], colors.danger[..3]);
+    // The gun held between its shots: no not-ready sound.
+    harness.harness_mut().press_action(gun::SHOOT);
+    let mut not_ready = 0;
+    for _ in 0..60 {
+        harness.step(1);
+        let mut heard = Heard::default();
+        heard.listen(&harness);
+        not_ready += heard.plays(&harness, NOT_READY_SFX).len();
+    }
+    harness.harness_mut().release_action(gun::SHOOT);
+    harness.step(1);
+    assert_eq!(not_ready, 0, "the gun's refusals outside the rules");
+    // The flamethrower pressed at no mana for a frame `Update` sees and let
+    // go on the next, neither stepping: 01's no mana, once, as before.
+    harness.harness_mut().set_dt(1.0 / 240.0);
+    choose(&mut harness, Spell::Flamethrower);
+    set_mana(&mut harness, 0.0);
+    assert!(until(&mut harness, 8, |h| super::steps_this_frame(h) > 0));
+    let mut heard = Heard::default();
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    assert_eq!(
+        super::steps_this_frame(&harness),
+        0,
+        "the press's frame steps none"
+    );
+    heard.listen(&harness);
+    harness.harness_mut().release_action("cast");
+    harness.step(1);
+    assert_eq!(super::steps_this_frame(&harness), 0, "nor the release's");
+    heard.listen(&harness);
+    let no_mana = heard
+        .iter()
+        .filter(|&&sound| sound == Sound::NoMana)
+        .count();
+    assert_eq!(no_mana, 1, "{heard:?}");
+}
+
+#[test]
+fn a_missile_flying_left_is_mirrored_along_its_flight() {
+    use tungsten::core::components::SpriteFlip;
+    use tungsten::core::{AnimationState, Transform};
+    // Cast down and to the left, then to the right: the rocket's one clip,
+    // flipped and turned along its flight reversed when it flies left, as
+    // `missile_look` turned its left twin, else along its flight.
+    for (aim, left) in [
+        (Vec2::new(-400.0, 100.0), true),
+        (Vec2::new(400.0, 0.0), false),
+    ] {
+        let (mut harness, player) = run();
+        ground(&mut harness, 600.0);
+        stand(&mut harness, player, 700.0, 600.0);
+        harness.step(1);
+        pin_camera(&mut harness, Vec2::new(200.0, 200.0));
+        let from = centre(&harness, player);
+        aim_at(&mut harness, from + aim);
+        choose(&mut harness, Spell::FireMissile);
+        harness.harness_mut().press_action("cast");
+        harness.step(1);
+        harness.harness_mut().release_action("cast");
+        harness.step(1);
+        let world = harness.world();
+        let (missile, velocity) = world
+            .query::<(Entity, &FireMissile, &LinearMotion)>()
+            .map(|(entity, _, motion)| (entity, motion.velocity()))
+            .next()
+            .expect("a missile");
+        assert_eq!(
+            world.get::<AnimationState>(missile).unwrap().animation_id,
+            "ex10_fire_missile",
+            "left {left}"
+        );
+        let flipped = world.get::<SpriteFlip>(missile).is_some_and(|flip| flip.0);
+        assert_eq!(flipped, left, "flipped flying left alone");
+        let lies = Vec2::from_angle(world.get::<Transform>(missile).unwrap().rotation);
+        let unit = velocity.normalize();
+        let along = if left { -unit } else { unit };
+        assert!(
+            (lies - along).length() < 1e-5,
+            "left {left}: {lies} for {unit}"
+        );
+    }
+}
+
+#[test]
+fn a_hole_collapses_at_its_sixth_second() {
+    let (mut harness, player) = run();
+    ground(&mut harness, 600.0);
+    stand(&mut harness, player, 700.0, 600.0);
+    harness.step(1);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    pin_camera(&mut harness, Vec2::new(200.0, 200.0));
+    // Placed in a step at 1/60 s, the press's.
+    let at = centre(&harness, player) + Vec2::new(300.0, -200.0);
+    aim_at(&mut harness, at);
+    choose(&mut harness, Spell::BlackHole);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    assert_eq!(super::steps_this_frame(&harness), 1, "the press met a step");
+    let hole = harness
+        .world()
+        .query::<(Entity, &BlackHole)>()
+        .map(|(entity, _)| entity)
+        .next()
+        .expect("the press opened a hole");
+    let mut steps = 0;
+    for _ in 0..400 {
+        if steps == 359 {
+            break;
+        }
+        harness.step(1);
+        steps += super::steps_this_frame(&harness);
+        assert!(harness.world().is_alive(hole), "open after {steps} steps");
+    }
+    assert_eq!(steps, 359, "open 359 steps on");
+    harness.step(1);
+    assert_eq!(super::steps_this_frame(&harness), 1);
+    let world = harness.world();
+    assert!(!world.is_alive(hole), "collapsed at the 360th");
+    assert_eq!(
+        world
+            .query::<&ShockRing>()
+            .filter(|ring| ring.kind == Ring::Collapse)
+            .count(),
+        1,
+        "its ring"
+    );
+    assert!(
+        super::player::plays(&harness, "ex10_black_hole_collapse_sfx") > 0,
+        "its collapse's sound"
+    );
 }

@@ -1,0 +1,16 @@
+{
+  "intensity": {
+    "max": 1,
+    "decay": 0.15
+  },
+  "bands": [
+    {
+      "at": 0.99999,
+      "enter": [
+        {
+          "handler": "freeze"
+        }
+      ]
+    }
+  ]
+}

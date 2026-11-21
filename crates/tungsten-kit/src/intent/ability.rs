@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::physics::{
     BodyKind, Collider, PhysicsConfig, Position, RigidBody, Shape, SpatialFilter, Velocity, overlap,
 };
+use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{
     AssetRegistry, CommandBuffer, DataRef, DataRegistry, Entity, EventQueue, Inspectable,
     MissingAsset, Plugin, PrefabRegistry, Schedule, SpawnContext, Time, Transform, World, system,
@@ -20,7 +21,9 @@ use crate::count_down;
 use crate::damage::defense::Resist;
 use crate::damage::effects::{EFFECTS, Effect, EffectRequest};
 use crate::damage::health::Health;
-use crate::damage::pipeline::{DamagePart, DamageRequest};
+use crate::damage::pipeline::{
+    DamagePart, DamageRequest, check_hit_prep, hit_prep, refuse_hit_prep,
+};
 use crate::foundation::describe::{
     ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, SHOOTER,
     TOP_DOWN, describe, describe_kind, describe_shape, round_trip,
@@ -73,6 +76,8 @@ const PLACE_PAYLOAD: &str = "place_payload";
 const CONDUCT_PAYLOAD: &str = "conduct_payload";
 /// The most chains a World runs at once.
 const MAX_CHAINS: usize = 64;
+/// The name a save holds the chains in flight under.
+const CONDUCTIONS: &str = "conductions";
 const SKILL: &str = "skill";
 const SKILL_BASES: &str = "skill_bases";
 const SKILL_LINE: &str = "skill_line";
@@ -246,7 +251,9 @@ impl Payload {
 }
 
 /// A spawn payload with its options: a [`Payload::Spawn`]'s prefab, speed
-/// and offset, and its prefab's centre placed on the entity's centre
+/// and offset, and its prefab's centre (its `rigid_body`'s offset, else a
+/// bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else
+/// its sprite's drawn centre) placed on the entity's centre
 /// ([`centre_of`](crate::centre_of)) rather than its point on the entity's
 /// point, or a [`Lob`] in place of its speed. Its data form is the `spawn`
 /// payload's with `centred` or `lob`.
@@ -2320,22 +2327,45 @@ impl AbilityUsed {
     }
 }
 
+/// An entry turned ready, sent once [`AbilitiesPlugin`] has registered its
+/// queue: in the step whose counting makes it ready, its cooldown run out
+/// with a charge left or a charge back from none, before that step's uses,
+/// whether or not a cue names `ability_ready`. An entry ready from its
+/// spawn, or made ready by a refill, sends none.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct AbilityReady {
+    /// The entity that owns it.
+    pub entity: Entity,
+    /// The ability's name in the entity's [`Abilities`].
+    pub name: String,
+}
+
 /// A conduction: a strike of `damage` on the use's target, which jumps on
 /// one receiver a step from its last receiver to the nearest live receiver
 /// within `reach`, centre to centre, not yet in the chain, ties by save
-/// order, its damage times `keep` each jump, at most `jumps` jumps. A
-/// receiver whose `Resist` factor for the damage's types is 0, or whose
-/// tags pass `stop`, takes no strike and ends it. Each strike is a damage
-/// request from the user at the receiver. A World runs at most 64 chains,
-/// a use past them striking its target alone, traced; chains are not
-/// saved, and one ends as soon as its user or its last receiver is gone or
-/// despawning. It is a [`Payload::Conduct`], for a `nearest` or `random`
-/// target, which the load checks.
+/// order, its damage times `keep` each jump, at most `jumps` jumps, each
+/// jump sending [`Conducted`]. A receiver whose `Resist` factor for the
+/// damage's types is 0, or whose tags pass `stop`, takes no strike and ends
+/// it, or with `stop_struck` takes its strike, then ends it. Each strike is
+/// a blast's hit: a damage request from the user at the receiver's centre,
+/// on a receiver with live health alone, in its `context`, its game's
+/// preparation run on it (`prepare`), then its crit rolled from the user's
+/// stats; a conduction whose preparation no game registered is refused,
+/// with one warning. A World runs at most 64 chains, a use past them
+/// striking its target alone, traced; the chains save by save ID
+/// (`conductions`), and one ends as soon as its user is gone or
+/// despawning, or its last receiver is, unless with `past_gone` it jumps on
+/// from that receiver's centre at its strike.
+/// It is a [`Payload::Conduct`], for a `nearest` or `random` target, which
+/// the load checks, and a game's code starts one at a receiver with
+/// [`conduct_from`].
 ///
 /// Data form: `{ "damage": 30, "tags": ["damage.lightning"], "reach": 256,
 /// "keep": 0.7, "jumps": 6, "receivers": { "all": ["conductive"] },
-/// "stop": { "any": ["status.frozen"] } }`, `damage`, `reach` and
-/// `receivers` needed.
+/// "stop": { "any": ["status.frozen"] }, "context": ["hit.spell"],
+/// "prepare": "armour", "stop_struck": true, "past_gone": true }`,
+/// `damage`, `reach` and `receivers` needed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Conduct {
     damage: f32,
@@ -2345,6 +2375,10 @@ pub struct Conduct {
     jumps: u32,
     receivers: TagFilter,
     stop: TagFilter,
+    context: Vec<String>,
+    prepare: Option<String>,
+    stop_struck: bool,
+    past_gone: bool,
 }
 
 impl Conduct {
@@ -2378,6 +2412,10 @@ impl Conduct {
             jumps: 6,
             receivers,
             stop: TagFilter::new(),
+            context: Vec::new(),
+            prepare: None,
+            stop_struck: false,
+            past_gone: false,
         }
     }
 
@@ -2418,7 +2456,63 @@ impl Conduct {
         self
     }
 
-    /// The load's check: its tags and its filters' names declared.
+    /// The conduction, its strikes in the context `tags` (`hit.spell`),
+    /// which the receivers' scoped resistances and `damage_taken` lines and
+    /// the user's `damage_dealt` lines read.
+    ///
+    /// # Panics
+    ///
+    /// When a tag is not a tag name.
+    #[must_use]
+    #[track_caller]
+    pub fn with_context(mut self, tags: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        let tags: Vec<String> = tags.into_iter().map(Into::into).collect();
+        if let Some(tag) = tags.iter().find(|tag| !valid_tag(tag)) {
+            panic!("Conduct::with_context: `{tag}` is not a tag name");
+        }
+        self.context = tags;
+        self
+    }
+
+    /// The conduction, running the game's hit preparation `name`
+    /// ([`add_hit_prep`](crate::add_hit_prep)) on each strike before its
+    /// crit; started while no preparation holds the name, it is refused with
+    /// one warning.
+    ///
+    /// # Panics
+    ///
+    /// When `name` is not `[a-z][a-z0-9_]*`.
+    #[must_use]
+    #[track_caller]
+    pub fn with_prepare(mut self, name: impl Into<String>) -> Self {
+        let name = name.into();
+        assert!(
+            crate::foundation::stats::valid_stat(&name),
+            "Conduct::with_prepare: `{name}` is not a preparation name"
+        );
+        self.prepare = Some(name);
+        self
+    }
+
+    /// The conduction, striking an immune or stopping receiver before it
+    /// ends there when `struck`, rather than ending unstruck.
+    #[must_use]
+    pub fn with_stop_struck(mut self, struck: bool) -> Self {
+        self.stop_struck = struck;
+        self
+    }
+
+    /// The conduction, jumping on past a last receiver gone or despawning
+    /// when `past`, from that receiver's centre at its strike, rather than
+    /// ending.
+    #[must_use]
+    pub fn with_past_gone(mut self, past: bool) -> Self {
+        self.past_gone = past;
+        self
+    }
+
+    /// The load's check: its tags, its filters' names and its context
+    /// declared, and its preparation registered.
     fn check(&self, world: &World, field: &str) -> Result<(), MissingAsset> {
         for (i, tag) in self.tags.iter().enumerate() {
             check_declared(world, &format!("{field}.tags.{i}"), tag)?;
@@ -2428,7 +2522,39 @@ impl Conduct {
                 check_declared(world, &format!("{field}.{list}.{name_at}"), &name)?;
             }
         }
+        for (i, tag) in self.context.iter().enumerate() {
+            check_declared(world, &format!("{field}.context.{i}"), tag)?;
+        }
+        if let Some(name) = &self.prepare {
+            check_hit_prep(world, &format!("{field}.prepare"), name)?;
+        }
         Ok(())
+    }
+
+    /// Whether `receiver` ends its chain: its `Resist` factor for the
+    /// damage's `types` 0, or its tags passing the stop.
+    fn stops(&self, world: &World, receiver: Entity, types: &Tags) -> bool {
+        let immune = world
+            .get::<Resist>(receiver)
+            .is_some_and(|resist| !self.tags.is_empty() && resist.factor(types) == 0.0);
+        immune || (self.stop.matches(world.get::<Tags>(receiver)) && !self.stop.matches(None))
+    }
+
+    /// Whether it may strike: no preparation, or one a game registered;
+    /// else refused, with one warning a name.
+    fn prepares(&self, world: &mut World) -> bool {
+        match self.prepare.as_deref() {
+            Some(name) if hit_prep(world, name).is_none() => {
+                refuse_hit_prep(world, "a conduction", name);
+                false
+            }
+            _ => true,
+        }
+    }
+
+    /// Its damage's types.
+    fn types(&self) -> Tags {
+        Tags::new(self.tags.iter().map(String::as_str))
     }
 }
 
@@ -2443,6 +2569,11 @@ struct ConductDef {
     jumps: u32,
     receivers: TagFilter,
     stop: TagFilter,
+    context: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prepare: Option<String>,
+    stop_struck: bool,
+    past_gone: bool,
 }
 
 fn default_keep() -> f32 {
@@ -2469,6 +2600,14 @@ struct ConductFields {
     receivers: TagFilter,
     #[serde(default)]
     stop: TagFilter,
+    #[serde(default)]
+    context: Vec<String>,
+    #[serde(default)]
+    prepare: Option<String>,
+    #[serde(default)]
+    stop_struck: bool,
+    #[serde(default)]
+    past_gone: bool,
 }
 
 impl TryFrom<ConductFields> for ConductDef {
@@ -2484,9 +2623,18 @@ impl TryFrom<ConductFields> for ConductDef {
                     .to_string(),
             );
         }
-        if let Some(name) = fields.tags.iter().find(|name| !valid_tag(name)) {
+        for (field, list) in [("tags", &fields.tags), ("context", &fields.context)] {
+            if let Some(name) = list.iter().find(|name| !valid_tag(name)) {
+                return Err(format!(
+                    "{field}: `{name}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+                ));
+            }
+        }
+        if let Some(name) = &fields.prepare
+            && !crate::foundation::stats::valid_stat(name)
+        {
             return Err(format!(
-                "tags: `{name}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+                "prepare: `{name}` is not a preparation name (`[a-z][a-z0-9_]*`)"
             ));
         }
         Ok(Self {
@@ -2497,6 +2645,10 @@ impl TryFrom<ConductFields> for ConductDef {
             jumps: fields.jumps,
             receivers: fields.receivers,
             stop: fields.stop,
+            context: fields.context,
+            prepare: fields.prepare,
+            stop_struck: fields.stop_struck,
+            past_gone: fields.past_gone,
         })
     }
 }
@@ -2511,6 +2663,10 @@ impl From<ConductDef> for Conduct {
             jumps: def.jumps,
             receivers: def.receivers,
             stop: def.stop,
+            context: def.context,
+            prepare: def.prepare,
+            stop_struck: def.stop_struck,
+            past_gone: def.past_gone,
         }
     }
 }
@@ -2525,58 +2681,358 @@ impl From<Conduct> for ConductDef {
             jumps: conduct.jumps,
             receivers: conduct.receivers,
             stop: conduct.stop,
+            context: conduct.context,
+            prepare: conduct.prepare,
+            stop_struck: conduct.stop_struck,
+            past_gone: conduct.past_gone,
         }
     }
 }
 
+/// A conduction's jump to a receiver, sent at each jump by
+/// [`ABILITY_TICK`]: its user and the receiver, the point it left (its last
+/// receiver's centre, or that receiver's centre at its strike once it is
+/// gone), the receiver's centre, its number from 1, its damage, and whether
+/// it struck, false where an immune or stopping receiver ended the chain
+/// unstruck. A struck receiver without live health takes no request.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub struct Conducted {
+    /// The conduction's user.
+    pub user: Entity,
+    /// The receiver it jumped to.
+    pub receiver: Entity,
+    /// The point it left.
+    pub from: Vec2,
+    /// The receiver's centre, where it struck.
+    pub to: Vec2,
+    /// The jump's number in its chain, from 1.
+    pub jump: u32,
+    /// The jump's damage, its chain's times its keep, before the receiver's
+    /// resistances and the crit.
+    pub damage: f32,
+    /// Whether it struck the receiver.
+    pub struck: bool,
+}
+
+/// A conduction in flight, as [`conductions`] reads it: its user, its last
+/// receiver, the receivers it struck or was started past, its damage now
+/// (its last strike's, which its next jump times its keep) and its jumps
+/// left.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct Conduction {
+    /// The conduction's user.
+    pub user: Entity,
+    /// Its last receiver, which its next jump leaves;
+    /// [`Entity::PLACEHOLDER`] once a load found it gone, which a chain
+    /// past a gone receiver jumps on from its kept point.
+    pub last: Entity,
+    /// The receivers it struck or was started past, in order.
+    pub chained: Vec<Entity>,
+    /// Its damage now.
+    pub damage: f32,
+    /// Its jumps left.
+    pub jumps: u32,
+}
+
 /// A conduction in flight: its user, its last receiver and every one it
-/// struck, its damage now, its jumps left and its rule.
+/// struck, the last receiver's centre at its strike, its damage now, its
+/// jumps left and its rule.
 #[derive(Debug)]
 struct Chain {
     user: Entity,
     last: Entity,
     chained: Vec<Entity>,
+    /// Where it jumps from past a gone last receiver.
+    from: Vec2,
     damage: f32,
     jumps: u32,
     conduct: Conduct,
 }
 
 /// The chains in flight, a World resource the first conduction inserts,
-/// which [`ABILITY_TICK`] jumps once each step; not saved.
+/// which [`ABILITY_TICK`] jumps once each step, saved as `conductions`
+/// ([`chains_saved`]).
 #[derive(Debug, Default)]
 struct Chains(Vec<Chain>);
 
-/// Strikes `receiver` for `damage` of `conduct`'s types from `user`, at its
-/// centre; false, with no strike, when it is immune to them or its tags
-/// pass the stop, which ends the chain.
+/// A chain in a save: its last receiver's centre at its strike, its
+/// damage, its jumps left and its conduction's data form; its user, last
+/// receiver and chained receivers by reference.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChainSave {
+    from: [f32; 2],
+    damage: f32,
+    jumps: u32,
+    conduct: ConductDef,
+}
+
+/// The chains in a save, in their order.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChainsSave {
+    chains: Vec<ChainSave>,
+}
+
+impl From<&Chains> for ChainsSave {
+    fn from(chains: &Chains) -> Self {
+        Self {
+            chains: chains
+                .0
+                .iter()
+                .map(|chain| ChainSave {
+                    from: chain.from.to_array(),
+                    damage: chain.damage,
+                    jumps: chain.jumps,
+                    conduct: ConductDef::from(chain.conduct.clone()),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<ChainsSave> for Chains {
+    /// Each chain's references the placeholder until the load's reference
+    /// pass sets them; a damage that is not finite and at least 0 reads as
+    /// 0, a point that is not finite as the origin.
+    fn from(saved: ChainsSave) -> Self {
+        Self(
+            saved
+                .chains
+                .into_iter()
+                .map(|chain| Chain {
+                    user: Entity::PLACEHOLDER,
+                    last: Entity::PLACEHOLDER,
+                    chained: Vec::new(),
+                    from: Some(Vec2::from_array(chain.from))
+                        .filter(|from| from.is_finite())
+                        .unwrap_or_default(),
+                    damage: if chain.damage.is_finite() {
+                        chain.damage.max(0.0)
+                    } else {
+                        0.0
+                    },
+                    jumps: chain.jumps,
+                    conduct: Conduct::from(chain.conduct),
+                })
+                .collect(),
+        )
+    }
+}
+
+/// Each chain's user, last receiver and chained receivers, by key, in
+/// order.
+fn chain_refs(chains: &Chains) -> impl Iterator<Item = (String, Entity)> + '_ {
+    chains.0.iter().enumerate().flat_map(|(index, chain)| {
+        [
+            (format!("chains.{index}.user"), chain.user),
+            (format!("chains.{index}.last"), chain.last),
+        ]
+        .into_iter()
+        .chain(
+            chain
+                .chained
+                .iter()
+                .map(move |&receiver| (format!("chains.{index}.chained"), receiver)),
+        )
+    })
+}
+
+/// The chains, saved so a conduction in flight jumps on after a load: each
+/// one's user, last receiver and chained receivers by save ID, its kept
+/// point, its damage, its jumps left and its conduction, in their order.
+/// The load drops a chain whose user did not load, a chained receiver that
+/// did not load from its chain's list, and a chain whose last receiver did
+/// not load unless it jumps past a gone one (`past_gone`), from its kept
+/// point; at most [`MAX_CHAINS`] load. A World that never conducted saves
+/// none.
+fn chains_saved() -> SaveOptions<Chains> {
+    SaveOptions::<Chains>::form::<ChainsSave>().refs(RefCodec {
+        save: |chains, out: &mut RefWriter<'_>| {
+            for (key, entity) in chain_refs(chains) {
+                out.put(&key, entity);
+            }
+        },
+        load: |chains, refs: &RefReader<'_>| {
+            let saved = std::mem::take(&mut chains.0);
+            for (index, mut chain) in saved.into_iter().enumerate() {
+                let Some(user) = refs.first(&format!("chains.{index}.user")) else {
+                    continue;
+                };
+                chain.user = user;
+                chain.chained = refs.get(&format!("chains.{index}.chained")).to_vec();
+                match refs.first(&format!("chains.{index}.last")) {
+                    Some(last) => chain.last = last,
+                    None if chain.conduct.past_gone => {}
+                    None => continue,
+                }
+                if chain.jumps > 0 && chains.0.len() < MAX_CHAINS {
+                    chains.0.push(chain);
+                }
+            }
+        },
+        keys: |chains| chain_refs(chains).map(|(key, _)| key).collect(),
+    })
+}
+
+/// Whether a strike reaches `receiver` with a request: it holds
+/// [`Health`], alive, and is not being despawned.
+fn lives(world: &World, receiver: Entity) -> bool {
+    world
+        .get::<Health>(receiver)
+        .is_some_and(|health| !health.is_dead())
+        && !world.has::<Despawning>(receiver)
+}
+
+/// Strikes `receiver` at `at` for `damage` of `conduct`'s `types` from
+/// `user`, as a blast's hit: a request on a receiver with live health alone,
+/// in the conduction's context, its preparation run on it, then its crit
+/// rolled from the user's stats.
 fn conduct_strike(
     world: &mut World,
     user: Entity,
     receiver: Entity,
+    at: Vec2,
     damage: f32,
     conduct: &Conduct,
+    types: Tags,
+) {
+    if !lives(world, receiver) {
+        return;
+    }
+    let mut request =
+        DamageRequest::from_parts(receiver, [DamagePart::new(damage).with_tags(types)])
+            .with_context(Tags::new(conduct.context.iter().map(String::as_str)))
+            .with_source(user)
+            .with_position(at);
+    if let Some(prep) = conduct
+        .prepare
+        .as_deref()
+        .and_then(|name| hit_prep(world, name))
+    {
+        prep(world, &mut request);
+    }
+    request.roll_crit(world).queue(world);
+}
+
+/// Starts a chain of `conduct` from `user` at `first`, its receivers
+/// `chained` and `first`, its damage and jumps the conduction's, its first
+/// jump at the next step's [`ABILITY_TICK`]; false, pushing nothing, past
+/// [`MAX_CHAINS`], traced on `user` as `why`.
+fn push_chain(
+    world: &mut World,
+    user: Entity,
+    first: Entity,
+    chained: &[Entity],
+    conduct: &Conduct,
+    why: &'static str,
 ) -> bool {
-    let types = Tags::new(conduct.tags.iter().map(String::as_str));
-    let immune = world
-        .get::<Resist>(receiver)
-        .is_some_and(|resist| !conduct.tags.is_empty() && resist.factor(&types) == 0.0);
-    let stopped = conduct.stop.matches(world.get::<Tags>(receiver)) && !conduct.stop.matches(None);
-    if immune || stopped {
+    let from = centre_of(world, first).unwrap_or_default();
+    if !world.has_resource::<Chains>() {
+        world.insert_resource(Chains::default());
+    }
+    let chains = world.resource_mut::<Chains>();
+    if chains.0.len() >= MAX_CHAINS {
+        skip(world, user, "conduct", why);
         return false;
     }
-    let at = centre_of(world, receiver).unwrap_or_default();
-    DamageRequest::from_parts(receiver, [DamagePart::new(damage).with_tags(types)])
-        .with_source(user)
-        .with_position(at)
-        .queue(world);
+    let mut struck = chained.to_vec();
+    if !struck.contains(&first) {
+        struck.push(first);
+    }
+    chains.0.push(Chain {
+        user,
+        last: first,
+        chained: struck,
+        from,
+        damage: conduct.damage,
+        jumps: conduct.jumps,
+        conduct: conduct.clone(),
+    });
     true
+}
+
+/// Starts a conduction from `user` at `first`, unstruck, as a
+/// [`Payload::Conduct`]'s chain after its strike: `chained` and `first` its
+/// receivers already struck, which it never jumps to, its damage and jumps
+/// the conduction's, its first jump at the next step's [`ABILITY_TICK`],
+/// from `first`'s centre. False, pushing nothing, with `first` gone,
+/// despawning or dead, immune to the conduction's types or its tags
+/// passing the stop, with no jumps, with its preparation unregistered (one
+/// warning a name), or with 64 chains running (traced on `user`).
+///
+/// # Examples
+///
+/// ```
+/// use glam::Vec2;
+/// use tungsten_core::{Plugin, Schedule, Transform, World};
+/// use tungsten_kit::{AbilitiesPlugin, Conduct, TagFilter, Tags, conduct_from, conductions};
+///
+/// let mut world = World::new();
+/// let mut schedule = Schedule::new();
+/// AbilitiesPlugin.build(&mut schedule, &mut world);
+/// let rod = |world: &mut World, x: f32| {
+///     world.spawn_with((Tags::new(["conductive"]), Transform::from_position(Vec2::new(x, 0.0))))
+/// };
+/// let (caster, first) = (rod(&mut world, 0.0), rod(&mut world, 100.0));
+/// let bolt = Conduct::new(40.0, 256.0, TagFilter::new().all(["conductive"]));
+/// assert!(conduct_from(&mut world, caster, first, &bolt, &[caster]));
+/// let chains = conductions(&world);
+/// assert_eq!(chains[0].chained, [caster, first], "it never jumps back to either");
+/// assert!(!conduct_from(&mut world, caster, first, &bolt.clone().with_jumps(0), &[]));
+/// ```
+pub fn conduct_from(
+    world: &mut World,
+    user: Entity,
+    first: Entity,
+    conduct: &Conduct,
+    chained: &[Entity],
+) -> bool {
+    if !conduct.prepares(world) {
+        return false;
+    }
+    if !world.is_alive(first)
+        || world.has::<Despawning>(first)
+        || world.get::<Health>(first).is_some_and(Health::is_dead)
+        || conduct.stops(world, first, &conduct.types())
+        || conduct.jumps == 0
+    {
+        return false;
+    }
+    push_chain(world, user, first, chained, conduct, NO_CHAIN_STARTED)
+}
+
+/// Each conduction in flight, in the order its chains jump: its user, its
+/// last receiver, its chained receivers, its damage now and its jumps left.
+/// None in a World that never conducted.
+#[must_use]
+pub fn conductions(world: &World) -> Vec<Conduction> {
+    world
+        .get_resource::<Chains>()
+        .map_or_else(Vec::new, |chains| {
+            chains
+                .0
+                .iter()
+                .map(|chain| Conduction {
+                    user: chain.user,
+                    last: chain.last,
+                    chained: chain.chained.clone(),
+                    damage: chain.damage,
+                    jumps: chain.jumps,
+                })
+                .collect()
+        })
 }
 
 /// Jumps each chain once: to the nearest live receiver within its reach of
 /// its last, not yet chained, ties by save order, striking it for its damage
-/// times its keep; a chain ends at its jumps, with no receiver in reach, at
-/// an immune or stopping receiver, or with its user or last receiver gone
-/// or despawning. A World with no chain does nothing.
+/// times its keep and sending [`Conducted`]; a chain ends at its jumps, with
+/// no receiver in reach, at an immune or stopping receiver (struck with
+/// `stop_struck`), with its user gone or despawning, with its last receiver
+/// gone or despawning unless it jumps past it (`past_gone`), or with its
+/// preparation unregistered. A World with no chain does nothing.
 fn jump_chains(world: &mut World) {
     let Some(chains) = world.get_resource_mut::<Chains>() else {
         return;
@@ -2585,48 +3041,88 @@ fn jump_chains(world: &mut World) {
         return;
     }
     let mut chains = std::mem::take(&mut chains.0);
-    chains.retain_mut(|chain| {
-        let gone = |entity: Entity| !world.is_alive(entity) || world.has::<Despawning>(entity);
-        if gone(chain.user) || gone(chain.last) {
-            return false;
-        }
-        let Some(from) = centre_of(world, chain.last) else {
-            return false;
-        };
-        let reach = chain.conduct.reach * chain.conduct.reach;
-        let order = order_of(world);
-        let next = world
-            .query::<(Entity, &Tags)>()
-            .filter(|(entity, tags)| {
-                chain.conduct.receivers.matches(Some(tags))
-                    && !chain.chained.contains(entity)
-                    && !world.has::<Despawning>(*entity)
-                    && !world.get::<Health>(*entity).is_some_and(Health::is_dead)
-            })
-            .filter_map(|(entity, _)| {
-                let distance = centre_of(world, entity)?.distance_squared(from);
-                (distance <= reach).then_some((entity, distance))
-            })
-            .min_by(|a, b| {
-                a.1.total_cmp(&b.1)
-                    .then_with(|| order.key(a.0).cmp(&order.key(b.0)))
-            })
-            .map(|(entity, _)| entity);
-        let Some(next) = next else {
-            return false;
-        };
-        chain.damage *= chain.conduct.keep;
-        if !conduct_strike(world, chain.user, next, chain.damage, &chain.conduct) {
-            return false;
-        }
-        chain.chained.push(next);
-        chain.last = next;
-        chain.jumps -= 1;
-        chain.jumps > 0
-    });
+    chains.retain_mut(|chain| jump_chain(world, chain));
     let list = world.resource_mut::<Chains>();
     chains.append(&mut list.0);
     list.0 = chains;
+}
+
+/// Jumps `chain` once, as [`jump_chains`] says; false when it ends.
+fn jump_chain(world: &mut World, chain: &mut Chain) -> bool {
+    let gone =
+        |world: &World, entity: Entity| !world.is_alive(entity) || world.has::<Despawning>(entity);
+    if gone(world, chain.user) {
+        return false;
+    }
+    let from = match (gone(world, chain.last), chain.conduct.past_gone) {
+        (false, past) => match centre_of(world, chain.last) {
+            Some(centre) => centre,
+            None if past => chain.from,
+            None => return false,
+        },
+        (true, true) => chain.from,
+        (true, false) => return false,
+    };
+    if !chain.conduct.prepares(world) {
+        return false;
+    }
+    let reach = chain.conduct.reach * chain.conduct.reach;
+    let order = order_of(world);
+    let next = world
+        .query::<(Entity, &Tags)>()
+        .filter(|(entity, tags)| {
+            chain.conduct.receivers.matches(Some(tags))
+                && !chain.chained.contains(entity)
+                && !world.has::<Despawning>(*entity)
+                && !world.get::<Health>(*entity).is_some_and(Health::is_dead)
+        })
+        .filter_map(|(entity, _)| {
+            let centre = centre_of(world, entity)?;
+            let distance = centre.distance_squared(from);
+            (distance <= reach).then_some((entity, centre, distance))
+        })
+        .min_by(|a, b| {
+            a.2.total_cmp(&b.2)
+                .then_with(|| order.key(a.0).cmp(&order.key(b.0)))
+        })
+        .map(|(entity, centre, _)| (entity, centre));
+    let Some((next, to)) = next else {
+        return false;
+    };
+    chain.damage *= chain.conduct.keep;
+    let types = chain.conduct.types();
+    let stopped = chain.conduct.stops(world, next, &types);
+    let struck = !stopped || chain.conduct.stop_struck;
+    if struck {
+        conduct_strike(
+            world,
+            chain.user,
+            next,
+            to,
+            chain.damage,
+            &chain.conduct,
+            types,
+        );
+    }
+    if let Some(queue) = world.get_resource_mut::<EventQueue<Conducted>>() {
+        queue.send(Conducted {
+            user: chain.user,
+            receiver: next,
+            from,
+            to,
+            jump: chain.conduct.jumps.saturating_sub(chain.jumps) + 1,
+            damage: chain.damage,
+            struck,
+        });
+    }
+    if stopped {
+        return false;
+    }
+    chain.chained.push(next);
+    chain.last = next;
+    chain.from = to;
+    chain.jumps -= 1;
+    chain.jumps > 0
 }
 
 /// Why a use or a payload did not run, for the trace.
@@ -2638,6 +3134,7 @@ const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
 const NO_PREFAB: &str = "the prefab does not prepare";
 const NO_RECEIVER: &str = "a conduction needs a target other than its user";
 const TOO_MANY_CHAINS: &str = "64 chains run; this one strikes its target alone";
+const NO_CHAIN_STARTED: &str = "64 chains run; this one does not start";
 
 /// Traces why `action` of the ability did not run on `entity`.
 fn skip(world: &mut World, entity: Entity, action: &'static str, why: &'static str) {
@@ -2671,6 +3168,8 @@ struct Scratch {
     /// The named ability cue events of one entity's tick: each event and
     /// its entry's index.
     cues: Vec<(&'static str, u16)>,
+    /// The entries of one entity's tick that turned ready, by name.
+    ready: Vec<String>,
 }
 
 impl Scratch {
@@ -3169,28 +3668,20 @@ fn try_use(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch)
                     skip(world, entity, "conduct", NO_RECEIVER);
                     continue;
                 }
-                if !conduct_strike(world, entity, target, conduct.damage, conduct) {
+                if !conduct.prepares(world) {
                     continue;
                 }
-                if conduct.jumps == 0 {
+                let types = conduct.types();
+                let stopped = conduct.stops(world, target, &types);
+                if stopped && !conduct.stop_struck {
                     continue;
                 }
-                if !world.has_resource::<Chains>() {
-                    world.insert_resource(Chains::default());
-                }
-                let chains = world.resource_mut::<Chains>();
-                if chains.0.len() >= MAX_CHAINS {
-                    skip(world, entity, "conduct", TOO_MANY_CHAINS);
+                let at = centre_of(world, target).unwrap_or_default();
+                conduct_strike(world, entity, target, at, conduct.damage, conduct, types);
+                if stopped || conduct.jumps == 0 {
                     continue;
                 }
-                chains.0.push(Chain {
-                    user: entity,
-                    last: target,
-                    chained: vec![target],
-                    damage: conduct.damage,
-                    jumps: conduct.jumps,
-                    conduct: (**conduct).clone(),
-                });
+                push_chain(world, entity, target, &[], conduct, TOO_MANY_CHAINS);
             }
             Payload::Hitbox(seconds) => match world.get_mut::<Hitbox>(entity) {
                 Some(hitbox) => {
@@ -3312,8 +3803,11 @@ impl Ticker {
                 } else {
                     entry.charges = None;
                 }
-                if !was_ready && ready(entry) && cue_named(world, entity, ABILITY_READY) {
-                    self.scratch.cues.push((ABILITY_READY, index));
+                if !was_ready && ready(entry) {
+                    self.scratch.ready.push(entry.name.clone());
+                    if cue_named(world, entity, ABILITY_READY) {
+                        self.scratch.cues.push((ABILITY_READY, index));
+                    }
                 }
             }
             match &ability.trigger {
@@ -3353,6 +3847,16 @@ impl Ticker {
             }
         }
         *world.get_mut::<Abilities>(entity).unwrap() = abilities;
+        if !self.scratch.ready.is_empty() {
+            match world.get_resource_mut::<EventQueue<AbilityReady>>() {
+                Some(queue) => {
+                    for name in self.scratch.ready.drain(..) {
+                        queue.send(AbilityReady { entity, name });
+                    }
+                }
+                None => self.scratch.ready.clear(),
+            }
+        }
         if !self.scratch.cues.is_empty() {
             let at = point_of(world, entity).unwrap_or(Vec2::ZERO);
             for (event, entry) in self.scratch.cues.drain(..) {
@@ -3377,7 +3881,9 @@ impl Ticker {
 }
 
 /// Registers the `abilities` data kind and scene component,
-/// `EventQueue<AbilityUsed>` and [`ABILITY_TICK`] in the intent phase after
+/// `EventQueue<AbilityUsed>`, `EventQueue<AbilityReady>`,
+/// `EventQueue<Conducted>`, the saved chains
+/// (`conductions`) and [`ABILITY_TICK`] in the intent phase after
 /// [`ACTION_INPUT`](crate::ACTION_INPUT) and [`AIM`](crate::AIM) when they
 /// are registered, so a trigger reads the step's intent and aim.
 ///
@@ -3407,6 +3913,9 @@ impl Plugin for AbilitiesPlugin {
         describe_abilities(world);
         describe_skills(world, SKILL, SKILL_BASES, SKILL_LINE);
         world.register_event::<AbilityUsed>();
+        world.register_event::<AbilityReady>();
+        world.register_event::<Conducted>();
+        world.register_saved_resource_with(CONDUCTIONS, chains_saved());
         world.register_data_kind_with_assets(ABILITIES, |ability: &Ability, world: &World| {
             ability.check(world)
         });
@@ -3452,6 +3961,8 @@ fn describe_abilities(world: &mut World) {
             "the value itself: each an `abilities` entry's ID, an ability in place, or `{ id, level }` with its skill's level from 1 to 40; names unique; the load checks each",
         ))
         .event("AbilityUsed")
+        .event("AbilityReady")
+        .event("Conducted")
         .genre(PLATFORMER)
         .genre(TOP_DOWN)
         .genre(RPG)
@@ -3757,7 +4268,7 @@ fn describe_abilities(world: &mut World) {
                 FieldDescription::new(
                     "centred",
                     FieldType::Bool,
-                    "the prefab's centre, its `rigid_body`'s offset or its sprite's drawn centre, on the entity's centre plus the offset, rather than its point on the entity's point",
+                    "the prefab's centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the entity's centre plus the offset, rather than its point on the entity's point",
                 )
                 .default("false"),
             )
@@ -3792,7 +4303,7 @@ fn describe_abilities(world: &mut World) {
         .roundtrip(round_trip::<LobDef>),
         ComponentDescription::new(
             CONDUCT_PAYLOAD,
-            "A strike on the use's target that jumps on, one receiver a step, from its last receiver to the nearest live receiver within reach, not yet struck, weaker each jump; an immune or stopping receiver ends it unstruck.",
+            "A strike on the use's target that jumps on, one receiver a step, from its last receiver to the nearest live receiver within reach, not yet struck, weaker each jump, each jump sending `Conducted`; an immune or stopping receiver ends it unstruck, or struck with `stop_struck`; each strike a blast's hit, in its context, its preparation run before its crit.",
         )
         .field(FieldDescription::new(
             "damage",
@@ -3800,7 +4311,7 @@ fn describe_abilities(world: &mut World) {
                 min: Bound::Inclusive(0.0),
                 max: Bound::Open,
             },
-            "the first strike's damage, a request from the user at the receiver",
+            "the first strike's damage, a request from the user at the receiver's centre, on a receiver with live health alone",
         ))
         .field(
             FieldDescription::new(
@@ -3852,6 +4363,38 @@ fn describe_abilities(world: &mut World) {
                 "a receiver whose tags pass it ends the chain unstruck; none by default",
             )
             .default("{}"),
+        )
+        .field(
+            FieldDescription::new(
+                "context",
+                FieldType::List(Box::new(FieldType::Tag)),
+                "the strikes' context tags (`hit.spell`), which the receivers' scoped resistances and lines read; the load checks each",
+            )
+            .default("[]"),
+        )
+        .field(
+            FieldDescription::new(
+                "prepare",
+                FieldType::Text,
+                "the game's hit preparation run on each strike before its crit, `[a-z][a-z0-9_]*`; the load checks a preparation holds it; none when left out",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "stop_struck",
+                FieldType::Bool,
+                "an immune or stopping receiver takes its strike, then ends the chain",
+            )
+            .default("false"),
+        )
+        .field(
+            FieldDescription::new(
+                "past_gone",
+                FieldType::Bool,
+                "with its last receiver gone or despawning, the chain jumps on from that receiver's centre at its strike, rather than ending",
+            )
+            .default("false"),
         )
         .sample(r#"{ "damage": 30, "reach": 256, "receivers": { "all": ["conductive"] } }"#)
         .roundtrip(round_trip::<ConductDef>),

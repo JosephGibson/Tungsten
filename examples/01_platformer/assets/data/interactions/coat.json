@@ -1,0 +1,11 @@
+{
+  "stimulus": "cold",
+  "outputs": [
+    {
+      "build": {
+        "status": "chill",
+        "scale": 1
+      }
+    }
+  ]
+}

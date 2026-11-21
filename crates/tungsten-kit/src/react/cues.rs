@@ -10,11 +10,11 @@ use glam::Vec2;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use tungsten_core::camera;
-use tungsten_core::physics::Position;
+use tungsten_core::physics::{Collider, Position};
 use tungsten_core::{
     AudioCommands, AudioHandle, CommandBuffer, DataRef, DataRegistry, Entity, EventCursor,
-    EventQueue, Inspectable, MissingAsset, Plugin, Schedule, ShakeEvent, SoundRegistry,
-    SpawnContext, SquashEvent, SquashTrigger, Time, Transform, Voice, World, system,
+    EventQueue, Inspectable, MissingAsset, ParticleConfigRegistry, Plugin, Schedule, ShakeEvent,
+    SoundRegistry, SpawnContext, SquashEvent, SquashTrigger, Time, Transform, Voice, World, system,
 };
 
 use crate::damage::effects::{EFFECTS, Effect, EffectApplied, EffectExpired, EffectRequest};
@@ -32,19 +32,22 @@ use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared, val
 use crate::foundation::trace::{TraceKind, trace};
 use crate::foundation::{non_negative, optional_positive};
 use crate::intent::ability::{Abilities, AbilityUsed, Used, use_ability};
+use crate::intent::aim::Aim;
 use crate::lifecycle::cap::admit;
 use crate::lifecycle::cooldown::CooldownElapsed;
 use crate::lifecycle::ended::{Despawning, mark_despawning};
 use crate::motion::drive::prefab_centre;
-use crate::overlap::hit::Struck;
+use crate::overlap::hit::{Struck, optional_offset};
 use crate::overlap::pickup::PickedUp;
 use crate::overlap::projectile::ProjectileExpired;
 use crate::overlap::zone::ZoneEntered;
+use crate::present::burst::burst;
 use crate::present::camera::CameraRigId;
 use crate::present::character::{CLIPS_FORM, CharacterAnimator, Clips, check_clips};
+use crate::present::facing::Facing;
 use crate::present::labels::{
     CritLabel, LABEL_TICK, LabelDef, LabelStyle, LabelStyleDef, LiveLabels, PartLabel, TickLabel,
-    float_label, label_tick,
+    float_label, float_owned, label_tick,
 };
 use crate::react::counters::{Counters, Flags};
 use crate::react::level::LevelUp;
@@ -285,7 +288,7 @@ impl Cues {
 ///
 /// | Action | Data |
 /// | --- | --- |
-/// | prefab | `{ "prefab": "puff" }`, spawned at the event's position from the subject |
+/// | prefab | `{ "prefab": "puff" }`, spawned at the event's position from the subject; `at` `centre` at its body centre, moved by `offset`, as for `roll`, `burst` and `sound` |
 /// | counter | `{ "counter": { "name": "kills", "add": 1, "target": "game" } }`, or `"set": 0`; `target` `self`, `other` or `game` |
 /// | flag | `{ "flag": { "name": "has_key", "set": true, "target": "other" } }`; `set` true by default |
 /// | despawn | `{ "despawn": {} }`, or `{ "despawn": { "target": "other" } }` |
@@ -295,6 +298,7 @@ impl Cues {
 /// | flash | `{ "flash": {} }`, the subject's [`HitFlash`](crate::HitFlash) |
 /// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label; on `damaged_part`, `{ "label": {} }` floats it in its type's style, `merge`, `ticks` and `crit` grouping a target's numbers ([`type_label`](CueAction::type_label)) |
 /// | roll | `{ "roll": "slime_drops" }`, a `loot_tables` entry or the [`WeightedTable`] in place: each prefab drawn spawned at the event's position from the subject |
+/// | burst | `{ "burst": "sparks" }`, or `{ "burst": { "particles": "gore", "key": true } }`, a one-off particle burst ([`burst`](crate::burst)) under the [`BurstBudget`](crate::BurstBudget) |
 /// | effect | `{ "effect": "burning" }`, or `{ "effect": { "id": "burning", "target": "other" } }`, an `effects` entry or the [`Effect`] in place under `id`, queued on the subject from the event's other entity, or on the other from the subject |
 /// | ability | `{ "ability": "wand" }`, or `{ "ability": { "name": "wand", "op": "refill", "target": "other" } }`, the named ability of the subject or the other used now (`op` `use`), or made ready with every charge (`refill`) |
 /// | loop | `{ "loop": { "id": "crackle", "volume": 1.0, "fade": 0.1 } }`, the subject wants the sound looping: one voice per sound ID at its loudest want by the [`CueListener`] |
@@ -326,10 +330,11 @@ pub struct CueAction {
 /// What an action does.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ActionKind {
-    /// A prefab, its centre on the position when `centred`.
+    /// A prefab at its place, its centre on it when `centred`.
     Prefab {
         id: String,
         centred: bool,
+        place: ActionPlace,
     },
     Counter {
         name: String,
@@ -345,6 +350,7 @@ pub(crate) enum ActionKind {
     Sound {
         id: String,
         min_interval: f32,
+        place: ActionPlace,
     },
     /// Trauma, whole within the falloff's near of the listener and none
     /// from its far.
@@ -358,11 +364,18 @@ pub(crate) enum ActionKind {
     Label(Option<LabelStyle>),
     /// A `damaged_part`'s amount in its type's style, grouped.
     PartLabel(Box<PartLabel>),
-    /// A table's draws, each prefab's centre on the position when
+    /// A table's draws at its place, each prefab's centre on it when
     /// `centred`.
     Roll {
         table: DataRef<WeightedTable>,
         centred: bool,
+        place: ActionPlace,
+    },
+    /// A one-off particle burst at its place, a key one when `key`.
+    Burst {
+        particles: String,
+        key: bool,
+        place: ActionPlace,
     },
     Effect {
         effect: DataRef<Effect>,
@@ -418,6 +431,98 @@ pub(crate) enum Target {
     Game,
 }
 
+/// Where a `prefab`, `roll`, `burst` or `sound` action happens: the
+/// event's point, its subject's body centre with `centre` or its aim's
+/// point with `aim`, moved by `offset`, its x mirrored while the subject's
+/// [`Facing`] points left.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub(crate) struct ActionPlace {
+    base: PlaceBase,
+    offset: Vec2,
+}
+
+/// The point an [`ActionPlace`] starts from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum PlaceBase {
+    /// The event's point.
+    #[default]
+    Event,
+    /// The subject's body centre.
+    Centre,
+    /// The subject's [`Aim`] point, else the event's.
+    Aim,
+}
+
+impl ActionPlace {
+    /// Whether it is the event's point, unmoved.
+    fn is_event(self) -> bool {
+        self.base == PlaceBase::Event && self.offset == Vec2::ZERO
+    }
+
+    /// The point it names for `occurrence`.
+    fn of(self, world: &World, occurrence: &Occurrence) -> Vec2 {
+        let subject = occurrence.subject;
+        let base = match self.base {
+            PlaceBase::Centre
+                if world.has::<Position>(subject) || world.has::<Transform>(subject) =>
+            {
+                body_point(world, subject)
+            }
+            PlaceBase::Aim => world
+                .get::<Aim>(subject)
+                .and_then(Aim::point)
+                .unwrap_or(occurrence.position),
+            _ => occurrence.position,
+        };
+        if self.offset == Vec2::ZERO {
+            return base;
+        }
+        let left = world
+            .get::<Facing>(subject)
+            .is_some_and(|facing| facing.direction().x < 0.0);
+        base + if left {
+            Vec2::new(-self.offset.x, self.offset.y)
+        } else {
+            self.offset
+        }
+    }
+
+    /// Its data fields: `at`, written only at `centre` or `aim`, and
+    /// `offset`, written only when set.
+    fn fields(self) -> (Option<AtField>, Option<Vec2>) {
+        let at = match self.base {
+            PlaceBase::Event => None,
+            PlaceBase::Centre => Some(AtField::Centre),
+            PlaceBase::Aim => Some(AtField::Aim),
+        };
+        (at, (self.offset != Vec2::ZERO).then_some(self.offset))
+    }
+
+    /// The place data's `at` and `offset` give.
+    fn from_fields(at: Option<AtField>, offset: Option<Vec2>) -> Self {
+        Self {
+            base: match at {
+                None | Some(AtField::Event) => PlaceBase::Event,
+                Some(AtField::Centre) => PlaceBase::Centre,
+                Some(AtField::Aim) => PlaceBase::Aim,
+            },
+            offset: offset.unwrap_or(Vec2::ZERO),
+        }
+    }
+}
+
+/// An action's `at`, as data writes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum AtField {
+    /// The event's point.
+    Event,
+    /// The subject's body centre.
+    Centre,
+    /// The subject's aim point.
+    Aim,
+}
+
 impl CueAction {
     fn of(kind: ActionKind) -> Self {
         Self { kind }
@@ -431,12 +536,14 @@ impl CueAction {
         Self::of(ActionKind::Prefab {
             id: id.into(),
             centred: false,
+            place: ActionPlace::default(),
         })
     }
 
     /// The `prefab` or `roll` action, placing each prefab's centre (its
-    /// `rigid_body`'s offset or its sprite's drawn centre) on the event's
-    /// position rather than its point. Data form
+    /// `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup
+    /// or projectile shape offset, else its sprite's drawn centre) on the
+    /// event's position rather than its point. Data form
     /// `{ "prefab": { "id": "puff", "centred": true } }` or
     /// `{ "roll": { "table": "slime_drops", "centred": true } }`.
     ///
@@ -456,6 +563,129 @@ impl CueAction {
             ),
         }
         self
+    }
+
+    /// Fires a one-off burst of the manifest particle config `particles` at
+    /// the event's point ([`burst`](crate::burst)), a cosmetic one the
+    /// [`BurstBudget`](crate::BurstBudget) drops at its cap. Data form
+    /// `{ "burst": "sparks" }` or `{ "burst": { "particles": "sparks",
+    /// "key": true, "at": "centre", "offset": [0, -8] } }`; the load checks
+    /// the config.
+    ///
+    /// ```
+    /// use glam::Vec2;
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let puff = CueAction::burst("puff");
+    /// assert_eq!(serde_json::to_value(&puff).unwrap(), serde_json::json!({ "burst": "puff" }));
+    /// let gore = CueAction::burst("gore").as_key().at_centre().with_offset(Vec2::new(4.0, 0.0));
+    /// assert_eq!(
+    ///     serde_json::to_value(&gore).unwrap(),
+    ///     serde_json::json!({ "burst": { "particles": "gore", "key": true, "at": "centre", "offset": [4.0, 0.0] } })
+    /// );
+    /// ```
+    #[must_use]
+    pub fn burst(particles: impl Into<String>) -> Self {
+        Self::of(ActionKind::Burst {
+            particles: particles.into(),
+            key: false,
+            place: ActionPlace::default(),
+        })
+    }
+
+    /// The `burst` action, a key burst, which takes the oldest cosmetic
+    /// burst's slot at the budget's cap.
+    ///
+    /// # Panics
+    ///
+    /// When the action is not a `burst`.
+    #[must_use]
+    #[track_caller]
+    pub fn as_key(mut self) -> Self {
+        let name = self.name();
+        match &mut self.kind {
+            ActionKind::Burst { key, .. } => *key = true,
+            _ => panic!("CueAction::as_key: a `{name}` action fires no burst"),
+        }
+        self
+    }
+
+    /// The `prefab`, `roll`, `burst` or `sound` action, at its subject's
+    /// body centre (its `Position` plus its collider's offset) rather than
+    /// the event's point. Data form `"at": "centre"`.
+    ///
+    /// # Panics
+    ///
+    /// When the action is none of those.
+    #[must_use]
+    #[track_caller]
+    pub fn at_centre(mut self) -> Self {
+        let name = self.name();
+        match self.place_mut() {
+            Some(place) => place.base = PlaceBase::Centre,
+            None => panic!("CueAction::at_centre: a `{name}` action has no place"),
+        }
+        self
+    }
+
+    /// The `prefab`, `roll`, `burst` or `sound` action, at its subject's
+    /// [`Aim`] point, the world point it aims at, rather than the event's
+    /// point, which it falls back to while the subject has no aim or its
+    /// aim no point: a cast's sound at the cursor. Data form `"at": "aim"`.
+    ///
+    /// ```
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let fizzle = CueAction::sound("fizzle").at_aim();
+    /// assert_eq!(
+    ///     serde_json::to_value(&fizzle).unwrap(),
+    ///     serde_json::json!({ "sound": { "id": "fizzle", "min_interval": 0.0, "at": "aim" } })
+    /// );
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// When the action is none of those.
+    #[must_use]
+    #[track_caller]
+    pub fn at_aim(mut self) -> Self {
+        let name = self.name();
+        match self.place_mut() {
+            Some(place) => place.base = PlaceBase::Aim,
+            None => panic!("CueAction::at_aim: a `{name}` action has no place"),
+        }
+        self
+    }
+
+    /// The `prefab`, `roll`, `burst` or `sound` action, moved by `offset`
+    /// from its point, its x mirrored while the subject's [`Facing`] points
+    /// left. Data form `"offset": [x, y]`.
+    ///
+    /// # Panics
+    ///
+    /// When the action is none of those, or `offset` is not finite and
+    /// within the kit's extent.
+    #[must_use]
+    #[track_caller]
+    pub fn with_offset(mut self, offset: Vec2) -> Self {
+        let offset = crate::overlap::hit::checked_offset("CueAction::with_offset", offset);
+        let name = self.name();
+        match self.place_mut() {
+            Some(place) => place.offset = offset,
+            None => panic!("CueAction::with_offset: a `{name}` action has no place"),
+        }
+        self
+    }
+
+    /// The action's place, when it has one.
+    fn place_mut(&mut self) -> Option<&mut ActionPlace> {
+        match &mut self.kind {
+            ActionKind::Prefab { place, .. }
+            | ActionKind::Roll { place, .. }
+            | ActionKind::Burst { place, .. }
+            | ActionKind::Sound { place, .. } => Some(place),
+            _ => None,
+        }
     }
 
     /// Despawns the subject, with its children, after the step's spawns.
@@ -558,6 +788,7 @@ impl CueAction {
         Self::of(ActionKind::Sound {
             id: id.into(),
             min_interval: 0.0,
+            place: ActionPlace::default(),
         })
     }
 
@@ -756,13 +987,15 @@ impl CueAction {
     /// Three fields group a target's numbers, each optional: `merge`, the
     /// seconds a target's parts of a type sum over, its first plain part
     /// floating at once and the rest within the window as one sum when it
-    /// closes; `ticks`, `{ "size", "kind" }`, periodic parts whose kinds pass
-    /// `kind` (every periodic part by default) summed on their own over the
-    /// window at that size; and `crit`, `{ "size", "color" }`, a step's crit
-    /// parts on a target floated at once as one sum in the first part's
-    /// type's style at that size and colour. Open sums are presentation,
-    /// unsaved, aged on the fixed step; without the fields each part floats
-    /// alone.
+    /// closes; `ticks`, `{ "size", "kind", "first" }`, periodic parts whose
+    /// kinds pass `kind` (every periodic part by default) summed on their own
+    /// over the window at that size, a window's first tick floating at once
+    /// with `first`; and `crit`, `{ "size", "color" }`, a step's crit parts on
+    /// a target floated as one sum in the first part's type's style at that
+    /// size and colour. A step's labels float once its parts are read: its
+    /// crit sums, then the parts that float at once, then the sums whose
+    /// window closed. Open sums are presentation, unsaved, aged on the fixed
+    /// step; without the fields each part floats alone.
     ///
     /// # Examples
     ///
@@ -811,6 +1044,7 @@ impl CueAction {
         Self::of(ActionKind::Roll {
             table,
             centred: false,
+            place: ActionPlace::default(),
         })
     }
 
@@ -933,8 +1167,8 @@ impl CueAction {
     }
 
     /// The action's data name: `prefab`, `counter`, `flag`, `despawn`,
-    /// `sound`, `shake`, `squash`, `flash`, `label`, `roll`, `effect`,
-    /// `ability`, `loop`, `stop`, `clip` or `camera`.
+    /// `sound`, `shake`, `squash`, `flash`, `label`, `roll`, `burst`,
+    /// `effect`, `ability`, `loop`, `stop`, `clip` or `camera`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self.kind {
@@ -948,6 +1182,7 @@ impl CueAction {
             ActionKind::Flash => "flash",
             ActionKind::Label(_) | ActionKind::PartLabel(_) => "label",
             ActionKind::Roll { .. } => "roll",
+            ActionKind::Burst { .. } => "burst",
             ActionKind::Effect { .. } => "effect",
             ActionKind::Ability { .. } => "ability",
             ActionKind::Loop { .. } => "loop",
@@ -998,6 +1233,7 @@ pub(crate) enum CueActionDef {
     Flash(FlashDef),
     Label(LabelDef),
     Roll(RollActionDef),
+    Burst(BurstActionDef),
     Effect(EffectActionDef),
     Ability(AbilityActionDef),
     Loop(LoopDef),
@@ -1383,11 +1619,13 @@ impl<'de> Deserialize<'de> for EffectActionDef {
 }
 
 /// A `prefab` action as data writes it: the prefab's ID alone, or an
-/// object of `id` and `centred`; written back as the ID unless centred.
+/// object of `id`, `centred`, `at` and `offset`; written back as the ID
+/// unless centred or placed.
 #[derive(Clone)]
 pub(crate) struct PrefabActionDef {
     id: String,
     centred: bool,
+    place: ActionPlace,
 }
 
 /// The object form of a `prefab` action.
@@ -1397,14 +1635,25 @@ struct PrefabActionObject {
     id: String,
     #[serde(default)]
     centred: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    at: Option<AtField>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
 }
 
 impl Serialize for PrefabActionDef {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if self.centred {
+        if self.centred || !self.place.is_event() {
+            let (at, offset) = self.place.fields();
             PrefabActionObject {
                 id: self.id.clone(),
-                centred: true,
+                centred: self.centred,
+                at,
+                offset,
             }
             .serialize(serializer)
         } else {
@@ -1420,23 +1669,26 @@ impl<'de> Deserialize<'de> for PrefabActionDef {
             return Ok(Self {
                 id: id.to_owned(),
                 centred: false,
+                place: ActionPlace::default(),
             });
         }
         let object = PrefabActionObject::deserialize(value).map_err(de::Error::custom)?;
         Ok(Self {
             id: object.id,
             centred: object.centred,
+            place: ActionPlace::from_fields(object.at, object.offset),
         })
     }
 }
 
 /// A `roll` action as data writes it: the table's ID or the table in
-/// place, or an object of `table` and `centred`; written back as the table
-/// unless centred.
+/// place, or an object of `table`, `centred`, `at` and `offset`; written
+/// back as the table unless centred or placed.
 #[derive(Clone)]
 pub(crate) struct RollActionDef {
     table: DataRef<WeightedTable>,
     centred: bool,
+    place: ActionPlace,
 }
 
 /// The object form of a `roll` action.
@@ -1446,14 +1698,25 @@ struct RollActionObject {
     table: DataRef<WeightedTable>,
     #[serde(default)]
     centred: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    at: Option<AtField>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
 }
 
 impl Serialize for RollActionDef {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if self.centred {
+        if self.centred || !self.place.is_event() {
+            let (at, offset) = self.place.fields();
             RollActionObject {
                 table: self.table.clone(),
-                centred: true,
+                centred: self.centred,
+                at,
+                offset,
             }
             .serialize(serializer)
         } else {
@@ -1470,12 +1733,77 @@ impl<'de> Deserialize<'de> for RollActionDef {
             return Ok(Self {
                 table: object.table,
                 centred: object.centred,
+                place: ActionPlace::from_fields(object.at, object.offset),
             });
         }
         let table = DataRef::<WeightedTable>::deserialize(value).map_err(de::Error::custom)?;
         Ok(Self {
             table,
             centred: false,
+            place: ActionPlace::default(),
+        })
+    }
+}
+
+/// A `burst` action as data writes it: the particle config's ID alone, or
+/// an object of `particles`, `key`, `at` and `offset`; written back as the
+/// ID unless a key burst or placed.
+#[derive(Clone)]
+pub(crate) struct BurstActionDef {
+    particles: String,
+    key: bool,
+    place: ActionPlace,
+}
+
+/// The object form of a `burst` action.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BurstActionObject {
+    particles: String,
+    #[serde(default)]
+    key: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    at: Option<AtField>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
+}
+
+impl Serialize for BurstActionDef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.key || !self.place.is_event() {
+            let (at, offset) = self.place.fields();
+            BurstActionObject {
+                particles: self.particles.clone(),
+                key: self.key,
+                at,
+                offset,
+            }
+            .serialize(serializer)
+        } else {
+            self.particles.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for BurstActionDef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Some(particles) = value.as_str() {
+            return Ok(Self {
+                particles: particles.to_owned(),
+                key: false,
+                place: ActionPlace::default(),
+            });
+        }
+        let object = BurstActionObject::deserialize(value).map_err(de::Error::custom)?;
+        Ok(Self {
+            particles: object.particles,
+            key: object.key,
+            place: ActionPlace::from_fields(object.at, object.offset),
         })
     }
 }
@@ -1487,6 +1815,14 @@ pub(crate) struct SoundDef {
     id: String,
     #[serde(default, deserialize_with = "non_negative")]
     min_interval: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    at: Option<AtField>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
 }
 
 /// A `flash` action as data writes it: no fields.
@@ -1534,6 +1870,7 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Prefab(def) => ActionKind::Prefab {
                 id: def.id,
                 centred: def.centred,
+                place: def.place,
             },
             CueActionDef::Counter(def) => ActionKind::Counter {
                 name: def.name,
@@ -1553,6 +1890,7 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Sound(def) => ActionKind::Sound {
                 id: def.id,
                 min_interval: def.min_interval,
+                place: ActionPlace::from_fields(def.at, def.offset),
             },
             CueActionDef::Shake(ShakeDef::Trauma(trauma)) => ActionKind::Shake {
                 trauma,
@@ -1569,6 +1907,12 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Roll(def) => ActionKind::Roll {
                 table: def.table,
                 centred: def.centred,
+                place: def.place,
+            },
+            CueActionDef::Burst(def) => ActionKind::Burst {
+                particles: def.particles,
+                key: def.key,
+                place: def.place,
             },
             CueActionDef::Effect(def) => ActionKind::Effect {
                 effect: def.id,
@@ -1602,8 +1946,8 @@ impl TryFrom<CueActionDef> for CueAction {
 impl From<CueAction> for CueActionDef {
     fn from(action: CueAction) -> Self {
         match action.kind {
-            ActionKind::Prefab { id, centred } => {
-                CueActionDef::Prefab(PrefabActionDef { id, centred })
+            ActionKind::Prefab { id, centred, place } => {
+                CueActionDef::Prefab(PrefabActionDef { id, centred, place })
             }
             ActionKind::Counter { name, op, target } => CueActionDef::Counter(CounterDef {
                 name,
@@ -1625,8 +1969,18 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Despawn(target) => CueActionDef::Despawn(DespawnDef {
                 target: target.into(),
             }),
-            ActionKind::Sound { id, min_interval } => {
-                CueActionDef::Sound(SoundDef { id, min_interval })
+            ActionKind::Sound {
+                id,
+                min_interval,
+                place,
+            } => {
+                let (at, offset) = place.fields();
+                CueActionDef::Sound(SoundDef {
+                    id,
+                    min_interval,
+                    at,
+                    offset,
+                })
             }
             ActionKind::Shake {
                 trauma,
@@ -1644,9 +1998,24 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Flash => CueActionDef::Flash(FlashDef {}),
             ActionKind::Label(style) => CueActionDef::Label(LabelDef(style, None)),
             ActionKind::PartLabel(part) => CueActionDef::Label(LabelDef(None, Some(part))),
-            ActionKind::Roll { table, centred } => {
-                CueActionDef::Roll(RollActionDef { table, centred })
-            }
+            ActionKind::Roll {
+                table,
+                centred,
+                place,
+            } => CueActionDef::Roll(RollActionDef {
+                table,
+                centred,
+                place,
+            }),
+            ActionKind::Burst {
+                particles,
+                key,
+                place,
+            } => CueActionDef::Burst(BurstActionDef {
+                particles,
+                key,
+                place,
+            }),
             ActionKind::Effect { effect, target } => CueActionDef::Effect(EffectActionDef {
                 id: effect,
                 target: target.into(),
@@ -1766,7 +2135,8 @@ impl CueEvent {
 /// the listener's hearing without marking its `min_interval`, so a nearer
 /// one may still play; without one, every cue sound plays at its volume.
 /// The game moves it, to its player or its camera, each step before
-/// [`CUES`], or has it [follow](Self::following) an entity. With a
+/// [`CUES`], or has it [follow](Self::following) an entity, at its point or
+/// at its [body's centre](Self::following_body). With a
 /// [pan width](Self::with_pan), a cue sound plays panned toward its side;
 /// a `loop` plays by it, and a `shake` with a falloff falls off from it.
 ///
@@ -1791,6 +2161,8 @@ pub struct CueListener {
     silent: f32,
     /// The entity the cue system moves it to, each step.
     follows: Option<Entity>,
+    /// Whether it follows that entity's body centre, not its point.
+    body: bool,
     /// The distance along x at which a sound plays wholly to one side.
     pan: Option<f32>,
 }
@@ -1813,6 +2185,7 @@ impl CueListener {
             full,
             silent,
             follows: None,
+            body: false,
             pan: None,
         }
     }
@@ -1824,6 +2197,19 @@ impl CueListener {
     #[must_use]
     pub fn following(mut self, entity: Entity) -> Self {
         self.follows = Some(entity);
+        self.body = false;
+        self
+    }
+
+    /// The listener, following `entity`'s body centre: as
+    /// [`following`](Self::following), but moved to the entity's `Position`
+    /// plus its `Collider`'s offset, where a game hears from its hero's
+    /// middle, not its corner; an entity without both is followed at its
+    /// point, and one gone, or without a point, leaves it where it was.
+    #[must_use]
+    pub fn following_body(mut self, entity: Entity) -> Self {
+        self.follows = Some(entity);
+        self.body = true;
         self
     }
 
@@ -1851,7 +2237,9 @@ impl CueListener {
         self.follows
     }
 
-    /// Follows `entity`, or stops following with `None`.
+    /// Follows `entity`, or stops following with `None`, at the point the
+    /// listener was built to follow: [`following`](Self::following)'s, or
+    /// [`following_body`](Self::following_body)'s.
     pub fn set_following(&mut self, entity: Option<Entity>) {
         self.follows = entity;
     }
@@ -2184,7 +2572,7 @@ fn filters_ability(world: &World) -> bool {
                 rules
                     .0
                     .iter()
-                    .any(|rule| rule.on == ABILITY_USED && rule.ability.is_some())
+                    .any(|rule| rule.on == ABILITY_USED && !rule.ability.is_empty())
             })
         })
     })
@@ -2363,7 +2751,7 @@ impl<E: 'static> CueSource for GameSource<E> {
             let position = if event.position.is_finite() {
                 event.position
             } else {
-                point_of(world, event.entity)
+                body_point(world, event.entity)
             };
             out.push(Occurrence {
                 amount: event.amount,
@@ -2442,15 +2830,36 @@ struct CueRuleDef {
     #[serde(default)]
     absorbed: Option<bool>,
     #[serde(default)]
-    ability: Option<String>,
+    ability: Option<OneOrList<String>>,
     #[serde(default)]
-    reason: Option<ReasonDef>,
+    reason: Option<OneOrList<ReasonDef>>,
     #[serde(default, deserialize_with = "non_negative")]
     min_interval: f32,
     #[serde(default, deserialize_with = "positive_cap")]
     cap: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
     #[serde(rename = "do")]
     actions: Vec<CueAction>,
+}
+
+/// A rule filter's value as data writes it: one, or a list of them, each
+/// written back in its own form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum OneOrList<T> {
+    One(T),
+    List(Vec<T>),
+}
+
+impl<T> OneOrList<T> {
+    /// Its values, in order.
+    fn into_vec(self) -> Vec<T> {
+        match self {
+            Self::One(value) => vec![value],
+            Self::List(values) => values,
+        }
+    }
 }
 
 /// A rule's `reason`, as data writes it.
@@ -2686,14 +3095,18 @@ struct CueRule {
     fresh: Option<bool>,
     ended: Option<bool>,
     absorbed: Option<bool>,
-    /// An ability's name, on the ability events.
-    ability: Option<String>,
-    /// A refusal's reason code, on `ability_refused`.
-    reason: Option<u8>,
+    /// The abilities' names any of which passes, on the ability events;
+    /// empty for no filter.
+    ability: Vec<String>,
+    /// The refusal reasons' codes any of which passes, a bit each by
+    /// [`reason_of`]'s code, on `ability_refused`; 0 for no filter.
+    reasons: u8,
     /// Game seconds per subject between runs; 0 for none.
     min_interval: f32,
     /// Runs a step at most.
     cap: Option<u32>,
+    /// The group whose first passing rule alone runs for a subject a step.
+    group: Option<Arc<str>>,
     actions: Arc<[CueAction]>,
 }
 
@@ -2720,12 +3133,11 @@ impl CueRule {
                     .get(usize::from(occurrence.effect))
                     .is_some_and(|known| known == id)
             })
-            && self.ability.as_ref().is_none_or(|name| {
-                effect_ids
+            && (self.ability.is_empty()
+                || effect_ids
                     .get(usize::from(occurrence.effect))
-                    .is_some_and(|known| known == name)
-            })
-            && self.reason.is_none_or(|code| occurrence.reason() == code)
+                    .is_some_and(|known| self.ability.contains(known)))
+            && (self.reasons == 0 || self.reasons & (1 << occurrence.reason()) != 0)
             && (self.flags.is_everything() || self.flags.matches(flags))
     }
 }
@@ -2747,8 +3159,26 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
                     rule.on
                 ));
             }
-            if rule.ability.as_deref() == Some("") {
+            let ability = rule.ability.map(OneOrList::into_vec);
+            if ability.as_ref().is_some_and(Vec::is_empty) {
+                return Err(format!("{i}.ability: at least one ability's name"));
+            }
+            if ability
+                .as_ref()
+                .is_some_and(|names| names.iter().any(String::is_empty))
+            {
                 return Err(format!("{i}.ability: an ability's name, not empty"));
+            }
+            let reasons = rule.reason.map(OneOrList::into_vec);
+            if reasons.as_ref().is_some_and(Vec::is_empty) {
+                return Err(format!("{i}.reason: at least one reason"));
+            }
+            if let Some(group) = &rule.group
+                && !valid_tag(group)
+            {
+                return Err(format!(
+                    "{i}.group: `{group}` is not a group's name (`[a-z][a-z0-9_]*` segments joined by dots)"
+                ));
             }
             let names = rule
                 .filter
@@ -2767,10 +3197,14 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
                 fresh: rule.fresh,
                 ended: rule.ended,
                 absorbed: rule.absorbed,
-                ability: rule.ability,
-                reason: rule.reason.map(ReasonDef::code),
+                ability: ability.unwrap_or_default(),
+                reasons: reasons
+                    .unwrap_or_default()
+                    .into_iter()
+                    .fold(0, |mask, reason| mask | 1 << reason.code()),
                 min_interval: rule.min_interval,
                 cap: rule.cap,
+                group: rule.group.map(Arc::from),
                 actions: rule.actions.into(),
             });
         }
@@ -2817,10 +3251,10 @@ fn check_rule_list(rules: &CueRules, world: &World) -> Result<(), MissingAsset> 
         if rule.absorbed.is_some() && event.name != DAMAGED {
             return refuse("absorbed", "cue event with a shield's take");
         }
-        if rule.ability.is_some() && !ABILITY_EVENTS.contains(&event.name) {
+        if !rule.ability.is_empty() && !ABILITY_EVENTS.contains(&event.name) {
             return refuse("ability", "cue event about an ability");
         }
-        if rule.reason.is_some() && event.name != ABILITY_REFUSED {
+        if rule.reasons != 0 && event.name != ABILITY_REFUSED {
             return refuse("reason", "cue event with a refusal's reason");
         }
         for (field, name) in rule.kind.names() {
@@ -2840,6 +3274,7 @@ pub(crate) fn check_world_cue(cue: &WorldCueActions, world: &World) -> Result<()
         let refused = match &action.kind {
             ActionKind::Prefab { .. }
             | ActionKind::Roll { .. }
+            | ActionKind::Burst { .. }
             | ActionKind::Sound { .. }
             | ActionKind::Shake { .. }
             | ActionKind::Label(Some(_))
@@ -2857,7 +3292,7 @@ pub(crate) fn check_world_cue(cue: &WorldCueActions, world: &World) -> Result<()
         if let Some(field) = refused {
             return Err(MissingAsset::new(
                 field,
-                "world cue action (prefab, roll, sound, shake, a styled label, a game counter or flag)",
+                "world cue action (prefab, roll, burst, sound, shake, a styled label, a game counter or flag)",
                 action.name(),
             ));
         }
@@ -2890,6 +3325,17 @@ fn check_actions(
         match &action.kind {
             ActionKind::Prefab { id, .. } => world.check_prefab_id(&at, id)?,
             ActionKind::Roll { table, .. } => table.check(world, &at)?,
+            ActionKind::Burst { particles, .. } => {
+                if let Some(configs) = world.get_resource::<ParticleConfigRegistry>()
+                    && configs.id_for_name(particles).is_none()
+                {
+                    return Err(MissingAsset::new(
+                        format!("{at}.particles"),
+                        "particle config",
+                        particles.as_str(),
+                    ));
+                }
+            }
             ActionKind::Effect { effect, target } => {
                 effect.check(world, &at)?;
                 if *target == Target::Other && !event.other {
@@ -3026,7 +3472,12 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// `no_target`, `no_room` and `capped`. Its limits come last, so an occurrence a filter turns
 /// away spends neither: `min_interval`, the game seconds a rule waits for a
 /// subject once it ran for it, and `cap`, its runs a step at most. A held
-/// rule is traced as skipped; the limits are the cue system's, unsaved. The
+/// rule is traced as skipped; the limits are the cue system's, unsaved.
+/// Rules naming one `group` run once a subject a step: of the group's rules
+/// that the step's occurrences about the subject pass, the first in load
+/// order alone runs, on the first occurrence it passes, its limits applying
+/// as ever and the others' untouched; a group's rules may be on different
+/// events, so a kill, a blow and a tick choose one sound. The
 /// load checks every event name, tag, damage type, effect, prefab, sound
 /// and loot table ID it names, and refuses a filter on an event that
 /// cannot carry it.
@@ -3221,6 +3672,7 @@ const TOO_SOON: &str = "the sound played within its min_interval";
 const UNHEARD: &str = "the cue's position is past the listener's hearing";
 const FAR: &str = "the cue's position is past the shake's far";
 const NO_TABLE: &str = "the World has no such loot table";
+const NO_BURST: &str = "the burst budget is full or the particle config unknown";
 const NO_WORLD_CUE: &str = "the World has no such world cue";
 const NO_STYLE: &str = "the part's types set no label style";
 const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
@@ -3274,6 +3726,14 @@ struct Reactor {
     sums: HashMap<(usize, Entity, DamageKinds, bool), OpenSum>,
     /// The step's crit sums, floated at its end in the order they opened.
     crits: Vec<OpenSum>,
+    /// The step's parts that float on their own, floated after its crits.
+    fresh: Vec<(LabelStyle, Vec2, f32)>,
+    /// The sums whose window closed this step, floated last, in the order
+    /// they opened.
+    closing: Vec<OpenSum>,
+    /// Each rule group's choice this step: its rule and the occurrence it
+    /// runs on, by group and subject.
+    chosen: Vec<GroupChoice>,
     /// How many sums have opened: their close order.
     opened: u64,
     /// The step's effect IDs, which its occurrences index; the first
@@ -3296,6 +3756,16 @@ struct Reactor {
     /// of.
     world_cues: EventCursor<WorldCue>,
     unknown_cues: HashSet<String>,
+}
+
+/// A rule group's choice for one subject this step: of its rules the step's
+/// occurrences about the subject pass, the first in load order, `rank`,
+/// on the first occurrence it passes, `occurrence`.
+struct GroupChoice {
+    group: Arc<str>,
+    subject: Entity,
+    rank: usize,
+    occurrence: usize,
 }
 
 /// A part label's sum while it is open: its label and target, the sum and
@@ -3405,21 +3875,31 @@ impl Reactor {
     fn react(&mut self, world: &mut World) {
         let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
         self.clock += f64::from(dt);
-        self.close_sums(world, dt);
+        self.close_sums(dt);
         self.sweep(world);
         self.runs.clear();
         self.occurrences.clear();
         self.effect_count = 0;
         self.read(world);
-        if self.occurrences.is_empty() {
-            return;
+        if !self.occurrences.is_empty() {
+            self.prepare_types(world);
+            let mut occurrences = std::mem::take(&mut self.occurrences);
+            self.run_batch(world, &mut occurrences);
+            self.occurrences = occurrences;
         }
-        self.prepare_types(world);
-        let mut occurrences = std::mem::take(&mut self.occurrences);
-        self.run_batch(world, &mut occurrences);
-        self.occurrences = occurrences;
+        // The step's part labels, once its parts are read: its crit sums,
+        // then the parts that float on their own, then the sums whose
+        // window closed.
         for open in self.crits.drain(..) {
-            float_label(world, &open.style, open.position, open.sum);
+            float_owned(world, open.style, open.position, open.sum);
+        }
+        for (style, at, amount) in self.fresh.drain(..) {
+            float_owned(world, style, at, amount);
+        }
+        for open in self.closing.drain(..) {
+            if open.parts > 0 {
+                float_owned(world, open.style, open.position, open.sum);
+            }
         }
         for entity in self.despawns.drain(..) {
             if let Some(commands) = world.get_resource_mut::<CommandBuffer>() {
@@ -3459,8 +3939,9 @@ impl Reactor {
                 self.apply(world, occurrence, action, None);
             }
         }
-        for occurrence in occurrences.iter() {
-            self.match_rules(world, occurrence);
+        self.choose_groups(world, occurrences);
+        for (index, occurrence) in occurrences.iter().enumerate() {
+            self.match_rules(world, occurrence, index);
             for why in self.held.drain(..) {
                 trace(world, occurrence.subject, || TraceKind::Skipped {
                     event: occurrence.event,
@@ -3479,11 +3960,86 @@ impl Reactor {
         }
     }
 
+    /// Each rule group's choice this step, in `chosen`: for each subject, of
+    /// the group's rules that the step's `occurrences` about it pass, the
+    /// first in load order, on the first occurrence it passes. Nothing
+    /// while no rule names a group.
+    fn choose_groups(&mut self, world: &World, occurrences: &[Occurrence]) {
+        self.chosen.clear();
+        let Some(data) = world.get_resource::<DataRegistry>() else {
+            return;
+        };
+        let grouped = data.ids(CUE_RULES).any(|id| {
+            data.get::<CueRules>(id)
+                .is_some_and(|rules| rules.0.iter().any(|rule| rule.group.is_some()))
+        });
+        if !grouped {
+            return;
+        }
+        let table = world.get_resource::<DamageTypeTable>();
+        let flags = world.get_resource::<Flags>();
+        let Self {
+            masks,
+            effect_ids,
+            effect_count,
+            chosen,
+            ..
+        } = self;
+        let effect_ids = &effect_ids[..*effect_count];
+        let mut mask = |name: &str| -> DamageKinds {
+            if let Some(&kinds) = masks.get(name) {
+                return kinds;
+            }
+            let kinds = table.map_or(DamageKinds::NONE, |table| table.mask_of(name));
+            masks.insert(name.to_owned(), kinds);
+            kinds
+        };
+        for (index, occurrence) in occurrences.iter().enumerate() {
+            let tags = world.get::<Tags>(occurrence.subject);
+            let mut rank = 0;
+            for id in data.ids(CUE_RULES) {
+                let Some(rules) = data.get::<CueRules>(id) else {
+                    continue;
+                };
+                for rule in &rules.0 {
+                    rank += 1;
+                    let Some(group) = &rule.group else {
+                        continue;
+                    };
+                    if !(rule.on == occurrence.event
+                        && rule.filter.matches(tags)
+                        && (rule.kind.is_everything()
+                            || rule.kind.matches(occurrence.kinds, &mut mask))
+                        && rule.passes(occurrence, flags, effect_ids))
+                    {
+                        continue;
+                    }
+                    match chosen.iter_mut().find(|choice| {
+                        choice.subject == occurrence.subject && *choice.group == **group
+                    }) {
+                        Some(choice) if rank < choice.rank => {
+                            choice.rank = rank;
+                            choice.occurrence = index;
+                        }
+                        Some(_) => {}
+                        None => chosen.push(GroupChoice {
+                            group: Arc::clone(group),
+                            subject: occurrence.subject,
+                            rank,
+                            occurrence: index,
+                        }),
+                    }
+                }
+            }
+        }
+    }
+
     /// The rules for `occurrence`'s event whose tag filter its subject
     /// passes, whose kind filter its kinds pass and whose other filters it
-    /// passes, in entry-ID order, then file order; then each rule's limits,
-    /// a held rule's reason in `held`.
-    fn match_rules(&mut self, world: &World, occurrence: &Occurrence) {
+    /// passes, in entry-ID order, then file order, a grouped rule only as
+    /// its group's choice for the step's `index`th occurrence; then each
+    /// rule's limits, a held rule's reason in `held`.
+    fn match_rules(&mut self, world: &World, occurrence: &Occurrence, index: usize) {
         let Some(data) = world.get_resource::<DataRegistry>() else {
             return;
         };
@@ -3499,6 +4055,7 @@ impl Reactor {
             runs,
             held,
             clock,
+            chosen,
             ..
         } = self;
         let effect_ids = &effect_ids[..*effect_count];
@@ -3510,11 +4067,23 @@ impl Reactor {
             masks.insert(name.to_owned(), kinds);
             kinds
         };
+        let mut rank = 0;
         for id in data.ids(CUE_RULES) {
             let Some(rules) = data.get::<CueRules>(id) else {
                 continue;
             };
             for (i, rule) in rules.0.iter().enumerate() {
+                rank += 1;
+                if let Some(group) = &rule.group
+                    && !chosen.iter().any(|choice| {
+                        choice.subject == occurrence.subject
+                            && *choice.group == **group
+                            && choice.rank == rank
+                            && choice.occurrence == index
+                    })
+                {
+                    continue;
+                }
                 if !(rule.on == occurrence.event
                     && rule.filter.matches(tags)
                     && (rule.kind.is_everything()
@@ -3578,28 +4147,43 @@ impl Reactor {
             }
         };
         match &action.kind {
-            ActionKind::Prefab { id, centred } => {
+            ActionKind::Prefab { id, centred, place } => {
                 if !world.has_resource::<CommandBuffer>() {
                     return skip(world, NO_COMMANDS);
                 }
-                let at = placed(world, id, occurrence.position, *centred);
+                let at = placed(world, id, place.of(world, occurrence), *centred);
                 if !self.spawn(world, occurrence, action.name(), id, at) {
                     return;
                 }
             }
-            ActionKind::Roll { table, centred } => {
+            ActionKind::Roll {
+                table,
+                centred,
+                place,
+            } => {
                 if !world.has_resource::<CommandBuffer>() {
                     return skip(world, NO_COMMANDS);
                 }
                 if !self.draw(world, table) {
                     return skip(world, NO_TABLE);
                 }
+                let point = place.of(world, occurrence);
                 let drawn = std::mem::take(&mut self.drawn);
                 for id in &drawn {
-                    let at = placed(world, id, occurrence.position, *centred);
+                    let at = placed(world, id, point, *centred);
                     self.spawn(world, occurrence, action.name(), id, at);
                 }
                 self.drawn = drawn;
+            }
+            ActionKind::Burst {
+                particles,
+                key,
+                place,
+            } => {
+                let at = place.of(world, occurrence);
+                if burst(world, particles, at, *key).is_none() {
+                    return skip(world, NO_BURST);
+                }
             }
             ActionKind::Counter {
                 name,
@@ -3660,7 +4244,11 @@ impl Reactor {
                     self.despawns.push(entity);
                 }
             }
-            ActionKind::Sound { id, min_interval } => {
+            ActionKind::Sound {
+                id,
+                min_interval,
+                place,
+            } => {
                 let interval = f64::from(*min_interval);
                 if interval > 0.0
                     && let Some(&last) = self.played.get(id)
@@ -3674,11 +4262,12 @@ impl Reactor {
                 else {
                     return skip(world, NO_SOUND);
                 };
+                let at = place.of(world, occurrence);
                 let listener = world.get_resource::<CueListener>();
-                let gain = listener.map_or(1.0, |listener| listener.gain(occurrence.position));
+                let gain = listener.map_or(1.0, |listener| listener.gain(at));
                 let pan = listener
                     .filter(|listener| listener.pan.is_some())
-                    .map(|listener| listener.pan(occurrence.position));
+                    .map(|listener| listener.pan(at));
                 if gain <= 0.0 {
                     return skip(world, UNHEARD);
                 }
@@ -4011,24 +4600,21 @@ impl Reactor {
         });
     }
 
-    /// Ages the part labels' open sums by `dt` and floats each that closes
-    /// with a part in it, in the order they opened.
-    fn close_sums(&mut self, world: &mut World, dt: f32) {
+    /// Ages the part labels' open sums by `dt` and keeps each that closes
+    /// for the step's end, in the order they opened.
+    fn close_sums(&mut self, dt: f32) {
         if self.sums.is_empty() {
             return;
         }
-        let mut closed: Vec<OpenSum> = self
-            .sums
-            .extract_if(|_, open| {
-                open.left -= dt;
-                open.left <= SUM_SLACK
-            })
-            .map(|(_, open)| open)
-            .collect();
-        closed.sort_by_key(|open| open.order);
-        for open in closed.iter().filter(|open| open.parts > 0) {
-            float_label(world, &open.style, open.position, open.sum);
-        }
+        self.closing.extend(
+            self.sums
+                .extract_if(|_, open| {
+                    open.left -= dt;
+                    open.left <= SUM_SLACK
+                })
+                .map(|(_, open)| open),
+        );
+        self.closing.sort_by_key(|open| open.order);
     }
 
     /// A part label's number for `occurrence`'s part of `amount` in its
@@ -4079,7 +4665,7 @@ impl Reactor {
             _ => style,
         };
         let Some(window) = label.merge else {
-            float_label(world, &style, occurrence.position, amount);
+            self.fresh.push((style, occurrence.position, amount));
             return;
         };
         let key = (id, subject, occurrence.kinds, tick);
@@ -4089,12 +4675,14 @@ impl Reactor {
             open.position = occurrence.position;
             return;
         }
-        // A window opens: a plain part floats at once, a tick waits for
-        // the close.
-        let (sum, parts) = if tick {
+        // A window opens: a plain part floats at once, and a tick with
+        // its ticks' `first`; another tick waits for the close.
+        let first = label.ticks.as_ref().is_some_and(|ticks| ticks.first);
+        let (sum, parts) = if tick && !first {
             (amount, 1)
         } else {
-            float_label(world, &style, occurrence.position, amount);
+            self.fresh
+                .push((style.clone(), occurrence.position, amount));
             (0.0, 0)
         };
         self.opened += 1;
@@ -4152,7 +4740,7 @@ impl Reactor {
             for event in parts.read(queue) {
                 let position = event
                     .position
-                    .unwrap_or_else(|| point_of(world, event.entity));
+                    .unwrap_or_else(|| body_point(world, event.entity));
                 occurrences.push(Occurrence {
                     amount: Some(event.amount),
                     other: event.source,
@@ -4166,7 +4754,7 @@ impl Reactor {
             for event in damaged.read(queue) {
                 let position = event
                     .position
-                    .unwrap_or_else(|| point_of(world, event.entity));
+                    .unwrap_or_else(|| body_point(world, event.entity));
                 let hit = Occurrence {
                     amount: Some(event.amount),
                     other: event.source,
@@ -4195,7 +4783,7 @@ impl Reactor {
                 Occurrence::new(
                     COOLDOWN_ELAPSED,
                     event.entity,
-                    point_of(world, event.entity),
+                    body_point(world, event.entity),
                 )
             }));
         }
@@ -4210,7 +4798,7 @@ impl Reactor {
             occurrences.extend(healed.read(queue).map(|event| Occurrence {
                 amount: Some(event.amount),
                 other: event.source,
-                ..Occurrence::new(HEALED, event.entity, point_of(world, event.entity))
+                ..Occurrence::new(HEALED, event.entity, body_point(world, event.entity))
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<PickedUp>>() {
@@ -4233,7 +4821,11 @@ impl Reactor {
                     other: event.source,
                     bits: u8::from(event.fresh) * FRESH,
                     effect: effect_index(effect_ids, effect_count, event.id.as_deref()),
-                    ..Occurrence::new(EFFECT_APPLIED, event.entity, point_of(world, event.entity))
+                    ..Occurrence::new(
+                        EFFECT_APPLIED,
+                        event.entity,
+                        body_point(world, event.entity),
+                    )
                 });
             }
         }
@@ -4242,7 +4834,11 @@ impl Reactor {
                 occurrences.push(Occurrence {
                     bits: u8::from(event.ended) * ENDED,
                     effect: effect_index(effect_ids, effect_count, event.id.as_deref()),
-                    ..Occurrence::new(EFFECT_EXPIRED, event.entity, point_of(world, event.entity))
+                    ..Occurrence::new(
+                        EFFECT_EXPIRED,
+                        event.entity,
+                        body_point(world, event.entity),
+                    )
                 });
             }
         }
@@ -4266,7 +4862,7 @@ impl Reactor {
         if let Some(queue) = world.get_resource::<EventQueue<LevelUp>>() {
             occurrences.extend(level_ups.read(queue).map(|event| Occurrence {
                 amount: Some(event.level as f32),
-                ..Occurrence::new(LEVEL_UP, event.entity, point_of(world, event.entity))
+                ..Occurrence::new(LEVEL_UP, event.entity, body_point(world, event.entity))
             }));
         }
         if let Some(cues) = world.get_resource_mut::<ControllerCues>() {
@@ -4327,11 +4923,12 @@ fn placed(world: &World, id: &str, position: Vec2, centred: bool) -> Vec2 {
 }
 
 /// Moves the World's [`CueListener`] to the entity it follows, when that
-/// entity is alive with a point.
+/// entity is alive with a point: to its point, or to its body's centre for
+/// a listener [following its body](CueListener::following_body).
 fn follow_listener(world: &mut World) {
-    let Some(entity) = world
+    let Some((entity, body)) = world
         .get_resource::<CueListener>()
-        .and_then(|listener| listener.follows)
+        .and_then(|listener| Some((listener.follows?, listener.body)))
     else {
         return;
     };
@@ -4339,7 +4936,11 @@ fn follow_listener(world: &mut World) {
     {
         return;
     }
-    let at = point_of(world, entity);
+    let at = if body {
+        body_point(world, entity)
+    } else {
+        point_of(world, entity)
+    };
     world.resource_mut::<CueListener>().position = at;
 }
 
@@ -4372,6 +4973,16 @@ fn point_of(world: &World, entity: Entity) -> Vec2 {
         },
         |position| position.0,
     )
+}
+
+/// Where an occurrence without a point of its own sits: `entity`'s body
+/// centre, its `Position` plus its collider's offset, else its point
+/// ([`point_of`]).
+fn body_point(world: &World, entity: Entity) -> Vec2 {
+    match (world.get::<Position>(entity), world.get::<Collider>(entity)) {
+        (Some(position), Some(collider)) => position.0 + collider.offset,
+        _ => point_of(world, entity),
+    }
 }
 
 /// The `cues` round trip: an event left out has no actions, which the
@@ -4470,6 +5081,11 @@ fn describe_cues(world: &mut World) {
                 "roll",
                 FieldType::Shape("roll_action"),
                 "a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject, or its centre there; a table alone reads as `{ \"table\": .. }`",
+            ))
+            .field(FieldDescription::new(
+                "burst",
+                FieldType::Shape("burst_action"),
+                "a one-off particle burst at the event's position under the burst budget; an ID alone reads as `{ \"particles\": .. }`",
             ))
             .field(FieldDescription::new(
                 "effect",
@@ -4619,6 +5235,22 @@ fn describe_cues(world: &mut World) {
                     "game seconds before this sound plays again from a cue",
                 )
                 .default("0.0"),
+            )
+            .field(
+                FieldDescription::new(
+                    "at",
+                    FieldType::Enum(&["event", "centre", "aim"]),
+                    "the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "offset",
+                    FieldType::Vec2,
+                    "moved from that point, its x mirrored while the subject faces left; unmoved when left out",
+                )
+                .default("null"),
             )
             .sample(r#"{ "id": "blip" }"#)
             .roundtrip(round_trip::<SoundDef>),
@@ -4836,6 +5468,14 @@ fn describe_cues(world: &mut World) {
             )
             .default("{}"),
         )
+        .field(
+            FieldDescription::new(
+                "first",
+                FieldType::Bool,
+                "`true` floats a window's first tick at once, as a plain part; it waits for the close when left out",
+            )
+            .default("null"),
+        )
         .sample(r#"{ "size": 10 }"#)
         .roundtrip(round_trip::<TickLabel>),
         ComponentDescription::new(
@@ -4870,9 +5510,25 @@ fn describe_cues(world: &mut World) {
             FieldDescription::new(
                 "centred",
                 FieldType::Bool,
-                "its centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point",
+                "its centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the position rather than its point",
             )
             .default("false"),
+        )
+        .field(
+            FieldDescription::new(
+                "at",
+                FieldType::Enum(&["event", "centre", "aim"]),
+                "the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "offset",
+                FieldType::Vec2,
+                "moved from that point, its x mirrored while the subject faces left; unmoved when left out",
+            )
+            .default("null"),
         )
         .sample(r#"{ "id": "puff" }"#)
         .roundtrip(round_trip::<PrefabActionObject>),
@@ -4889,12 +5545,63 @@ fn describe_cues(world: &mut World) {
             FieldDescription::new(
                 "centred",
                 FieldType::Bool,
-                "each prefab's centre, its `rigid_body`'s offset or its sprite's drawn centre, on the position rather than its point",
+                "each prefab's centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the position rather than its point",
             )
             .default("false"),
         )
+        .field(
+            FieldDescription::new(
+                "at",
+                FieldType::Enum(&["event", "centre", "aim"]),
+                "the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "offset",
+                FieldType::Vec2,
+                "moved from that point, its x mirrored while the subject faces left; unmoved when left out",
+            )
+            .default("null"),
+        )
         .sample(r#"{ "table": "drops" }"#)
         .roundtrip(round_trip::<RollActionObject>),
+        ComponentDescription::new(
+            "burst_action",
+            "A one-off burst of a manifest particle config, spawned at once and gone with its particles, under the World's burst budget.",
+        )
+        .field(FieldDescription::new(
+            "particles",
+            FieldType::Text,
+            "the manifest particle config; the load checks the ID",
+        ))
+        .field(
+            FieldDescription::new(
+                "key",
+                FieldType::Bool,
+                "a key burst, which takes the oldest cosmetic burst's slot at the budget's cap rather than being dropped",
+            )
+            .default("false"),
+        )
+        .field(
+            FieldDescription::new(
+                "at",
+                FieldType::Enum(&["event", "centre", "aim"]),
+                "the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "offset",
+                FieldType::Vec2,
+                "moved from that point, its x mirrored while the subject faces left; unmoved when left out",
+            )
+            .default("null"),
+        )
+        .sample(r#"{ "particles": "sparks" }"#)
+        .roundtrip(round_trip::<BurstActionObject>),
         ComponentDescription::new(
             "cue_rule",
             "A shared reaction: on an event, for each subject whose tags pass the filter, the actions in order.",
@@ -4979,23 +5686,18 @@ fn describe_cues(world: &mut World) {
         .field(
             FieldDescription::new(
                 "ability",
-                FieldType::Text,
-                "an ability's name in its user's `abilities`; `ability_used`, `ability_refused`, `ability_ready`, `ability_held` and `ability_released` only",
+                FieldType::Object("a name, or a list of names"),
+                "an ability's name in its user's `abilities`, or a list passing any of them; `ability_used`, `ability_refused`, `ability_ready`, `ability_held` and `ability_released` only",
             )
             .default("null"),
         )
         .field(
             FieldDescription::new(
                 "reason",
-                FieldType::Enum(&[
-                    "not_ready",
-                    "no_charge",
-                    "no_cost",
-                    "no_target",
-                    "no_room",
-                    "capped",
-                ]),
-                "why the use was refused; `ability_refused` only",
+                FieldType::Object(
+                    "one of not_ready | no_charge | no_cost | no_target | no_room | capped, or a list of them",
+                ),
+                "why the use was refused, or a list passing any of them; `ability_refused` only",
             )
             .default("null"),
         )
@@ -5018,6 +5720,14 @@ fn describe_cues(world: &mut World) {
                     max: None,
                 },
                 "the rule's runs a step at most",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "group",
+                FieldType::Text,
+                "rules naming one group run once a subject a step: the first in load order of those the step's occurrences about it pass, on the first it passes",
             )
             .default("null"),
         )
@@ -5068,7 +5778,7 @@ fn describe_cues(world: &mut World) {
     describe_kind(
         world,
         WORLD_CUES,
-        "A list of `cue_action` a game plays by name at a point, with no subject: `prefab`, `roll`, `sound`, `shake`, a `label` with a font, and a `counter` or `flag` with `target: game`.",
+        "A list of `cue_action` a game plays by name at a point, with no subject: `prefab`, `roll`, `burst`, `sound`, `shake`, a `label` with a font, and a `counter` or `flag` with `target: game`.",
     );
 }
 

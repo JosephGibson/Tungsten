@@ -6,7 +6,7 @@
 //! home. Their prefabs hold their kit items: a kinematic body on a mover
 //! (a flyer's top-down mover, a walker's platformer controller), health
 //! with its death policy, stats, a hurtbox, a touch that hurts the player,
-//! resistances, an ailment threshold, knockback, the hit flash they show
+//! resistances, a status threshold, knockback, the hit flash they show
 //! unlit and their cues' sounds.
 //!
 //! 01 adds what the kit has no item for: the sight (two casts, the tiles
@@ -17,10 +17,12 @@
 //! fall, a bat's roost, a troll's hold and throws, a goblin's throws, its
 //! stab, its fidgets and its flight, a crawler's fear of the light, its
 //! retreat and its snowball ([`snowball`]), the walkers' hops and leaps
-//! ([`hop`]), the deaths' bursts,
-//! their clips and the troll's bar. A run keeps its placed
+//! ([`hop`]), the deaths' bursts, and the tags their prefabs' clip rules
+//! read, the troll's steps and its shifted drawing; the kit's animator
+//! shows their clips and draws the troll's bar. A run keeps its placed
 //! enemies' save IDs, so a save names the dead as gone; the summon slot
-//! places more, [`SUMMON_CAP`] at most, the oldest going.
+//! places more, ten living at most by their prefabs' one kit `cap`, the
+//! oldest going.
 
 pub mod armour;
 pub mod bat;
@@ -37,20 +39,24 @@ pub mod troll;
 pub mod wisp;
 
 use glam::Vec2;
-use tungsten::core::{Entity, EventCursor, Position, Schedule, Shape, Stage, World, system};
+use serde::Deserialize;
+use tungsten::core::save::{SaveOptions, Value};
+use tungsten::core::{
+    AnimationRegistry, DataRegistry, Entity, EventCursor, Position, PrefabRegistry, PreparedPrefab,
+    Schedule, Shape, Stage, World, system,
+};
 use tungsten::kit::{
-    ANIMATION_TICK, Health, KIT_DEBUG_DRAW, KNOCKBACK, Line, Modifier, PICKUP_MAGNET, PICKUP_TICK,
-    PLATFORMER_CONTROLLER, Phase, PickedUp, PlatformerController, Stats, TOP_DOWN_MOVER, TagFilter,
-    WorldSource, WorldSources, ensure_phases,
+    Admission, CHARACTER_ANIMATOR, EFFECT_LOOK_LATE, FOLLOW, Facing, Health, KIT_DEBUG_DRAW,
+    KNOCKBACK, Line, Modifier, PLATFORMER_CONTROLLER, PROJECTILE_TICK, Phase, Stats, Steering,
+    TOP_DOWN_MOVER, TagFilter, WorldSource, WorldSources, admit_spawn, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
 use crate::features::combat;
-use crate::features::level::LAVA_LAYER;
-use crate::features::toys::components::PreviousVelocity;
+use crate::features::level::{self, LAVA_LAYER};
 use crate::game::GAMEPLAY;
-use crate::shared::{self, BODIES, Body, SaveId, SaveIds, despawn_tree, spawn_key_burst};
+use crate::shared::{self, BODIES, Body, Saved, despawn_tree, spawn_key_burst};
 use crate::shell::Difficulty;
 use components::{
     Brain, Enemy, EnemyKind, EnemyState, PlacedEnemies, Shown, Sight, Spotted, Throws, Variant,
@@ -66,16 +72,9 @@ pub const ALERT_REACH: f32 = 320.0;
 pub const DORMANT_PAST: f32 = 1200.0;
 /// The seconds an enemy searches where it last saw the player.
 pub const SEARCH_SECS: f32 = 3.0;
-/// The seconds an attack's recovery takes, but the troll's and the
-/// goblin's own ([`KindInfo::recover`]).
-pub const RECOVER_SECS: f32 = 0.5;
-/// The seconds a fresh alert's "!" shows over an enemy, and how long a
-/// search lasts before its "?" shows.
-pub const ALERT_MARK_SECS: f32 = 0.8;
+/// How long a search lasts before its "?" shows; a fresh alert's "!" is
+/// its `alert_mark` effect's seconds.
 pub const SEARCH_MARK_AFTER: f32 = 0.4;
-/// The most summoned enemies live at once (Q12, Q45), beside the dummies'
-/// eight.
-pub const SUMMON_CAP: usize = 10;
 /// The world source of the difficulty's lines on the enemies' stats, and
 /// the key they sit under.
 pub const DIFFICULTY: &str = "difficulty";
@@ -106,173 +105,147 @@ pub fn walk_filter() -> SpatialFilter {
     SpatialFilter::new().with_mask(!LAVA_LAYER)
 }
 
-/// Gives `enemy`'s controller, when it has one, [`walk_filter`], and a
-/// walker's its shove of up to [`WALK_SHOVE_MOST`] by its kind's mass and
-/// its [`WALK_STEP`]: at a spawn, at a run's start for the map's, and after
-/// a load, whose saved controller leaves its filter out. A frozen flyer's
-/// borrowed controller takes the filter alone.
-pub fn walk_on_rock(world: &mut World, enemy: Entity) {
-    let walker = world
-        .get::<Enemy>(enemy)
-        .map(|mine| mine.kind.info())
-        .filter(|info| !info.flyer);
-    if let Some(controller) = world.get_mut::<PlatformerController>(enemy) {
-        let mut set = controller.clone().with_filter(walk_filter());
-        if let Some(info) = walker {
-            set = set
-                .with_shove(info.mass, WALK_SHOVE_MOST / info.mass)
-                .with_step_height(WALK_STEP);
-        }
-        *controller = set;
-    }
-}
+/// The data kind of the foes' kinds ([`KindInfo`]), each by its kind's
+/// name (`data/enemy_kinds/<kind>.json`).
+pub const ENEMY_KINDS: &str = "enemy_kinds";
 
-/// A kind's table entry: its prefab, whose name its body's data takes
-/// ([`body`]), how far either side of its body's centre a lightning bolt
-/// meets it (the opaque columns of its walk's or its flight's frames,
-/// mirrored as it faces; Q49), its mass for impacts and the walkers'
-/// shove, its sight's reach, its alert's seconds, the black hole's hold on
-/// it, which a blast's push takes too, the force push's wave's weight on
-/// it (`toys::wave`), its knockback's resist as its prefab sets it (the
-/// kit's `Knockback` has no getter), its art, and its recovery's seconds
-/// after an attack.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// A kind's entry in the [`ENEMY_KINDS`] data: how far either side of its
+/// body's centre a lightning bolt meets it (the opaque columns of its
+/// walk's or its flight's frames, mirrored as it faces; Q49), its mass for
+/// impacts and the walkers' shove, its sight's reach, its alert's seconds,
+/// the black hole's hold on it, which a blast's push takes too, the force
+/// push's wave's weight on it (`toys::wave`), its ice cube's art, whether
+/// it flies, and its recovery's seconds after an attack; its knockback's
+/// resist is its prefab's alone (`Knockback::resist`), and its prefab and
+/// summon icon are its name's ([`prefab`], [`icon`]). Checked as it loads:
+/// every number finite, its mass above 0 and the rest at least 0, a refused
+/// entry failing the load at its field.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(try_from = "KindForm")]
 pub struct KindInfo {
-    pub prefab: &'static str,
     pub strike: f32,
     pub mass: f32,
     pub sight: f32,
     pub alert: f32,
     pub pull: f32,
     pub wave: f32,
-    pub resist: f32,
-    pub icon: &'static str,
-    pub ice: &'static str,
+    pub ice: String,
     pub flyer: bool,
     pub recover: f32,
 }
 
-impl EnemyKind {
-    /// Its table entry.
-    #[must_use]
-    pub const fn info(self) -> KindInfo {
-        match self {
-            EnemyKind::Wisp => KindInfo {
-                prefab: "wisp",
-                strike: 17.0,
-                mass: 3.0,
-                sight: 480.0,
-                alert: 0.5,
-                pull: 0.6,
-                wave: 3.5,
-                resist: 0.0,
-                icon: "ex10_icon_wisp",
-                ice: "ex10_status_ice_wisp",
-                recover: RECOVER_SECS,
-                flyer: true,
-            },
-            EnemyKind::Crawler => KindInfo {
-                prefab: "crawler",
-                strike: 32.0,
-                mass: 40.0,
-                sight: 400.0,
-                alert: 0.4,
-                pull: 0.15,
-                wave: 1.0,
-                resist: 0.0,
-                icon: "ex10_icon_crawler",
-                ice: "ex10_status_ice_crawler",
-                recover: RECOVER_SECS,
-                flyer: false,
-            },
-            EnemyKind::Beetle => KindInfo {
-                prefab: "beetle",
-                strike: 32.0,
-                mass: 120.0,
-                sight: 520.0,
-                alert: 0.5,
-                pull: 0.05,
-                wave: 0.53,
-                resist: 0.5,
-                icon: "ex10_icon_beetle",
-                ice: "ex10_status_ice_beetle",
-                recover: RECOVER_SECS,
-                flyer: false,
-            },
-            EnemyKind::Bat => KindInfo {
-                prefab: "bat",
-                strike: 31.0,
-                mass: 2.0,
-                sight: 440.0,
-                alert: 0.4,
-                pull: 0.7,
-                wave: 4.0,
-                resist: 0.0,
-                icon: "ex10_icon_bat",
-                ice: "ex10_status_ice_bat",
-                recover: RECOVER_SECS,
-                flyer: true,
-            },
-            EnemyKind::Troll => KindInfo {
-                prefab: "troll",
-                strike: 41.0,
-                mass: 600.0,
-                sight: 640.0,
-                alert: 0.8,
-                pull: 0.01,
-                wave: 0.14,
-                resist: 1.0,
-                icon: "ex10_icon_troll",
-                ice: "ex10_status_ice_troll",
-                recover: troll::RECOVER,
-                flyer: false,
-            },
-            EnemyKind::Goblin => KindInfo {
-                prefab: "goblin",
-                strike: 22.0,
-                mass: 50.0,
-                sight: 520.0,
-                alert: 0.4,
-                pull: 0.12,
-                wave: 0.86,
-                resist: 0.0,
-                icon: "ex10_icon_goblin",
-                ice: "ex10_status_ice_goblin",
-                recover: goblin::RECOVER,
-                flyer: false,
-            },
+/// [`KindInfo`] as its file writes it, before its numbers are checked.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KindForm {
+    strike: f32,
+    mass: f32,
+    sight: f32,
+    alert: f32,
+    pull: f32,
+    wave: f32,
+    ice: String,
+    flyer: bool,
+    recover: f32,
+}
+
+impl TryFrom<KindForm> for KindInfo {
+    type Error = String;
+
+    fn try_from(form: KindForm) -> Result<Self, Self::Error> {
+        if !(form.mass.is_finite() && form.mass > 0.0) {
+            return Err(format!("mass: must be finite and > 0 (got {})", form.mass));
         }
+        for (field, value) in [
+            ("strike", form.strike),
+            ("sight", form.sight),
+            ("alert", form.alert),
+            ("pull", form.pull),
+            ("wave", form.wave),
+            ("recover", form.recover),
+        ] {
+            if !(value.is_finite() && value >= 0.0) {
+                return Err(format!("{field}: must be finite and >= 0 (got {value})"));
+            }
+        }
+        Ok(Self {
+            strike: form.strike,
+            mass: form.mass,
+            sight: form.sight,
+            alert: form.alert,
+            pull: form.pull,
+            wave: form.wave,
+            ice: form.ice,
+            flyer: form.flyer,
+            recover: form.recover,
+        })
     }
+}
+
+/// `kind`'s entry in the [`ENEMY_KINDS`] data, as it is now.
+///
+/// # Panics
+///
+/// When the data has no entry of that kind: every kind's loads with the
+/// manifest.
+#[must_use]
+pub fn info(world: &World, kind: EnemyKind) -> &KindInfo {
+    world
+        .get_resource::<DataRegistry>()
+        .and_then(|data| data.get::<KindInfo>(kind.name()))
+        .unwrap_or_else(|| panic!("no {ENEMY_KINDS} entry for {}", kind.name()))
 }
 
 /// The enemies as a plugin: the `enemy` and `orb` components their prefabs
 /// name; the throws in flight; in the intent phase the sight, the alerts,
-/// the marks' and the enemies' cooldowns, the hold and then a burning
-/// goblin's panic before the state machine, whose hooks run each kind's
-/// rules; in the move phase the
+/// the hold and then a burning goblin's panic before the state machine,
+/// whose hooks run each kind's rules, the "!" and the rests on the kit's
+/// effects and cooldowns; in the move phase the
 /// trolls' holds after the movers and the dropped orbs' fall after the
 /// kit's magnet; in the overlap phase the orbs collected and the
-/// crawlers' snowballs ([`snowball::snowballs`]); in the react
-/// phase the deaths and where the dead fell; in `PreUpdate` the orbs'
-/// adoption; in the present phase the clips after the kit's animation tick,
-/// the beetles' dust, the dropped orbs' blink and, under F1, their hit
-/// tests before the kit's debug draw; and the trolls' bars and slam rings
-/// and the enemies' marks drawn over the sprites.
+/// crawlers' snowballs' bursts after the kit's projectile step
+/// ([`snowball::ends`]); in the react
+/// phase the deaths, the tags the foes' clip rules read
+/// ([`systems::foe_tags`]) and where the dead fell; in `PreUpdate` the
+/// orbs' adoption; in the present phase the trolls' steps and shifted
+/// drawing after the kit's animator and before its late look pass, the
+/// dropped orbs' blink and, under F1, their hit tests before the kit's
+/// debug draw; and the trolls' slam rings drawn over the sprites. The
+/// marks, the beetle's streaks and dust and the wisp's flare are the
+/// prefabs' looks.
 pub struct EnemiesPlugin;
 
 impl Plugin for EnemiesPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<Enemy>("enemy");
+        // A foe's mind and its looks' bookkeeping, fresh in its prefab.
+        world.register_component::<Brain>("brain");
+        world.register_component::<Sight>("sight");
+        world.register_component::<tungsten::kit::StateMachine<EnemyState>>("enemy_state");
+        world.register_component::<Shown>("shown");
         world.register_component::<drops::Orb>("orb");
+        world.register_saved::<Enemy>("enemy");
+        world.register_saved::<Brain>("brain");
+        world.register_saved::<Sight>("sight");
+        world.register_saved::<tungsten::kit::StateMachine<EnemyState>>("enemy_state");
+        world.register_saved::<components::Displaced>("displaced");
+        world.register_saved::<drops::Orb>("orb");
+        world.register_saved_with(
+            "troll_hold",
+            SaveOptions::<components::Holding>::form::<components::HoldingForm>()
+                .refs(components::holding_refs()),
+        );
+        world.register_component::<components::Snowball>("snowball");
+        world.register_saved_resource_with(
+            "throws",
+            SaveOptions::<Throws>::form::<components::ThrowsForm>().refs(components::throws_refs()),
+        );
         world.register_data_kind::<Body>(BODIES);
+        world.register_data_kind::<KindInfo>(ENEMY_KINDS);
         world.register_event::<Spotted>();
         world.insert_resource(Throws::default());
-        world.resource_mut::<Extracts>().add_sprites(draw::bars);
-        world.resource_mut::<Extracts>().add_sprites(draw::charges);
         world.resource_mut::<Extracts>().add_sprites(draw::rings);
-        world.resource_mut::<Extracts>().add_sprites(draw::marks);
-        world.insert_resource(beetle::Dust::default());
         ensure_phases(schedule);
         systems::machine().build(schedule, world);
         let sight = system("enemy_sight", systems::sight).before("enemy_alerts");
@@ -284,29 +257,24 @@ impl Plugin for EnemiesPlugin {
         let hold = system("enemy_hold", systems::hold).before(ENEMY_STATES);
         let fire = system("wisp_fire", wisp::fire).after(ENEMY_STATES);
         let chill = system("chill_grades", combat::systems::chill_grades).before(ENEMY_STATES);
-        let marks = system("enemy_marks", systems::marks).before(ENEMY_STATES);
-        let cooldowns = system("enemy_cooldowns", systems::cooldowns).before(ENEMY_STATES);
         let panics = system("goblin_panic", goblin::panics)
             .after("enemy_hold")
             .before(ENEMY_STATES);
-        for desc in [sight, alerts, hold, fire, chill, marks, cooldowns, panics] {
+        for desc in [sight, alerts, hold, fire, chill, panics] {
             schedule.add(Stage::FixedUpdate, Phase::Intent.join(desc));
         }
         let holds = system("troll_holds", troll::holds)
             .after(PLATFORMER_CONTROLLER)
             .after(TOP_DOWN_MOVER)
-            .after(KNOCKBACK);
+            .after(KNOCKBACK)
+            .after(FOLLOW);
         schedule.add(Stage::FixedUpdate, Phase::Move.join(holds));
-        let fall = system("orb_fall", drops::fall).after(PICKUP_MAGNET);
-        schedule.add(Stage::FixedUpdate, Phase::Move.join(fall));
-        let mut picked = EventCursor::<PickedUp>::new();
-        let collect = system("orb_collect", move |world: &mut World| {
-            drops::collect(world, &mut picked);
+        let snowball_ends = system("snowball_ends", {
+            let mut cursor = EventCursor::new();
+            move |world: &mut World| snowball::ends(world, &mut cursor)
         })
-        .after(PICKUP_TICK);
-        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(collect));
-        let snowballs = system("snowballs", snowball::snowballs);
-        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(snowballs));
+        .after(PROJECTILE_TICK);
+        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(snowball_ends));
         // Before the shell's save captures them, so a save holds them whole.
         let adopt = system("orb_adopt", drops::adopt).before("shell_save");
         schedule.add(Stage::PreUpdate, adopt);
@@ -316,22 +284,16 @@ impl Plugin for EnemiesPlugin {
         })
         .after("combat_reactions");
         schedule.add(Stage::FixedUpdate, Phase::React.join(deaths));
-        let mut cursor = EventCursor::new();
-        let fallen = system("orb_fallen", move |world: &mut World| {
-            drops::fallen(world, &mut cursor);
+        let mut foes = Vec::new();
+        let tags = system("foe_tags", move |world: &mut World| {
+            systems::foe_tags(world, &mut foes);
         })
         .after("enemy_deaths");
-        schedule.add(Stage::FixedUpdate, Phase::React.join(fallen));
-        let clips = system("enemy_clips", systems::clips).after(ANIMATION_TICK);
+        schedule.add(Stage::FixedUpdate, Phase::React.join(tags));
+        let clips = system("enemy_clips", systems::clips)
+            .after(CHARACTER_ANIMATOR)
+            .before(EFFECT_LOOK_LATE);
         schedule.add(Stage::PostUpdate, Phase::Present.join(clips));
-        schedule.add(
-            Stage::PostUpdate,
-            Phase::Present.join(system("beetle_dust", beetle::dust)),
-        );
-        schedule.add(
-            Stage::PostUpdate,
-            Phase::Present.join(system("orb_blink", drops::blink)),
-        );
         let boxes = system("enemy_debug_boxes", draw::debug_boxes).before(KIT_DEBUG_DRAW);
         schedule.add(Stage::PostUpdate, Phase::Present.join(boxes));
     }
@@ -384,7 +346,7 @@ pub fn scale(world: &mut World, enemy: Entity, difficulty: Difficulty) {
 pub const fn prefab(kind: EnemyKind, variant: Variant) -> &'static str {
     match (kind, variant) {
         (EnemyKind::Troll, Variant::Armoured) => "troll_armoured",
-        _ => kind.info().prefab,
+        _ => kind.name(),
     }
 }
 
@@ -394,47 +356,131 @@ pub const fn prefab(kind: EnemyKind, variant: Variant) -> &'static str {
 pub const fn icon(kind: EnemyKind, variant: Variant) -> &'static str {
     match (kind, variant) {
         (EnemyKind::Troll, Variant::Armoured) => "ex10_icon_troll_armoured",
-        _ => kind.info().icon,
+        (EnemyKind::Wisp, _) => "ex10_icon_wisp",
+        (EnemyKind::Crawler, _) => "ex10_icon_crawler",
+        (EnemyKind::Beetle, _) => "ex10_icon_beetle",
+        (EnemyKind::Bat, _) => "ex10_icon_bat",
+        (EnemyKind::Troll, _) => "ex10_icon_troll",
+        (EnemyKind::Goblin, _) => "ex10_icon_goblin",
     }
 }
 
-/// Spawns a plain enemy of `kind` with its sprite's top-left at `corner`,
-/// owned by gameplay, with the save ID `id`, at once ([`spawn_as`]).
-pub fn spawn(world: &mut World, kind: EnemyKind, corner: Vec2, id: SaveId) -> Option<Entity> {
-    spawn_as(world, kind, Variant::Plain, corner, id)
+/// Spawns a plain enemy of `kind` with its sprite's top-left at `corner`
+/// ([`spawn_as`]).
+pub fn spawn(world: &mut World, kind: EnemyKind, corner: Vec2) -> Option<Entity> {
+    spawn_as(world, kind, Variant::Plain, corner)
 }
 
 /// Spawns an enemy of `kind`'s `variant` with its sprite's top-left at
-/// `corner`, owned by gameplay, with the save ID `id`, its body from its
-/// kind's data ([`shared::fit_body`]), at once: a summon's or a load's. Its
-/// home is where it stands, a bat's the roost above.
+/// `corner`, one of the run's records ([`spawn_record`]), which takes the
+/// run's next save ID at its spawn: a test's.
 pub fn spawn_as(
     world: &mut World,
     kind: EnemyKind,
     variant: Variant,
     corner: Vec2,
-    id: SaveId,
 ) -> Option<Entity> {
-    let enemy = world
+    spawn_record(world, kind, variant, corner)
+}
+
+/// Spawns an enemy of `kind`'s `variant` with its sprite's top-left at
+/// `corner`, owned by gameplay, as one of the run's records
+/// (`PreparedPrefab::saved`, the map's area), at once and outside the
+/// summons' cap: the pit's or a test's ([`summon_as`] admits a summon's).
+/// Its body is its kind's data's ([`fit`]), and its home where it stands,
+/// a bat's the roost above.
+pub fn spawn_record(
+    world: &mut World,
+    kind: EnemyKind,
+    variant: Variant,
+    corner: Vec2,
+) -> Option<Entity> {
+    let enemy = prepare_record(world, kind, variant, corner)?.spawn(world);
+    settle_record(world, enemy, kind, corner);
+    Some(enemy)
+}
+
+/// [`spawn_record`]'s prefab, prepared with its save ID.
+fn prepare_record(
+    world: &mut World,
+    kind: EnemyKind,
+    variant: Variant,
+    corner: Vec2,
+) -> Option<PreparedPrefab> {
+    let prepared = world
         .prepare_prefab(prefab(kind, variant), corner.to_array())
         .ok()?
-        .with((
-            id,
-            Brain::default(),
-            Sight::default(),
-            tungsten::kit::StateMachine::new(EnemyState::Patrol),
-            Shown::default(),
-            PreviousVelocity::default(),
-            SceneEntity { state_id: GAMEPLAY },
-        ))
-        .spawn(world);
-    shared::fit_body(world, enemy, kind.info().prefab);
-    walk_on_rock(world, enemy);
+        .with((SceneEntity { state_id: GAMEPLAY },));
+    Some(prepared.saved(world, Some(level::MAP)))
+}
+
+/// A fresh record's body and home, as [`spawn_record`] gives them.
+fn settle_record(world: &mut World, enemy: Entity, kind: EnemyKind, corner: Vec2) {
+    fit(world, enemy);
     let home = home(world, kind, corner + body(world, kind).centre);
     if let Some(mine) = world.get_mut::<Enemy>(enemy) {
         mine.home = home.to_array();
     }
-    Some(enemy)
+}
+
+/// What a restored enemy's spawn gave it beyond its prefab and its saved
+/// state: its kind's body and its hold on rock ([`fit`]).
+pub fn restored(world: &mut World, enemy: Entity) {
+    fit(world, enemy);
+    disarm_as_prefab(world, enemy);
+    steering_as_prefab(world, enemy);
+}
+
+/// An older save's flyer record, which held no steering, takes its
+/// prefab's, read from the prefab's data; its next intent step switches it
+/// on or off.
+fn steering_as_prefab(world: &mut World, enemy: Entity) {
+    let Some(mine) = world.get::<Enemy>(enemy).copied() else {
+        return;
+    };
+    if !info(world, mine.kind).flyer || world.has::<Steering>(enemy) {
+        return;
+    }
+    let steering = world
+        .get_resource::<PrefabRegistry>()
+        .and_then(|prefabs| prefabs.get(prefab(mine.kind, mine.variant)))
+        .and_then(|data| data.components.get("steering"))
+        .and_then(|steering| Steering::deserialize(steering.clone()).ok());
+    if let Some(steering) = steering {
+        world.insert(enemy, steering);
+    }
+}
+
+/// An older save's enemy record, whose health lacks its prefab's death
+/// policy's `disarm`, takes it, read from the prefab's data.
+fn disarm_as_prefab(world: &mut World, enemy: Entity) {
+    let Some(mine) = world.get::<Enemy>(enemy) else {
+        return;
+    };
+    let disarms = world
+        .get_resource::<PrefabRegistry>()
+        .and_then(|prefabs| prefabs.get(prefab(mine.kind, mine.variant)))
+        .and_then(|data| data.components.get("health"))
+        .and_then(|health| health.get("disarm"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if disarms
+        && let Some(health) = world.get_mut::<Health>(enemy)
+        && !health.disarms()
+    {
+        *health = health.clone().disarming();
+    }
+}
+
+/// An enemy's body from its kind's data ([`shared::fit_body`]): a spawn's
+/// and a load's. A walker's controller takes its filter (lava's layer
+/// left out), its shove by its kind's mass and its [`WALK_STEP`] from its
+/// prefab's data (S-99).
+fn fit(world: &mut World, enemy: Entity) {
+    let Some(kind) = world.get::<Enemy>(enemy).map(|enemy| enemy.kind) else {
+        return;
+    };
+    shared::fit_body(world, enemy, kind.name());
 }
 
 /// The home of an enemy of `kind` placed with its body's centre at `at`:
@@ -473,24 +519,23 @@ pub fn summon(world: &mut World, kind: EnemyKind, at: Vec2) -> Option<Entity> {
 }
 
 /// Summons an enemy of `kind`'s `variant` with its body's centre at `at`,
-/// at the run's difficulty, with a poof; past [`SUMMON_CAP`] summoned live,
-/// the oldest goes, with its own.
+/// at the run's difficulty, with a poof, admitted under its prefab's kit
+/// `cap`, one count over the seven foes', the map's own and the pit's
+/// aside: past it the oldest living summoned goes at once, with its own
+/// poof.
 pub fn summon_as(world: &mut World, kind: EnemyKind, variant: Variant, at: Vec2) -> Option<Entity> {
     let difficulty =
         crate::shell::run_meta(world).map_or(Difficulty::Normal, |meta| meta.difficulty);
-    let id = world.resource_mut::<SaveIds>().take();
     let corner = at - body(world, kind).centre;
-    let enemy = spawn_as(world, kind, variant, corner, id)?;
+    let prepared = prepare_record(world, kind, variant, corner)?;
+    let Admission {
+        prepared, culled, ..
+    } = admit_spawn(world, prepared, None)?;
+    let enemy = prepared.spawn(world);
+    settle_record(world, enemy, kind, corner);
     scale(world, enemy, difficulty);
     spawn_key_burst(world, "ex10_poof", at);
-    let summoned: Vec<(u64, Entity)> = live(world)
-        .into_iter()
-        .filter(|&(id, _)| !placed(world, id))
-        .collect();
-    for &(_, oldest) in summoned
-        .iter()
-        .take(summoned.len().saturating_sub(SUMMON_CAP))
-    {
+    for oldest in culled {
         if let Some(centre) = centre(world, oldest) {
             spawn_key_burst(world, "ex10_poof", centre);
         }
@@ -501,14 +546,15 @@ pub fn summon_as(world: &mut World, kind: EnemyKind, variant: Variant, at: Vec2)
 
 /// For a run the map has just placed: keeps the save IDs of its enemies,
 /// gives each its kind's body ([`shared::fit_body`]), sets its home
-/// ([`home`]) and its state machine, and gives it the difficulty's factor.
+/// ([`home`]) and gives it the difficulty's factor; its mind and its state
+/// machine are its prefab's.
 pub fn start(world: &mut World, difficulty: Difficulty) {
     let placed: Vec<(Entity, u64, EnemyKind)> = world
-        .query::<(Entity, &Enemy, &SaveId)>()
-        .map(|(entity, enemy, id)| (entity, id.0, enemy.kind))
+        .query::<(Entity, &Enemy, &Saved)>()
+        .map(|(entity, enemy, id)| (entity, id.id().0, enemy.kind))
         .collect();
     for &(entity, _, kind) in &placed {
-        shared::fit_body(world, entity, kind.info().prefab);
+        shared::fit_body(world, entity, kind.name());
         let at = centre(world, entity).unwrap_or_default();
         let home = world
             .get::<Enemy>(entity)
@@ -516,18 +562,7 @@ pub fn start(world: &mut World, difficulty: Difficulty) {
         if let Some(enemy) = world.get_mut::<Enemy>(entity) {
             enemy.home = home.to_array();
         }
-        world.insert_bundle(
-            entity,
-            (
-                Brain::default(),
-                Sight::default(),
-                tungsten::kit::StateMachine::new(EnemyState::Patrol),
-                Shown::default(),
-                PreviousVelocity::default(),
-            ),
-        );
         scale(world, entity, difficulty);
-        walk_on_rock(world, entity);
     }
     let mut placed: Vec<u64> = placed.into_iter().map(|(_, id, _)| id).collect();
     placed.sort_unstable();
@@ -540,9 +575,9 @@ pub fn start(world: &mut World, difficulty: Difficulty) {
 #[must_use]
 pub fn live(world: &World) -> Vec<(u64, Entity)> {
     let mut live: Vec<(u64, Entity)> = world
-        .query::<(Entity, &Enemy, &SaveId, &Health)>()
+        .query::<(Entity, &Enemy, &Saved, &Health)>()
         .filter(|(.., health)| !health.is_dead())
-        .map(|(entity, _, id, _)| (id.0, entity))
+        .map(|(entity, _, id, _)| (id.id().0, entity))
         .collect();
     live.sort_unstable_by_key(|(id, _)| *id);
     live
@@ -574,14 +609,37 @@ pub fn gone(world: &World) -> Vec<u64> {
         .unwrap_or_default()
 }
 
-/// Whether `entity` is an enemy whose kind resists knockback whole (the
-/// troll): 01 gives it no push, since the kit's `knock_back` would launch
-/// its controller at zero and lock its input.
+/// The seconds the clip `clip` (its manifest ID, `ex10_` and all) plays,
+/// its frames' durations summed: a one-shot tell's or throw's, which its
+/// state runs on its own fixed-step clock (S-170); 0 for a clip the
+/// registry lacks.
 #[must_use]
-pub fn stands_firm(world: &World, entity: Entity) -> bool {
+pub fn clip_secs(world: &World, clip: &str) -> f32 {
     world
-        .get::<Enemy>(entity)
-        .is_some_and(|enemy| enemy.kind.info().resist >= 1.0)
+        .get_resource::<AnimationRegistry>()
+        .and_then(|registry| registry.get(clip))
+        .map_or(0.0, |data| data.total_duration_ms() as f32 / 1000.0)
+}
+
+/// Which way `enemy` faces along x, 1 right or -1 left: its prefab's
+/// `facing`, from an intent it never has, so only [`turn`] turns it; none
+/// without one.
+#[must_use]
+pub fn heading_of(world: &World, enemy: Entity) -> Option<f32> {
+    let facing = world.get::<Facing>(enemy)?;
+    Some(if facing.direction().x < 0.0 {
+        -1.0
+    } else {
+        1.0
+    })
+}
+
+/// Turns `enemy` to `heading` along x, 1 right or -1 left
+/// (`Facing::face`); its facing holds it until the next turn.
+pub fn turn(world: &mut World, enemy: Entity, heading: f32) {
+    if let Some(facing) = world.get_mut::<Facing>(enemy) {
+        facing.face(Vec2::new(heading, 0.0));
+    }
 }
 
 /// An enemy's body centre.
@@ -596,5 +654,5 @@ pub fn centre(world: &World, enemy: Entity) -> Option<Vec2> {
 /// armoured troll's the troll's.
 #[must_use]
 pub fn body(world: &World, kind: EnemyKind) -> &Body {
-    shared::body(world, kind.info().prefab)
+    shared::body(world, kind.name())
 }

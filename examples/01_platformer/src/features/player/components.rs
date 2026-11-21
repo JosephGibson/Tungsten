@@ -2,8 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use glam::Vec2;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tungsten::core::AnimationState;
 
 use super::Gesture;
@@ -21,7 +20,8 @@ pub struct Player;
 /// [`RELIGHT_MANA`]. Its glow follows the orb in each frame's art.
 ///
 /// [`RELIGHT_MANA`]: super::RELIGHT_MANA
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Lantern {
     pub on: bool,
     /// It guttered out for want of mana and waits for the relight.
@@ -47,16 +47,13 @@ pub struct LanternAnchors(pub BTreeMap<String, [f32; 2]>);
 /// presentation, beside the kit's controller and animator.
 #[derive(Debug, Clone, Default)]
 pub struct Moves {
-    /// It ended its last step on the ground.
-    pub grounded: bool,
-    /// It has stood once: a spawn settles onto the ground silently.
-    pub settled: bool,
     /// Its air jump's tuck plays until the rise ends.
     pub tuck: bool,
     /// Game seconds the land clip still holds.
     pub landing: f32,
-    /// The last cast's gesture, and the game seconds it still holds: its
-    /// one-shot clip facing the aim, or standing, its pose along it.
+    /// The last cast's gesture, and the game seconds it still holds:
+    /// standing, a pour's or a shot's pose along the aim; a pressed
+    /// spell's clip is its ability's, on the kit's animator.
     pub gesture: Option<Gesture>,
     pub cast: f32,
     /// Game seconds the staff still flares from a spell.
@@ -71,8 +68,6 @@ pub struct Moves {
     /// tick's at least `systems::TICK_EDGE`, falling to 0 over
     /// `systems::EDGE_SECS`.
     pub edge: f32,
-    /// The last cast's aim, which its gesture faces.
-    pub aim: Vec2,
     /// The one-shot clip shown over the animator's.
     pub shown: Option<Shown>,
     /// It died: its controller drops it, its input locked for good.

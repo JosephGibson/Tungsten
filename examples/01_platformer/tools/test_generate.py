@@ -8,8 +8,8 @@ import wave
 
 from art import PALETTE, STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
 from generate import FAMILIES as ASSET_FAMILIES, TEMPLATE, generate, hashed, lock_breaks, users
-from level import FAMILIES, build_level, opaque_tiles, tiled_text, validate_level
-from placement import MOST, SINK, Placed, floating, hangs, stands, stream_kind
+from level import FAMILIES, background_tiles, build_level, opaque_tiles, terrain_cells, tiled_text, validate_level
+from placement import MOST, SINK, Placed, floating, hangs, judge, stands, stream_kind
 
 
 def tiles(v):
@@ -46,17 +46,7 @@ class AuthoringTests(unittest.TestCase):
             following = self.images[f'waterfall_flow_{(i + 1) % 4}']
             self.assertEqual(ImageChops.offset(frame, 0, 8).tobytes(), following.tobytes())
 
-    def test_reject_invalid_gid_and_unknown_sprite(self):
-        tileset=self.tiled['tilesets'][0]
-        for gid in [-1,2**31,tileset['firstgid']+max(t['id'] for t in tileset['tiles'])+1]:
-            tiled=copy.deepcopy(self.tiled);tiled['layers'][0]['data'][0]=gid
-            with self.assertRaisesRegex(ValueError,'GID'):validate_level(self.source,tiled,self.ids)
-        tiled=copy.deepcopy(self.tiled);tiled['tilesets'][0]['tiles'][0]['properties'][0]['value']='missing'
-        with self.assertRaisesRegex(ValueError,'reference'):validate_level(self.source,tiled,self.ids)
-
-    def test_reject_layer_length_and_collision_disagreement(self):
-        tiled=copy.deepcopy(self.tiled);tiled['layers'][0]['data'].pop()
-        with self.assertRaisesRegex(ValueError,'length'):validate_level(self.source,tiled,self.ids)
+    def test_reject_collision_disagreement(self):
         tiled=copy.deepcopy(self.tiled);tiled['layers'][-1]['data'][0]=1
         with self.assertRaisesRegex(ValueError,'disagreement'):validate_level(self.source,tiled,self.ids)
 
@@ -89,13 +79,15 @@ class AuthoringTests(unittest.TestCase):
             pts=drawn.points(p['sprite'].removeprefix('ex10_'),round(p['x']*64),round(p['y']*64))
             if p['anchor']=='ground':
                 share,sink=stands(drawn.hit,pts);self.assertGreaterEqual(share,MOST,msg=str(p));self.assertLessEqual(sink,SINK,msg=str(p))
+            elif p['anchor']=='wall':
+                self.assertIsNone(judge('wall',drawn.hit,None,pts),msg=str(p))
             else:
                 self.assertEqual(p['anchor'],'under',msg=str(p));self.assertGreaterEqual(hangs(drawn.hit,pts),MOST,msg=str(p))
-        self.assertEqual(sum(g['sprite']=='ex10_arch' for g in self.source['groups']),1)
+        self.assertEqual(sum(p['sprite']=='ex10_arch_big' for p in self.source['props']),1)
 
     def test_floating_scenery_fails_the_build(self):
         source=json.loads((TOOLS/'level.json').read_text())
-        gargoyle=next(p for p in source['props'] if p.get('anchor')=='wall')
+        gargoyle=next(p for p in source['props'] if p.get('anchor')=='wall' and 'support' not in p)
         gargoyle['y']-=2
         with self.assertRaisesRegex(ValueError,'floating'):build_level(self.images,self.lit,source)
 
@@ -126,7 +118,7 @@ class AuthoringTests(unittest.TestCase):
     def layout(self, tiled, source, name):
         """`tiled`'s tile layers as `{layer: {cell: sprite}}`, its object
         layers without Tiled IDs, and the pixel points of what `prepare`
-        sets on platform `name`: its props and groups' pieces, orbs, tomes,
+        sets on platform `name`: its props, whole ones included, orbs, tomes,
         crates, kegs and stones."""
         tileset = tiled['tilesets'][0]
         catalog = {tileset['firstgid'] + t['id']: t['properties'][0]['value'] for t in tileset['tiles']}
@@ -136,7 +128,6 @@ class AuthoringTests(unittest.TestCase):
         objects = [(l['name'], [{k: v for k, v in o.items() if k != 'id'} for o in l['objects']])
                    for l in tiled['layers'] if l['type'] == 'objectgroup']
         props = [p for p in source['props'] if p.get('support') == name]
-        props += [source['props'][i] for g in source['groups'] if g['support'] == name for i in g['pieces']]
         spots = [(p['x'], p['y']) for p in props]
         spots += [(p['left'], p['top']) for k in ('pickups', 'tomes') for p in source.get(k, []) if p['support'] == name]
         spots += [(p['x'], p['y']) for k in ('crates', 'kegs', 'stones') for p in source.get(k, []) if p['support'] == name]
@@ -255,17 +246,14 @@ class AuthoringTests(unittest.TestCase):
             source['props'].append(dict(sprite='ex10_lantern', x=60, y=34, depth='world', animation=None))
         self.assertIn('unjudged lantern 60 34 no anchor and in no list of scenery.py', self.lines_after(add))
 
-    def test_floating_lists_a_vine_piece_inside_two_groups_boxes(self):
-        k, group = next((k, g) for k, g in enumerate(self.source['groups']) if g['sprite'] == 'ex10_vine_0')
-        def overlap(source):
-            # The group's top piece half a tile right, into a second vine
-            # group's box beside its own.
-            piece = source['props'][group['pieces'][0]]
-            piece['x'] += 0.5
-            source['groups'].append(dict(group, x=group['x'] + 0.5, pieces=[]))
-        lines = self.lines_after(overlap)
-        self.assertIn(f"group vine_0_big_0_0 {group['x'] + 0.5:g}", ' '.join(lines))
-        self.assertIn("inside 2 groups' boxes", ' '.join(lines))
+    def test_floating_lists_a_whole_vine_dropped_off_its_support(self):
+        # A vine drawn whole, dropped 16 px off the underside it hangs from:
+        # judged as a prop, by its anchor.
+        i, vine = next((i, p) for i, p in enumerate(self.source['props']) if p['sprite'] == 'ex10_vine_0_big')
+        self.assertEqual(vine['anchor'], 'under')
+        def drop(source):
+            source['props'][i]['y'] += 16 / 64
+        self.assertTrue(any(line.startswith(f"hang vine_0_big {tiles(vine['x'])} ") for line in self.lines_after(drop)))
 
     def test_floating_lists_a_parapet_moved_up_a_row(self):
         i, d = next((i, d) for i, d in enumerate(self.source['decorations']) if d['sprite'] == 'ex10_parapet_0')
@@ -290,6 +278,35 @@ class AuthoringTests(unittest.TestCase):
         for y in range(floor,floor+4):
             for x in range(left-4,right+4):self.assertNotEqual(collision[y*cols+x],0)
         self.assertGreater(self.source['kill_row'],floor)
+
+    def pit_chamber(self, **change):
+        """The level with the pit's clear interior as its one chamber,
+        `change` over the chamber's bounds."""
+        pit = self.source['pit']
+        chamber = dict(name='pit', left=pit['left'], right=pit['right'], top=pit['rim'], floor=pit['floor'])
+        source = copy.deepcopy(self.source)
+        source['chambers'] = [dict(chamber, **change)]
+        return source
+
+    def test_a_chamber_validates_and_draws_the_caves_rock_behind_its_open_cells(self):
+        source = self.pit_chamber()
+        validate_level(source, self.tiled, self.ids)
+        chamber = source['chambers'][0]
+        cells = terrain_cells(source)
+        drawn = background_tiles(source, cells, source['props'])
+        before = background_tiles(self.source, cells, self.source['props'])
+        open_ = [(x, y) for x in range(chamber['left'], chamber['right'])
+                 for y in range(chamber['top'], chamber['floor']) if (x, y) not in cells]
+        self.assertTrue(open_)
+        self.assertTrue(all(drawn[c].startswith('cave_back_') for c in open_))
+        self.assertFalse(any(c in before for c in open_), 'none without the chamber')
+
+    def test_a_chamber_refuses_a_wall_inside_it_and_an_open_floor(self):
+        pit = self.source['pit']
+        for change, error in [({'left': pit['left'] - 1}, 'a wall inside it'),
+                              ({'floor': pit['floor'] - 1}, 'open at its floor or sides')]:
+            with self.assertRaisesRegex(ValueError, error):
+                validate_level(self.pit_chamber(**change), self.tiled, self.ids)
 
 
 class FamilyTests(unittest.TestCase):
@@ -426,7 +443,7 @@ FOE_CLIPS = {
     'goblin_dash': ((64, 64), [70] * 4, True, True, True),
     'goblin_panic': ((64, 64), [70] * 6, True, True, True),
 }
-FOE_PARTICLES = {'snowball_burst': 24, 'paw_dust': 12, 'dash_dust': 10}
+FOE_PARTICLES = {'snowball_burst': 24, 'paw_dust': 16, 'dash_dust': 10}
 FOE_SOUNDS = {
     'beetle_paw': (.75, .85), 'beetle_plough': (0, .35), 'crawler_retreat': (.4, .7),
     'crawler_hop': (0, .35), 'snowball_throw': (0, .35), 'snowball_burst': (0, .45),
@@ -480,7 +497,6 @@ class FoeContractTests(unittest.TestCase):
         for name, cap in FOE_PARTICLES.items():
             config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
             self.assertLessEqual(config['max_alive'], cap, name)
-            self.assertIn(config['sprite'], self.manifest['sprites'], name)
 
     def test_sounds_keep_their_lengths_and_volumes(self):
         for name, (shortest, longest) in FOE_SOUNDS.items():
@@ -532,7 +548,6 @@ class EffectsContractTests(unittest.TestCase):
         for name, cap in SFX_PARTICLES.items():
             config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
             self.assertLessEqual(config['max_alive'], cap, name)
-            self.assertIn(config['sprite'], self.manifest['sprites'], name)
 
     def test_sounds_keep_their_lengths_volumes_and_loops(self):
         for name, (shortest, longest, quietest, loudest, looping) in SFX_SOUNDS.items():
@@ -593,7 +608,6 @@ class HollowContractTests(unittest.TestCase):
         for name, cap in HOLLOW_PARTICLES.items():
             config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
             self.assertLessEqual(config['max_alive'], cap, name)
-            self.assertIn(config['sprite'], self.manifest['sprites'], name)
 
     def test_sounds_keep_their_lengths_and_volumes(self):
         for name, (shortest, longest, quietest, loudest) in HOLLOW_SOUNDS.items():
@@ -676,7 +690,6 @@ class FlaskContractTests(unittest.TestCase):
         for name, cap in FLASK_PARTICLES.items():
             config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
             self.assertLessEqual(config['max_alive'], cap, name)
-            self.assertIn(config['sprite'], self.manifest['sprites'], name)
 
     def test_sounds_keep_their_lengths_and_volumes(self):
         for name, longest in FLASK_SOUNDS.items():

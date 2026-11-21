@@ -1,7 +1,7 @@
 //! The playthrough: a New Game at Normal on the full game, headless at dt
 //! 1/60. Scripted moves and jumps walk the `main` route from the spawn
-//! through all five transitions to the troll bridge's east end, jumping the
-//! hazards in the way; the run names each area in order and autosaves once
+//! through all five transitions to the troll bridge's east end, its launch
+//! rows jumping the lava; the run names each area in order and autosaves once
 //! in each, and the player ends alive with gameplay on top.
 
 use example_01_platformer::features::level::TILE;
@@ -13,7 +13,7 @@ use example_01_platformer::save::SaveGame;
 use example_01_platformer::shell::AUTOSAVES;
 use glam::Vec2;
 use serde::Deserialize;
-use tungsten::core::{Entity, SaveSlots, Transform, UserFolder};
+use tungsten::core::{Entity, SaveSlots, UserFolder};
 use tungsten::kit::{Health, PlatformerController};
 use tungsten::testing::UiHarness;
 
@@ -172,42 +172,14 @@ impl Walker {
         }
     }
 
-    /// Whether a hazard's touch box lies ahead of the player along
-    /// `direction`, low and close enough that a jump now clears it.
-    fn hazard_ahead(&self, direction: f32) -> bool {
-        let at = self.centre();
-        let world = self.harness.world();
-        // The spikes have no body, so their drawn point places them.
-        // A launch row jumps each lava basin.
-        world
-            .query::<(&Hazard, &Transform)>()
-            .filter(|(hazard, _)| !hazard.lava)
-            .any(|(hazard, point)| {
-                let (offset, half) = if hazard.fire {
-                    (Vec2::new(32.0, 32.0), Vec2::new(18.0, 24.0))
-                } else {
-                    (Vec2::new(32.0, 48.0), Vec2::new(27.0, 14.0))
-                };
-                let centre = point.position + offset;
-                let ahead = (centre.x - at.x) * direction;
-                let near = ahead > -(half.x + player_half().x) && ahead < half.x + 1.4 * TILE;
-                // In the way: from a little above the body's centre down past
-                // its feet, where spikes sit; a fire hovering higher passes over
-                // a walk, and a jump would meet it.
-                let dy = centre.y - at.y;
-                let level = dy > -(half.y + 16.0) && dy < player_half().y + TILE;
-                near && level
-            })
-    }
-
-    /// Walks on the platform underfoot to `x` tiles, jumping the hazards in
-    /// the way, and stops there, or against the wall before it: a launch
-    /// row's start may lie in the step up it jumps.
+    /// Walks on the platform underfoot to `x` tiles and stops there, or
+    /// against the wall before it: a launch row's start may lie in the step
+    /// up it jumps. The map places no spike or fire in a walk's way, which
+    /// the test holds it to; a launch row jumps each lava basin.
     fn walk_to(&mut self, x: f32) {
         if x.is_nan() {
             return;
         }
-        let mut airborne = 0;
         let mut blocked = 0;
         let mut last = self.centre().x;
         loop {
@@ -219,21 +191,10 @@ impl Walker {
             let direction = dx.signum();
             self.set("move_right", !close && direction > 0.0);
             self.set("move_left", !close && direction < 0.0);
-            let jump = self.grounded() && self.hazard_ahead(direction);
-            self.set("jump", jump || (airborne > 0 && airborne < 20));
-            airborne = if jump {
-                1
-            } else if airborne > 0 {
-                airborne + 1
-            } else {
-                0
-            };
-            if self.grounded() && airborne > 20 {
-                airborne = 0;
-            }
+            self.set("jump", false);
             self.step();
             let now = self.centre().x;
-            blocked = if (now - last).abs() < 0.5 && airborne == 0 {
+            blocked = if (now - last).abs() < 0.5 {
                 blocked + 1
             } else {
                 0
@@ -307,6 +268,12 @@ fn a_new_game_walks_the_main_route_to_the_troll_bridges_end() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     calm(&mut harness);
+    // No spike or fire on the map: a walk jumps none, so a placed one
+    // must bring its touch box and the walk's jump back.
+    assert!(
+        harness.world().query::<&Hazard>().all(|hazard| hazard.lava),
+        "the map places a spike or a fire in the walk's way"
+    );
     let player = player_entity(&harness);
     let mut walker = Walker {
         harness,

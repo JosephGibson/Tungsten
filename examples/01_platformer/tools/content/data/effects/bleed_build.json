@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 0.4,
+    "decay": 0.3333333333
+  },
+  "bands": [
+    {
+      "at": 0.4,
+      "enter": [
+        {
+          "apply": {
+            "status": "bleeding"
+          }
+        },
+        {
+          "remove": "bleed_build"
+        }
+      ]
+    }
+  ]
+}

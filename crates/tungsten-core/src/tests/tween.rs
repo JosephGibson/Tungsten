@@ -187,8 +187,14 @@ fn light_intensity_reads_from_a_scene() {
     )
     .unwrap();
     tween.validate().unwrap();
+    let channels: Vec<TweenChannel> = tween
+        .into_tween()
+        .channels()
+        .iter()
+        .map(|eased| eased.channel)
+        .collect();
     assert_eq!(
-        tween.into_tween().channels,
+        channels,
         [TweenChannel::LightIntensity { from: 2.0, to: 0.0 }]
     );
     let dimmer: crate::assets::SceneTween = serde_json::from_str(
@@ -197,4 +203,56 @@ fn light_intensity_reads_from_a_scene() {
     .unwrap();
     let error = dimmer.validate().unwrap_err();
     assert!(error.contains("light_intensity"), "{error}");
+}
+
+#[test]
+fn a_channel_takes_its_own_easing() {
+    let t = Tween::new(1.0, Easing::Linear)
+        .with_channel(TweenChannel::PositionX { from: 0.0, to: 1.0 })
+        .with_channel_eased(
+            TweenChannel::ScaleX { from: 1.0, to: 2.0 },
+            Easing::CubicOut,
+        )
+        .with_channel(TweenChannel::ColorA { from: 255, to: 0 })
+        .with_channel_eased(
+            TweenChannel::Rotation { from: 0.0, to: 1.0 },
+            Easing::QuadOut,
+        );
+    let read: Vec<(TweenChannel, Option<Easing>)> = t
+        .channels()
+        .iter()
+        .map(|eased| (eased.channel, eased.easing))
+        .collect();
+    assert_eq!(
+        read,
+        [
+            (TweenChannel::PositionX { from: 0.0, to: 1.0 }, None),
+            (
+                TweenChannel::ScaleX { from: 1.0, to: 2.0 },
+                Some(Easing::CubicOut)
+            ),
+            (TweenChannel::ColorA { from: 255, to: 0 }, None),
+            (
+                TweenChannel::Rotation { from: 0.0, to: 1.0 },
+                Some(Easing::QuadOut)
+            ),
+        ],
+        "in the order added, each with its own easing, the plain ones none"
+    );
+    let eased: Vec<Easing> = t
+        .channels()
+        .iter()
+        .map(|eased| eased.easing_in(t.easing))
+        .collect();
+    assert_eq!(
+        eased,
+        [
+            Easing::Linear,
+            Easing::CubicOut,
+            Easing::Linear,
+            Easing::QuadOut
+        ]
+    );
+    assert!(!t.despawn_at_end);
+    assert!(t.with_despawn_at_end().despawn_at_end);
 }

@@ -24,7 +24,6 @@ use crate::chemistry::queue::{Receiver, StatusList};
 use crate::chemistry::rules::check_stimulus;
 use crate::chemistry::stimuli::{Named, emit_from};
 use crate::chemistry::{CHEMISTRY, Chemistry, Output, queue_status_list};
-use crate::damage::ailments::{AILMENT_FEED, register_ailments};
 use crate::damage::defense::Resist;
 use crate::damage::health::Health;
 use crate::damage::pipeline::{DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest};
@@ -56,8 +55,8 @@ use crate::{TIME_EPSILON, count_down};
 pub const EFFECT_TICK: &str = "effect_tick";
 
 /// [`EffectsPlugin`]'s system that applies the queued requests, in the
-/// resolve phase after [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) and the
-/// ailment feed when they are registered.
+/// resolve phase after [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) when it is
+/// registered.
 pub const EFFECT_RESOLVE: &str = "effect_resolve";
 
 /// The data kind of effects, and the scene component.
@@ -998,6 +997,19 @@ impl Effect {
             period,
         });
         self
+    }
+
+    /// Whether a step does nothing to an instance but count its time left:
+    /// no period, emission, fuel or intensity runs, no tag holds it and it
+    /// shows no look, so [`EFFECT_TICK`] counts it in place.
+    fn only_counts(&self) -> bool {
+        self.period.is_none()
+            && self.emit.is_none()
+            && self.fuel.is_none()
+            && self.intensity.is_none()
+            && self.suppressed_by.is_empty()
+            && self.look.is_none()
+            && self.bands.iter().all(|band| band.look.is_none())
     }
 
     /// Its emission, when it has one.
@@ -2488,7 +2500,7 @@ pub enum Applied {
 }
 
 /// An effect to apply: its target, the effect, the entity it comes from and
-/// the scale its curve reads. The kit's cues, ladder, abilities and offers
+/// the scale its curve reads. The kit's cues, chemistry, abilities and offers
 /// queue one for the step's [`EFFECT_RESOLVE`]; a game's Rust builds its
 /// own and either [`apply`](Self::apply)s it now or
 /// [`queue`](Self::queue)s it.
@@ -3766,10 +3778,116 @@ struct Ticked {
     worn: bool,
 }
 
+/// The most entries [`Counting`] keeps, and the longest ID it keeps; an
+/// ID past either takes the full step.
+const COUNTING_CAP: usize = 64;
+const COUNTING_ID: usize = 48;
+/// The steps the counting pass sits out after a run that found few
+/// holders to count: under a twentieth of the steps, so a World of ticking
+/// effects pays its read of them in none of its slower frames.
+const COUNTING_REST: u8 = 31;
+
+/// One `effects` entry [`Counting`] knows: its ID's bytes, in place, and
+/// whether it only counts.
+#[derive(Clone, Copy)]
+struct Known {
+    id: [u8; COUNTING_ID],
+    len: usize,
+    counts: bool,
+}
+
+/// Which `effects` entries only count their time down
+/// ([`Effect::only_counts`]), by ID: read from the World's data at each
+/// step's start for the IDs the steps before met, so a reload shows in the
+/// next step and a crowd holding one entry costs no lookup a holder. An ID
+/// met for the first time takes the full step and is read from the next.
+/// Its room is taken once, at the plugin's build, so no step allocates.
+struct Counting {
+    known: Vec<Known>,
+}
+
+impl Default for Counting {
+    fn default() -> Self {
+        Self {
+            known: Vec::with_capacity(COUNTING_CAP),
+        }
+    }
+}
+
+impl Counting {
+    /// Reads each known ID's entry again.
+    fn refresh(&mut self, world: &World) {
+        let data = world.get_resource::<DataRegistry>();
+        for known in &mut self.known {
+            known.counts = std::str::from_utf8(&known.id[..known.len])
+                .ok()
+                .and_then(|id| data?.get::<Effect>(id))
+                .is_some_and(Effect::only_counts);
+        }
+    }
+
+    /// Whether `effect` only counts down; false for an ID not read yet,
+    /// which joins the known ones.
+    fn counts(&mut self, effect: &DataRef<Effect>) -> bool {
+        let Some(id) = effect.id() else {
+            return effect.as_inline().is_some_and(Effect::only_counts);
+        };
+        let id = id.as_bytes();
+        if let Some(known) = self.known.iter().find(|known| &known.id[..known.len] == id) {
+            return known.counts;
+        }
+        if self.known.len() < COUNTING_CAP && id.len() <= COUNTING_ID {
+            let mut known = Known {
+                id: [0; COUNTING_ID],
+                len: id.len(),
+                counts: false,
+            };
+            known.id[..id.len()].copy_from_slice(id);
+            self.known.push(known);
+        }
+        false
+    }
+
+    /// Whether `effects` needs no more of a step of `dt` than its
+    /// instances' time counted down, which this does in place: nothing
+    /// pending, and each instance one that only counts, with no period or
+    /// emission clock to drop and not ending in this step. The full step
+    /// would change such a holder the same way and touch nothing else.
+    /// Kept out of line: inlined, it grew [`Ticker::run`] until the
+    /// compiler inlined [`definition`] through the full step's code, which
+    /// cost the steps of effects that do tick (02's `spread`, its
+    /// `effect_tick` p95 1.36 to 1.45 ms).
+    #[inline(never)]
+    fn count_down(&mut self, effects: &mut Effects, dt: f32) -> bool {
+        let plain = effects.pending.is_empty()
+            && effects.instances.iter().all(|instance| {
+                instance.period_left.is_none()
+                    && instance.emit_left.is_none()
+                    && instance
+                        .left
+                        .is_none_or(|left| dt <= 0.0 || count_down(left, dt) > 0.0)
+                    && self.counts(&instance.effect)
+            });
+        if plain && dt > 0.0 {
+            for instance in &mut effects.instances {
+                if let Some(left) = &mut instance.left {
+                    *left = count_down(*left, dt);
+                }
+            }
+        }
+        plain
+    }
+}
+
 /// [`EFFECT_TICK`]'s state between steps, kept so a step allocates nothing
 /// once warm.
 #[derive(Default)]
 struct Ticker {
+    counting: Counting,
+    /// The steps the counting pass still sits out, and the holders its
+    /// last run met.
+    rest: u8,
+    met: usize,
     entities: Vec<Entity>,
     payloads: Vec<Payload>,
     expired: Vec<EffectInstance>,
@@ -3790,8 +3908,15 @@ struct Ticker {
 }
 
 impl Ticker {
-    /// Per entity in index order: the pending entries queued, then each
-    /// instance's period and time left counted.
+    /// A holder whose instances only count down is counted in place, in
+    /// the query's pass ([`Counting::count_down`]): its step reads and
+    /// writes nothing else, so its place in the order shows nowhere. The
+    /// rest per entity in index order: the pending entries queued, then
+    /// each instance's period and time left counted. The pass reads every
+    /// holder's instances, which pays where enough of them only count:
+    /// after a run that found under an eighth it sits out
+    /// [`COUNTING_REST`] steps, or until the holders grow by an eighth,
+    /// and every holder takes the full step meanwhile, to the same end.
     fn run(&mut self, world: &mut World) {
         let dt = world
             .get_resource::<Time>()
@@ -3800,12 +3925,36 @@ impl Ticker {
         if let Some(holders) = world.get_resource_mut::<LookHolders>() {
             holders.0.clear();
         }
+        let asking = self.rest == 0;
+        if asking {
+            self.counting.refresh(world);
+        }
         self.entities.clear();
-        self.entities.extend(
-            world
-                .query::<(Entity, &Effects)>()
-                .map(|(entity, _)| entity),
-        );
+        let (mut holders, mut counted) = (0_usize, 0_usize);
+        for (entity, effects) in world.query_mut::<(Entity, &mut Effects)>() {
+            holders += 1;
+            if asking && self.counting.count_down(effects, dt) {
+                counted += 1;
+            } else {
+                self.entities.push(entity);
+            }
+        }
+        if asking {
+            self.met = holders;
+            if counted * 8 < holders {
+                self.rest = COUNTING_REST;
+            }
+        } else if holders > self.met + self.met / 8 {
+            self.rest = 0;
+        } else {
+            self.rest -= 1;
+        }
+        // Room for every holder, in 64s, so one that turns busy mid-play
+        // grows no list.
+        let room = holders.next_multiple_of(64);
+        if self.entities.capacity() < room {
+            self.entities.reserve_exact(room - self.entities.len());
+        }
         let order = order_of(world);
         self.entities.sort_by_key(|&entity| order.key(entity));
         let entities = std::mem::take(&mut self.entities);
@@ -4253,11 +4402,7 @@ fn tick_instance(
 /// request queue, [`EFFECT_TICK`] in the tick phase after
 /// [`STATS_APPLY`](crate::STATS_APPLY) when it is registered,
 /// [`EFFECT_RESOLVE`] in the resolve phase after
-/// [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) and the ailment feed when
-/// they are registered, and the ailment ladder's `ailment_threshold`
-/// component, [`AILMENT_FEED`](crate::AILMENT_FEED) and
-/// [`AILMENT_TICK`](crate::AILMENT_TICK), since the ladder applies
-/// effects.
+/// [`DAMAGE_RESOLVE`](crate::DAMAGE_RESOLVE) when it is registered.
 ///
 /// A modifier placed in one step's resolve reaches the movers, health and
 /// cooldowns through the next step's `stats_apply`, and an expiry comes
@@ -4344,10 +4489,8 @@ impl Plugin for EffectsPlugin {
                     resolver.run(world);
                 }))
                 .after_if_present(DAMAGE_RESOLVE)
-                .after_if_present(AILMENT_FEED)
                 .after_if_present(CHEMISTRY),
         );
-        register_ailments(schedule, world);
         ensure_looks(schedule, world);
     }
 }
@@ -4593,7 +4736,7 @@ fn describe_effects(world: &mut World) {
             FieldDescription::new(
                 "on_end",
                 FieldType::List(Box::new(FieldType::Shape("interaction_output"))),
-                "chemistry outputs run on the holder when an instance ends: run out, worn out, its fuel spent, removed or ended; an instant one's as it lands",
+                "chemistry outputs run on the holder when an instance ends: run out, worn out, its fuel spent, removed or ended; an instant one's queued as it lands, for the next step's chemistry",
             )
             .default("null"),
         )
@@ -4897,7 +5040,7 @@ fn describe_effects(world: &mut World) {
     describe_kind(
         world,
         EFFECTS,
-        "An `effect`: what a cue's `effect` action, an ailment, an ability or an offer applies.",
+        "An `effect`: what a cue's `effect` action, a chemistry rule, an ability or an offer applies.",
     );
 }
 

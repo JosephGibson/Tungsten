@@ -9,7 +9,7 @@
 //! Retry loads the run's last good save at the run's difficulty, or starts
 //! the run fresh when it has none.
 
-use tungsten::core::post::PostPass;
+use tungsten::core::post::{PostPass, PostTail};
 use tungsten::core::ui::{UiKey, UiTree, Visibility, WidgetId, widgets};
 use tungsten::core::{Easing, World};
 use tungsten::{GameState, RootCover, StateContext, StateId, StateMusic, TransitionEffect};
@@ -17,8 +17,8 @@ use tungsten::{GameState, RootCover, StateContext, StateId, StateMusic, Transiti
 use super::saves::{Mode, SavesState};
 use super::title::TitleState;
 use super::{
-    Change, Menu, RunStart, Shell, SlotState, goto, idle, play, push, read_slots, run, stack,
-    start_run, theme,
+    Menu, RunStart, Shell, SlotState, goto, idle, play, push, read_slots, run, stack, start_run,
+    theme,
 };
 
 pub const GAME_OVER: StateId = "game_over";
@@ -38,7 +38,7 @@ pub struct GameOverState {
 /// [`theme::DIED_BLOCK_PX`] and dimmed toward [`theme::DIED_DIM`] under
 /// [`theme::DIED_FADE`], eased out over the entrance.
 #[must_use]
-pub fn passes(secs: f32) -> Vec<PostPass> {
+pub fn passes(secs: f32) -> [PostPass; 2] {
     let cover = Easing::QuadOut.apply((secs / theme::DIED_SECS).min(1.0));
     let block = theme::DIED_BLOCK_PX;
     let pixelate = TransitionEffect::Pixelate {
@@ -47,7 +47,7 @@ pub fn passes(secs: f32) -> Vec<PostPass> {
     let fade = TransitionEffect::Fade {
         color: theme::DIED_FADE,
     };
-    vec![
+    [
         pixelate.pass_at(cover),
         fade.pass_at(theme::DIED_DIM * cover),
     ]
@@ -105,13 +105,18 @@ impl GameState for GameOverState {
         edit(world.resource_mut::<UiTree>(), menu.root, true);
         stack(world).own_root(menu.root, RootCover::Show);
         let shell = world.resource_mut::<Shell>();
-        (shell.change, shell.died) = (Some(Change::Entrance(0.0, menu.root)), Some(0.0));
+        (shell.entrance, shell.died) = (Some((0.0, menu.root)), Some(0.0));
         play(world, theme::GAME_OVER_SOUNDS[0], 0.0);
         self.menu = Some(menu);
     }
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
-        ctx.world.resource_mut::<Shell>().died = None;
+        let shell = ctx.world.resource_mut::<Shell>();
+        (shell.entrance, shell.died) = (None, None);
+        // Its passes, which `shell_frame` wrote after the game's stack.
+        if let Some(tail) = ctx.world.get_resource_mut::<PostTail>() {
+            tail.0.clear();
+        }
     }
 
     fn music(&self) -> Option<StateMusic> {
@@ -129,7 +134,7 @@ impl GameState for GameOverState {
         if let Some(menu) = self.menu.as_mut()
             && menu.revised(world)
         {
-            let entering = matches!(world.resource::<Shell>().change, Some(Change::Entrance(..)));
+            let entering = world.resource::<Shell>().entrance.is_some();
             edit(world.resource_mut::<UiTree>(), menu.root, entering);
         }
         let Some(menu) = self.menu.as_mut().filter(|_| idle(world)) else {

@@ -11,7 +11,7 @@ use tungsten::{GameState, StateContext, StateId, StateMusic};
 
 use super::saves::{Mode, SavesState};
 use super::settings::SettingsState;
-use super::{Menu, autosave, cancelled, idle, pop, pressed, push, quit_game, quit_to_title, theme};
+use super::{Menu, autosave, pop, pressed, push, quit_game, quit_to_title, theme};
 
 pub const PAUSE: StateId = "pause";
 const SAVE: UiKey = UiKey::new("save");
@@ -54,9 +54,11 @@ impl GameState for PauseState {
             self.saved = true;
             autosave(world);
         }
-        let Some(menu) = self.menu.as_mut().filter(|_| idle(world)) else {
+        let Some(menu) = self.menu.as_mut() else {
             return;
         };
+        // A cancel closes it there, and `state_pause` here: a pop waits for
+        // the screens to be idle, so Escape, both, pops once.
         match menu.chosen(world) {
             Some(SAVE) => push(world, SavesState::new(Mode::Save)),
             Some(LOAD) => push(world, SavesState::new(Mode::Load)),
@@ -64,9 +66,7 @@ impl GameState for PauseState {
             Some(QUIT_TITLE) => quit_to_title(world),
             Some(QUIT_GAME) => quit_game(world),
             Some(_) => pop(world),
-            None if cancelled(world, menu.root) || pressed(world, "state_pause", false) => {
-                pop(world);
-            }
+            None if pressed(world, "state_pause", false) => pop(world),
             None => {}
         }
     }

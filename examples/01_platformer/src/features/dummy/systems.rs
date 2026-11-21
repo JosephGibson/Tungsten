@@ -6,8 +6,8 @@ use tungsten::kit::Damaged;
 use super::components::Dummy;
 use crate::features::combat::{BURNING, FROZEN, has_status};
 use crate::features::elements;
-use crate::features::elements::cascade::{CascadeKind, Cascades};
-use crate::shared::{SaveId, body_centre, spawn_key_burst};
+use crate::features::elements::cascade::Cascades;
+use crate::shared::{body_centre, spawn_key_burst};
 
 /// `dummy_deaths`, in the react phase after the step's reactions: each
 /// dummy a hit killed ends in one burst, and its sprite goes with it while
@@ -26,9 +26,10 @@ pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     }
 }
 
-/// A dummy's one burst: the reaction its killing step's parts queued on it
-/// when they queued one, thermal shock's explosion or a steam burst, which
-/// runs from the next step; else, by its state, a shatter if frozen, gore
+/// A dummy's one burst: the reaction its killing step's parts set off on
+/// it when they set one off, thermal shock's explosion or a steam burst,
+/// which chemistry ran in the step's resolve; else, by its state, a
+/// shatter if frozen, gore
 /// if an iron blow killed it this step, a steam pop if a steam burst killed
 /// it, a burn-out if burning, a poof otherwise.
 pub fn end(world: &mut World, dummy: Entity) {
@@ -38,13 +39,8 @@ pub fn end(world: &mut World, dummy: Entity) {
     if let Some(visibility) = world.get_mut::<Visibility>(dummy) {
         visibility.visible = false;
     }
-    let id = world.get::<SaveId>(dummy).map(|id| id.0);
     let cascades = world.get_resource::<Cascades>();
-    let reacted = id.is_some_and(|id| {
-        cascades.is_some_and(|cascades| {
-            cascades.waits(CascadeKind::Explosion, id) || cascades.waits(CascadeKind::Steam, id)
-        })
-    });
+    let reacted = cascades.is_some_and(|cascades| cascades.reacted.contains(&dummy));
     if reacted {
         return;
     }

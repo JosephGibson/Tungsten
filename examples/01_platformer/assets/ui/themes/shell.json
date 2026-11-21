@@ -61,5 +61,6 @@
     "title_menu_width": 220,
     "title_button_padding_y": 3,
     "pip": 10
-  }
+  },
+  "sounds": { "focus": "ui_move", "activate": "ui_select", "back": "ui_back" }
 }

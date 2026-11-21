@@ -12,5 +12,11 @@
     {
       "effect": "casting"
     }
-  ]
+  ],
+  "icon": "ex10_icon_lightning",
+  "clip": {
+    "right": "ex10_player_bolt",
+    "left": "ex10_player_bolt_left",
+    "side": "aim"
+  }
 }

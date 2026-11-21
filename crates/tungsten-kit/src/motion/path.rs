@@ -13,6 +13,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::tags::{TagFilter, Tags};
 use crate::foundation::{non_negative, positive};
 use crate::motion::oscillator::Oscillator;
 use crate::motion::platformer::PLATFORMER_CONTROLLER;
@@ -62,17 +63,33 @@ enum Mode {
 /// last one left, and runs back for the next. A rider is a
 /// [`PlatformerController`] whose ground it is: the controller marks it
 /// after its move, and the follower reads the mark at its next step, one
-/// step late, as a game's own lift reads its riders. It sends the cue
-/// events `arrived` as it reaches an end, a stop path's last point
-/// included, and `departed` as it leaves one, about itself at its point,
-/// when a cue names them.
+/// step late, as a game's own lift reads its riders. A lift with a filter
+/// ([`with_rider_filter`](Self::with_rider_filter)) takes only the
+/// controllers whose [`Tags`] pass it: the others ride by the carry, and
+/// neither board it nor hold it. A two-way lift
+/// ([`two_way`](Self::two_way)) leaves either end `board` seconds after a
+/// rider steps onto it afresh, one who was not on it when it arrived or
+/// has stepped off since; the rider it carried to an end holds it there
+/// until it steps off, and alone at its last point it still comes back
+/// after `back` seconds. It sends the cue events `arrived` as it reaches
+/// an end, a stop path's last point included, and `departed` as it leaves
+/// one, about itself at its point, when a cue names them.
+///
+/// A game's own rule holds it where it stands
+/// ([`set_paused`](Self::set_paused)), turns a ping-pong back the way it
+/// came ([`turn_back`](Self::turn_back)) and reads the end it stands at
+/// ([`end`](Self::end)), its way ([`returning`](Self::returning)), its
+/// points and its speed: a lift that waits for a rider it must not move
+/// under, and goes back up over one in its way.
 ///
 /// It is data: a save holds its world points, speed, mode, easing and
-/// time, its wait, rider rule, the seconds of its hold and the rider's
-/// mark, each skipped when none, so a loaded follower continues where it
-/// was, and a load checks what [`new`](Self::new) checks plus a finite time
-/// within the path. A game restoring a level object inserts the saved
-/// follower over the prefab's.
+/// time, its wait, rider rule, the seconds of its hold, the rider's mark,
+/// a two-way lift's carried rider and boarding, its pause and a turn-back's
+/// `departed` to come, each skipped when none, so a loaded follower
+/// continues where it was, and a load checks
+/// what [`new`](Self::new) checks plus a finite time within the path. A
+/// game restoring a level object inserts the saved follower over the
+/// prefab's.
 ///
 /// Scene name `path_follower`:
 /// `{ "points": [[0, 0], [0, -100]], "speed": 100, "mode": "ping_pong", "easing": "sine_in_out", "wait": 1, "rider": { "board": 0.3, "back": 4 } }`,
@@ -80,7 +97,8 @@ enum Mode {
 /// (default), `loop` and `ping_pong`, `easing` one of core's `Easing`
 /// names (`linear` by default), `wait` 0 by default and refused on a stop
 /// path, and `rider` ping-pong only, none by default and refused beside a
-/// `wait`.
+/// `wait`, its `filter` everything by default, a load checking its tags,
+/// and its `two_way` false.
 ///
 /// [`PlatformerController`]: crate::PlatformerController
 ///
@@ -125,14 +143,29 @@ pub struct PathFollower {
     speed: f32,
     mode: Mode,
     easing: Easing,
+    /// A game holds it where it stands: its step does nothing.
+    paused: bool,
+    /// It turned back between its ends: its next step sends `departed`.
+    turned: bool,
     /// Time along the path's legs, below one cycle unless it stopped.
     time: f32,
     /// A waiting or riding follower's hold; a plain follower has none.
     hold: Option<Box<Hold>>,
 }
 
+/// One of a path's two ends, where [`PathFollower::end`] finds a follower
+/// standing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathEnd {
+    /// Its first point.
+    First,
+    /// A ping-pong's last point.
+    Last,
+}
+
 /// A follower's hold at its ends: its wait, its riders' rule, the seconds
-/// counted at the end it holds at and the rider's mark.
+/// counted at the end it holds at, the rider's mark and a two-way lift's
+/// carried rider and boarding.
 #[derive(Debug, Clone, PartialEq)]
 struct Hold {
     /// Seconds it holds at each end.
@@ -144,17 +177,66 @@ struct Hold {
     /// A rider stood on it at its last step: a controller's mark, read and
     /// cleared each step.
     ridden: bool,
+    /// A two-way lift's: the rider it carried to the end it holds at still
+    /// stands on it.
+    carried: bool,
+    /// A two-way lift's: `held` counts a fresh rider's boarding, not its
+    /// seconds alone.
+    boarding: bool,
 }
 
 /// A lift's rule: it boards after a rider has stood on it `board` seconds,
-/// and comes back `back` seconds after its last rider left.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// and comes back `back` seconds after its last rider left; its riders are
+/// the controllers whose tags pass `filter`; `two_way`, a fresh rider
+/// boards it at its last point too.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Rider {
     #[serde(default = "default_board", deserialize_with = "non_negative")]
     board: f32,
     #[serde(default = "default_back", deserialize_with = "non_negative")]
     back: f32,
+    #[serde(default)]
+    filter: TagFilter,
+    #[serde(default)]
+    two_way: bool,
+}
+
+/// A rider rule as a save writes it: its filter and its way back skipped
+/// at their defaults, so a one-way lift's save holds what it held.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RiderSave {
+    #[serde(default = "default_board", deserialize_with = "non_negative")]
+    board: f32,
+    #[serde(default = "default_back", deserialize_with = "non_negative")]
+    back: f32,
+    #[serde(default, skip_serializing_if = "TagFilter::is_everything")]
+    filter: TagFilter,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    two_way: bool,
+}
+
+impl From<RiderSave> for Rider {
+    fn from(save: RiderSave) -> Self {
+        Self {
+            board: save.board,
+            back: save.back,
+            filter: save.filter,
+            two_way: save.two_way,
+        }
+    }
+}
+
+impl From<&Rider> for RiderSave {
+    fn from(rider: &Rider) -> Self {
+        Self {
+            board: rider.board,
+            back: rider.back,
+            filter: rider.filter.clone(),
+            two_way: rider.two_way,
+        }
+    }
 }
 
 fn default_board() -> f32 {
@@ -209,16 +291,23 @@ impl PathFollower {
             speed,
             mode: Mode::Stop,
             easing: Easing::Linear,
+            paused: false,
+            turned: false,
             time: 0.0,
             hold: None,
         }
     }
 
     /// Its hold's wait and rider rule, 0 and none without one.
-    fn hold_rule(&self) -> (f32, Option<Rider>) {
+    fn hold_rule(&self) -> (f32, Option<&Rider>) {
         self.hold
             .as_ref()
-            .map_or((0.0, None), |hold| (hold.wait, hold.rider))
+            .map_or((0.0, None), |hold| (hold.wait, hold.rider.as_ref()))
+    }
+
+    /// Its rider rule, on a lift.
+    fn rider_mut(&mut self) -> Option<&mut Rider> {
+        self.hold.as_mut().and_then(|hold| hold.rider.as_mut())
     }
 
     /// Sets its hold's rule: none for a 0 wait without a rider.
@@ -229,6 +318,8 @@ impl PathFollower {
                 rider,
                 held: 0.0,
                 ridden: false,
+                carried: false,
+                boarding: false,
             })
         });
     }
@@ -309,13 +400,70 @@ impl PathFollower {
             self.mode == Mode::PingPong && self.hold_rule().0 == 0.0,
             "PathFollower::with_rider: a ping-pong without a wait takes riders"
         );
-        self.set_hold_rule(0.0, Some(Rider { board, back }));
+        self.set_hold_rule(
+            0.0,
+            Some(Rider {
+                board,
+                back,
+                filter: TagFilter::new(),
+                two_way: false,
+            }),
+        );
         self
+    }
+
+    /// The lift, taking as its riders only the controllers whose
+    /// [`Tags`] pass `filter`, read as every kit filter reads them, so a
+    /// controller without `Tags` passes a filter with no `all` and no
+    /// `any`. What the filter refuses still rides by the carry, and neither
+    /// boards the lift nor holds it at its last point. Set its rider rule
+    /// first.
+    ///
+    /// # Panics
+    ///
+    /// On a follower without a rider rule.
+    #[must_use]
+    #[track_caller]
+    pub fn with_rider_filter(mut self, filter: TagFilter) -> Self {
+        let Some(rider) = self.rider_mut() else {
+            panic!("PathFollower::with_rider_filter: a lift's rider rule takes a filter");
+        };
+        rider.filter = filter;
+        self
+    }
+
+    /// The lift, taking a fresh rider back from its last point too: at
+    /// either end it leaves `board` seconds after a rider steps onto it
+    /// afresh, one who was not on it when it arrived or has stepped off
+    /// since, a step with no mark; the rider it carried there holds it
+    /// where it stands until it steps off; and alone at its last point it
+    /// still comes back `back` seconds after its last rider left, the count
+    /// starting over each time one leaves. Set its rider rule first.
+    ///
+    /// # Panics
+    ///
+    /// On a follower without a rider rule.
+    #[must_use]
+    #[track_caller]
+    pub fn two_way(mut self) -> Self {
+        let Some(rider) = self.rider_mut() else {
+            panic!("PathFollower::two_way: a lift's rider rule runs two ways");
+        };
+        rider.two_way = true;
+        self
+    }
+
+    /// Whether a controller with `tags` is its rider: it takes riders, and
+    /// its rule's filter passes them.
+    pub(crate) fn takes(&self, tags: Option<&Tags>) -> bool {
+        self.hold_rule()
+            .1
+            .is_some_and(|rider| rider.filter.matches(tags))
     }
 
     /// Marks it ridden for its next step, when it takes riders: what a
     /// [`PlatformerController`](crate::PlatformerController) standing on it
-    /// does after its move.
+    /// does after its move, when it is its rider ([`takes`](Self::takes)).
     pub(crate) fn mark_ridden(&mut self) {
         if let Some(hold) = self.hold.as_mut()
             && hold.rider.is_some()
@@ -356,7 +504,7 @@ impl PathFollower {
         let Some(hold) = self.hold.as_mut() else {
             return true;
         };
-        let Some(rider) = hold.rider else {
+        let Some(rider) = hold.rider.as_ref() else {
             if hold.held + TIME_EPSILON >= hold.wait {
                 hold.held = 0.0;
                 return true;
@@ -364,17 +512,47 @@ impl PathFollower {
             hold.held += dt;
             return false;
         };
-        let (due, counts) = if far {
+        let (due, counts) = if rider.two_way {
+            // The rider it carried here holds it until it steps off.
+            if hold.carried {
+                if ridden {
+                    return false;
+                }
+                hold.carried = false;
+            }
+            // Its count is a fresh rider's boarding or its seconds alone,
+            // and starts over as a rider steps on or off.
+            if hold.boarding != ridden {
+                hold.boarding = ridden;
+                hold.held = 0.0;
+            }
+            if ridden {
+                (rider.board, true)
+            } else {
+                (rider.back, far)
+            }
+        } else if far {
             (rider.back, !ridden)
         } else {
             (rider.board, ridden)
         };
         if counts && hold.held + TIME_EPSILON >= due {
             hold.held = 0.0;
+            hold.boarding = false;
             return true;
         }
         hold.held = if counts { hold.held + dt } else { 0.0 };
         false
+    }
+
+    /// Its arrival at an end it holds at, a rider on it at its last step
+    /// when `ridden`: a two-way lift holds for the rider it carried there.
+    fn arrive(&mut self, ridden: bool) {
+        if let Some(hold) = self.hold.as_mut()
+            && hold.rider.as_ref().is_some_and(|rider| rider.two_way)
+        {
+            hold.carried = ridden;
+        }
     }
 
     /// Its step: a hold at an end while it lasts, else `dt` along the path,
@@ -394,7 +572,7 @@ impl PathFollower {
         }
         let before = self.time;
         self.advance(dt);
-        ends.departed = from_end && self.time != before;
+        ends.departed = (from_end && self.time != before) || std::mem::take(&mut self.turned);
         let total = self.total();
         match self.mode {
             Mode::Stop => ends.arrived = before < total && self.time >= total,
@@ -415,6 +593,7 @@ impl PathFollower {
                     ends.arrived = true;
                     if self.holds() {
                         self.time = out;
+                        self.arrive(ridden);
                     } else {
                         ends.departed = true;
                     }
@@ -422,6 +601,7 @@ impl PathFollower {
                     ends.arrived = true;
                     if self.holds() {
                         self.time = 0.0;
+                        self.arrive(ridden);
                     } else {
                         ends.departed = true;
                     }
@@ -438,9 +618,73 @@ impl PathFollower {
         self.mode == Mode::Stop && self.time >= self.total()
     }
 
+    /// Holds it where it stands, or lets it go on: a paused follower's step
+    /// does nothing along its path. Its time and a hold's seconds stand,
+    /// its rider's mark is left as it is, unread, for the step it resumes
+    /// at, and it sends no cue. Its body stands as a stopped follower's
+    /// does: its `Velocity` zero, or, with an
+    /// [`Oscillator`](crate::Oscillator) on the body, the wave alone about
+    /// the held point. A game's own rule pauses a lift for a rider it must
+    /// not move under.
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+    }
+
+    /// Whether a game holds it ([`set_paused`](Self::set_paused)).
+    #[must_use]
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
+    /// Turns a ping-pong back the way it came from where it stands,
+    /// between its ends: its time is mirrored about its last point, so the
+    /// return takes the time it travelled, and its next unpaused step sends
+    /// `departed` at its point when a cue names it. `false`, changing
+    /// nothing: at an end, on a path that does not ping-pong, and on an
+    /// easing not symmetric about its middle (every `_in` and `_out`
+    /// easing), whose mirrored point would jump.
+    pub fn turn_back(&mut self) -> bool {
+        if self.mode != Mode::PingPong || self.at_end().is_some() || !symmetric(self.easing) {
+            return false;
+        }
+        let total = self.total();
+        let mirrored = total - self.time;
+        // A hair off an end rounds onto it: it stands there.
+        if !(mirrored > 0.0 && mirrored < total) || mirrored == self.out_time() {
+            return false;
+        }
+        self.time = mirrored;
+        self.turned = true;
+        true
+    }
+
+    /// The end it stands at: [`PathEnd::First`] at its first point,
+    /// [`PathEnd::Last`] at a ping-pong's last, `None` between them and on
+    /// a stop path, whose end [`is_finished`](Self::is_finished) reads. A
+    /// follower that holds at an end stands there; one that does not passes
+    /// it within a step.
+    #[must_use]
+    pub fn end(&self) -> Option<PathEnd> {
+        self.at_end()
+            .map(|far| if far { PathEnd::Last } else { PathEnd::First })
+    }
+
+    /// Whether a ping-pong is on its way back from its last point.
+    #[must_use]
+    pub fn returning(&self) -> bool {
+        self.mode == Mode::PingPong && self.time > self.out_time()
+    }
+
     /// The points, in order.
-    pub(crate) fn points(&self) -> &[Vec2] {
+    #[must_use]
+    pub fn points(&self) -> &[Vec2] {
         &self.points
+    }
+
+    /// Its speed along the path, in world pixels a second.
+    #[must_use]
+    pub fn speed(&self) -> f32 {
+        self.speed
     }
 
     /// Whether it goes on from the last point to the first.
@@ -507,6 +751,12 @@ impl PathFollower {
         }
         self.leg(self.legs() - 1).1
     }
+}
+
+/// Whether `easing` is symmetric about its middle, so a path eased by it
+/// reads the same point from either of a leg's ends.
+fn symmetric(easing: Easing) -> bool {
+    (easing.apply(0.25) + easing.apply(0.75) - 1.0).abs() <= 1e-4
 }
 
 /// Registers the `path_follower` scene component and [`PATH_FOLLOW`] in the
@@ -613,14 +863,34 @@ impl Plugin for PathFollowerPlugin {
                 )
                 .default("4.0"),
             )
+            .field(
+                FieldDescription::new(
+                    "filter",
+                    FieldType::Filter,
+                    "the controllers that are its riders, by their tags, the others carried without boarding or holding it; the load checks its tags",
+                )
+                .default("{}"),
+            )
+            .field(
+                FieldDescription::new(
+                    "two_way",
+                    FieldType::Bool,
+                    "a fresh rider boards it at its last point too and rides back, the rider it carried to an end holding it there until it steps off",
+                )
+                .default("false"),
+            )
             .sample("{}")
             .roundtrip(round_trip::<Rider>),
         );
         // The step's followers and what each did at its ends, reserved so
         // a step allocates nothing.
         let mut followers: Vec<(Entity, Ends)> = Vec::with_capacity(64);
-        world.register_component_with(
+        world.register_component_with_assets(
             PATH_FOLLOWER,
+            |def: &PathFollowerDef, world: &World| match &def.rider {
+                Some(rider) => rider.filter.check(world, "rider.filter"),
+                None => Ok(()),
+            },
             |def: PathFollowerDef, at: &SpawnContext<'_>| {
                 let origin = at.transform().position;
                 let follower = PathFollower::new(
@@ -724,6 +994,9 @@ impl TryFrom<PathFollowerFields> for PathFollowerDef {
 /// A follower as a save writes it: world points and its time.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+// Independent flags, each a key of its own skipped when unset; no two are a
+// state.
+#[allow(clippy::struct_excessive_bools)]
 struct FollowerSave {
     points: Vec<[f32; 2]>,
     speed: f32,
@@ -733,11 +1006,19 @@ struct FollowerSave {
     #[serde(default, skip_serializing_if = "is_zero")]
     wait: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    rider: Option<Rider>,
+    rider: Option<RiderSave>,
     #[serde(default, skip_serializing_if = "is_zero")]
     hold: f32,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     ridden: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    carried: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    boarding: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    paused: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    turned: bool,
 }
 
 // The reference is serde's `skip_serializing_if` signature.
@@ -763,7 +1044,7 @@ impl TryFrom<FollowerSave> for PathFollower {
             mode: save.mode,
             easing: save.easing,
             wait: save.wait,
-            rider: save.rider,
+            rider: save.rider.map(Rider::from),
         })?;
         if !(save.hold.is_finite() && save.hold >= 0.0) {
             return Err(format!("hold: must be finite and >= 0 (got {})", save.hold));
@@ -776,13 +1057,23 @@ impl TryFrom<FollowerSave> for PathFollower {
             speed,
             mode,
             easing,
+            paused: save.paused,
+            turned: save.turned,
             time: save.time,
             hold: None,
         };
+        if (save.carried || save.boarding) && !rider.as_ref().is_some_and(|rider| rider.two_way) {
+            return Err(
+                "carried, boarding: only a two-way lift carries a rider or counts a boarding"
+                    .to_string(),
+            );
+        }
         follower.set_hold_rule(wait, rider);
         if let Some(hold) = follower.hold.as_mut() {
             hold.held = save.hold;
             hold.ridden = save.ridden;
+            hold.carried = save.carried;
+            hold.boarding = save.boarding;
         }
         let total = follower.total();
         let within = if mode == Mode::Stop {
@@ -810,16 +1101,21 @@ impl From<PathFollower> for FollowerSave {
             easing: follower.easing,
             time: follower.time,
             wait: follower.hold_rule().0,
-            rider: follower.hold_rule().1,
+            rider: follower.hold_rule().1.map(RiderSave::from),
             hold: follower.hold.as_ref().map_or(0.0, |hold| hold.held),
             ridden: follower.hold.as_ref().is_some_and(|hold| hold.ridden),
+            carried: follower.hold.as_ref().is_some_and(|hold| hold.carried),
+            boarding: follower.hold.as_ref().is_some_and(|hold| hold.boarding),
+            paused: follower.paused,
+            turned: follower.turned,
         }
     }
 }
 
-/// Steps every follower, then adds an oscillating body's wave to its
-/// velocity and sends the step's `arrived` and `departed` cue events that
-/// something names, through the kit's list. The query stays four columns
+/// Steps every follower but a stopped or a paused one, which stands, then
+/// adds an oscillating body's wave to its velocity and sends the step's
+/// `arrived` and `departed` cue events that something names, through the
+/// kit's list. The query stays four columns
 /// wide, the entity in the oscillator's place, since each column widens
 /// the list a query collects each call, which example 01's guard pins;
 /// `followers` is the step's scratch list, reserved at build.
@@ -832,7 +1128,7 @@ fn path_follow(world: &mut World, followers: &mut Vec<(Entity, Ends)>) {
     for (entity, follower, position, velocity) in
         world.query_mut::<(Entity, &mut PathFollower, &Position, &mut Velocity)>()
     {
-        let moved = if follower.is_finished() {
+        let moved = if follower.is_finished() || follower.paused {
             velocity.0 = Vec2::ZERO;
             Ends::default()
         } else {

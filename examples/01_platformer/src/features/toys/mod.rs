@@ -3,8 +3,9 @@
 //! aim (`wave`), sprays of fire or cold along an aim, the fire missile's
 //! flight, blast and bending, and the toxic flask's lob and splash
 //! (`flask`), each a function the spells call. Their caps bound the pile:
-//! [`BALL_CAP`] balls, [`IRON_CAP`] blocks, [`MISSILE_CAP`] missiles and
-//! [`HOLE_CAP`] black holes.
+//! [`BALL_CAP`] balls by their table; the rest are their prefabs' kit
+//! `cap`s, which refuse a seventh missile and a fourth flask and end the
+//! oldest of 24 iron blocks and of three black holes.
 
 pub mod components;
 pub mod draw;
@@ -14,35 +15,34 @@ pub mod systems;
 pub mod wave;
 
 use glam::Vec2;
+use serde::Deserialize;
 use tungsten::core::{
-    BodyKind, CommandBuffer, Entity, EventCursor, RigidBody, Schedule, Shape, Stage, Time,
-    Transform, Velocity, World, system,
+    BodyKind, CommandBuffer, Easing, Entity, EventCursor, PrefabRegistry, PreparedPrefab,
+    RigidBody, Schedule, Shape, Stage, Time, Transform, Tween, TweenChannel, Velocity, World,
+    system,
 };
 use tungsten::kit::{
-    LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase, TOP_DOWN_MOVER, ensure_phases,
+    Admission, COOLDOWN_TICK, ImpactDamage, LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase,
+    TOP_DOWN_MOVER, admit_spawn, cap_refuses, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
 use crate::features::audio::{self, components::Sound};
-use crate::features::level::TILE;
+use crate::features::level::{self, TILE};
+use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds, body_centre, despawn_tree, spawn_burst};
+use crate::shared::{Joined, Saved, body_centre, despawn_tree, prefab_box, spawn_burst};
 use components::{
     Ball, BallHue, BallSpawner, BlackHole, BowlingBall, Element, FireMissile, HoleHold, IronBlock,
     IronScrap, OpeningOf, PreviousVelocity, Ring, ShockRing, SmallBall, Spray,
 };
 
-/// A bowling ball's radius, and a small ball's, each half its drawn size.
-pub const BALL_RADIUS: f32 = 15.0;
-pub const SMALL_BALL_RADIUS: f32 = 7.5;
 /// The balls' art is 64 px, drawn at these scales: 32 and 16 px, the body
-/// centred in it, this far from the entity's point.
+/// centred in it, its prefab's circle and offset.
 pub const BALL_SCALE: f32 = 0.5;
 pub const SMALL_BALL_SCALE: f32 = 0.25;
-pub const BALL_CENTRE: Vec2 = Vec2::splat(16.0);
-pub const SMALL_BALL_CENTRE: Vec2 = Vec2::splat(8.0);
 /// Most balls alive at once; placing stops at the count (`D-094`).
 pub const BALL_CAP: usize = 12_000;
 /// Seconds between two small balls while their spell holds: five times
@@ -57,46 +57,28 @@ pub const TOSS_SPEED: f32 = 700.0;
 pub const TOSS_STEEPEST: f32 = 25.0 * std::f32::consts::PI / 180.0;
 /// Where a tossed ball leaves the caster's centre, along the aim.
 pub const TOSS_OFFSET: f32 = 28.0;
-/// An iron block's half size, its mass, and its art's offset: 128 px of
-/// art about the 120 px block. Most blocks at once: a new one replaces the
-/// oldest, which poofs.
-pub const IRON_HALF: Vec2 = Vec2::splat(4.0 * BALL_RADIUS);
-pub const IRON_MASS: f32 = 400.0;
-pub const IRON_CAP: usize = 24;
 /// Iron's weight: a block falling faster than [`IRON_FALL_FROM`] falls
 /// harder by [`IRON_WEIGHT`] px/s², half the world's gravity again, unless
 /// a troll holds or throws it.
 pub const IRON_WEIGHT: f32 = 1800.0;
 pub const IRON_FALL_FROM: f32 = 30.0;
-/// Iron's blow: a body hit from iron is pushed along the closing line by
-/// this share of the closing speed, at most [`IRON_PUSH_MOST`] px/s.
-pub const IRON_PUSH_SHARE: f32 = 0.6;
-pub const IRON_PUSH_MOST: f32 = 900.0;
 /// Iron's hard landing: a block meeting a still body or a tile at this
-/// closing speed or more raises dust and shakes the camera by this share of
-/// a blast's.
+/// closing speed or more raises dust, and its thud's rule shakes the
+/// camera.
 pub const IRON_LAND_SPEED: f32 = 900.0;
-pub const IRON_LAND_SHAKE: f32 = 0.2;
-/// A scrap: a quarter of a block's side, a sixteenth of its mass, its art
-/// drawn at half size.
-pub const SCRAP_HALF: Vec2 = Vec2::splat(IRON_HALF.x / 4.0);
+/// A block's scraps, each a quarter of its side and a sixteenth of its
+/// mass by their prefabs, their art drawn at half size.
 pub const SCRAP_COUNT: usize = 16;
-pub const SCRAP_MASS: f32 = IRON_MASS / 16.0;
 pub const SCRAP_SCALE: f32 = 0.5;
 /// Sliding friction while iron rests on something, px/s², and on ice; a
 /// scrap's is a sixteenth.
 pub const IRON_FRICTION: f32 = 1500.0;
 pub const FROZEN_FRICTION: f32 = 120.0;
-/// How much of a hole's pull iron takes, and a scrap.
-pub const IRON_PULL: f32 = 0.2;
-pub const SCRAP_PULL: f32 = 1.0;
-/// A black hole's reach, pull and life, which its prefab's `left` restates;
-/// at most [`HOLE_CAP`] are open, a further one closing the oldest.
+/// A black hole's reach and pull, its life its prefab's `cooldown`; its
+/// prefab's `cap` holds three open, a further one closing the oldest.
 pub const HOLE_RADIUS: f32 = 6.0 * TILE;
 pub const HOLE_FORCE: f32 = 12_000.0;
-pub const HOLE_SECS: f32 = 6.0;
 pub const HOLE_DIAMETER: f32 = 2.8125 * TILE;
-pub const HOLE_CAP: usize = 3;
 /// A hole shrinks to nothing over its last seconds, and its collapse
 /// leaves a small ring this many pixels across.
 pub const HOLE_SHRINK_SECS: f32 = 0.5;
@@ -108,9 +90,6 @@ pub const HOLE_OPEN_SECS: f32 = 0.3;
 pub const OPEN_RING: f32 = 2.4 * HOLE_DIAMETER;
 pub const OPEN_REACH: f32 = 230.0;
 pub const OPEN_INWARD: f32 = 700.0;
-/// How much of a hole's pull a bowling ball takes: enough to lift it within
-/// about 200 px of the core, where iron stays down.
-pub const BOWLING_PULL: f32 = 0.625;
 /// The flyers' hold: a ring this far about the core, the pull easing within
 /// this of it, and its circling there as a share of the flyer's speed.
 pub const HOLD_RING: f32 = 40.0;
@@ -120,20 +99,16 @@ pub const HOLD_SWIRL: f32 = 0.55;
 /// hole's centre go, at most this many a hole a step.
 pub const BROOM_REACH: f32 = 24.0;
 pub const BROOM_MOST: usize = 12;
-/// The fire missile: its speed, its fall, its reach, its body's radius,
-/// its drawn size, and at most so many at once.
-pub const MISSILE_SPEED: f32 = 900.0;
-pub const MISSILE_GRAVITY: f32 = 360.0;
-pub const MISSILE_RANGE: f32 = MISSILE_SPEED * 2.1;
+/// The fire missile's body's radius; its speed is its spell's payload's,
+/// its drawn size its prefab's `scale` of its sprite ([`missile_size`]),
+/// its fall its prefab's `linear_motion`, which its spell's payload keeps,
+/// and its cap of six in flight its prefab's `cap`.
 pub const MISSILE_RADIUS: f32 = 10.0;
-pub const MISSILE_SIZE: f32 = 40.0;
-pub const MISSILE_CAP: usize = 6;
 /// A blast: its heat's reach, which lights small balls and shatters frozen
-/// iron, its push's reach and speed at its centre, and its camera kick.
+/// iron, and its push's reach and speed at its centre.
 pub const BLAST_RADIUS: f32 = 72.0;
 pub const PUSH_RADIUS: f32 = 4.5 * TILE;
 pub const PUSH_SPEED: f32 = 2500.0;
-pub const BLAST_TRAUMA: f32 = 0.68;
 /// A spray's reach and half angle, and the rays it traces: 01 (h)'s 30 %
 /// further than 01 (f)'s 7 and 3.5 tiles, the flamethrower's 30 % further
 /// again (§3.7a).
@@ -146,7 +121,9 @@ pub const RING_CAP: usize = 16;
 /// spray's loop and theirs fade over when they stop.
 pub const SMALL_BALLS_LOOP: &str = "ex10_small_balls_sfx";
 pub const LOOP_FADE: f32 = 0.08;
-/// The toys' prefabs, by their manifest IDs.
+/// The toys' prefabs, by their manifest IDs, each body's box, offset and
+/// mass its file's: an iron block 120 px in 128 px of art, its `cap`
+/// holding 24, a new one replacing the oldest, which poofs.
 pub const SMALL_BALL: &str = "small_ball";
 pub const BOWLING_BALL: &str = "bowling_ball";
 pub const IRON_BLOCK_PREFAB: &str = "iron_block";
@@ -158,10 +135,9 @@ pub const FIRE_MISSILE_PREFAB: &str = "fire_missile";
 /// step, the holes' life, the balls' hues and cooldowns, the velocities
 /// before physics, the holes' pull, their hold on the flyers about the
 /// top-down mover, the force push's waves, the missiles' bending before
-/// their motion, their contacts and the flasks' before the kit's projectile
-/// step and their ends after it, so a blast's or a splash's hits take the
-/// step's resolve, the escaped
-/// bodies' cull, the holes' broom and the sprays' end; in the present
+/// their motion, their contacts before the kit's projectile step and their
+/// ends and the flasks' after it, so a blast's or a splash's hits take the
+/// step's resolve, the holes' broom and the sprays' end; in the present
 /// phase the toys' looks and the waves' crescents, and before the frame's
 /// particles the sprays' and
 /// the holes' particles, then the sprays' sprites and puffs; and their
@@ -179,12 +155,25 @@ impl Plugin for ToysPlugin {
         world.register_component::<BlackHole>("black_hole");
         world.register_component::<FireMissile>("fire_missile");
         world.register_component::<components::ToxicFlask>("toxic_flask");
+        world.register_component::<components::Pull>("pull");
+        world.register_data_kind::<spray_look::SprayStyle>(spray_look::SPRAY_LOOKS);
+        world.register_component::<components::PreviousVelocity>("previous_velocity");
+        // A scrap's variant and a hole's time left: what a record of one
+        // holds past its prefab.
+        world.register_saved::<IronScrap>("iron_scrap");
+        world.register_saved::<BlackHole>("black_hole");
         world.insert_resource(BallSpawner::default());
         world.insert_resource(HoleHold::default());
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
         ensure_phases(schedule);
+        let mut elapsed = EventCursor::new();
         let fixed = [
-            Phase::Tick.join(system("toys_tick", systems::tick)),
+            Phase::Tick.join(
+                system("toys_tick", move |world: &mut World| {
+                    systems::tick(world, &mut elapsed);
+                })
+                .after(COOLDOWN_TICK),
+            ),
             Phase::Move.join(system("toys_velocities", systems::remember_velocities)),
             Phase::Move.join(system("iron_weight", systems::weight).after("toys_velocities")),
             Phase::Move.join(system("toys_pull", systems::pull)),
@@ -195,7 +184,6 @@ impl Plugin for ToysPlugin {
             Phase::Overlap.join(
                 system("missile_contacts", systems::missile_contacts).before(PROJECTILE_TICK),
             ),
-            Phase::Overlap.join(system("flask_contacts", flask::contacts).before(PROJECTILE_TICK)),
             Phase::Overlap.join(
                 system("flask_ends", {
                     let mut cursor = EventCursor::new();
@@ -203,7 +191,6 @@ impl Plugin for ToysPlugin {
                 })
                 .after(PROJECTILE_TICK),
             ),
-            Phase::Overlap.join(system("toys_bounds", systems::bounds)),
             Phase::Overlap.join(system("hole_broom", systems::broom)),
             Phase::Overlap.join(system("iron_friction", systems::friction)),
             Phase::Overlap.join(
@@ -221,7 +208,6 @@ impl Plugin for ToysPlugin {
         let present = [
             system("ball_look", systems::ball_look),
             system("iron_look", systems::iron_look),
-            system("missile_look", systems::missile_look),
             system("toys_flares", systems::flares),
             system("wave_look", wave::looks),
         ];
@@ -242,29 +228,85 @@ impl Plugin for ToysPlugin {
     }
 }
 
-/// The run's next save ID.
-pub(crate) fn next_id(world: &mut World) -> SaveId {
-    world.resource_mut::<SaveIds>().take()
-}
-
-/// A toy's prefab at `at`, owned by gameplay, with the run's next save ID
-/// and its art at `scale`, spawned at once: a toy's or a prop's.
-pub(crate) fn spawn_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> Entity {
-    let id = next_id(world);
+/// A toy's prefab at `at`, owned by gameplay, with its art at `scale` and
+/// its impact rule, when it has one, credited to the run's player
+/// ([`credited_rule`]).
+fn prepare_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> PreparedPrefab {
     let transform = Transform {
         position: at,
         rotation: 0.0,
         scale: Vec2::splat(scale),
     };
-    world
+    let rule = credited_rule(world, prefab);
+    let prepared = world
         .prepare_prefab(prefab, at.to_array())
         .expect("the manifest's prefabs load with it")
         .with((
             transform,
-            id,
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
-        ))
+        ));
+    match rule {
+        Some(rule) => prepared.with((rule,)),
+        None => prepared,
+    }
+}
+
+/// `prefab`'s `impact_damage` as its file gives it; none for a prefab
+/// without one.
+#[must_use]
+pub fn prefab_rule(world: &World, prefab: &str) -> Option<ImpactDamage> {
+    let data = world
+        .get_resource::<PrefabRegistry>()?
+        .get(prefab)?
+        .components
+        .get("impact_damage")?;
+    ImpactDamage::deserialize(data.clone()).ok()
+}
+
+/// [`prefab_rule`] credited to the run's player, as each body 01 spawns
+/// takes it: its hits the player's, and none on the player.
+#[must_use]
+pub fn credited_rule(world: &World, prefab: &str) -> Option<ImpactDamage> {
+    let mut rule = prefab_rule(world, prefab)?;
+    rule.set_credit(world.get_resource::<Run>().map(|run| run.player));
+    Some(rule)
+}
+
+/// A toy's prefab at `at`, owned by gameplay, with its art at `scale`,
+/// spawned at once as one of the run's records, which the World save holds
+/// whole in the map's area (`PreparedPrefab::saved`): a toy's or a prop's.
+pub(crate) fn spawn_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> Entity {
+    prepare_toy(world, prefab, at, scale)
+        .saved(world, Some(level::MAP))
+        .spawn(world)
+}
+
+/// A toy's prefab at `at`, prepared as [`spawn_toy`] prepares it, admitted
+/// under its prefab's kit `cap` from `source` (`kit::admit_spawn`): the
+/// prefab to spawn at once and its group's holders the kit listed to end
+/// for it, oldest first, which the caller ends at once with their look
+/// before it spawns the prefab; none when the cap refuses it. A refusing
+/// cap's caller asks `kit::cap_refuses` first, so a refusal takes no save
+/// ID.
+pub(crate) fn admit_toy(
+    world: &mut World,
+    prefab: &str,
+    at: Vec2,
+    scale: f32,
+    source: Option<Entity>,
+) -> Option<Admission> {
+    let prepared = prepare_toy(world, prefab, at, scale).saved(world, Some(level::MAP));
+    admit_spawn(world, prepared, source)
+}
+
+/// [`spawn_toy`] for a ball, under a kept identity of the run's next save
+/// ID: 01's own table saves the balls, since a full pit's 12,000 as records
+/// would pass the save's bound.
+fn spawn_ball_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> Entity {
+    let id = crate::shared::take_id(world);
+    prepare_toy(world, prefab, at, scale)
+        .with((Saved::kept(id),))
         .spawn(world)
 }
 
@@ -309,27 +351,39 @@ pub fn place_small_balls(world: &mut World, at: Vec2, dt: f32) -> u32 {
     spawner.phase = spawner.phase.wrapping_add(count);
     spawner.queued += count;
     const GOLDEN_ANGLE: f32 = 2.399_963_2;
+    let rule = (count > 0)
+        .then(|| credited_rule(world, SMALL_BALL))
+        .flatten();
+    // Its body's centre from its corner, its prefab's offset.
+    let offset = if count > 0 {
+        prefab_box(world, SMALL_BALL).1
+    } else {
+        Vec2::ZERO
+    };
     for i in 0..count {
         let phase = first.wrapping_add(i);
         let angle = phase as f32 * GOLDEN_ANGLE;
         let centre = at + Vec2::new(angle.cos(), angle.sin()) * BALL_JITTER;
-        let point = centre - SMALL_BALL_CENTRE;
-        let id = next_id(world);
+        let point = centre - offset;
+        let id = crate::shared::take_id(world);
         let transform = Transform {
             position: point,
             rotation: 0.0,
             scale: Vec2::splat(SMALL_BALL_SCALE),
         };
-        let prepared = world
+        let mut prepared = world
             .prepare_prefab(SMALL_BALL, point.to_array())
             .expect("the manifest's prefabs load with it")
             .with((
                 transform,
-                id,
+                Saved::kept(id),
                 BallHue::from_seed(phase),
                 PreviousVelocity::default(),
                 SceneEntity { state_id: GAMEPLAY },
             ));
+        if let Some(rule) = &rule {
+            prepared = prepared.with((rule.clone(),));
+        }
         world.resource_mut::<CommandBuffer>().spawn_prefab(prepared);
     }
     if count > 0 && world.resource::<BallSpawner>().voice.is_none() {
@@ -357,15 +411,18 @@ pub fn stop_small_balls_loop(world: &mut World) {
 }
 
 /// Spawns a small ball or a bowling ball with its centre at `at`, at once:
-/// what a test or a load sets down where it wants it.
+/// what a test or a load sets down where it wants it, its corner its
+/// prefab's offset short of it.
 pub fn spawn_ball(world: &mut World, at: Vec2, small: bool) -> Entity {
-    let ball = if small {
-        spawn_toy(world, SMALL_BALL, at - SMALL_BALL_CENTRE, SMALL_BALL_SCALE)
+    let (prefab, scale) = if small {
+        (SMALL_BALL, SMALL_BALL_SCALE)
     } else {
-        spawn_toy(world, BOWLING_BALL, at - BALL_CENTRE, BALL_SCALE)
+        (BOWLING_BALL, BALL_SCALE)
     };
+    let corner = at - prefab_box(world, prefab).1;
+    let ball = spawn_ball_toy(world, prefab, corner, scale);
     if small {
-        let phase = world.get::<SaveId>(ball).map_or(0, |id| id.0 as u32);
+        let phase = crate::shared::save_id(world, ball).map_or(0, |id| id.0 as u32);
         world.insert(ball, BallHue::from_seed(phase));
     }
     ball
@@ -373,7 +430,8 @@ pub fn spawn_ball(world: &mut World, at: Vec2, small: bool) -> Entity {
 
 /// Tosses a bowling ball from `from`, the caster's centre, along `aim`: it
 /// leaves the hand at [`TOSS_SPEED`], no steeper than [`TOSS_STEEPEST`].
-/// None past the ball cap.
+/// None past the ball cap. Its sound is its ability's `ability_used`
+/// rule's.
 pub fn toss_bowling_ball(world: &mut World, from: Vec2, aim: Vec2) -> Option<Entity> {
     if ball_count(world) >= BALL_CAP {
         return None;
@@ -383,11 +441,11 @@ pub fn toss_bowling_ball(world: &mut World, from: Vec2, aim: Vec2) -> Option<Ent
     let angle = (-aim.y).atan2(aim.x.abs()).min(TOSS_STEEPEST);
     let launch = Vec2::new(side * angle.cos(), -angle.sin());
     let centre = from + aim * TOSS_OFFSET;
-    let ball = spawn_toy(world, BOWLING_BALL, centre - BALL_CENTRE, BALL_SCALE);
+    let corner = centre - prefab_box(world, BOWLING_BALL).1;
+    let ball = spawn_ball_toy(world, BOWLING_BALL, corner, BALL_SCALE);
     if let Some(velocity) = world.get_mut::<Velocity>(ball) {
         velocity.0 = launch * TOSS_SPEED;
     }
-    audio::play(world, Sound::Tossed, centre);
     Some(ball)
 }
 
@@ -400,7 +458,7 @@ pub fn toss_bowling_ball(world: &mut World, from: Vec2, aim: Vec2) -> Option<Ent
 pub fn iron_fits(world: &World, at: Vec2) -> bool {
     let mut met = Vec::new();
     let shape = Shape::Aabb {
-        half_extents: IRON_HALF,
+        half_extents: prefab_box(world, IRON_BLOCK_PREFAB).0,
     };
     overlap(world, shape, at, &SpatialFilter::new(), &mut met);
     met.iter().all(|hit| {
@@ -413,48 +471,41 @@ pub fn iron_fits(world: &World, at: Vec2) -> bool {
     })
 }
 
-/// Places an iron block with its centre at `at`; past [`IRON_CAP`] the
-/// oldest goes in a poof, as a summon's oldest does.
+/// Places an iron block with its centre at `at`, admitted under its
+/// prefab's kit `cap`, the map's own among them: past it the oldest, the
+/// lowest save ID, goes in a poof first, as a summon's oldest does.
 pub fn place_iron(world: &mut World, at: Vec2) -> Entity {
-    let mut blocks: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &IronBlock, &SaveId)>()
-        .map(|(entity, _, id)| (*id, entity))
-        .collect();
-    blocks.sort_by_key(|(id, _)| *id);
-    let surplus = (blocks.len() + 1).saturating_sub(IRON_CAP);
-    for &(_, oldest) in blocks.iter().take(surplus) {
+    let corner = at - prefab_box(world, IRON_BLOCK_PREFAB).1;
+    let Admission {
+        prepared, culled, ..
+    } = admit_toy(world, IRON_BLOCK_PREFAB, corner, 1.0, None)
+        .expect("iron's cap ends its oldest, refusing none: no kit route spawns iron");
+    for oldest in culled {
         if let Some(centre) = body_centre(world, oldest) {
             spawn_burst(world, "ex10_poof", centre);
         }
         despawn_tree(world, oldest);
     }
-    let block = spawn_toy(
-        world,
-        IRON_BLOCK_PREFAB,
-        at - IRON_HALF - Vec2::splat(4.0),
-        1.0,
-    );
+    let block = prepared.spawn(world);
     audio::play(world, Sound::Placed, at);
     block
 }
 
 /// Spawns a scrap of `variant` with its centre at `at`, flying at
-/// `velocity`, tumbling from level time `born_at`.
+/// `velocity`, turned to `angle` and tumbling on by `turn` ([`tumble`]).
 pub fn spawn_scrap(
     world: &mut World,
     at: Vec2,
     velocity: Vec2,
     variant: usize,
-    tumble: components::ScrapTumble,
+    angle: f32,
+    turn: f32,
 ) -> Entity {
-    let scrap = spawn_toy(
-        world,
-        IRON_SCRAP_PREFAB,
-        at - SCRAP_HALF - Vec2::splat(1.0),
-        SCRAP_SCALE,
-    );
+    let corner = at - prefab_box(world, IRON_SCRAP_PREFAB).1;
+    let scrap = spawn_toy(world, IRON_SCRAP_PREFAB, corner, SCRAP_SCALE);
     let variant = variant % 4;
-    world.insert_bundle(scrap, (IronScrap { variant }, tumble));
+    world.insert(scrap, IronScrap { variant });
+    tumble(world, scrap, angle, turn);
     if let Some(v) = world.get_mut::<Velocity>(scrap) {
         v.0 = velocity;
     }
@@ -466,50 +517,55 @@ pub fn spawn_scrap(
 /// at once and quietly: a load's.
 pub fn restore_ball(world: &mut World, small: bool, at: Vec2) -> Entity {
     if small {
-        spawn_toy(world, SMALL_BALL, at, SMALL_BALL_SCALE)
+        spawn_ball_toy(world, SMALL_BALL, at, SMALL_BALL_SCALE)
     } else {
-        spawn_toy(world, BOWLING_BALL, at, BALL_SCALE)
+        spawn_ball_toy(world, BOWLING_BALL, at, BALL_SCALE)
     }
 }
 
-/// A saved iron block set back with its point at `at`, quietly.
-pub fn restore_iron(world: &mut World, at: Vec2) -> Entity {
-    spawn_toy(world, IRON_BLOCK_PREFAB, at, 1.0)
-}
-
-/// A saved scrap of `variant` set back with its point at `at`, at rest.
-pub fn restore_scrap(world: &mut World, at: Vec2, variant: usize) -> Entity {
-    let scrap = spawn_toy(world, IRON_SCRAP_PREFAB, at, SCRAP_SCALE);
-    let variant = variant % 4;
-    let rest = components::ScrapTumble {
-        born_at: 0.0,
-        initial_angle: 0.0,
-        total_turn: 0.0,
+/// A restored scrap's look, which its spawn gives beyond its prefab: its
+/// saved variant's sprite. It rests at the angle its saved transform holds,
+/// the rest of a tumble lost at the load.
+pub fn restored_scrap(world: &mut World, scrap: Entity) {
+    let Some(&IronScrap { variant }) = world.get::<IronScrap>(scrap) else {
+        return;
     };
-    world.insert_bundle(scrap, (IronScrap { variant }, rest));
-    systems::show_scrap_variant(world, scrap, variant);
-    scrap
+    systems::show_scrap_variant(world, scrap, variant % 4);
 }
 
-/// A saved black hole set back open at `at`, quietly.
-pub fn restore_hole(world: &mut World, at: Vec2) -> Entity {
-    spawn_toy(world, BLACK_HOLE_PREFAB, at, 1.0)
+/// How long a scrap's or plank's tumble runs: `ExpoOut` over it turns by
+/// `1 − e^(−4·age)` of the turn, its last 2^−10 snapped at its end.
+pub const TUMBLE_SECS: f32 = 10.0 * std::f32::consts::LN_2 / 4.0;
+
+/// Turns `entity` to `angle` at once and tumbles it on by `turn` as it
+/// flies, a rotation tween over [`TUMBLE_SECS`] on the game's clock; a zero
+/// turn adds none.
+pub fn tumble(world: &mut World, entity: Entity, angle: f32, turn: f32) {
+    if let Some(transform) = world.get_mut::<Transform>(entity) {
+        transform.rotation = angle;
+    }
+    if turn != 0.0 {
+        let rotation = TweenChannel::Rotation {
+            from: angle,
+            to: angle + turn,
+        };
+        let tween = Tween::new(TUMBLE_SECS, Easing::ExpoOut).with_channel(rotation);
+        world.insert(entity, tween);
+    }
 }
 
-/// Opens a black hole at `at` for [`HOLE_SECS`], with its opening's ring and
-/// rush of sparks; past [`HOLE_CAP`] the oldest, the lowest save ID,
-/// collapses first.
+/// Opens a black hole at `at` for its prefab's cooldown, with its opening's
+/// ring and rush of sparks, admitted under its prefab's kit `cap`: past
+/// it the oldest, the lowest save ID, collapses first.
 pub fn place_black_hole(world: &mut World, at: Vec2) -> Entity {
-    let mut open: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &BlackHole, &SaveId)>()
-        .map(|(entity, _, id)| (*id, entity))
-        .collect();
-    open.sort_by_key(|(id, _)| *id);
-    let surplus = (open.len() + 1).saturating_sub(HOLE_CAP);
-    for &(_, oldest) in open.iter().take(surplus) {
+    let Admission {
+        prepared, culled, ..
+    } = admit_toy(world, BLACK_HOLE_PREFAB, at, 1.0, None)
+        .expect("a hole's cap ends its oldest, refusing none: no kit route spawns a hole");
+    for oldest in culled {
         systems::collapse(world, oldest);
     }
-    let hole = spawn_toy(world, BLACK_HOLE_PREFAB, at, 1.0);
+    let hole = prepared.spawn(world);
     audio::play(world, Sound::HoleOpened, at);
     systems::ring(world, at, OPEN_RING, Ring::Open);
     if let Some(rush) = spawn_burst(world, "ex10_hole_open", at) {
@@ -524,15 +580,42 @@ pub fn missile_count(world: &World) -> usize {
     world.query::<&FireMissile>().count()
 }
 
+/// A fire missile's drawn size and its scale: its prefab's `scale` of its
+/// sprite's size, its body's centre half of it from its corner.
+///
+/// # Panics
+///
+/// When its prefab has no sprite: it loads with the manifest.
+#[must_use]
+pub fn missile_size(world: &World) -> (Vec2, f32) {
+    let prefab = world
+        .get_resource::<PrefabRegistry>()
+        .and_then(|prefabs| prefabs.get(FIRE_MISSILE_PREFAB))
+        .filter(|prefab| prefab.sprite.is_some())
+        .unwrap_or_else(|| {
+            panic!("no `{FIRE_MISSILE_PREFAB}` prefab with a sprite: it loads with the manifest")
+        });
+    let sprite = prefab
+        .sprite
+        .as_ref()
+        .map_or("", |sprite| sprite.asset_id.as_str());
+    let scale = Vec2::from(prefab.scale);
+    (crate::shared::sprite_size(world, sprite) * scale, scale.x)
+}
+
 /// Fires a missile from `centre` at `velocity`, at once: the prefab the
-/// fire missile's spell spawns, set at its centre. None past
-/// [`MISSILE_CAP`].
+/// fire missile's spell spawns, set at its centre, admitted under its
+/// prefab's `cap`. None at that cap, which refuses it.
 pub fn fire_missile(world: &mut World, centre: Vec2, velocity: Vec2) -> Option<Entity> {
-    if missile_count(world) >= MISSILE_CAP {
+    if cap_refuses(world, FIRE_MISSILE_PREFAB) {
         return None;
     }
-    let at = centre - Vec2::splat(MISSILE_SIZE * 0.5);
-    let missile = spawn_toy(world, FIRE_MISSILE_PREFAB, at, MISSILE_SIZE / 64.0);
+    let (size, scale) = missile_size(world);
+    let at = centre - size * 0.5;
+    let missile = admit_toy(world, FIRE_MISSILE_PREFAB, at, scale, None)?
+        .prepared
+        .spawn(world);
+    world.insert(missile, Joined);
     if let Some(motion) = world.get_mut::<LinearMotion>(missile) {
         motion.set_velocity(velocity);
     }
@@ -540,24 +623,13 @@ pub fn fire_missile(world: &mut World, centre: Vec2, velocity: Vec2) -> Option<E
     Some(missile)
 }
 
-/// Makes `missile`, which an ability's spawn payload landed from its
-/// caster's point, the top-left of the caster's art, one of the toys: the
-/// run's next save ID and the fall the payload's motion leaves out, drawn
-/// at its size, shown, and moved so its centre sits `centre` from where
-/// it landed, as the caster's centre sits from the caster's point.
-pub fn adopt_missile(world: &mut World, missile: Entity, centre: Vec2) {
-    let id = next_id(world);
-    world.insert(missile, id);
+/// Makes `missile`, which an ability's spawn payload landed centred on its
+/// caster's centre, by its art's drawn centre at its prefab's scale, with
+/// its prefab's fall and size, one of the toys ([`Joined`], its save ID
+/// the flush's): shown where it landed.
+pub fn adopt_missile(world: &mut World, missile: Entity) {
+    world.insert(missile, Joined);
     world.insert(missile, PreviousVelocity::default());
-    let shift = centre - Vec2::splat(MISSILE_SIZE * 0.5);
-    systems::shift(world, missile, shift);
-    if let Some(motion) = world.get_mut::<LinearMotion>(missile) {
-        *motion =
-            LinearMotion::new(motion.velocity()).with_acceleration(Vec2::new(0.0, MISSILE_GRAVITY));
-    }
-    if let Some(transform) = world.get_mut::<Transform>(missile) {
-        transform.scale = Vec2::splat(MISSILE_SIZE / 64.0);
-    }
     systems::show(world, missile);
 }
 

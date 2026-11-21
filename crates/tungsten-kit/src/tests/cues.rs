@@ -1098,6 +1098,307 @@ mod running {
         );
     }
 
+    // 7.13c's foes and cues, Step 4: body points, an action's place and
+    // the burst action.
+
+    /// A body with health 1 at `at`, its collider's offset (8, 8), and
+    /// `cues`.
+    fn body(world: &mut World, at: Vec2, cues: Cues) -> Entity {
+        use tungsten_core::physics::{Collider, Position, Shape};
+        world.spawn_with((
+            Health::new(1.0),
+            Position(at),
+            Collider {
+                shape: Shape::Aabb {
+                    half_extents: Vec2::splat(8.0),
+                },
+                offset: Vec2::splat(8.0),
+            },
+            cues,
+        ))
+    }
+
+    /// The `puff`s spawned, by their x.
+    fn puffs(world: &World) -> Vec<Vec2> {
+        let mut puffs: Vec<Vec2> = spawned(world)
+            .into_iter()
+            .filter(|(tag, ..)| tag == "puff")
+            .map(|(_, at, _)| at)
+            .collect();
+        puffs.sort_by(|a, b| a.x.total_cmp(&b.x));
+        puffs
+    }
+
+    #[test]
+    fn an_occurrence_without_a_point_sits_at_its_body_centre() {
+        let (mut world, mut schedule) = rig();
+        // A kill with no request point: a body's at its centre, a bodiless
+        // one's at its point.
+        let crate_ = body(
+            &mut world,
+            Vec2::new(10.0, 0.0),
+            Cues::new().on("killed", [CueAction::prefab("puff")]),
+        );
+        let ghost = world.spawn_with((
+            Health::new(1.0),
+            Transform::from_position(Vec2::new(40.0, 5.0)),
+            Cues::new().on("killed", [CueAction::prefab("puff")]),
+        ));
+        damage(&mut world, crate_, 1.0);
+        damage(&mut world, ghost, 1.0);
+        step(&mut world, &mut schedule);
+        flush(&mut world);
+        assert_eq!(puffs(&world), [Vec2::new(18.0, 8.0), Vec2::new(40.0, 5.0)]);
+        // A hit with a point of its own keeps it.
+        let hit = body(
+            &mut world,
+            Vec2::new(100.0, 0.0),
+            Cues::new().on("killed", [CueAction::prefab("puff")]),
+        );
+        crate::DamageRequest::new(hit, 1.0)
+            .with_position(Vec2::new(200.0, -4.0))
+            .apply(&mut world);
+        step(&mut world, &mut schedule);
+        flush(&mut world);
+        assert_eq!(puffs(&world)[2], Vec2::new(200.0, -4.0));
+    }
+
+    #[test]
+    fn a_roll_lands_at_its_subjects_centre() {
+        let (mut world, mut schedule) = rig();
+        let drops = WeightedTable::new().with_entry("puff", 1.0);
+        world.resource_mut::<DataRegistry>().insert("drops", drops);
+        // Killed by hits landing 100 px off: the roll at the event's point,
+        // and at the body's centre.
+        let roll = || CueAction::roll(DataRef::by_id("drops"));
+        let plain = body(
+            &mut world,
+            Vec2::new(0.0, 0.0),
+            Cues::new().on("killed", [roll()]),
+        );
+        let centred = body(
+            &mut world,
+            Vec2::new(300.0, 0.0),
+            Cues::new().on("killed", [roll().at_centre()]),
+        );
+        for (target, x) in [(plain, 100.0), (centred, 400.0)] {
+            crate::DamageRequest::new(target, 1.0)
+                .with_position(Vec2::new(x, 50.0))
+                .apply(&mut world);
+        }
+        step(&mut world, &mut schedule);
+        flush(&mut world);
+        assert_eq!(
+            puffs(&world),
+            [Vec2::new(100.0, 50.0), Vec2::new(308.0, 8.0)]
+        );
+        assert_eq!(
+            serde_json::to_value(roll().at_centre()).unwrap(),
+            json!({ "roll": { "table": "drops", "centred": false, "at": "centre" } })
+        );
+    }
+
+    #[test]
+    fn a_burst_action_takes_its_place_and_offset() {
+        use std::sync::Arc;
+
+        use tungsten_core::{ParticleConfig, ParticleConfigRegistry};
+
+        use crate::{Facing, ParticleBurst};
+
+        let (mut world, mut schedule) = rig();
+        let sparks: ParticleConfig = serde_json::from_value(json!({
+            "sprite": "spark", "max_alive": 8,
+            "emission": { "kind": "continuous", "rate_hz": 30.0 },
+            "lifetime": { "min": 0.2, "max": 0.2 },
+            "initial_velocity": { "kind": "radial", "speed": { "min": 40.0, "max": 60.0 } }
+        }))
+        .unwrap();
+        let mut configs = ParticleConfigRegistry::new();
+        configs.register(
+            "sparks".into(),
+            PathBuf::from("sparks.json"),
+            Arc::new(sparks),
+        );
+        world.insert_resource(configs);
+        // Four bodies hit 50 px under their points: the event's point, the
+        // body's centre, its centre moved (6, -2), and that facing left.
+        let lane = |x: f32, action: CueAction| (x, action);
+        let lanes = [
+            lane(0.0, CueAction::burst("sparks")),
+            lane(100.0, CueAction::burst("sparks").at_centre()),
+            lane(
+                200.0,
+                CueAction::burst("sparks")
+                    .at_centre()
+                    .with_offset(Vec2::new(6.0, -2.0)),
+            ),
+            lane(
+                300.0,
+                CueAction::burst("sparks")
+                    .as_key()
+                    .at_centre()
+                    .with_offset(Vec2::new(6.0, -2.0)),
+            ),
+        ];
+        for (x, action) in lanes {
+            let target = body(
+                &mut world,
+                Vec2::new(x, 0.0),
+                Cues::new().on("killed", [action]),
+            );
+            let mut facing = Facing::new();
+            facing.face(if x >= 300.0 { Vec2::NEG_X } else { Vec2::X });
+            world.insert(target, facing);
+            crate::DamageRequest::new(target, 1.0)
+                .with_position(Vec2::new(x, 50.0))
+                .apply(&mut world);
+        }
+        step(&mut world, &mut schedule);
+        let mut bursts: Vec<(Vec2, bool)> = world
+            .query::<(&ParticleBurst, &Transform)>()
+            .map(|(burst, transform)| (transform.position, burst.key))
+            .collect();
+        bursts.sort_by(|a, b| a.0.x.total_cmp(&b.0.x));
+        assert_eq!(
+            bursts,
+            [
+                (Vec2::new(0.0, 50.0), false),
+                (Vec2::new(108.0, 8.0), false),
+                (Vec2::new(214.0, 6.0), false),
+                (Vec2::new(302.0, 6.0), true),
+            ]
+        );
+        // Its data forms, and an unknown config refused at the load.
+        for (action, data) in [
+            (CueAction::burst("sparks"), json!({ "burst": "sparks" })),
+            (
+                CueAction::burst("sparks")
+                    .as_key()
+                    .with_offset(Vec2::new(0.0, -8.0)),
+                json!({ "burst": { "particles": "sparks", "key": true, "offset": [0.0, -8.0] } }),
+            ),
+            (
+                CueAction::sound("blip").at_centre(),
+                json!({ "sound": { "id": "blip", "min_interval": 0.0, "at": "centre" } }),
+            ),
+            (
+                CueAction::prefab("puff").with_offset(Vec2::new(2.0, 0.0)),
+                json!({ "prefab": { "id": "puff", "centred": false, "offset": [2.0, 0.0] } }),
+            ),
+        ] {
+            assert_eq!(serde_json::to_value(&action).unwrap(), data, "{action:?}");
+            assert_eq!(serde_json::from_value::<CueAction>(data).unwrap(), action);
+        }
+        assert_eq!(
+            serde_json::from_value::<CueAction>(json!({ "burst": { "particles": "sparks" } }))
+                .unwrap(),
+            CueAction::burst("sparks")
+        );
+        assert!(check(&world, &json!({ "killed": [{ "burst": "sparks" }] })).is_ok());
+        assert_eq!(
+            check(&world, &json!({ "killed": [{ "burst": "smoke" }] })).unwrap_err(),
+            "component `cues`, field `killed.0.burst.particles`: unknown particle config `smoke`"
+        );
+    }
+
+    #[test]
+    fn an_action_at_the_aim_plays_at_the_subjects_aim_point() {
+        use std::sync::Arc;
+
+        use tungsten_core::{ParticleConfig, ParticleConfigRegistry};
+
+        use crate::{Aim, AimPlugin, Facing, ParticleBurst, Target};
+
+        let (mut world, mut schedule) = rig();
+        AimPlugin.build(&mut schedule, &mut world);
+        schedule.resolve().unwrap();
+        let sparks: ParticleConfig = serde_json::from_value(json!({
+            "sprite": "spark", "max_alive": 8,
+            "emission": { "kind": "continuous", "rate_hz": 30.0 },
+            "lifetime": { "min": 0.2, "max": 0.2 },
+            "initial_velocity": { "kind": "radial", "speed": { "min": 40.0, "max": 60.0 } }
+        }))
+        .unwrap();
+        let mut configs = ParticleConfigRegistry::new();
+        configs.register(
+            "sparks".into(),
+            PathBuf::from("sparks.json"),
+            Arc::new(sparks),
+        );
+        world.insert_resource(configs);
+        // A listener at the aim's point, hearing it whole and the hits'
+        // points, 700 px off and more, not at all.
+        let aimed = Vec2::new(1000.0, 0.0);
+        world.insert_resource(CueListener::new(100.0, 300.0).at(aimed));
+        let offset = Vec2::new(6.0, -2.0);
+        // Bodies hit 50 px under their points: aiming at the point, the same
+        // facing left with an offset, with no aim, and with an aim that has
+        // no point.
+        let lanes: [(f32, Option<Aim>, bool, Vec2); 4] = [
+            (0.0, Some(Aim::at(Target::point(aimed))), false, Vec2::ZERO),
+            (100.0, Some(Aim::at(Target::point(aimed))), true, offset),
+            (200.0, None, false, Vec2::ZERO),
+            (300.0, Some(Aim::intent()), false, Vec2::ZERO),
+        ];
+        let mut seen = Vec::new();
+        for (x, aim, left, offset) in lanes {
+            let mut sound = CueAction::sound("blip").at_aim();
+            let mut burst = CueAction::burst("sparks").at_aim();
+            if offset != Vec2::ZERO {
+                sound = sound.with_offset(offset);
+                burst = burst.with_offset(offset);
+            }
+            let target = body(
+                &mut world,
+                Vec2::new(x, 0.0),
+                Cues::new().on("killed", [sound, burst]),
+            );
+            let mut facing = Facing::new();
+            facing.face(if left { Vec2::NEG_X } else { Vec2::X });
+            world.insert(target, facing);
+            if let Some(aim) = aim {
+                world.insert(target, aim);
+            }
+            // A step for the aim to take its point, then the hit.
+            step(&mut world, &mut schedule);
+            let _ = volumes(&mut world);
+            crate::DamageRequest::new(target, 1.0)
+                .with_position(Vec2::new(x, 50.0))
+                .apply(&mut world);
+            step(&mut world, &mut schedule);
+            let bursts: Vec<Vec2> = world
+                .query::<(&ParticleBurst, &Transform)>()
+                .map(|(_, transform)| transform.position)
+                .collect();
+            seen.push((volumes(&mut world), bursts));
+            let bursts: Vec<Entity> = world
+                .query::<(Entity, &ParticleBurst)>()
+                .map(|(burst, _)| burst)
+                .collect();
+            for burst in bursts {
+                world.despawn(burst);
+            }
+            flush(&mut world);
+        }
+        assert_eq!(
+            seen,
+            [
+                (vec![1.0], vec![aimed]),
+                (vec![1.0], vec![aimed + Vec2::new(-6.0, -2.0)]),
+                (vec![], vec![Vec2::new(200.0, 50.0)]),
+                (vec![], vec![Vec2::new(300.0, 50.0)]),
+            ],
+            "the aim's point, its offset mirrored facing left; the event's point with no aim \
+             or one with no point"
+        );
+        // Its data form.
+        let action = CueAction::burst("sparks").at_aim();
+        let data = json!({ "burst": { "particles": "sparks", "key": false, "at": "aim" } });
+        assert_eq!(serde_json::to_value(&action).unwrap(), data);
+        assert_eq!(serde_json::from_value::<CueAction>(data).unwrap(), action);
+    }
+
     #[test]
     fn a_roll_of_a_missing_table_is_skipped_and_traced() {
         let (mut world, mut schedule) = rig();
@@ -1643,11 +1944,11 @@ fn a_steps_crit_parts_on_a_target_float_at_once_as_one_sum_in_the_crit_style() {
     assert_eq!(
         floated(&mut world, &mut schedule),
         [
-            label("1", 16.0, BLUE),
             label("9", 24.0, GOLD),
-            label("5", 24.0, GOLD)
+            label("5", 24.0, GOLD),
+            label("1", 16.0, BLUE)
         ],
-        "the plain part at once, each target's crits as one at the step's end"
+        "each target's crits as one, then the plain part, as the step's parts are read"
     );
     crit_hit(&mut world, golem, &[(2.0, "elemental.fire")]);
     typed_step(&mut world, &mut schedule);
@@ -1655,6 +1956,86 @@ fn a_steps_crit_parts_on_a_target_float_at_once_as_one_sum_in_the_crit_style() {
         floated(&mut world, &mut schedule).last(),
         Some(&label("2", 24.0, GOLD)),
         "the next step's crits on their own"
+    );
+}
+
+// 7.13c's foes and cues, Step 5: a step's labels in order, and a tick's
+// first at once.
+
+#[test]
+fn a_part_label_floats_crits_then_new_parts_then_closed_sums() {
+    let (mut world, mut schedule) = typed_running(styled());
+    let crit = json!({ "merge": 0.25, "crit": { "size": 24, "color": [1, 0.7, 0, 1] } });
+    let golem = numbered(&mut world, &crit);
+    hit(&mut world, golem, &[(4.0, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    hit(&mut world, golem, &[(2.0, &["elemental.fire"])]);
+    for _ in 1..15 {
+        typed_step(&mut world, &mut schedule);
+    }
+    let mut so_far = vec![label("4", 16.0, RED)];
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        so_far,
+        "fire's window open"
+    );
+    // In the step fire's window closes: a crit and a new cold part land.
+    crate::DamageRequest::from_parts(
+        golem,
+        [crate::DamagePart::new(3.0).with_tags(Tags::new(["elemental.cold"]))],
+    )
+    .with_crit(true)
+    .apply(&mut world);
+    hit(&mut world, golem, &[(1.0, &["elemental.cold"])]);
+    typed_step(&mut world, &mut schedule);
+    so_far.extend([
+        label("3", 24.0, GOLD),
+        label("1", 16.0, BLUE),
+        label("2", 16.0, RED),
+    ]);
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        so_far,
+        "the crit sum, then the part that opened a window, then the closed sum"
+    );
+}
+
+#[test]
+fn a_ticks_first_part_floats_at_once_with_first() {
+    let (mut world, mut schedule) = typed_running(styled());
+    let golem = numbered(
+        &mut world,
+        &json!({ "merge": 0.25, "ticks": { "size": 10, "first": true } }),
+    );
+    tick(&mut world, golem, 1.0, "elemental.fire");
+    typed_step(&mut world, &mut schedule);
+    let mut so_far = vec![label("1", 10.0, RED)];
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        so_far,
+        "its first at once, at the tick size"
+    );
+    tick(&mut world, golem, 2.0, "elemental.fire");
+    typed_step(&mut world, &mut schedule);
+    tick(&mut world, golem, 0.5, "elemental.fire");
+    for _ in 2..15 {
+        typed_step(&mut world, &mut schedule);
+    }
+    assert_eq!(floated(&mut world, &mut schedule), so_far, "the rest wait");
+    typed_step(&mut world, &mut schedule);
+    so_far.push(label("2.5", 10.0, RED));
+    assert_eq!(
+        floated(&mut world, &mut schedule),
+        so_far,
+        "the rest as one"
+    );
+    // Its data form keeps `first` alone when set.
+    let action: CueAction =
+        serde_json::from_value(json!({ "label": { "ticks": { "size": 10, "first": true } } }))
+            .unwrap();
+    assert_eq!(
+        serde_json::to_value(&action).unwrap(),
+        json!({ "label": { "ticks": { "size": 10.0, "kind": {}, "first": true } } })
     );
 }
 
@@ -1783,6 +2164,65 @@ mod filters {
 
     fn load_error(world: &mut World, value: Value) -> String {
         check_rules(world, value).unwrap_err()
+    }
+
+    // 7.13c's foes and cues, Step 5: rule groups.
+
+    #[test]
+    fn a_group_runs_its_first_passing_rule_once_a_subject_a_step() {
+        let (mut world, mut schedule) = rig();
+        insert_rules(
+            &mut world,
+            json!([
+                { "on": "killed", "group": "hurt", "do": count("died") },
+                { "on": "damaged", "periodic": false, "group": "hurt", "cap": 1, "do": count("hurt") },
+                { "on": "damaged", "periodic": true, "group": "hurt", "min_interval": 0.15, "do": count("ticked") },
+                { "on": "damaged", "periodic": false, "do": count("blows") }
+            ]),
+        );
+        let (hero, other) = (
+            world.spawn_with((Health::new(100.0),)),
+            world.spawn_with((Health::new(100.0),)),
+        );
+        let tick = |world: &mut World, target: Entity| {
+            crate::DamageRequest::new(target, 1.0)
+                .with_periodic(true)
+                .apply(world);
+        };
+        let counts =
+            |world: &World| ["died", "hurt", "ticked", "blows"].map(|name| game(world, name));
+        // A tick and a blow in one step: the blow's rule alone, the tick's
+        // left with no wait.
+        tick(&mut world, hero);
+        damage(&mut world, hero, 1.0);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!(counts(&world), [0, 1, 0, 1]);
+        tick(&mut world, hero);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!(
+            counts(&world),
+            [0, 1, 1, 1],
+            "a tick alone, its wait untouched"
+        );
+        // A tick, a blow and a kill on the hero, and a blow on the other:
+        // the hero's `killed` rule alone, its dropped `hurt` leaving its cap
+        // to the other's own.
+        step(&mut world, &mut schedule, 0.2);
+        tick(&mut world, hero);
+        damage(&mut world, hero, 1.0);
+        damage(&mut world, hero, 1000.0);
+        damage(&mut world, other, 1.0);
+        step(&mut world, &mut schedule, 1.0 / 60.0);
+        assert_eq!(
+            counts(&world),
+            [1, 2, 1, 4],
+            "the ungrouped rule on each of the step's three blows"
+        );
+        assert!(world.get::<Health>(hero).unwrap().is_dead());
+        // A group's name is checked.
+        let bad: Result<CueRules, _> =
+            serde_json::from_value(json!([{ "on": "killed", "group": "Hurt", "do": [] }]));
+        assert!(bad.is_err());
     }
 
     #[test]
@@ -2370,6 +2810,89 @@ mod listening {
     }
 
     #[test]
+    fn the_listener_follows_its_entitys_body_centre() {
+        let (mut world, mut schedule) = rig();
+        let offset = Vec2::new(48.0, 65.0);
+        let hero = world.spawn_with((
+            Position(Vec2::new(400.0, 0.0)),
+            Collider::aabb(Vec2::new(12.0, 24.0)).with_offset(offset),
+        ));
+        world.insert_resource(CueListener::new(10.0, 100.0).following_body(hero));
+        let bell = at(
+            &mut world,
+            900.0,
+            Cues::new().on("rang", [CueAction::sound("blip")]),
+        );
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(448.0, 65.0)
+        );
+        // Moved before the step's occurrences, to the body's new centre: a
+        // cue there is heard whole, where one heard from the hero's
+        // `Position`, 80 px off, would play at a part of its volume.
+        world.get_mut::<Position>(hero).unwrap().0 = Vec2::new(900.0, 0.0) - offset;
+        ring(&mut world, bell);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(900.0, 0.0)
+        );
+        assert_eq!(
+            heard(&mut world),
+            [Heard::Play {
+                volume: 1.0,
+                looping: false,
+                fade: 0.0,
+                pan: 0.0
+            }]
+        );
+        // An entity without a collider is followed at its `Position`, and
+        // `set_following` keeps the listener's mode.
+        let bare = world.spawn_with((Position(Vec2::new(-200.0, 30.0)),));
+        world
+            .resource_mut::<CueListener>()
+            .set_following(Some(bare));
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(-200.0, 30.0)
+        );
+        world
+            .resource_mut::<CueListener>()
+            .set_following(Some(hero));
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(900.0, 0.0),
+            "the body's centre again: the mode it was built with"
+        );
+        world.despawn(hero);
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(900.0, 0.0),
+            "a gone entity leaves it"
+        );
+        // `following` sets the point mode back.
+        let (mut world, mut schedule) = rig();
+        let hero = world.spawn_with((
+            Position(Vec2::new(400.0, 0.0)),
+            Collider::aabb(Vec2::new(12.0, 24.0)).with_offset(offset),
+        ));
+        world.insert_resource(
+            CueListener::new(10.0, 100.0)
+                .following_body(hero)
+                .following(hero),
+        );
+        step(&mut world, &mut schedule);
+        assert_eq!(
+            world.resource::<CueListener>().position(),
+            Vec2::new(400.0, 0.0)
+        );
+    }
+
+    #[test]
     fn a_panned_listener_pans_cue_sounds() {
         let (mut world, mut schedule) = rig();
         world.insert_resource(CueListener::new(1000.0, 2000.0).with_pan(200.0));
@@ -2937,6 +3460,67 @@ mod ability_events {
             capacity,
             "the pushes stayed in the reserve"
         );
+    }
+
+    #[test]
+    fn a_rule_names_abilities_and_reasons_in_lists() {
+        let (mut world, mut schedule) = rig(true);
+        let data = world.resource_mut::<DataRegistry>();
+        data.insert("gong", Ability::new().with_payload(Payload::Hitbox(0.1)));
+        data.insert(
+            "dear",
+            Ability::new()
+                .with_cost("mana", 50.0)
+                .with_payload(Payload::Hitbox(0.1)),
+        );
+        let count =
+            |name: &str| json!([{ "counter": { "name": name, "add": 1, "target": "game" } }]);
+        let written = json!([
+            { "on": "ability_used", "ability": ["bell", "flask"], "do": count("pair") },
+            { "on": "ability_used", "ability": "bell", "do": count("bells") },
+            { "on": "ability_refused", "reason": ["not_ready", "no_charge"], "do": count("waits") },
+            { "on": "ability_refused", "reason": "no_cost", "do": count("dear") }
+        ]);
+        // Both forms round-trip, each as written.
+        let defs: Vec<CueRuleDef> = serde_json::from_value(written.clone()).unwrap();
+        let back = serde_json::to_value(&defs).unwrap();
+        for (i, field) in [(0, "ability"), (1, "ability"), (2, "reason"), (3, "reason")] {
+            assert_eq!(back[i][field], written[i][field], "{i}.{field}");
+        }
+        let loaded: CueRules = serde_json::from_value(written).unwrap();
+        world.resource_mut::<DataRegistry>().insert("lists", loaded);
+        let abilities = ["bell", "flask", "gong", "dear"]
+            .into_iter()
+            .fold(Abilities::new(), |abilities, id| {
+                abilities.with(DataRef::by_id(id))
+            });
+        let hero = world.spawn_with((
+            abilities,
+            Intent::default(),
+            Counters::new(),
+            crate::Stats::new().with("mana", 5.0),
+            Cues::new(),
+        ));
+        let game = |world: &World, name: &str| world.resource::<Counters>().get(name);
+        for name in ["bell", "bell", "flask", "flask", "gong", "dear"] {
+            use_ability(&mut world, hero, name);
+            step(&mut world, &mut schedule);
+        }
+        assert_eq!(
+            ["pair", "bells", "waits", "dear"].map(|name| game(&world, name)),
+            [2, 1, 2, 1],
+            "the bell's and the flask's uses, not the gong's; the bell's alone by its name; \
+             not ready and no charge by the list, not no cost; no cost by its name"
+        );
+        // A list names at least one, and each name is one.
+        for rule in [
+            json!({ "on": "ability_used", "ability": [], "do": [] }),
+            json!({ "on": "ability_used", "ability": ["bell", ""], "do": [] }),
+            json!({ "on": "ability_refused", "reason": [], "do": [] }),
+            json!({ "on": "ability_refused", "reason": ["no_cost", "no_mana"], "do": [] }),
+        ] {
+            assert!(rules(json!([rule])).is_err(), "{rule}");
+        }
     }
 
     #[test]

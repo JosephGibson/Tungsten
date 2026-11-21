@@ -54,7 +54,10 @@ def themed(text):
         if rgb not in THEME_COLORS:raise ValueError(f'{THEME}: template colour {rgb} has no colour of 01\'s (THEME_COLORS)')
         return THEME_COLORS[rgb]+alpha
     return re.sub(r'(#[0-9a-fA-F]{6})([0-9a-fA-F]{2})?\b',mapped,text)
-SHELL_SECTIONS=('fonts','font_families','font_fallback','ui_themes','ui_screens')
+SHELL_SECTIONS=('fonts','font_families','font_fallback','ui_themes','ui_screens','boot')
+# The boot splash's one disc (`D-265`), which the `boot` group names as its
+# logo: the shell's only sprite, under the template's ID.
+SHELL_SPRITES=('boot_dot',)
 # 01's own face beside the template's: Source Serif 4 Bold, under the same
 # licence as its Regular, for the area titles, from the repository's fonts.
 SERIF_BOLD=ROOT.parent.parent/'assets'/'fonts'/'SourceSerif4'/'static'/'SourceSerif4-Bold.ttf'
@@ -64,6 +67,12 @@ CONTENT=TOOLS/'content'
 # The accepted families' files' hashes (`D-223`): `--lock` and `--unlock` write
 # it; every run and `--check` hold the locked families to it.
 LOCKS=TOOLS/'locks.json'
+# Named sprite points, in source pixels from the frame's top-left, which a
+# status look's particles follow (7.13a): a keg's fuse tip, the cord shorter
+# in each lit frame, and a goblin's bomb's, which the bomb's turn carries.
+SPRITE_POINTS={'powder_keg':{'fuse':[38,1]},
+    **{f'powder_keg_lit_{i}':{'fuse':tip} for i,tip in enumerate([[38,1],[40,3],[41,6],[39,8]])},
+    **{f'goblin_bomb_{i}':{'fuse':[10.5,.5]} for i in range(2)}}
 
 
 def particle_configs():
@@ -79,7 +88,7 @@ def particle_configs():
         'double_jump':config('spark',18,18,.45,240,.24,spread=360,burst=True),
         'jump_puff':config('dust',8,8,.35,120,.3,spread=155,burst=True),
         # A beetle's charge (M79): a few low brown puffs at its feet.
-        'charge_dust':config('dust',6,5,.45,90,.34,direction=(0,-1),spread=150,burst=True),
+        'charge_dust':config('dust',40,5,.45,90,.34,direction=(0,-1),spread=150,burst=True),
         'fire_trail':config('spark',40,36,1.0,115,.23,spread=95),
         'torch_embers':config('spark',24,8,2.5,60,.12),
         'waterfall_spray':config('droplet',64,32,1.5,170,.18,spread=110),
@@ -95,7 +104,9 @@ def particle_configs():
         scale_over_life=[[0,.45],[.15,1],[.75,.6],[1,.05]],
         alpha_over_life=[[0,0],[.08,.9],[.8,.85],[1,0]],
         color_over_life=[[0,[.55,.8,1,1]],[.25,[.62,.35,1,1]],[.5,[1,.3,.8,1]],[.72,[1,.55,.18,1]],[.9,[1,.95,.8,1]],[1,[.4,.1,.5,1]]])
-    configs['charge_dust'].update(gravity=[0,40],drag_per_sec=1.6,color_over_life=[[0,[.66,.54,.4,1]],[1,[.42,.34,.26,0]]])
+    # A pulse of five every 0.06 s while it charges, its longest puff
+    # overlapping eight pulses: one look's emitter holds what one a puff did.
+    configs['charge_dust'].update(emission=dict(kind='pulse',count_per_pulse=5,interval_sec=.06),gravity=[0,40],drag_per_sec=1.6,color_over_life=[[0,[.66,.54,.4,1]],[1,[.42,.34,.26,0]]])
     configs['ball_explosion'].update(initial_velocity=dict(kind='radial',speed=dict(min=90,max=310)),gravity=[0,180],color_over_life=[[0,[1,.9,.4,1]],[.4,[1,.42,.08,1]],[1,[.35,.1,.06,0]]])
     # Warm flame bodies and finer, longer-lived torch embers; both rise.
     fire_ramp=[[0,[1,1,.8,1]],[.18,[1,.85,.25,1]],[.45,[1,.38,.035,1]],
@@ -590,8 +601,10 @@ def particle_configs():
     # out and falling with a few flakes, white. Particles draw under the
     # sprites, so each launches clear of the body or the burst first.
     earth = [[0, [.62, .5, .38, 1]], [.6, [.5, .42, .34, 1]], [1, [.38, .33, .29, 0]]]
+    # A pulse of four every 0.15 s while it paws, its longest puff
+    # overlapping four pulses.
     configs['paw_dust'] = full(
-        'dust', 12, burst(4), (.35, .6), cone((0, -1), 120, 50, 120), (0, 160), 2.2, (.18, .32),
+        'dust', 16, dict(kind='pulse', count_per_pulse=4, interval_sec=.15), (.35, .6), cone((0, -1), 120, 50, 120), (0, 160), 2.2, (.18, .32),
         [[0, .6], [.3, 1], [1, 1.4]], [[0, 0], [.12, .85], [.6, .6], [1, 0]], earth, (-2, 2))
     configs['dash_dust'] = full(
         'dust', 10, burst(8), (.3, .55), cone((0, -1), 170, 60, 170), (0, 220), 3.0, (.2, .34),
@@ -683,7 +696,8 @@ def mirror_facing(images,lit,animations):
     fire missile's, the enemies' and the beetle's charge streaks: nothing flips
     a sprite in place, so the kit's animator, and 01's fireballs, missiles and
     enemies, show mirrored art by facing. Their maps derive from the mirrored
-    silhouettes. After `spray_clips`, which makes the streaks' clip."""
+    silhouettes. After the builders, `effects.build_foe_art` making the
+    streaks' clip."""
     from PIL import ImageOps
     from actors import ENEMY_CLIPS
     from effects import FACING_CLIPS
@@ -696,24 +710,6 @@ def mirror_facing(images,lit,animations):
             if name in lit:lit.add(left)
             frames.append(dict(frame,sprite='ex10_'+left))
         animations[clip+'_left']=dict(animations[clip],frames=frames)
-
-
-def spray_clips(animations,families=('effects','tomes')):
-    """The sprays' clips (`effects.SPRAY_CLIPS`) and the force push's wave and
-    dust (`effects.PUSH_CLIPS`), unmirrored: `toys` turns each to its aim and
-    flips it top to bottom when the aim faces left, and mirrors the dust.
-    And e01tomes' (`effects.TOME_CLIPS`): each book's idle loop and take,
-    and the bound's ring, which nothing turns; e01foes' (`effects.FOE_CLIPS`):
-    the snowball's, its burst's and the beetle's streaks, which
-    `mirror_facing` then twins; e01flask's (`effects.FLASK_CLIPS`,
-    `effects.CORRODE_CLIPS`): the flask's tumble and its burst, and
-    Corrosive's reaction. The tomes' are the tomes family's, the rest the
-    effects'; `families` names whose."""
-    from effects import CORRODE_CLIPS, FLASK_CLIPS, FOE_CLIPS, PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
-    tables={'effects':{**SPRAY_CLIPS,**PUSH_CLIPS,**FOE_CLIPS,**FLASK_CLIPS,**CORRODE_CLIPS},'tomes':TOME_CLIPS}
-    for family in families:
-        for clip,(_,frames,ms,looping) in tables[family].items():
-            animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
 
 
 def mirror_anchors(anchors,images):
@@ -845,11 +841,9 @@ class Watched(dict):
 
 def art(family):
     """Art family `family`'s builder: its drawing (`art.art_families`), then
-    its sprays' clips (`spray_clips`), its left-facing twins and the staff
-    light's anchors."""
+    its left-facing twins and the staff light's anchors."""
     def build(made,sprites,lit):
         made.anchors=art_families()[family](made.images,made.lit,made.animations) or {}
-        if family in ('effects','tomes'):spray_clips(made.animations,(family,))
         mirror_facing(made.images,made.lit,made.animations);mirror_anchors(made.anchors,made.images)
     return build
 
@@ -886,18 +880,19 @@ def strings(*data):
 
 
 def content_family(made,sprites,lit):
-    """The shell's fonts, theme and screen files, copied from the template,
-    01's serif face, the content's prefabs and data, the glow shader and
-    materials, the ambient emitter's prefab and the particle configs:
-    sources copied or written from this file."""
+    """The shell's fonts, theme, screen files and boot splash, copied from
+    the template, 01's serif face, the content's prefabs and data, the glow
+    shader and materials, the ambient emitter's prefab and the particle
+    configs: sources copied or written from this file."""
     template=json.loads((TEMPLATE/'assets/manifest.json').read_text())
     shell={section:json.loads(json.dumps(template[section])) for section in SHELL_SECTIONS}
+    shell['sprites']={name:dict(template['sprites'][name]) for name in SHELL_SPRITES}
     shell['fonts']['serif_bold']=dict(path='fonts/SourceSerif4/SourceSerif4-Bold.ttf')
     shell['font_families']['serif']['faces'].append('serif_bold')
     made.entries.update(entries_of(shell))
     for path in SHELL_ASSETS:
         made.files['assets/'+path]=(TEMPLATE/'assets'/path).read_bytes()
-    for entry in template['ui_screens'].values():
+    for entry in [*template['ui_screens'].values(),*shell['sprites'].values()]:
         made.files['assets/'+entry['path']]=(TEMPLATE/'assets'/entry['path']).read_bytes()
     made.files['assets/'+THEME]=themed((TEMPLATE/'assets'/THEME).read_text()).encode()
     made.files['assets/fonts/SourceSerif4/SourceSerif4-Bold.ttf']=SERIF_BOLD.read_bytes()
@@ -917,10 +912,11 @@ def content_family(made,sprites,lit):
     for name,(shader,f32s) in MATERIALS.items():
         made.entries[('materials','ex10_'+name)]=dict(shader='ex10_'+shader,uniform_defaults=dict(
             vec4=[[0.0]*4 for _ in range(4)],f32s=f32s,i32s=[0]*4))
-    # The class of the level's `emitters` objects: each object's properties
-    # set its emitter's config and seed over this prefab's.
+    # The class of the level's `emitters` objects, tagged `level.ambient`:
+    # each object's properties set its emitter's config and seed over this
+    # prefab's.
     made.files['assets/prefabs/ambient_emitter.json']=json_bytes(dict(components=dict(
-        ambient_emitter=None,particle_emitter=dict(config='ex10_torch_embers'))))
+        tags=['level.ambient'],particle_emitter=dict(config='ex10_torch_embers'))))
     made.entries[('prefabs','ex10_ambient_emitter')]=dict(path='prefabs/ambient_emitter.json')
     made.configs=particle_configs()
     for name,data in sorted(made.configs.items()):
@@ -1040,19 +1036,18 @@ def manifest_of(entries):
 
 
 def kept(base,manifest):
-    """The sprites, lit names, clips and particle configs `manifest` lists
-    under `base`, by name, which a family run reads for the families it
-    leaves out."""
+    """The sprites, lit names and particle configs `manifest` lists under
+    `base`, by name, which a family run reads for the families it leaves
+    out."""
     from PIL import Image
-    sprites,lit,animations,configs={},set(),{},{}
+    sprites,lit,configs={},set(),{}
     for key,entry in manifest.get('sprites',{}).items():
         name=key.removeprefix('ex10_')
         with Image.open(base/'assets'/entry['path']) as im:sprites[name]=im.copy()
         if 'normal_map' in entry:lit.add(name)
-    for section,into in (('animations',animations),('particles',configs)):
-        for key,entry in manifest.get(section,{}).items():
-            into[key.removeprefix('ex10_')]=json.loads((base/'assets'/entry['path']).read_text())
-    return sprites,lit,animations,configs
+    for key,entry in manifest.get('particles',{}).items():
+        configs[key.removeprefix('ex10_')]=json.loads((base/'assets'/entry['path']).read_text())
+    return sprites,lit,configs
 
 
 def sprite_files(made):
@@ -1068,6 +1063,7 @@ def sprite_files(made):
             for key,suffix,img in [('normal_map','n',normal),('emissive_mask','e',emissive)]:
                 path=f'sprites/{name}_{suffix}.png';entry[key]=path
                 made.files['assets/'+path]=png(img)
+        if name in SPRITE_POINTS:entry['points']=SPRITE_POINTS[name]
         made.entries[('sprites','ex10_'+name)]=entry
     for name,data in sorted(made.animations.items()):
         path=f'animations/{name}.json';made.files['assets/'+path]=json_bytes(data)
@@ -1102,12 +1098,12 @@ def generate(dest,families=None,base=ROOT):
     if families is not None:
         manifest=json.loads((base/'assets/manifest.json').read_text())
         previous=json.loads((base/'tools/outputs.json').read_text())
-    sprites,lit,animations,configs=kept(base,manifest)
+    sprites,lit,configs=kept(base,manifest)
     made={}
     for name in run:
         made[name]=m=Made();FAMILIES[name].build(m,sprites,lit)
         sprites.update(m.images);lit.difference_update(m.images);lit.update(m.lit)
-        animations.update(m.animations);configs.update(m.configs)
+        configs.update(m.configs)
     validate_sets(sprites);check_ice_fits(sprites);check_frost_fits(sprites);check_bodies(bodies())
     entries=entries_of(manifest);fresh={}
     for name,m in made.items():
@@ -1118,7 +1114,7 @@ def generate(dest,families=None,base=ROOT):
         entries.update(m.entries)
     if families is None:check_level_uses(made)
     manifest=manifest_of(entries)
-    validate_references(manifest,animations,configs,made['level'].source if 'level' in made else None)
+    validate_references(manifest,configs,made['level'].source if 'level' in made else None)
     for m in made.values():
         for path,data in m.files.items():
             out=dest/path;out.parent.mkdir(parents=True,exist_ok=True);out.write_bytes(data)
@@ -1178,19 +1174,14 @@ def lock(names,unlock):
     print(f'Locked {", ".join(names) or "none"}; unlocked {", ".join(unlock) or "none"}')
 
 
-def validate_references(manifest,animations,configs,source):
+def validate_references(manifest,configs,source):
     # 01 loads its manifest as its only root, so IDs need only be unique in
-    # it; the art's keep their `ex10_` prefix, the shell's take theirs.
+    # it; the art's keep their `ex10_` prefix, the shell's take theirs. A
+    # clip's, a particle config's and a tile's sprite and a material's shader
+    # are `tungsten check`'s, which `just level-check` runs after this.
     for section in ('sprites','animations','particles'):
-        if any(not s.startswith('ex10_') for s in manifest[section]):raise ValueError('unprefixed '+section+' ID')
-    sprites=set(manifest['sprites'])
-    for clip in animations.values():
-        for frame in clip['frames']:
-            if frame['sprite'] not in sprites:raise ValueError('unknown animation sprite')
-    for cfg in configs.values():
-        if cfg['sprite'] not in sprites:raise ValueError('unknown particle sprite')
-    for material in manifest['materials'].values():
-        if material['shader'] not in manifest['shaders']:raise ValueError('unknown material shader')
+        shell=SHELL_SPRITES if section=='sprites' else ()
+        if any(not s.startswith('ex10_') and s not in shell for s in manifest[section]):raise ValueError('unprefixed '+section+' ID')
     # The level's own, when it is built.
     if source is None:return
     for p in source['props']:
@@ -1202,7 +1193,7 @@ def validate_references(manifest,animations,configs,source):
 def floating_report():
     """`--floating`: the level built in memory, every piece that floats
     (`placement.floating`) and a total; exit 1 on any."""
-    images,lit,animations,anchors=build_art();spray_clips(animations);mirror_facing(images,lit,animations)
+    images,lit,animations,anchors=build_art();mirror_facing(images,lit,animations)
     tiled,source,_=build_level(images,lit,check=False)
     lines=floating(source,tiled,images)
     for line in lines:print(line)

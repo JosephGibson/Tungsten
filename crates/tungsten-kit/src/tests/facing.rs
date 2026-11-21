@@ -328,3 +328,52 @@ fn a_turned_mirror_keeps_the_art_upright() {
     );
     assert!(std::panic::catch_unwind(|| Facing::new().mirroring()).is_err());
 }
+
+// example-01-spells-toys-gun, Step 4: a linear motion's velocity.
+
+#[test]
+fn a_motion_facing_reads_a_linear_motions_velocity() {
+    let (mut world, mut schedule) = rig();
+    let velocity = Vec2::new(-300.0, 100.0);
+    // A bodiless shot: no `Velocity`, and no step has moved its point.
+    let shot = world.spawn_with((
+        Facing::new().turning(0.0).mirroring(),
+        Transform::default(),
+        Position(Vec2::ZERO),
+        PrevPosition(Vec2::ZERO),
+        LinearMotion::new(velocity),
+    ));
+    present(&mut world, &mut schedule);
+    let unit = velocity.normalize();
+    assert!(
+        close(direction(&world, shot), unit),
+        "its flight's unit from its first frame"
+    );
+    assert!(
+        world.get::<SpriteFlip>(shot).is_some_and(|flip| flip.0),
+        "flying left, mirrored"
+    );
+    let turned = Vec2::from_angle(world.get::<Transform>(shot).unwrap().rotation);
+    assert!(
+        close(turned, -unit),
+        "{turned}: as `atan2(-v.y, -v.x)` turns it"
+    );
+    // A turn shows the next frame, with no step between.
+    world
+        .get_mut::<LinearMotion>(shot)
+        .unwrap()
+        .set_velocity(Vec2::new(300.0, 0.0));
+    present(&mut world, &mut schedule);
+    assert!(close(direction(&world, shot), Vec2::X));
+    assert!(!world.get::<SpriteFlip>(shot).unwrap().0, "unflipped");
+    let turned = Vec2::from_angle(world.get::<Transform>(shot).unwrap().rotation);
+    assert!(close(turned, Vec2::X), "{turned}");
+    // An entity with a `Velocity` still faces it.
+    let body = world.spawn_with((
+        Facing::new(),
+        Velocity(Vec2::new(0.0, -50.0)),
+        LinearMotion::new(Vec2::X),
+    ));
+    present(&mut world, &mut schedule);
+    assert!(close(direction(&world, body), Vec2::NEG_Y));
+}

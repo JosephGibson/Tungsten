@@ -1,7 +1,9 @@
 {
   "components": {
-    "black_hole": {
-      "left": 6.0
+    "black_hole": {},
+    "cooldown": {
+      "seconds": 6,
+      "count": 1
     },
     "particle_emitter": {
       "config": "ex10_black_hole"
@@ -10,6 +12,10 @@
       {
         "prefab": "ex10_black_hole_dust"
       }
-    ]
+    ],
+    "cap": {
+      "group": "black_hole",
+      "max": 3
+    }
   }
 }

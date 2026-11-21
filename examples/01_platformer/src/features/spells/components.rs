@@ -51,36 +51,15 @@ impl Spell {
         }
     }
 
-    /// Its icon's sprite ID: the summon's first type's, which the bar
-    /// follows to the type selected.
-    #[must_use]
-    pub const fn icon(self) -> &'static str {
-        match self {
-            Spell::FireMissile => "ex10_icon_fire_missile",
-            Spell::Flamethrower => "ex10_icon_flamethrower",
-            Spell::IceSpray => "ex10_icon_ice_spray",
-            Spell::ForcePush => "ex10_icon_force_push",
-            Spell::BlackHole => "ex10_icon_black_hole",
-            Spell::IronBlock => "ex10_icon_iron_block",
-            Spell::BowlingBall => "ex10_icon_bowling_ball",
-            Spell::SmallBalls => "ex10_icon_small_balls",
-            Spell::Lightning => "ex10_icon_lightning",
-            Spell::ToxicFlask => "ex10_icon_toxic_flask",
-            Spell::Summon => super::SUMMONS[0].icon,
-        }
-    }
-
-    /// The gesture the wizard casts it with: a toss, a bolt of the staff,
-    /// a push of the hand, a conjuring strike, or, held, the staff levelled
-    /// along the aim.
+    /// The gesture the wizard casts it with: held, the staff levelled along
+    /// the aim; pressed, a cast, whose clip is its ability's (a toss, a bolt
+    /// of the staff, a push of the hand or a conjuring strike).
     #[must_use]
     pub const fn gesture(self) -> Gesture {
-        match self {
-            Spell::BowlingBall | Spell::ToxicFlask => Gesture::Toss,
-            Spell::FireMissile | Spell::Lightning => Gesture::Bolt,
-            Spell::ForcePush | Spell::BlackHole => Gesture::Push,
-            Spell::IronBlock | Spell::Summon => Gesture::Conjure,
-            Spell::Flamethrower | Spell::IceSpray | Spell::SmallBalls => Gesture::Pour,
+        if self.held() {
+            Gesture::Pour
+        } else {
+            Gesture::Cast
         }
     }
 
@@ -105,40 +84,12 @@ impl Spell {
     }
 }
 
-/// An element and its colour, as the bar's borders showed them before the
-/// icon family drew each element into its tile (01 (h)); the damage
-/// numbers' tests read the colours.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum School {
-    Fire,
-    Cold,
-    Mana,
-    Physical,
-    Shock,
-    Poison,
-}
-
-impl School {
-    /// Its border colour, from the palette: ember orange, ice cyan, indigo,
-    /// bone white, violet and poison green.
-    #[must_use]
-    pub const fn color(self) -> [u8; 4] {
-        match self {
-            School::Fire => [246, 124, 40, 255],
-            School::Cold => [176, 236, 244, 255],
-            School::Mana => [132, 128, 236, 255],
-            School::Physical => [242, 234, 200, 255],
-            School::Shock => [184, 140, 255, 255],
-            School::Poison => [132, 214, 64, 255],
-        }
-    }
-}
-
 /// The type the summon slot places, by its place in [`SUMMONS`]: a World
 /// resource a run's start inserts, saved.
 ///
 /// [`SUMMONS`]: super::SUMMONS
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Summon {
     pub selected: usize,
 }
@@ -154,27 +105,13 @@ pub struct Refused {
     pub said: bool,
 }
 
-/// Why a cast was refused, which `spells::systems::refuse_cast` says: too
-/// little mana (`Used::NoCost`), a cooldown or no charge (`Used::NotReady`
-/// or `NoCharge`), or no room for its toy (at its cap, a summon or a block
-/// that does not fit, no cursor).
+/// Why a cast was refused, which `spells::systems::refuse_cast` says, 01's
+/// own and a held spell's: too little mana for a held spell's step
+/// (`Used::NoCost`), or no room for its toy (at its cap, a summon or a
+/// block that does not fit, no cursor). A pressed spell's use refused says
+/// why through its ability's `ability_refused` rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     NoMana,
-    NotReady,
     NoRoom,
-}
-
-impl Refusal {
-    /// The refusal a use's outcome says, none for a use or no ability.
-    #[must_use]
-    pub fn of(used: tungsten::kit::Used) -> Option<Self> {
-        use tungsten::kit::Used;
-        match used {
-            Used::NoCost => Some(Refusal::NoMana),
-            Used::NotReady | Used::NoCharge => Some(Refusal::NotReady),
-            Used::NoTarget => Some(Refusal::NoRoom),
-            _ => None,
-        }
-    }
 }

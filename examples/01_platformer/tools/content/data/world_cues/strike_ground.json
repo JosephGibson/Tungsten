@@ -1,0 +1,20 @@
+[
+  {
+    "burst": "ex10_ground_sparks"
+  },
+  {
+    "sound": {
+      "id": "ex10_ground_strike_sfx",
+      "min_interval": 0.1
+    }
+  },
+  {
+    "sound": {
+      "id": "ex10_thunder_sfx",
+      "min_interval": 0.1
+    }
+  },
+  {
+    "shake": 0.5
+  }
+]

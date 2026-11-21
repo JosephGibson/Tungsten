@@ -56,11 +56,11 @@ The conventions every surface shares:
 - A layer is drawn (`render`, the default) or collided with (`collision`); terrain that does both paints into one of each, as `floor` does above. A collision layer alone draws nothing.
 - Terrain is `shapes` painted in order into the layers each names, then each layer's `cells`, overrides keyed `"<col>,<row>"` that name a tile or `null` for empty.
 - An object's `set` overrides its prefab's components by dotted path: `"set": { "health.max": 50 }`.
-- A place is a `point`, a `rect` or a `route`; a point's or an area's `to` links it to `<room>.<place>`.
+- A place is a `point`, a `rect` or a `route`; a point's or an area's `to` links it to `<room>.<place>`. A route's stops are points too: the level rules read a top-down mover's stop as the cell it falls in, and a platformer mover's as its body's centre, on the first row it can stand on within 2 cells under it.
 
 `tungsten schema room` and `tungsten schema tileset` print each format's JSON Schema, every field with its description.
 
-The game spawns a room by its ID, as it spawns a map: `world.spawn_room("yard", [0.0, 0.0], &(SceneEntity { state_id: GAMEPLAY },))`, the bundle going to the room's instance and to each object. A room is live once at a time.
+The game spawns a room by its ID, as it spawns a map: `world.spawn_room("yard", [0.0, 0.0], &(SceneEntity { state_id: GAMEPLAY },))`, the bundle going to the room's instance and to each object. A room is live once at a time: `spawn_room` refuses while the instance of its last spawn lives. A replaced state's entities are despawned at the frame's command flush, after the state that replaces it has entered, so a state that spawns its room calls `world.despawn_room("yard")` first, or on its exit, to spawn it again on a Retry or a Load.
 
 ## `tungsten level`
 
@@ -134,7 +134,36 @@ undo: tungsten level apply yard --undo
 
 ### Generated rooms
 
-`tungsten level generate <generator> [--seed <seed>] [--prefix <prefix>]` runs a room generator in the game's build (the game checks clean first) and writes its rooms as room files: a new room as `<into>/<id>.json` (`--into`, the manifest's `rooms/` by default), with the manifest entry to add printed, since it never edits the manifest. Every object it writes carries `"generator"`, and a hand edit through the commands (`move`, `set`, `rename`) drops the mark. A room the manifest lists is rewritten only with `--regenerate`, keeping the objects that do not carry the generator, so moved or placed objects survive while the terrain, places and the generator's own objects are the new output's. It writes no file until every room's file is decided, refuses a file another listed room or a template shares, and puts back the files written before a write that fails. Git undoes a generation.
+`tungsten level generate <generator> [--seed <seed>] [--prefix <prefix>]` runs a room generator in the game's build (the game checks clean first) and writes its rooms as room files: a new room as `<into>/<id>.json` (`--into`, a folder inside the manifest's, given from the game's folder as `assets/rooms/gen`; the manifest's `rooms/` by default), with the manifest entry to add printed, since it never edits the manifest. Every object it writes carries `"generator"`, and a hand edit through the commands (`move`, `set`, `rename`) drops the mark. A room the manifest lists is rewritten only with `--regenerate`, keeping the objects that do not carry the generator, so moved or placed objects survive while the terrain, places and the generator's own objects are the new output's. It writes no file until every room's file is decided, refuses a file another listed room or a template shares, and puts back the files written before a write that fails. Git undoes a generation.
+
+### Writing a generator
+
+A generator is a type that implements `tungsten::core::RoomGenerator`: `version`, raised whenever a seed would no longer give the same rooms, and `generate`, which adds the rooms its seed gives. `generation.template("yard")` returns a copy of a listed room, never a generated one, to edit through its `pub` fields or by a batch: `generation.apply("main", &mut room, &batch)`, the batch read by `RoomCommand::parse_batch` from a batch file's JSON. A room's entries are `#[non_exhaustive]`, so a new one is a copy of another, edited, or a batch's `place`. `generation.add("main", room, origin)` adds the room as `main`, an ID unique in the generation, to be spawned at `origin` in pixels. `generation.rng()` is a random stream seeded with the seed, so a seed always gives the same rooms. The yard with a second gem at a random column:
+
+```rust
+use tungsten::core::{Generate, RoomGenerator};
+
+struct Gems;
+
+impl RoomGenerator for Gems {
+    fn version(&self) -> u32 {
+        1
+    }
+
+    fn generate(&self, generation: &mut Generate<'_>) -> Result<(), String> {
+        let mut room = generation.template("yard")?;
+        let mut gem = room.objects.first().ok_or("the yard holds a gem")?.clone();
+        gem.id = "gem_2".into();
+        gem.at[0] = generation.rng().next_range(1.0, 22.0).floor();
+        room.objects.push(gem);
+        generation.add("main", room, [0.0, 0.0])
+    }
+}
+```
+
+`app.register_generator("gems", Gems)` registers it, as `world.register_generator` does in a plugin's `build`. `world.generate_rooms("gems", seed, "gems")` then registers each room the generator adds as `<prefix>_<local>`, here `gems_main` with its objects `gems_main.gem_1` and `gems_main.gem_2`, and spawns none; `generation.id("main")` gives the same ID, for a link's `to`. `tungsten check`, a script's `generate` step and `tungsten level generate` take the generator's ID as the prefix unless given one. A state spawns each of the result's `rooms()` at its origin, `world.spawn_room(id, origin, &(SceneEntity { state_id: GAMEPLAY },))`. A prefix generates again only once its rooms are removed, so a state that generates on its entry first takes the last run's rooms out, `despawn_room` and then `remove_room` each. `tungsten check` generates each generator's rooms at seeds 0 to 15 and checks them as listed rooms (`--seeds <count>` for 0 to `<count>` − 1, `--seed <seed>` for one), a finding filed under `generator <id>` with the seeds that gave it.
+
+A save holding a generated area restores only into a World that holds that area's generation again, or `save::restore_world` refuses it: a continued run calls `save::regenerate(world, &save.world)`, which only registers every generation the save names (its generator, seed and prefix); the game then spawns the rooms it shows and calls `save::restore_world`, so it keeps no seed of its own. An area whose generation changed since the save restores through its generator's `migrate`, which refuses by default.
 
 ## In a script
 
@@ -142,7 +171,7 @@ undo: tungsten level apply yard --undo
 
 | Step | Value |
 | --- | --- |
-| `stage` | `{}`: clears the game's states for an empty stage, where the steps below spawn. |
+| `stage` | `{}`: clears the game's states for an empty stage, where the steps below spawn. The stage holds to the script's end and clears any state pushed after it, as by an action that starts a run, so a script does what needs its run before it stages; with no stage, the steps below spawn owned by the top state. |
 | `room` | a `rooms` ID, spawned at the origin. |
 | `level` | `{ "room": "<id>", "apply": [<commands>] }` applies a batch to the live room and journals it; `{ "room": "<id>", "undo": true }` undoes its newest batch and `{ "room": "<id>", "redo": true }` applies the newest undone one again. No file is written, so a script never changes a room's file. |
 | `generate` | `{ "generator": "<id>", "seed": <n>, "prefix": "<id>" }`: generates rooms and spawns each at its origin. |

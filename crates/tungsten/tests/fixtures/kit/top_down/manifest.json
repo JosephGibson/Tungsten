@@ -144,6 +144,9 @@
     "wisp": {
       "path": "prefabs/wisp.json"
     },
+    "crystal": {
+      "path": "prefabs/crystal.json"
+    },
     "trooper": {
       "path": "prefabs/trooper.json"
     },
@@ -164,6 +167,18 @@
     },
     "powder_bomb": {
       "path": "prefabs/powder_bomb.json"
+    },
+    "barrel_bomb": {
+      "path": "prefabs/barrel_bomb.json"
+    },
+    "hurled_crate": {
+      "path": "prefabs/hurled_crate.json"
+    },
+    "rolling_ball": {
+      "path": "prefabs/rolling_ball.json"
+    },
+    "stone_bolt": {
+      "path": "prefabs/stone_bolt.json"
     },
     "blast_dummy": {
       "path": "prefabs/blast_dummy.json"
@@ -206,6 +221,9 @@
     },
     "roamer": {
       "path": "prefabs/roamer.json"
+    },
+    "flashing_ogre": {
+      "path": "prefabs/flashing_ogre.json"
     }
   },
   "data": {
@@ -311,6 +329,18 @@
       },
       "fuse": {
         "path": "data/effects/fuse.json"
+      },
+      "short_fuse": {
+        "path": "data/effects/short_fuse.json"
+      },
+      "chill_build": {
+        "path": "data/effects/chill_build.json"
+      },
+      "freeze_build": {
+        "path": "data/effects/freeze_build.json"
+      },
+      "burn_build": {
+        "path": "data/effects/burn_build.json"
       }
     },
     "curves": {
@@ -364,6 +394,18 @@
       },
       "douses_lamps": {
         "path": "data/interactions/douses_lamps.json"
+      },
+      "chill": {
+        "path": "data/interactions/chill.json"
+      },
+      "freeze": {
+        "path": "data/interactions/freeze.json"
+      },
+      "burn": {
+        "path": "data/interactions/burn.json"
+      },
+      "poison": {
+        "path": "data/interactions/poison.json"
       }
     }
   },
@@ -455,6 +497,11 @@
     },
     "blip": {
       "path": "sounds/blip.ogg"
+    }
+  },
+  "particles": {
+    "kill_flash": {
+      "path": "particles/kill_flash.json"
     }
   }
 }

@@ -1,13 +1,14 @@
-//! The seam the shell calls: a run's start, `capture` and the bindable
-//! actions.
+//! The seam the shell calls: a run's start, `capture`, the bindable
+//! actions and the boot group the shell's splash draws from.
 
 use std::collections::BTreeSet;
 
 use example_01_platformer::features::level::MAP;
 use example_01_platformer::features::player::MAX_HEALTH;
-use example_01_platformer::game::GAMEPLAY;
+use example_01_platformer::game::{self, GAMEPLAY};
 use example_01_platformer::save;
 use example_01_platformer::shell::Difficulty;
+use tungsten::core::assets::ResolvedManifest;
 use tungsten::core::{CameraController, CameraRig, TilemapInstance};
 use tungsten::kit::{Health, PlatformerController};
 
@@ -48,9 +49,11 @@ fn capture_is_none_with_no_run_and_a_save_in_one() {
         "the title has no run"
     );
     start(&mut harness);
+    let player = player_entity(&harness);
+    let health = harness.world().get::<Health>(player).expect("its health");
+    assert_eq!(health.current(), MAX_HEALTH);
     let saved = save::capture(harness.world()).expect("a live run saves");
     assert_eq!(saved.meta.difficulty, Difficulty::Normal);
-    assert_eq!(saved.player.health.current(), MAX_HEALTH);
 }
 
 #[test]
@@ -80,4 +83,15 @@ fn bindable_actions_are_input_jsons_and_no_menu_or_engine_action() {
     }
     let listed: BTreeSet<&str> = labelled.iter().map(|(action, _)| *action).collect();
     assert_eq!(listed, declared, "every input.json action is bindable");
+}
+
+#[test]
+fn the_boot_group_is_the_templates_splash_disc_held_two_seconds() {
+    let manifest = ResolvedManifest::load(game::MANIFEST).expect("the manifest loads");
+    assert!(manifest.sprites["boot_dot"].path.is_file());
+    let boot = &manifest.boot;
+    assert_eq!(
+        (boot.logo.as_deref(), boot.bar.as_deref(), boot.hold),
+        (Some("boot_dot"), None, Some(2.0))
+    );
 }

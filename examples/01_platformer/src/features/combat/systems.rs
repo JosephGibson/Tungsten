@@ -1,30 +1,28 @@
 //! Combat's systems: the states the step's resolve begins with, the
 //! reactions to the parts that landed and to `shattered`, `frozen`,
-//! `shocked`, `bleeding` and `poisoned`, the blood a blow spills, the
-//! freezes and the thaws heard, Corrosive, the chill's grade, the
-//! statuses' tints on their targets' sprites and their particles.
+//! `shocked` and `bleeding`, the blood a blow spills, the freezes' and the
+//! thaws' bursts, Corrosive, the chill's grade, the statuses' tints on
+//! their targets' sprites and their particles. A status's sound on its
+//! application or end is a cue rule (`cue_rules/statuses.json`, S-56).
 
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AnimationState, AssetRegistry, Collider, DataRef, DataRegistry, Entity, EventCursor,
-    EventQueue, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
-    PrevPosition, Sprite, Transform, Visibility, World,
+    AnimationState, Collider, DataRef, DataRegistry, Entity, EventCursor, EventQueue,
+    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Sprite,
+    Transform, Visibility, World,
 };
 use tungsten::kit::{
-    AilmentBuckets, AilmentThreshold, DamagedPart, EffectApplied, EffectExpired, EffectRequest,
-    Effects, Follow, Health, ImmunePart, Lifetime, Modifier, Source, Stats, Tags, Target,
-    end_effect,
+    DamagedPart, EffectExpired, EffectRequest, Effects, Follow, Health, ImmunePart, Lifetime,
+    Modifier, Source, Stats, Tags, Target, end_effect, stimulate,
 };
 
 use super::components::{StatusEmitter, StatusLook};
 use super::{
-    ARMOURED, BURNING, CHILL_NEEDS, CHILLED, CORRODED, DOUSED, FLESH, FREEZABLE, FREEZE_NEEDS,
-    FROZEN, Kind, POISONED, SHOCKED, has_status,
+    ARMOURED, BURNING, CHILL_BUILD, CHILL_NEEDS, CHILLED, CORRODED, DOUSED, FREEZABLE,
+    FREEZE_BUILDS, FREEZE_NEEDS, FROZEN, Kind, POISONED, SHOCKED, STATUS_THRESHOLD, has_status,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::elements::cascade::{self, CascadeKind};
-use crate::features::elements::{STEAM_REACH, TARGET_BLAST};
 use crate::features::enemies::components::{Enemy, EnemyKind};
 use crate::features::level::geyser::Geyser;
 use crate::features::level::systems::drawn_time;
@@ -68,42 +66,30 @@ pub fn states(world: &mut World) {
     world.insert_resource(states);
 }
 
-/// `combat_reactions`, in the react phase: a fire part on a target that
-/// was frozen queues thermal shock's explosion at it, and a cold part on
-/// one that was burning a steam burst, dead or alive, each landed or
-/// dropped by the target's immunity (the kit's `ImmunePart`: a frozen wisp,
-/// which takes no fire, or a burning frost crawler, which takes no cold);
-/// `shattered` applied queues its shatter. Each queued entry runs from
-/// the next step, an explosion or a steam burst crediting its part's
-/// source's save ID: none when the source has gone, the player's when the
-/// part named none. A blow, a physical part that is not a tick, on a `flesh`
-/// target or the courier spurts blood where it landed, once a target a
-/// step, and `bleeding` applied spurts again; `poisoned` applied gurgles at
-/// its target (e01flask); a target frozen this step
-/// (frozen now, not as the resolve began), in place too, sounds its freeze
-/// with its frost burst. A geyser's fire part on a target neither burning,
+/// `combat_reactions`, in the react phase: a landed part is chemistry's own
+/// stimulus (thermal shock and steam are its rules, a frozen target's fire
+/// and a burning one's cold), so a part the target's immunity dropped (the
+/// kit's `ImmunePart`: a frozen wisp, which takes no fire, or a burning
+/// frost crawler, which takes no cold) is sent on as its type to a target
+/// that was frozen, or burning, as the resolve began, credited to its
+/// source, for chemistry's next run. A blow's blood and `bleeding`'s spurt
+/// are cue rules (`data/cue_rules/blood.json`); a target frozen this step
+/// (frozen now, not as the resolve began), in place too, bursts in frost,
+/// its sound a cue rule's. A geyser's fire part on a target neither burning,
 /// frozen nor doused sets it burning from the geyser, once a target a step,
-/// since its 12 fire alone falls short of the player's ladder (e01hollow).
+/// since its 12 fire alone falls short of the player's burn build (e01hollow).
 /// Last, Corrosive ([`corrode`]).
 pub fn reactions(
     world: &mut World,
     parts: &mut EventCursor<DamagedPart>,
     immune: &mut EventCursor<ImmunePart>,
-    applied: &mut EventCursor<EffectApplied>,
 ) {
     let states = world
         .get_resource::<ResolveStates>()
         .cloned()
         .unwrap_or_default();
     let player = world.get_resource::<Run>().map(|run| run.player);
-    let mine = cascade::player_credit(world);
-    let credit = |world: &World, source: Option<Entity>| match source {
-        Some(source) if world.is_alive(source) => world.get::<SaveId>(source).map(|id| id.0),
-        Some(_) => None,
-        None => mine,
-    };
-    let mut queued: Vec<(CascadeKind, Entity, f32, Option<u64>)> = Vec::new();
-    let mut blows: Vec<(Entity, Option<Vec2>)> = Vec::new();
+    let mut sent: Vec<(Entity, &'static str, f32, Option<Entity>)> = Vec::new();
     let mut burns: Vec<(Entity, Entity)> = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<DamagedPart>>() {
         for part in parts.read(events) {
@@ -111,27 +97,12 @@ pub fn reactions(
                 continue;
             }
             let fire = part.kinds.has(world, Kind::Fire.tag());
-            let cold = part.kinds.has(world, Kind::Cold.tag());
-            let source = credit(world, part.source);
-            if fire && states.frozen.contains(&part.entity) {
-                queued.push((CascadeKind::Explosion, part.entity, TARGET_BLAST, source));
-            }
-            if cold && states.burning.contains(&part.entity) {
-                queued.push((CascadeKind::Steam, part.entity, STEAM_REACH, source));
-            }
             if let Some(geyser) = part.source.filter(|&s| world.has::<Geyser>(s))
                 && fire
                 && part.amount > 0.0
                 && !burns.iter().any(|(target, _)| *target == part.entity)
             {
                 burns.push((part.entity, geyser));
-            }
-            let bleeds = Some(part.entity) == player || has_status(world, part.entity, FLESH);
-            if bleeds
-                && part.kinds.has(world, Kind::Physical.tag())
-                && !blows.iter().any(|(target, _)| *target == part.entity)
-            {
-                blows.push((part.entity, part.position));
             }
         }
     }
@@ -140,29 +111,14 @@ pub fn reactions(
             if part.periodic {
                 continue;
             }
-            let source = credit(world, part.source);
+            let source = part.source.or(player);
+            let amount = part.amount.max(0.0);
             if part.kinds.has(world, Kind::Fire.tag()) && states.frozen.contains(&part.entity) {
-                queued.push((CascadeKind::Explosion, part.entity, TARGET_BLAST, source));
+                sent.push((part.entity, Kind::Fire.tag(), amount, source));
             }
             if part.kinds.has(world, Kind::Cold.tag()) && states.burning.contains(&part.entity) {
-                queued.push((CascadeKind::Steam, part.entity, STEAM_REACH, source));
+                sent.push((part.entity, Kind::Cold.tag(), amount, source));
             }
-        }
-    }
-    let (mut spurts, mut poisoned) = (Vec::new(), Vec::new());
-    if let Some(events) = world.get_resource::<EventQueue<EffectApplied>>() {
-        for effect in applied.read(events) {
-            match effect.id.as_deref() {
-                Some("shattered") => queued.push((CascadeKind::Shatter, effect.entity, 0.0, mine)),
-                Some("bleeding") => spurts.push(effect.entity),
-                Some("poisoned") => poisoned.push(effect.entity),
-                _ => {}
-            }
-        }
-    }
-    for target in poisoned {
-        if let Some(at) = body_centre(world, target) {
-            audio::play(world, Sound::Poisoned, at);
         }
     }
     for (target, geyser) in burns {
@@ -175,35 +131,21 @@ pub fn reactions(
                 .apply(world);
         }
     }
-    for (target, at) in blows {
-        if let Some(at) = at.or_else(|| body_centre(world, target)) {
-            spawn_burst(world, "ex10_blood_burst", at);
-        }
-    }
-    for target in spurts {
-        if let Some(at) = body_centre(world, target) {
-            spawn_burst(world, "ex10_blood_spurt", at);
-        }
-    }
     let mut froze: Vec<(Option<SaveId>, Entity)> = world
         .query::<(Entity, &Health, &Tags)>()
         .filter(|(entity, health, tags)| {
             tags.has(FROZEN) && !health.is_dead() && !states.frozen.contains(entity)
         })
-        .map(|(entity, ..)| (world.get::<SaveId>(entity).copied(), entity))
+        .map(|(entity, ..)| (crate::shared::save_id(world, entity), entity))
         .collect();
     froze.sort_by_key(|(id, _)| *id);
     for (_, target) in froze {
         if let Some(at) = body_centre(world, target) {
             spawn_burst(world, "ex10_ice_frost", at);
-            audio::play(world, Sound::Froze, at);
         }
     }
-    for (kind, target, strength, source) in queued {
-        let Some(at) = body_centre(world, target) else {
-            continue;
-        };
-        cascade::queue_from(world, kind, Some(target), at, at, strength, source);
+    for (target, stimulus, amount, source) in sent {
+        stimulate(world, target, stimulus, amount, source);
     }
     corrode(world);
 }
@@ -227,7 +169,7 @@ pub fn corrode(world: &mut World) {
                 && tags.has(SHOCKED)
                 && !tags.has(CORRODED)
         })
-        .map(|(entity, ..)| (world.get::<SaveId>(entity).copied(), entity))
+        .map(|(entity, ..)| (crate::shared::save_id(world, entity), entity))
         .collect();
     corroding.sort_by_key(|(id, _)| *id);
     for (_, target) in corroding {
@@ -272,10 +214,10 @@ pub fn reaction(world: &mut World, target: Entity) {
         .is_some_and(|enemy| enemy.kind == EnemyKind::Troll);
     let (clip, side) = REACTION_CLIPS[usize::from(large)];
     let offset = middle - Vec2::splat(side * 0.5);
-    let Some(assets) = world.get_resource_mut::<AssetRegistry>() else {
+    let Some(frame) = crate::shared::clip_sprite(world, clip) else {
         return;
     };
-    let mut sprite = Sprite::new(assets.intern_sprite(&format!("{clip}_0")));
+    let mut sprite = Sprite::new(frame);
     sprite.z_order = REACTION_Z;
     let at = corner + offset;
     world.spawn_with((
@@ -365,26 +307,57 @@ pub fn tint(tags: &Tags, time: f32, grade: f32, level: f32) -> [u8; 4] {
     }
 }
 
-/// `status_tints`, in the present phase: each target with health takes its
-/// statuses' tint, the courier's mixed toward red while a blow's
-/// `Moves::hurt` runs.
+/// What `status_tints` wrote last frame, each target's sprite colour as it
+/// read it and as it wrote it, so the next frame puts the read colour back
+/// where nothing wrote since, as the kit's looks put theirs back: a World
+/// resource [`CombatPlugin`](super::CombatPlugin) inserts, its list kept
+/// between frames.
+#[derive(Debug, Default)]
+pub struct StatusTinted(Vec<(Entity, [u8; 4], [u8; 4])>);
+
+/// `status_tints`, in the present phase: each target with health shows its
+/// sprite's own colour times its statuses' tint, the courier's mixed toward
+/// red while a blow's `Moves::hurt` runs. Last frame's tints come off
+/// first ([`StatusTinted`]), so a prefab's `sprite.color` shows under them.
 pub fn tints(world: &mut World) {
+    let mut tinted = world
+        .get_resource_mut::<StatusTinted>()
+        .map(|tinted| std::mem::take(&mut tinted.0))
+        .unwrap_or_default();
+    for (entity, read, written) in tinted.drain(..) {
+        if let Some(sprite) = world.get_mut::<Sprite>(entity)
+            && sprite.color == written
+        {
+            sprite.color = read;
+        }
+    }
     let time = drawn_time(world);
     let looks: Vec<(Entity, [u8; 4])> = world
         .query::<(Entity, &Health, &Tags)>()
         .map(|(entity, _, tags)| {
             let level = frost_level(world, entity, tags);
-            let mut color = tint(tags, time, grade(world, entity, tags), level);
-            if let Some(moves) = world.get::<Moves>(entity) {
-                color = mix(color, HURT_TINT, moves.hurt / HURT_SECS);
-            }
-            (entity, color)
+            (entity, tint(tags, time, grade(world, entity, tags), level))
         })
         .collect();
-    for (entity, color) in looks {
+    for (entity, status) in looks {
+        let hurt = world
+            .get::<Moves>(entity)
+            .map(|moves| moves.hurt / HURT_SECS);
         if let Some(sprite) = world.get_mut::<Sprite>(entity) {
+            let read = sprite.color;
+            let mut color: [u8; 4] = std::array::from_fn(|i| {
+                (f32::from(read[i]) * f32::from(status[i]) / 255.0).round() as u8
+            });
+            if let Some(share) = hurt {
+                color = mix(color, HURT_TINT, share);
+            }
             sprite.color = color;
+            tinted.push((entity, read, color));
         }
+    }
+    match world.get_resource_mut::<StatusTinted>() {
+        Some(slot) => slot.0 = tinted,
+        None => world.insert_resource(StatusTinted(tinted)),
     }
 }
 
@@ -398,57 +371,45 @@ fn grade(world: &World, entity: Entity, tags: &Tags) -> f32 {
     }
 }
 
-/// `entity`'s ailment threshold as the kit's ladder reads it: `(flat +
-/// of_max_health × Health::max) × ailment_threshold_mult`. None without one,
-/// or at 0.
-fn threshold_at(world: &World, entity: Entity) -> Option<f32> {
-    let threshold = world.get::<AilmentThreshold>(entity)?;
-    let max = world.get::<Health>(entity).map_or(0.0, Health::max);
-    let mult = world
-        .get::<Stats>(entity)
-        .and_then(|stats| stats.get("ailment_threshold_mult"))
-        .map_or(1.0, |mult| mult.max(0.0));
-    let at = (threshold.flat() + threshold.of_max_health() * max) * mult;
-    (at > 0.0).then_some(at)
+/// The intensity of `entity`'s first build of `ids` it carries, in its
+/// thresholds ([`STATUS_THRESHOLD`]); 0 with none.
+fn built(world: &World, entity: Entity, ids: &[&str]) -> f32 {
+    world.get::<Effects>(entity).map_or(0.0, |effects| {
+        ids.iter()
+            .find_map(|id| effects.intensity(id))
+            .unwrap_or(0.0)
+    })
 }
 
-/// Where `entity`'s cold bucket stands on its climb from the chill's rung
-/// to the freeze's, 0 to 1. The chill empties the bucket as it applies and
-/// the freeze needs [`FREEZE_NEEDS`] of the threshold, so the grade is its
-/// fill over that share of its threshold ([`threshold_at`]). None without
-/// buckets or a threshold.
+/// Where `entity`'s cold stands on its climb from the chill to the freeze,
+/// 0 to 1: its freeze's build ([`FREEZE_BUILDS`], the troll's its own),
+/// which starts once the chill holds, over [`FREEZE_NEEDS`]. None without
+/// effects.
 #[must_use]
 pub fn chill_grade(world: &World, entity: Entity) -> Option<f32> {
-    let at = threshold_at(world, entity)?;
-    let buckets = world.get::<AilmentBuckets>(entity)?;
-    Some((buckets.fill(Kind::Cold.tag()) / (FREEZE_NEEDS * at)).clamp(0.0, 1.0))
+    world.get::<Effects>(entity)?;
+    Some((built(world, entity, &FREEZE_BUILDS) / FREEZE_NEEDS).clamp(0.0, 1.0))
 }
 
 /// The share of the frost's climb a creature has at the chill's rung.
 pub const CHILL_SHARE: f32 = 0.25;
 
 /// The frost a creature that freezes shows, `tags` its own, 0 to 1, from the
-/// first point of cold (01 (j)): its cold bucket's climb to the chill's
-/// rung ([`CHILL_NEEDS`]) over the first [`CHILL_SHARE`], then the chill's
-/// grade to the freeze's over the rest, the chill having emptied the
-/// bucket. 0 for what does not freeze, and once frozen, where the cube
+/// first point of cold (01 (j)): its chill's build's climb to its band
+/// ([`CHILL_NEEDS`]) over the first [`CHILL_SHARE`], then the chill's grade
+/// to the freeze's over the rest, the chill's band having removed its
+/// build. 0 for what does not freeze, and once frozen, where the cube
 /// takes over.
 #[must_use]
 pub fn frost_level(world: &World, entity: Entity, tags: &Tags) -> f32 {
     if !tags.has(FREEZABLE) || tags.has(FROZEN) {
         return 0.0;
     }
-    let (Some(at), Some(buckets)) = (
-        threshold_at(world, entity),
-        world.get::<AilmentBuckets>(entity),
-    ) else {
-        return 0.0;
-    };
-    let fill = buckets.fill(Kind::Cold.tag());
     if tags.has(CHILLED) {
-        CHILL_SHARE + (1.0 - CHILL_SHARE) * (fill / (FREEZE_NEEDS * at)).clamp(0.0, 1.0)
+        let climb = built(world, entity, &FREEZE_BUILDS) / FREEZE_NEEDS;
+        CHILL_SHARE + (1.0 - CHILL_SHARE) * climb.clamp(0.0, 1.0)
     } else {
-        CHILL_SHARE * (fill / (CHILL_NEEDS * at)).clamp(0.0, 1.0)
+        CHILL_SHARE * (built(world, entity, &[CHILL_BUILD]) / CHILL_NEEDS).clamp(0.0, 1.0)
     }
 }
 
@@ -461,19 +422,29 @@ pub fn frost_stage(level: f32) -> Option<u8> {
 }
 
 /// `chill_grades`, in the intent phase before the enemies' states: every
-/// creature with a threshold sheds its [`CHILL_SOURCE`] slow, then a chilled
-/// `freezable` one takes it again at [`GRADE_SLOW`] × its grade, between
-/// the chill's rung and the freeze's. The courier, which takes no freeze,
-/// keeps the chill's flat slow; a schema 10 troll saved past its second
-/// stage sheds that slow at its first step; a diving bat's set speed
-/// outranks the grade, as it outranks the chill's own slow.
+/// creature with a [`STATUS_THRESHOLD`] sheds its [`CHILL_SOURCE`] slow,
+/// then a chilled `freezable` one takes it again at [`GRADE_SLOW`] × its
+/// grade, between the chill and the freeze. The courier, which takes no
+/// freeze, keeps the chill's flat slow; a schema 10 troll saved past its
+/// second stage sheds that slow at its first step; a diving bat's set
+/// speed outranks the grade, as it outranks the chill's own slow.
 pub fn chill_grades(world: &mut World) {
-    let graded: Vec<(Entity, f32)> = world
-        .query::<(Entity, &AilmentThreshold, &Tags)>()
-        .map(|(entity, _, tags)| (entity, grade(world, entity, tags)))
-        .collect();
-    for (entity, grade) in graded {
-        if let Some(stats) = world.get_mut::<Stats>(entity) {
+    // The creatures by the shape `combat_states` scans, so the pit's query
+    // cache grows no new one, into the list kept from the last step.
+    let mut graded = world
+        .get_resource_mut::<Grades>()
+        .map(|grades| std::mem::take(&mut grades.0))
+        .unwrap_or_default();
+    graded.clear();
+    graded.extend(
+        world
+            .query::<(Entity, &Health, &Tags)>()
+            .map(|(entity, _, tags)| (entity, grade(world, entity, tags))),
+    );
+    for &(entity, grade) in &graded {
+        if let Some(stats) = world.get_mut::<Stats>(entity)
+            && stats.get(STATUS_THRESHOLD).is_some()
+        {
             stats.remove_modifiers(CHILL_SOURCE);
             if grade > 0.0 {
                 let slow = Modifier::Pct(-GRADE_SLOW * grade);
@@ -481,7 +452,15 @@ pub fn chill_grades(world: &mut World) {
             }
         }
     }
+    if let Some(grades) = world.get_resource_mut::<Grades>() {
+        grades.0 = graded;
+    }
 }
+
+/// [`chill_grades`]' list between steps, so a warm step allocates none: a
+/// World resource [`CombatPlugin`](super::CombatPlugin) inserts.
+#[derive(Debug, Default)]
+pub struct Grades(Vec<(Entity, f32)>);
 
 /// The game seconds `entity`'s freeze has left: the longest of its effect
 /// instances granting frozen. None while none does, or one never ends.
@@ -509,8 +488,8 @@ pub fn frozen_left(world: &World, entity: Entity) -> Option<f32> {
 pub struct WasFrozen(pub Vec<Entity>);
 
 /// `combat_thaws`, in the react phase: a live target frozen as the last
-/// step ended whose freeze ran out on time this step thaws in glints with
-/// an ice crack; then the frozen are noted for the next step.
+/// step ended whose freeze ran out on time this step thaws in glints, its
+/// ice crack a cue rule's; then the frozen are noted for the next step.
 pub fn thaws(world: &mut World, expired: &mut EventCursor<EffectExpired>) {
     let ran_out: Vec<Entity> = world
         .get_resource::<EventQueue<EffectExpired>>()
@@ -533,7 +512,6 @@ pub fn thaws(world: &mut World, expired: &mut EventCursor<EffectExpired>) {
             && !has_status(world, target, FROZEN);
         if thawed && let Some(at) = body_centre(world, target) {
             spawn_burst(world, "ex10_thaw_glints", at);
-            audio::play(world, Sound::Thawed, at);
         }
     }
     let now: Vec<Entity> = world

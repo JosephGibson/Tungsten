@@ -1,0 +1,30 @@
+{
+  "tag": "flashing_ogre",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 1
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 12
+      },
+      "offset": [
+        16,
+        16
+      ]
+    },
+    "cues": {
+      "killed": [
+        {
+          "burst": {
+            "particles": "kill_flash",
+            "key": true
+          }
+        }
+      ]
+    }
+  }
+}

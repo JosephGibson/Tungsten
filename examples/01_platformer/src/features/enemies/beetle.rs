@@ -10,21 +10,17 @@
 //! its rear half takes every hit 01 builds whole (`combat::Hit`). Iron that
 //! drives into it at the crush speed kills it.
 
-use std::collections::HashMap;
-
 use glam::Vec2;
-use tungsten::core::{
-    BodyKind, Collider, Entity, Position, RigidBody, Shape, Time, Velocity, World,
-};
-use tungsten::kit::{PlatformerController, StateMachine, use_ability};
+use tungsten::core::{BodyKind, Collider, Entity, Position, RigidBody, Shape, Velocity, World};
+use tungsten::kit::{Hitbox, PlatformerController, carrier_of, use_ability};
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
-use super::components::{Enemy, EnemyKind, EnemyState, Held};
-use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
+use super::components::{Enemy, EnemyKind, EnemyState};
+use super::systems::{armed, elapsed, face, go, pace, player, rest, sees, stride};
 use super::troll::meets;
-use super::{ARRIVED, centre};
+use super::{ARRIVED, centre, heading_of};
 use crate::features::audio::{self, components::Sound};
-use crate::shared::{SaveId, body_centre, spawn_burst};
+use crate::shared::body_centre;
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.6;
@@ -33,19 +29,13 @@ pub const SEARCH_PACE: f32 = 0.8;
 /// above or below it the player may stand.
 pub const CHARGE_RANGE: f32 = 360.0;
 pub const CHARGE_RISE: f32 = 80.0;
-/// The paw before the charge, the charge's speed and its seconds, which
-/// its ability's hitbox window matches.
-pub const PAW_SECS: f32 = 0.8;
+/// The paw before the charge, its clip's length, and the charge's speed;
+/// the charge lasts its ability's hitbox window.
+pub const PAW_CLIP: &str = "ex10_beetle_paw";
 pub const CHARGE_SPEED: f32 = 600.0;
-pub const CHARGE_SECS: f32 = 0.8;
-/// Its charge's ability, which arms its hitbox.
+/// Its charge's ability, which arms its hitbox. Its paw's dust, its
+/// charge's trail of it and its streaks are its prefab's looks.
 pub const CHARGE: &str = "beetle_charge";
-/// The dust: the paw's particle config at its front foot and the charge's
-/// in its trail, and the seconds between two puffs of each.
-pub const PAW_DUST: &str = "ex10_paw_dust";
-pub const DUST: &str = "ex10_charge_dust";
-pub const PAW_DUST_SECS: f32 = 0.15;
-pub const TRAIL_DUST_SECS: f32 = 0.06;
 /// The plough (K30): the box before its face, [`PLOUGH_HALF`] about its
 /// body's `plough` point ([`plough_box`]), and the kick a body
 /// there takes along its heading, px/s: [`PLOUGH_KICK`] over its mass, at
@@ -55,11 +45,6 @@ pub const PLOUGH_HALF: Vec2 = Vec2::new(12.0, 14.0);
 pub const PLOUGH_KICK: f32 = 12_000.0;
 pub const PLOUGH_MOST: f32 = 1_000.0;
 pub const PLOUGH_RISE: f32 = 0.3;
-
-/// Each beetle's seconds to its next puff of dust while it paws or
-/// charges: presentation, not saved, so a load starts each over.
-#[derive(Debug, Default)]
-pub struct Dust(HashMap<Entity, f32>);
 
 /// Whether `entity` is a beetle.
 #[must_use]
@@ -108,25 +93,31 @@ pub fn enter_windup(world: &mut World, beetle: Entity) {
     }
 }
 
-/// The paw lasts [`PAW_SECS`], then the charge.
+/// The paw lasts its clip ([`PAW_CLIP`]), then the charge.
 pub fn windup(world: &mut World, beetle: Entity) {
     rest(world, beetle);
-    if elapsed(world, beetle) >= PAW_SECS - 1e-4 {
+    if elapsed(world, beetle) >= super::clip_secs(world, PAW_CLIP) - 1e-4 {
         go(world, beetle, EnemyState::Attack);
     }
 }
 
-/// The charge: along its heading at [`CHARGE_SPEED`], its input locked for
-/// [`CHARGE_SECS`] and its hitbox armed for as long by its ability.
+/// The charge: along its heading at [`CHARGE_SPEED`], its hitbox armed by
+/// its ability and its input locked for the hitbox's window.
 pub fn enter_attack(world: &mut World, beetle: Entity) {
-    let Some(heading) = world.get::<Enemy>(beetle).map(|mine| mine.heading) else {
+    let Some(heading) = heading_of(world, beetle) else {
         return;
     };
     if let Some(controller) = world.get_mut::<PlatformerController>(beetle) {
         controller.launch(Vec2::new(heading * CHARGE_SPEED, 0.0));
-        controller.lock_input(CHARGE_SECS);
     }
     use_ability(world, beetle, CHARGE);
+    let window = world
+        .get::<Hitbox>(beetle)
+        .and_then(Hitbox::window)
+        .unwrap_or(0.0);
+    if let Some(controller) = world.get_mut::<PlatformerController>(beetle) {
+        controller.lock_input(window);
+    }
     if let Some(at) = centre(world, beetle) {
         audio::play(world, Sound::BeetleCharge, at);
     }
@@ -135,13 +126,13 @@ pub fn enter_attack(world: &mut World, beetle: Entity) {
 /// The charge, launched again each step at [`CHARGE_SPEED`] along its
 /// heading, falling as it falls, under the lock its start set: a wall that
 /// stops it stops it a step. Each step it ploughs what lies before its face
-/// ([`plough`]); it ends after [`CHARGE_SECS`].
+/// ([`plough`]); it ends once its hitbox's window does.
 pub fn attack(world: &mut World, beetle: Entity) {
-    if elapsed(world, beetle) >= CHARGE_SECS - 1e-4 {
+    if !armed(world, beetle) {
         go(world, beetle, EnemyState::Recover);
         return;
     }
-    let Some(heading) = world.get::<Enemy>(beetle).map(|mine| mine.heading) else {
+    let Some(heading) = heading_of(world, beetle) else {
         return;
     };
     let fall = world
@@ -157,7 +148,7 @@ pub fn attack(world: &mut World, beetle: Entity) {
 #[must_use]
 pub fn plough_box(world: &World, beetle: Entity) -> Option<Vec2> {
     let at = world.get::<Position>(beetle)?.0;
-    let heading = world.get::<Enemy>(beetle)?.heading;
+    let heading = heading_of(world, beetle)?;
     Some(at + super::body(world, EnemyKind::Beetle).point("plough", heading)?)
 }
 
@@ -177,7 +168,7 @@ fn plough(world: &mut World, beetle: Entity, heading: f32) {
     let filter = SpatialFilter::new().with_tiles(false).excluding(beetle);
     let mut met = Vec::new();
     overlap(world, shape, box_at, &filter, &mut met);
-    let heaviest = EnemyKind::Beetle.info().mass;
+    let heaviest = super::info(world, EnemyKind::Beetle).mass;
     let mut bodies: Vec<(u64, Entity, f32)> = met
         .into_iter()
         .flatten()
@@ -187,13 +178,13 @@ fn plough(world: &mut World, beetle: Entity, heading: f32) {
             let at = world.get::<Position>(entity)?.0 + collider.offset;
             let light = body.kind == BodyKind::Dynamic && body.inv_mass * heaviest > 1.0;
             if !light
-                || world.has::<Held>(entity)
+                || carrier_of(world, entity).is_some()
                 || !meets(at, collider.shape, box_at, PLOUGH_HALF)
             {
                 return None;
             }
             let kick = (PLOUGH_KICK * body.inv_mass).min(PLOUGH_MOST);
-            Some((world.get::<SaveId>(entity)?.0, entity, kick))
+            Some((crate::shared::save_id(world, entity)?.0, entity, kick))
         })
         .collect();
     bodies.sort_unstable_by_key(|&(id, ..)| id);
@@ -232,63 +223,4 @@ pub fn seek(world: &mut World, beetle: Entity, point: Option<Vec2>) -> bool {
         return true;
     }
     !stride(world, beetle, across.signum(), SEARCH_PACE)
-}
-
-/// Its clip for `state`: the paw through its tell, the charge through its
-/// attack, else its walk.
-#[must_use]
-pub fn clip(state: EnemyState) -> &'static str {
-    match state {
-        EnemyState::WindUp => "beetle_paw",
-        EnemyState::Attack => "beetle_charge",
-        _ => "beetle_walk",
-    }
-}
-
-/// `beetle_dust`, before the frame's particles: a beetle pawing kicks up a
-/// puff of [`PAW_DUST`] at its front foot every [`PAW_DUST_SECS`]; one
-/// charging leaves a trail of [`DUST`] at its rear feet every
-/// [`TRAIL_DUST_SECS`]. Drawn from the state each frame, so a load shows it
-/// at once.
-pub fn dust(world: &mut World) {
-    let dt = world.resource::<Time>().delta();
-    if dt <= 0.0 {
-        return;
-    }
-    let beetles: Vec<(Entity, EnemyState, f32)> = world
-        .query::<(Entity, &Enemy, &StateMachine<EnemyState>)>()
-        .filter(|(_, enemy, _)| enemy.kind == EnemyKind::Beetle)
-        .map(|(entity, enemy, machine)| (entity, machine.state(), enemy.heading))
-        .collect();
-    let mut puffs = Vec::new();
-    let mut timers = std::mem::take(&mut world.resource_mut::<Dust>().0);
-    timers.retain(|entity, _| {
-        beetles.iter().any(|(e, state, _)| {
-            e == entity && matches!(state, EnemyState::WindUp | EnemyState::Attack)
-        })
-    });
-    for (beetle, state, heading) in beetles {
-        let (every, side, config) = match state {
-            EnemyState::WindUp => (PAW_DUST_SECS, 0.6, PAW_DUST),
-            EnemyState::Attack => (TRAIL_DUST_SECS, -0.5, DUST),
-            _ => continue,
-        };
-        let next = timers.entry(beetle).or_insert(0.0);
-        *next -= dt;
-        if *next > 0.0 {
-            continue;
-        }
-        *next += every;
-        if let Some(at) = centre(world, beetle) {
-            let half = super::body(world, EnemyKind::Beetle).half;
-            puffs.push((
-                at + Vec2::new(heading * side * half.x, half.y - 4.0),
-                config,
-            ));
-        }
-    }
-    world.resource_mut::<Dust>().0 = timers;
-    for (at, config) in puffs {
-        spawn_burst(world, config, at);
-    }
 }

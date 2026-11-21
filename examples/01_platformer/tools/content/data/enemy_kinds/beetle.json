@@ -1,0 +1,11 @@
+{
+  "strike": 32,
+  "mass": 120,
+  "sight": 520,
+  "alert": 0.5,
+  "pull": 0.05,
+  "wave": 0.53,
+  "ice": "ex10_status_ice_beetle",
+  "flyer": false,
+  "recover": 0.5
+}

@@ -1,0 +1,11 @@
+{
+  "strike": 32,
+  "mass": 40,
+  "sight": 400,
+  "alert": 0.4,
+  "pull": 0.15,
+  "wave": 1,
+  "ice": "ex10_status_ice_crawler",
+  "flyer": false,
+  "recover": 0.5
+}

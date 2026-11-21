@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 use tungsten::StateStack;
 use tungsten::core::save::{SaveStamp, Saved, Value};
 use tungsten::core::ui::WidgetKind;
-use tungsten::core::{Entity, Position, SaveData, SaveSlots, Time, UserFolder};
+use tungsten::core::{Entity, Position, SaveData, SaveSlots, Settings, Time, UserFolder};
 use tungsten::kit::{Counters, Effects, Flags, Health, Hit, Spawner, damage};
+use tungsten::screens::{CONFIRM, Toasts};
 use tungsten::testing::UiHarness;
 use tungsten_template_basic::game;
 use tungsten_template_basic::sample::{
@@ -18,12 +19,10 @@ use tungsten_template_basic::sample::{
     SPAWN_GRACE, SampleRun,
 };
 use tungsten_template_basic::save::{self, SaveGame};
-use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::game_over::GAME_OVER;
 use tungsten_template_basic::shell::options::{self, GameOptions};
 use tungsten_template_basic::shell::pause::PAUSE;
 use tungsten_template_basic::shell::saves::SAVES;
-use tungsten_template_basic::shell::toast::Toasts;
 use tungsten_template_basic::shell::{
     self, AUTOSAVES, OLD_AUTOSAVE, RunState, SlotState, request_autosave,
 };
@@ -475,32 +474,95 @@ fn a_slot_that_fails_to_load_is_never_overwritten() {
 }
 
 #[test]
-fn options_keep_their_own_folder_and_a_damaged_file_falls_back() {
+fn options_live_in_settings_game_section_and_a_bad_one_falls_back() {
     let dir = user_folder("options");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     let world = harness.world_mut();
     world.resource_mut::<GameOptions>().damage_numbers = false;
     world.resource_mut::<GameOptions>().set_screen_shake(0.5);
     options::save(world);
-    let file = dir.join("options").join("options.json");
+    let file = dir.join("settings").join("settings.json");
     assert!(file.is_file());
-    let listed = SaveSlots::new(Some(dir.join("saves"))).list().unwrap();
-    assert!(listed.slots.is_empty(), "the save slots never list them");
+    assert!(!dir.join("options").exists(), "no store of their own");
 
     let restarted = harness_with(UserFolder::At(dir.clone()));
     let options = *restarted.world().resource::<GameOptions>();
     assert!(!options.damage_numbers);
     assert_eq!(options.screen_shake(), 0.5);
 
-    std::fs::write(&file, "{ not json").unwrap();
-    let mut damaged = harness_with(UserFolder::At(dir.clone()));
+    // A section that does not read as the options: the defaults.
+    std::fs::write(&file, r#"{ "game": { "damage_numbers": "no" } }"#).unwrap();
+    let damaged = harness_with(UserFolder::At(dir.clone()));
     assert_eq!(
         *damaged.world().resource::<GameOptions>(),
         GameOptions::default()
     );
-    damaged.step(1);
-    let toasts = damaged.world().resource::<Toasts>().texts(damaged.tree());
-    assert_eq!(toasts, ["Options could not be read; using the defaults"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The options file of the shell before `Settings`' game section.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct OldOptions {
+    mute_unfocused: bool,
+    pause_unfocused: bool,
+    damage_numbers: bool,
+    autosave: bool,
+    bloom: bool,
+    screen_shake: f32,
+}
+
+impl SaveData for OldOptions {
+    const SCHEMA: u32 = 1;
+}
+
+#[test]
+fn the_old_options_file_is_adopted_once() {
+    let dir = user_folder("options-adopt");
+    let store = || SaveSlots::new(Some(dir.join("options")));
+    let old = OldOptions {
+        mute_unfocused: true,
+        pause_unfocused: false,
+        damage_numbers: false,
+        autosave: true,
+        bloom: false,
+        screen_shake: 0.25,
+    };
+    store().save("options", &old).unwrap();
+    let harness = harness_with(UserFolder::At(dir.clone()));
+    let settings = harness.world().resource::<Settings>();
+    assert_eq!(
+        (settings.bloom(), settings.mute_unfocused()),
+        (Some(false), Some(true)),
+        "the two the engine keeps"
+    );
+    let options = *harness.world().resource::<GameOptions>();
+    assert!(!options.pause_unfocused && !options.damage_numbers && options.autosave);
+    assert_eq!(options.screen_shake(), 0.25);
+    let saved = dir.join("settings").join("settings.json");
+    assert!(saved.is_file(), "saved at once");
+    // Once: the old file, every field changed since, is not read again.
+    let newer = OldOptions {
+        mute_unfocused: false,
+        pause_unfocused: true,
+        damage_numbers: true,
+        autosave: false,
+        bloom: true,
+        screen_shake: 0.75,
+    };
+    store().save("options", &newer).unwrap();
+    let again = harness_with(UserFolder::At(dir.clone()));
+    let settings = again.world().resource::<Settings>();
+    assert_eq!(
+        (settings.bloom(), settings.mute_unfocused()),
+        (Some(false), Some(true)),
+        "the old file goes unread"
+    );
+    let kept = *again.world().resource::<GameOptions>();
+    assert!(
+        !kept.pause_unfocused && !kept.damage_numbers && kept.autosave,
+        "the adopted options stand"
+    );
+    assert_eq!(kept.screen_shake(), 0.25);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

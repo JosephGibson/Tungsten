@@ -31,5 +31,6 @@
   "light.lamp",
   "light.doused",
   "tallied",
-  "warded"
+  "warded",
+  "susceptible"
 ]

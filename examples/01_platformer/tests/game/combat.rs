@@ -5,15 +5,11 @@
 //! a type's ticks merged, all following the Damage numbers option; the
 //! blood a blow spills; and steam from cold a burning target is immune to.
 
-use example_01_platformer::features::combat::numbers::{
-    CRIT_SIZE, FOLLOW_SECS, Numbers, TICK_SIZE,
-};
 use example_01_platformer::features::combat::{CRIT_CHANCE, Hit, Kind};
 use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
-use example_01_platformer::features::spells::components::School;
 use example_01_platformer::features::{dummy, toys};
-use example_01_platformer::shared::{Burst, SaveIds};
+use example_01_platformer::shared::Burst;
 use example_01_platformer::shell::Difficulty;
 use example_01_platformer::shell::options::GameOptions;
 use glam::Vec2;
@@ -27,6 +23,26 @@ use tungsten::testing::UiHarness;
 
 use super::kind_body;
 use super::{ground, pin_camera, run, stand};
+
+/// The `numbers` cue rule's part label, as its file gives it.
+fn numbers_label() -> serde_json::Value {
+    let text = std::fs::read_to_string("assets/data/cue_rules/numbers.json").expect("the rule");
+    let rules: serde_json::Value = serde_json::from_str(&text).expect("its JSON");
+    rules[0]["do"][0]["label"].clone()
+}
+
+/// The numbers' crit size, tick size and merge window: the rule's.
+fn crit_size() -> f32 {
+    numbers_label()["crit"]["size"].as_f64().unwrap() as f32
+}
+
+fn tick_size() -> f32 {
+    numbers_label()["ticks"]["size"].as_f64().unwrap() as f32
+}
+
+fn follow_secs() -> f32 {
+    numbers_label()["merge"].as_f64().unwrap() as f32
+}
 
 /// The sky's ground.
 pub const TOP: f32 = 1000.0;
@@ -78,11 +94,11 @@ fn land(harness: &mut UiHarness, target: Entity, kind: Kind, amount: f32) {
         .apply(world);
 }
 
-/// Queues a hit of one `kind` part of `amount` on `target` and steps once,
-/// so the ladder's feed and the effects resolve.
+/// Queues a hit of one `kind` part of `amount` on `target` and steps twice,
+/// so chemistry's build lands and, a step later, its band's effect.
 fn hit(harness: &mut UiHarness, target: Entity, kind: Kind, amount: f32) {
     assert!(Hit::new(target, [(kind, amount)]).queue(harness.world_mut()));
-    harness.step(1);
+    harness.step(2);
 }
 
 #[test]
@@ -269,6 +285,21 @@ fn cold_chills_then_freezes_the_freezable_and_the_player_only_chills() {
 }
 
 #[test]
+fn a_chill_then_half_the_threshold_a_second_later_freezes_the_dummy() {
+    let (mut harness, _, dummy) = with_dummy();
+    // A little past 0.15 of the threshold of 40 chills it, and its chill's
+    // build ends with its band.
+    hit(&mut harness, dummy, Kind::Cold, 6.5);
+    assert!(has(&harness, dummy, "chilled") && !has(&harness, dummy, "frozen"));
+    // A second on, the chill holding, half the threshold freezes it, as the
+    // ladder did from the bucket its chill emptied.
+    harness.step(60);
+    assert!(has(&harness, dummy, "chilled") && !has(&harness, dummy, "frozen"));
+    hit(&mut harness, dummy, Kind::Cold, 20.5);
+    assert!(has(&harness, dummy, "frozen"), "a second later, frozen");
+}
+
+#[test]
 fn shock_shocks_then_stuns() {
     let (mut harness, _, dummy) = with_dummy();
     hit(&mut harness, dummy, Kind::Shock, 13.0);
@@ -297,6 +328,8 @@ fn the_missile_blast_burns_the_dummy_and_spares_the_player() {
         .collect();
     assert_eq!(fire, [20.0], "its whole fire at the centre");
     assert!(health(&harness, dummy) < dummy_before);
+    // Its burn's band lands it a step later.
+    harness.step(1);
     assert!(has(&harness, dummy, "burning"));
     assert_eq!(
         health(&harness, player),
@@ -348,8 +381,38 @@ fn near(rgb: [u8; 3], color: [u8; 4]) -> bool {
     rgb.iter().zip(color).all(|(&a, b)| a.abs_diff(b) <= 3)
 }
 
-/// The palette's crit yellow.
-const YELLOW: [u8; 4] = [255, 214, 10, 255];
+/// A linear channel in `[0, 1]` as an sRGB byte, as the frame encodes a
+/// label's colour: the test's own encoding, beside the kit's.
+fn srgb(linear: f32) -> u8 {
+    let c = linear.clamp(0.0, 1.0);
+    let encoded = if c <= 0.003_130_8 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    };
+    (encoded * 255.0).round() as u8
+}
+
+/// The linear colour at `pointer` in the data file at `path`, which the
+/// game loads, as sRGB bytes.
+fn colour_in(path: &str, pointer: &str) -> [u8; 4] {
+    let value = super::json(path);
+    let channel = |i: usize| srgb(super::number(&value, &format!("{pointer}/{i}")));
+    [channel(0), channel(1), channel(2), 255]
+}
+
+/// A damage type's label colour, its `label_style`'s (`damage.fire`).
+fn type_colour(id: &str) -> [u8; 4] {
+    colour_in(
+        "data/damage_types/game.json",
+        &format!("/{id}/label_style/color"),
+    )
+}
+
+/// The crit's label colour, its number rule's.
+fn crit_colour() -> [u8; 4] {
+    colour_in("data/cue_rules/numbers.json", "/0/do/0/label/crit/color")
+}
 
 /// A run with the dummy and the camera held over both.
 fn watched() -> (UiHarness, Entity, Entity) {
@@ -379,8 +442,13 @@ fn numbers_float_in_their_types_colour_and_a_crit_larger_in_yellow() {
             .map(|(_, label)| label.2)
             .expect(text)
     };
-    assert!(near(colour("6"), School::Fire.color()), "{:?}", colour("6"));
-    assert!(near(colour("8"), School::Cold.color()), "{:?}", colour("8"));
+    let fire = type_colour("damage.fire");
+    assert!(near(colour("6"), fire), "{:?}", colour("6"));
+    assert!(
+        near(colour("8"), type_colour("damage.cold")),
+        "{:?}",
+        colour("8")
+    );
     // A crit from the player floats at once, larger, in the crit yellow.
     harness
         .world_mut()
@@ -390,8 +458,8 @@ fn numbers_float_in_their_types_colour_and_a_crit_larger_in_yellow() {
     let floated_crit = floated(&mut harness, 3);
     assert_eq!(floated_crit.len(), 1, "{floated_crit:?}");
     let (frame, (text, size, rgb)) = &floated_crit[0];
-    assert_eq!((*frame, text.as_str(), *size), (0, "10", CRIT_SIZE));
-    assert!(near(*rgb, YELLOW), "{rgb:?}");
+    assert_eq!((*frame, text.as_str(), *size), (0, "10", crit_size()));
+    assert!(near(*rgb, crit_colour()), "{rgb:?}");
 }
 
 #[test]
@@ -411,12 +479,13 @@ fn two_hits_in_a_step_float_apart_and_only_the_crits_in_yellow() {
         (0, "10"),
         "one sum, at once"
     );
-    assert_eq!(*crit_size, CRIT_SIZE);
-    assert!(near(*crit_rgb, YELLOW));
+    assert_eq!(*crit_size, self::crit_size());
+    assert!(near(*crit_rgb, crit_colour()));
     let (cold_frame, (cold_text, cold_size, cold_rgb)) = &floated[1];
     assert!(*cold_frame <= 1, "apart, and at once too");
     assert_eq!((cold_text.as_str(), *cold_size), ("5", 16.0));
-    assert!(near(*cold_rgb, School::Cold.color()) && !near(*cold_rgb, YELLOW));
+    let cold = type_colour("damage.cold");
+    assert!(near(*cold_rgb, cold) && !near(*cold_rgb, crit_colour()));
 }
 
 #[test]
@@ -452,7 +521,7 @@ fn burn_ticks_float_at_once_and_smaller() {
     }
     assert!(ticks.len() >= 2, "{ticks:?}");
     let sizes: Vec<f32> = shown.iter().map(|&(_, size)| size).collect();
-    assert!(sizes.iter().all(|&size| size == TICK_SIZE), "{shown:?}");
+    assert!(sizes.iter().all(|&size| size == tick_size()), "{shown:?}");
     let at: Vec<usize> = shown.iter().map(|&(frame, _)| frame).collect();
     assert_eq!(at, ticks, "each tick at once");
 }
@@ -472,7 +541,7 @@ fn a_hit_floats_its_number_at_once() {
     let rest = floated(&mut harness, 40);
     let texts: Vec<&str> = rest.iter().map(|(_, l)| l.0.as_str()).collect();
     assert_eq!(texts, ["5"], "the follow-ups' sum: {rest:?}");
-    let window = (FOLLOW_SECS * 60.0) as usize;
+    let window = (follow_secs() * 60.0) as usize;
     assert!(rest[0].0 <= window, "when the window closes: {rest:?}");
 }
 
@@ -492,7 +561,6 @@ fn numbers_follow_the_damage_numbers_option() {
     );
     assert!(Hit::new(dummy, [(Kind::Fire, 4.0)]).queue(world));
     assert!(floated(&mut harness, 50).is_empty(), "off: nothing floats");
-    assert!(harness.world().get_resource::<Numbers>().is_none());
     harness
         .world_mut()
         .resource_mut::<GameOptions>()
@@ -554,8 +622,7 @@ fn cold_on_a_burning_frost_crawler_bursts_into_steam() {
     let kind = EnemyKind::Crawler;
     let centre = Vec2::new(1300.0, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
-    let crawler = enemies::spawn(world, kind, centre - kind_body(kind).centre, id).unwrap();
+    let crawler = enemies::spawn(world, kind, centre - kind_body(kind).centre).unwrap();
     enemies::scale(world, crawler, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(crawler);
     harness.step(1);
@@ -580,8 +647,7 @@ fn cold_on_a_burning_frost_crawler_bursts_into_steam() {
 fn foe(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
     let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
-    let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre, id).unwrap();
+    let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre).unwrap();
     enemies::scale(world, foe, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(foe);
     foe

@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 0.1,
+    "decay": 0.3333333333
+  },
+  "bands": [
+    {
+      "at": 0.1,
+      "enter": [
+        {
+          "apply": {
+            "status": "poisoned"
+          }
+        },
+        {
+          "remove": "poison_build"
+        }
+      ]
+    }
+  ]
+}

@@ -3,8 +3,8 @@
 //! dummies at the cursor, four at most.
 
 use example_01_platformer::features::combat::{Hit, Kind};
+use example_01_platformer::features::dummy;
 use example_01_platformer::features::dummy::components::Dummy;
-use example_01_platformer::features::dummy::{self, SUMMON_CAP};
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys;
 use example_01_platformer::shared::SaveId;
@@ -40,7 +40,11 @@ fn the_clearing_holds_a_dummy_with_its_three_tags() {
         (at.y - (36.0 * 64.0 - 28.0)).abs() < 2.0,
         "standing on the clearing's turf: {at}"
     );
-    let id = |entity: Entity| harness.world().get::<SaveId>(entity).unwrap().0;
+    let id = |entity: Entity| {
+        example_01_platformer::shared::save_id(harness.world(), entity)
+            .unwrap()
+            .0
+    };
     assert_eq!(
         [id(dummy), id(player)],
         [
@@ -160,13 +164,19 @@ fn summon_places_a_dummy_at_the_cursor_and_caps_the_summoned() {
     let (_, first) = mine[0];
     assert!(body(&harness, first).distance(at) < 2.0, "at the cursor");
     assert_eq!(mana(&harness), before - 10.0, "a summon costs 10");
-    // Nine summons a second apart leave the eight latest.
-    for i in 1..=SUMMON_CAP {
+    // Nine summons a second apart leave the eight latest, the prefab's cap
+    // as the first holds it.
+    let cap = harness
+        .world()
+        .get::<tungsten::kit::Cap>(first)
+        .expect("its cap")
+        .max() as usize;
+    for i in 1..=cap {
         harness.step(61);
         cast_at(&mut harness, at + Vec2::new(150.0 * i as f32, 0.0));
     }
     let mine = summoned(&harness);
-    assert_eq!(mine.len(), SUMMON_CAP);
+    assert_eq!(mine.len(), cap);
     assert!(!harness.world().is_alive(first), "the oldest went");
     assert!(
         placed

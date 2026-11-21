@@ -10,17 +10,17 @@
 //! silent tell ([`super::snowball`]), the light burning or not.
 
 use glam::Vec2;
-use tungsten::core::{Entity, PhysicsConfig, Position, Time, Velocity, World};
-use tungsten::kit::PlatformerController;
+use tungsten::core::{DataRef, Entity, PhysicsConfig, Position, World};
+use tungsten::kit::{EffectRequest, PlatformerController, lob_velocity};
 
-use super::components::{Brain, Enemy, EnemyKind, EnemyState, Scared, Strike};
+use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike};
 use super::hop::{self, Ahead, Hops, Leap, grounded};
-use super::systems::{blocked, elapsed, face, go, player, rest, sees, stride};
-use super::{ARRIVED, centre, snowball, troll};
+use super::systems::{blocked, elapsed, face, go, player, rest, rested, sees, start_rest, stride};
+use super::{ARRIVED, centre, heading_of, snowball, troll};
 use crate::features::audio::{self, components::Sound};
+use crate::features::combat::has_status;
 use crate::features::level::components::Glow;
 use crate::features::player::components::Lantern;
-use crate::shared::{SaveId, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.5;
@@ -35,7 +35,7 @@ pub const LUNGE_RISE: f32 = 64.0;
 /// the level's gravity the leap flies 0.42 s, 80 px up and 270 px across;
 /// the lock holds its speed just past the landing, about 20 px more, so
 /// the lunge carries about 290 px, within its range.
-pub const TELL_SECS: f32 = 0.4;
+pub const TELL_CLIP: &str = "ex10_crawler_windup";
 pub const LUNGE_SPEED: f32 = 640.0;
 pub const LUNGE_LIFT: f32 = 760.0;
 pub const LUNGE_LOCK: f32 = 0.45;
@@ -47,10 +47,14 @@ pub const LUNGE_MOST: f32 = 1.0;
 pub const DAMAGE: f32 = 15.0;
 pub const MOVE_SPEED: f32 = 210.0;
 /// How long its scared look holds after the light last refused its walk,
-/// in game seconds: a refusal after that starts a new scare, with its hiss
-/// and its puff of frost breath (B4).
+/// in game seconds, its `scared` and `retreating` effects' duration: a
+/// refusal after that starts a new scare, whose effect's cue rules puff its
+/// frost breath and hiss at its mouth (B4).
 pub const SCARED_HOLD: f32 = 0.4;
 pub const FROST_BREATH: &str = "ex10_frost_breath";
+/// Its scare's statuses: held at the fear's edge, or backing out of it.
+pub const SCARED: &str = "status.scared";
+pub const RETREATING: &str = "status.retreating";
 /// Its fear's reach over the staff light's drawn one (V20): 227.5 px for
 /// the staff's 175, the drawn light unchanged.
 pub const FEAR_SHARE: f32 = 1.3;
@@ -80,9 +84,8 @@ pub const HOPS: Hops = Hops {
 pub const SNOWBALL_NEAR: f32 = 140.0;
 pub const SNOWBALL_FAR: f32 = 290.0;
 pub const SNOWBALL_RISE: f32 = 160.0;
-pub const SNOWBALL_TELL: f32 = 0.36;
-pub const SNOWBALL_SECS: f32 = 0.25;
-pub const SNOWBALL_COOLDOWN: f32 = 4.0;
+pub const SNOWBALL_TELL_CLIP: &str = "ex10_crawler_snowball_windup";
+pub const SNOWBALL_CLIP: &str = "ex10_crawler_snowball_throw";
 pub const SNOWBALL_PACE: f32 = 1.0 / 650.0;
 pub const SNOWBALL_LEAST: f32 = 0.3;
 pub const SNOWBALL_MOST: f32 = 0.7;
@@ -125,33 +128,20 @@ fn into_light(world: &World, crawler: Entity, heading: f32) -> bool {
 }
 
 /// Whether `crawler` shows its scare: the light refused its walk, or drove
-/// it back, within [`SCARED_HOLD`].
+/// it back, within [`SCARED_HOLD`], its [`SCARED`] or [`RETREATING`]
+/// status.
 #[must_use]
 pub fn scared(world: &World, crawler: Entity) -> bool {
-    let now = world.get_resource::<Time>().map_or(0.0, Time::elapsed);
-    world
-        .get::<Scared>(crawler)
-        .is_some_and(|scared| now - scared.at <= f64::from(SCARED_HOLD))
+    has_status(world, crawler, SCARED) || has_status(world, crawler, RETREATING)
 }
 
-/// The light refused `crawler`'s walk, or, `retreating`, drives it back: a
-/// scare starts, with a puff of frost breath at its mouth and its hiss, or
-/// its retreat's longer one, unless one shows already.
+/// The light refused `crawler`'s walk, or, `retreating`, drives it back:
+/// its `scared` or `retreating` effect applied for [`SCARED_HOLD`], or
+/// refreshed. A fresh one's cue rule puffs frost breath at its mouth and
+/// hisses, or its retreat's longer hiss, unless the other shows already.
 fn scare(world: &mut World, crawler: Entity, retreating: bool) {
-    let fresh = !scared(world, crawler);
-    let now = world.get_resource::<Time>().map_or(0.0, Time::elapsed);
-    world.insert(crawler, Scared { at: now });
-    let heading = world.get::<Enemy>(crawler).map_or(1.0, |mine| mine.heading);
-    if let (true, Some(at)) = (fresh, centre(world, crawler)) {
-        let mouth = at + Vec2::new(heading * 26.0, -2.0);
-        spawn_burst(world, FROST_BREATH, mouth);
-        let sound = if retreating {
-            Sound::CrawlerRetreated
-        } else {
-            Sound::CrawlerScared
-        };
-        audio::play(world, sound, mouth);
-    }
+    let effect = if retreating { "retreating" } else { "scared" };
+    EffectRequest::new(crawler, DataRef::by_id(effect)).apply(world);
 }
 
 /// Stands `crawler` at its fear's edge, facing the player, scared.
@@ -180,7 +170,7 @@ pub fn retreat(world: &mut World, crawler: Entity) {
     if !grounded(world, crawler) {
         return;
     }
-    let heading = world.get::<Enemy>(crawler).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, crawler).unwrap_or(1.0);
     let away = if (at.x - light.x).abs() > 1.0 {
         (at.x - light.x).signum()
     } else {
@@ -229,10 +219,12 @@ pub fn patrol(world: &mut World, crawler: Entity) {
         retreat(world, crawler);
         return;
     }
-    let Some(mine) = world.get::<Enemy>(crawler).copied() else {
+    let (Some(mine), Some(mut heading)) = (
+        world.get::<Enemy>(crawler).copied(),
+        heading_of(world, crawler),
+    ) else {
         return;
     };
-    let mut heading = mine.heading;
     if let (Some(leash), Some(at)) = (mine.leash, centre(world, crawler)) {
         let out = at.x - mine.home().x;
         if out.abs() >= leash && out.signum() == heading {
@@ -276,9 +268,7 @@ pub fn chase(world: &mut World, crawler: Entity) {
     let across = target.x - at.x;
     let lit = light(world).is_some();
     let rise = at.y - target.y;
-    let cooling = world
-        .get::<Brain>(crawler)
-        .is_some_and(|brain| brain.cooldown > 0.0);
+    let cooling = !rested(world, crawler);
     let band = (SNOWBALL_NEAR..=SNOWBALL_FAR).contains(&across.abs());
     if !cooling && band && rise.abs() <= SNOWBALL_RISE {
         face(world, crawler, target.x);
@@ -318,8 +308,8 @@ pub fn enter_windup(world: &mut World, crawler: Entity) {
     }
 }
 
-/// The tell lasts [`SNOWBALL_TELL`] before a snowball, else [`TELL_SECS`],
-/// then the attack; afraid, it spends its strike and chases again, so it
+/// The tell lasts its clip, [`SNOWBALL_TELL_CLIP`] before a snowball, else
+/// [`TELL_CLIP`], then the attack; afraid, it spends its strike and chases again, so it
 /// backs out.
 pub fn windup(world: &mut World, crawler: Entity) {
     rest(world, crawler);
@@ -331,11 +321,11 @@ pub fn windup(world: &mut World, crawler: Entity) {
         return;
     }
     let tell = if snowballing(world, crawler) {
-        SNOWBALL_TELL
+        SNOWBALL_TELL_CLIP
     } else {
-        TELL_SECS
+        TELL_CLIP
     };
-    if elapsed(world, crawler) >= tell - 1e-4 {
+    if elapsed(world, crawler) >= super::clip_secs(world, tell) - 1e-4 {
         go(world, crawler, EnemyState::Attack);
     }
 }
@@ -349,7 +339,7 @@ fn flick(world: &mut World, crawler: Entity) {
     let (Some((_, target)), Some(at)) = (player(world), centre(world, crawler)) else {
         return;
     };
-    let heading = world.get::<Enemy>(crawler).map_or(1.0, |mine| mine.heading);
+    let heading = heading_of(world, crawler).unwrap_or(1.0);
     let body = super::body(world, EnemyKind::Crawler);
     let Some(from) = body.point("snowball", heading) else {
         return;
@@ -359,13 +349,10 @@ fn flick(world: &mut World, crawler: Entity) {
         .get_resource::<PhysicsConfig>()
         .map_or(Vec2::ZERO, |config| config.gravity);
     let time = (from.distance(target) * SNOWBALL_PACE).clamp(SNOWBALL_LEAST, SNOWBALL_MOST);
-    let velocity = troll::ballistic(from, target, time, gravity);
-    let thrower = world.get::<SaveId>(crawler).map(|id| id.0);
+    let velocity = lob_velocity(from, target, time, gravity);
     let factor = troll::factor(world, crawler);
-    snowball::throw(world, from, velocity, thrower, factor);
-    if let Some(brain) = world.get_mut::<Brain>(crawler) {
-        brain.cooldown = SNOWBALL_COOLDOWN;
-    }
+    snowball::throw(world, from, velocity, Some(crawler), factor);
+    start_rest(world, crawler);
     audio::play(world, Sound::SnowballThrown, from);
 }
 
@@ -376,7 +363,7 @@ pub fn enter_attack(world: &mut World, crawler: Entity) {
         flick(world, crawler);
         return;
     }
-    let Some(heading) = world.get::<Enemy>(crawler).map(|mine| mine.heading) else {
+    let Some(heading) = heading_of(world, crawler) else {
         return;
     };
     if let Some(controller) = world.get_mut::<PlatformerController>(crawler) {
@@ -388,13 +375,13 @@ pub fn enter_attack(world: &mut World, crawler: Entity) {
     }
 }
 
-/// The throw's clip runs [`SNOWBALL_SECS`], then it spends its strike and
+/// The throw's clip, [`SNOWBALL_CLIP`], runs out, then it spends its strike and
 /// recovers; the lunge ends when it lands, or after [`LUNGE_MOST`].
 pub fn attack(world: &mut World, crawler: Entity) {
     let t = elapsed(world, crawler);
     if snowballing(world, crawler) {
         rest(world, crawler);
-        if t >= SNOWBALL_SECS - 1e-4 {
+        if t >= super::clip_secs(world, SNOWBALL_CLIP) - 1e-4 {
             if let Some(brain) = world.get_mut::<Brain>(crawler) {
                 brain.strike = None;
             }
@@ -429,28 +416,4 @@ pub fn seek(world: &mut World, crawler: Entity, point: Option<Vec2>) -> bool {
     }
     !scuttle(world, crawler, across.signum(), SEARCH_PACE)
         && !into_light(world, crawler, across.signum())
-}
-
-/// Its clip for `state`: its snowball's tell and throw by the strike its
-/// brain keeps, else the lunge's three, its coil through the tell, its
-/// stretch through the leap and its landing through the recovery; a hop in
-/// the air; its retreat while it backs out of its fear, its scare while it
-/// holds at the edge or stands cornered; else its walk.
-#[must_use]
-pub fn clip(world: &World, crawler: Entity, state: EnemyState) -> &'static str {
-    let moving = world
-        .get::<Velocity>(crawler)
-        .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
-    let snowball = snowballing(world, crawler);
-    match state {
-        EnemyState::WindUp if snowball => "crawler_snowball_windup",
-        EnemyState::WindUp => "crawler_windup",
-        EnemyState::Attack if snowball => "crawler_snowball_throw",
-        EnemyState::Attack => "crawler_lunge",
-        EnemyState::Recover => "crawler_recover",
-        _ if !grounded(world, crawler) => "crawler_hop",
-        _ if moving && afraid(world, crawler) => "crawler_retreat",
-        _ if scared(world, crawler) => "crawler_scared",
-        _ => "crawler_walk",
-    }
 }

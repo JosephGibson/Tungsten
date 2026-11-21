@@ -21,13 +21,13 @@ use tungsten_core::{
 
 use crate::App;
 use crate::kit::{
-    ABILITY_TICK, AILMENT_FEED, AILMENT_TICK, AbilitiesPlugin, Applied, CHEMISTRY, CHEMISTRY_TICK,
-    CUES, ChemistryPlugin, Children, ContactDamage, Cooldown, CooldownElapsed, Counters, CueAction,
-    CueEvent, Cues, CuesOnEvent, CuesPlugin, DAMAGE_RESOLVE, DamagePart, DamageRequest, Damaged,
-    DespawnOutside, EFFECT_RESOLVE, EFFECT_TICK, Effect, EffectRequest, Effects, EffectsPlugin,
-    Expire, HEALTH_TICK, HIT_FLASH_MATERIAL, Health, HealthPlugin, Hit as Outcome, HitFlash,
-    HitShape, Hitbox, Hurtbox, KitPlugins, KitRng, KitTrace, LEVEL_TICK, LabelStyle, LevelPlugin,
-    Lifetime, LocalOffset, Modifier, Parent, PathFollower, PickedUp, Pickup, PlatformerController,
+    ABILITY_TICK, AbilitiesPlugin, Applied, CHEMISTRY, CHEMISTRY_TICK, CUES, ChemistryPlugin,
+    Children, ContactDamage, Cooldown, CooldownElapsed, Counters, CueAction, CueEvent, Cues,
+    CuesOnEvent, CuesPlugin, DAMAGE_RESOLVE, DamagePart, DamageRequest, Damaged, DespawnOutside,
+    EFFECT_RESOLVE, EFFECT_TICK, Effect, EffectRequest, Effects, EffectsPlugin, Expire,
+    HEALTH_TICK, HIT_FLASH_MATERIAL, Health, HealthPlugin, Hit as Outcome, HitFlash, HitShape,
+    Hitbox, Hurtbox, KitPlugins, KitRng, KitTrace, LEVEL_TICK, LabelStyle, LevelPlugin, Lifetime,
+    LocalOffset, Modifier, Parent, PathFollower, PickedUp, Pickup, PlatformerController,
     Projectile, ProjectileExpired, Refresh, STATS_APPLY, SoundOnEvent, Source, SpawnChildren,
     Spawner, StateMachine, StateMachinePlugin, Stats, StatsPlugin, Struck, TagFilter, Tags,
     TopDownMover, TraceKind, TriggerEntered, TriggerZone, cursor_to_world, damage,
@@ -39,13 +39,14 @@ use crate::testing::Harness;
 /// `post_update` with `DefaultPlugins`, then `KitPlugins::set()`, the sound
 /// plugin, the trigger zone and the state machine: the present phase after
 /// the late propagation and before the camera.
-const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, effect_look, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, effect_look_late, kit_debug_draw, hit_sound, camera_update";
+const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, effect_look, burst_cleanup, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, effect_look_late, kit_debug_draw, hit_sound, camera_update";
 
 /// `fixed_update` with the same plugins: the six fixed phases around
 /// `physics_step`, each member in its registration order but where an edge
-/// orders it: the hit items before the corrections, the magnet before the
-/// speed limit, the kit's despawn after the cues.
-const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, ailment_tick, chemistry_tick, kit_intent, action_input, aim, ability_tick, phases, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, ailment_feed, chemistry, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step";
+/// orders it: the impact record before the movers, the hit items and the
+/// impacts before the corrections, the magnet before the speed limit, the
+/// kit's despawn after the cues.
+const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, chemistry_tick, kit_intent, action_input, aim, ability_tick, phases, kit_move, impact_record, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, impact_damage, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, chemistry, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step";
 
 /// The event the sound plugin plays.
 struct Hit;
@@ -2998,12 +2999,7 @@ fn build_owner(name: &str, schedule: &mut tungsten_core::Schedule, world: &mut W
         AIM => AimPlugin.build(schedule, world),
         STATS_APPLY => StatsPlugin::new().build(schedule, world),
         DAMAGE_RESOLVE => HealthPlugin.build(schedule, world),
-        EFFECT_TICK
-        | EFFECT_RESOLVE
-        | AILMENT_TICK
-        | AILMENT_FEED
-        | crate::kit::EFFECT_LOOK
-        | crate::kit::EFFECT_LOOK_LATE => {
+        EFFECT_TICK | EFFECT_RESOLVE | crate::kit::EFFECT_LOOK | crate::kit::EFFECT_LOOK_LATE => {
             EffectsPlugin.build(schedule, world);
         }
         CHEMISTRY | CHEMISTRY_TICK => ChemistryPlugin::new().build(schedule, world),
@@ -4035,7 +4031,7 @@ fn a_magnet_pulls_a_pickup_to_the_nearest_collector_within_its_pickup_radius() {
 }
 
 #[test]
-fn a_magnet_leaves_a_body_or_a_child_with_one_warning() {
+fn a_magnet_draws_a_body_and_warns_once_for_a_child() {
     let mut harness = Harness::new(kit_app());
     collector(&mut harness, Vec2::ZERO, Some(500.0));
     let pickup = Pickup::new(HitShape::circle(6.0))
@@ -4050,12 +4046,26 @@ fn a_magnet_leaves_a_body_or_a_child_with_one_warning() {
     );
     let parent = spawn_at(&mut harness, 0.0, 100.0, (Visibility::default(),));
     let child = spawn_child(harness.world_mut(), parent, Vec2::ZERO, (pickup,));
-    harness.step(30);
-    assert_eq!(
-        body_at(&harness, body),
-        Vec2::new(100.0, 0.0),
-        "the body holds"
-    );
+    // The body drawn in at 120 px/s, never past the collector, until it
+    // takes it; the child holds, warned of once.
+    let mut last = 100.0_f32;
+    let mut collected = false;
+    for _ in 0..120 {
+        harness.step(1);
+        if !harness.world().is_alive(body)
+            || harness
+                .world()
+                .get::<Pickup>(body)
+                .is_none_or(Pickup::is_collected)
+        {
+            collected = true;
+            break;
+        }
+        let x = body_at(&harness, body).x;
+        assert!(x <= last && x >= -1e-3, "drawn in, never past: {x}");
+        last = x;
+    }
+    assert!(collected, "the collector takes it, at {last}");
     assert_eq!(
         position(&harness, child),
         Vec2::new(0.0, 100.0),
@@ -4079,26 +4089,20 @@ fn a_magnet_passes_a_nearer_corpse_for_a_live_collector() {
     );
 }
 
-// M67: effects, abilities, levels and ailments at three frame rates, and
+// M67: effects, abilities, levels and builds at three frame rates, and
 // their edges.
 
 /// M67's and 7.10b's chemistry's within-phase edges whose two systems have
-/// their own plugins, each `(earlier, later)`; the effect plugin's own pair (`effect_tick`
-/// before `ailment_tick`, `ailment_feed` before `effect_resolve`) holds by
-/// its edges inside one build.
-const EFFECT_EDGES: [(&str, &str); 12] = [
+/// their own plugins, each `(earlier, later)`.
+const EFFECT_EDGES: [(&str, &str); 8] = [
     (STATS_APPLY, EFFECT_TICK),
-    (STATS_APPLY, AILMENT_TICK),
     (ACTION_INPUT, ABILITY_TICK),
     (AIM, ABILITY_TICK),
-    (DAMAGE_RESOLVE, AILMENT_FEED),
     (DAMAGE_RESOLVE, EFFECT_RESOLVE),
     (LEVEL_TICK, CUES),
     (DAMAGE_RESOLVE, CHEMISTRY),
-    (AILMENT_FEED, CHEMISTRY),
     (CHEMISTRY, EFFECT_RESOLVE),
     (EFFECT_TICK, CHEMISTRY_TICK),
-    (AILMENT_TICK, CHEMISTRY_TICK),
 ];
 
 /// 7.10p's look passes' cross-plugin edges, each `(earlier, later)`.
@@ -4158,11 +4162,7 @@ fn each_effect_edge_holds_with_its_two_plugins_alone_in_either_order_and_reverse
         .unwrap();
     let names: Vec<&str> = fixed.split_once(": ").unwrap().1.split(", ").collect();
     let at = |name: &str| names.iter().position(|n| *n == name).unwrap();
-    for (earlier, later) in EFFECT_EDGES
-        .iter()
-        .copied()
-        .chain([(EFFECT_TICK, AILMENT_TICK), (AILMENT_FEED, EFFECT_RESOLVE)])
-    {
+    for (earlier, later) in EFFECT_EDGES {
         assert!(
             at(earlier) < at(later),
             "reversed in the set: {earlier} before {later}: {fixed}"
@@ -4246,7 +4246,7 @@ fn stacking_and_expiry_land_the_same_at_three_frame_rates() {
 }
 
 #[test]
-fn an_ailment_ladder_climbs_its_gates_in_order_at_three_frame_rates() {
+fn a_build_climbs_its_bands_in_order_at_three_frame_rates() {
     for dt in [1.0 / 60.0, 1.0 / 30.0, 1.0 / 144.0] {
         let mut harness = crate::kit_recipes::recipe("top_down", KitPlugins::set(), dt);
         let golem = crate::kit_recipes::spawn(&mut harness, "golem", [0.0, 0.0]);
@@ -4264,16 +4264,18 @@ fn an_ailment_ladder_climbs_its_gates_in_order_at_three_frame_rates() {
                 effects.is_some_and(|e| e.has("frozen")),
             )
         };
-        // The gates in order: a full bucket chills, the next freezes, and
-        // the application lands in the hit's step.
+        // The bands in order: a full chill build chills, then a full freeze
+        // build freezes, each band's effect at chemistry's run after the
+        // hit's, the step its `enter` runs.
         cold(8.0).apply(harness.world_mut());
-        run_steps::<Damaged>(&mut harness, 1);
+        run_steps::<Damaged>(&mut harness, 2);
         assert_eq!(effects(&harness), (true, false), "at dt {dt}");
         cold(8.0).apply(harness.world_mut());
-        run_steps::<Damaged>(&mut harness, 1);
+        run_steps::<Damaged>(&mut harness, 2);
         assert_eq!(effects(&harness), (true, true), "at dt {dt}");
-        // The drain: a part below the half fills the bucket, which loses a
-        // threshold over the ladder's four seconds, the same at every rate.
+        // The decay: a part below the band builds the chill build by its
+        // share of the golem's threshold (`per`), which wears a quarter of
+        // it a second, the same at every rate.
         let fresh = crate::kit_recipes::spawn(&mut harness, "golem", [200.0, 0.0]);
         run_steps::<Damaged>(&mut harness, 1);
         DamageRequest::from_parts(
@@ -4281,34 +4283,33 @@ fn an_ailment_ladder_climbs_its_gates_in_order_at_three_frame_rates() {
             [DamagePart::new(3.0).with_tags(Tags::new(["elemental.cold"]))],
         )
         .apply(harness.world_mut());
-        // The hit's step fills the bucket; a frame of two steps drains one
+        // The run after the hit builds it; a frame of two steps wears one
         // step's worth off it before the read.
         run_steps::<Damaged>(&mut harness, 1);
-        let fill = |harness: &Harness| {
-            harness
-                .world()
-                .get::<crate::kit::AilmentBuckets>(fresh)
-                .map_or(0.0, |b| b.fill("elemental.cold"))
-        };
-        let filled = fill(&harness);
-        assert!(
-            (2.4 - 1.5 / 60.0 - 1e-3..=2.4 + 1e-3).contains(&filled),
-            "at dt {dt}: 3 at the 0.8 factor: {filled}"
-        );
-        // Sixty fixed steps drain a quarter of the threshold of 6.
-        run_steps::<Damaged>(&mut harness, 60);
-        let left = fill(&harness);
-        assert!(
-            (left - (filled - 1.5)).abs() < 1e-3,
-            "at dt {dt}: a quarter of 6 off: {left} from {filled}"
-        );
-        assert_eq!(
+        let built = |harness: &Harness| {
             harness
                 .world()
                 .get::<Effects>(fresh)
-                .map_or(0, |e| e.instances().count()),
-            0,
-            "at dt {dt}: below the half, nothing applied"
+                .and_then(|effects| effects.intensity("chill_build"))
+                .unwrap_or(0.0)
+        };
+        let filled = built(&harness);
+        assert!(
+            (0.4 - 0.25 / 60.0 - 1e-3..=0.4 + 1e-3).contains(&filled),
+            "at dt {dt}: 3 at the 0.8 factor over the threshold of 6: {filled}"
+        );
+        // Sixty fixed steps wear a quarter of the threshold off.
+        run_steps::<Damaged>(&mut harness, 60);
+        let left = built(&harness);
+        assert!(
+            (left - (filled - 0.25)).abs() < 1e-3,
+            "at dt {dt}: a quarter off: {left} from {filled}"
+        );
+        let world = harness.world();
+        let effects = world.get::<Effects>(fresh);
+        assert!(
+            !effects.is_some_and(|e| e.has("chilled") || e.has("frozen")),
+            "at dt {dt}: below the band, nothing applied"
         );
         assert_eq!(
             EffectRequest::new(fresh, DataRef::by_id("chilled")).apply(harness.world_mut()),

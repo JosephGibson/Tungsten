@@ -1,0 +1,16 @@
+{
+  "tag": "rolling_ball",
+  "components": {
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 8
+      },
+      "rolls": true,
+      "layers": [
+        2
+      ]
+    }
+  }
+}

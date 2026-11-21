@@ -12,5 +12,11 @@
     {
       "effect": "casting"
     }
-  ]
+  ],
+  "icon": "ex10_icon_black_hole",
+  "clip": {
+    "right": "ex10_player_push",
+    "left": "ex10_player_push_left",
+    "side": "aim"
+  }
 }

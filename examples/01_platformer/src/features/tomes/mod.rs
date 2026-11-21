@@ -8,19 +8,20 @@
 //! for a shield over it that comes back after a hit; the tome of bounding
 //! lets every air jump past the double jump cost mana, with no cap, each
 //! one a bound with its ring and its sound; the tome of arcane power
-//! doubles the player's `spell_cost` and `spell_power`, so every spell
-//! costs twice and hits twice as hard.
+//! doubles the player's `spell_cost` and, by a `damage_dealt` line on the
+//! `hit.spell` context, its spells' own hits, so every spell costs twice
+//! and hits twice as hard.
 
 pub mod components;
 pub mod systems;
 
 use glam::Vec2;
 use tungsten::Plugin;
-use tungsten::core::{Entity, Position, Schedule, Stage, Transform, World, system};
+use tungsten::core::{DataRegistry, Entity, Position, Schedule, Stage, Transform, World, system};
 use tungsten::kit::{Phase, STATS_APPLY, ensure_phases};
 use tungsten::plugins::CAMERA_UPDATE;
 
-pub use components::{Tome, TomeKind, Tomes};
+pub use components::{Tome, TomeData, TomeKind, Tomes};
 
 use crate::shared::body_centre;
 
@@ -36,6 +37,22 @@ pub const TAKE_SECS: f32 = 0.48;
 pub const TAKE_Z: i32 = 13;
 /// The action that takes a book.
 pub const INTERACT: &str = "interact";
+/// The data kind of the tomes' texts and art ([`TomeData`]), each by its
+/// kind's ID (`data/tomes/<id>.json`).
+pub const TOMES: &str = "tomes";
+
+/// `kind`'s entry in the [`TOMES`] data, as it is now.
+///
+/// # Panics
+///
+/// When the data has no entry for it: all three load with the manifest.
+#[must_use]
+pub fn data(world: &World, kind: TomeKind) -> &TomeData {
+    world
+        .get_resource::<DataRegistry>()
+        .and_then(|data| data.get::<TomeData>(kind.id()))
+        .unwrap_or_else(|| panic!("no {TOMES} entry {}", kind.id()))
+}
 /// The pact's modifier source on the player's stats, and its shield: its
 /// size, what it recharges a second and the game seconds after a hit it
 /// waits first (Q37).
@@ -48,23 +65,21 @@ pub const PACT_DELAY: f32 = 3.0;
 pub const BOUND_COST: f32 = 25.0;
 /// The bound's ring under the feet: its clip, its centre from its
 /// top-left, which stands on the feet, its game seconds, six frames at
-/// 0.05 s, and its draw order, over the wizard's; and the sparks ringing
-/// out from it and the motes it leaves as he rises.
+/// 0.05 s, and its draw order, over the wizard's. The sparks ringing out
+/// from it and the motes it leaves as he rises are the paid `air_jumped`
+/// rule's bursts.
 pub const BOUND_CLIP: &str = "ex10_bound_ring";
 pub const BOUND_CENTRE: Vec2 = Vec2::new(32.0, 16.0);
 pub const BOUND_SECS: f32 = 0.3;
 pub const BOUND_Z: i32 = 11;
-pub const BOUND_SPARKS: &str = "ex10_bound_sparks";
-pub const BOUND_TRAIL: &str = "ex10_bound_trail";
 /// Arcane power's modifier source on the player's stats, and what it
-/// multiplies `spell_cost` and `spell_power` by.
+/// multiplies `spell_cost` and its spells' `damage_dealt` by.
 pub const ARCANE_SOURCE: &str = "tome.arcane";
 pub const ARCANE_FACTOR: f32 = 2.0;
 
 /// The tomes as a plugin: the `tome` component the books' prefabs name,
 /// the take in the tick phase before the kit's `stats_apply`, so what a
-/// tome changes of the player's stats lands in its own step, at most one a
-/// frame, since a press reads as fresh through each of the frame's steps;
+/// tome changes of the player's stats lands in its own step, one a press;
 /// and the panel in `PostUpdate` after the camera's update, so it stands
 /// over the book the frame draws.
 pub struct TomesPlugin;
@@ -73,12 +88,10 @@ impl Plugin for TomesPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<Tome>("tome");
+        world.register_saved::<Tomes>("tomes");
+        world.register_data_kind::<TomeData>(TOMES);
         ensure_phases(schedule);
-        let mut taken = None;
-        let take = system("tomes_take", move |world: &mut World| {
-            systems::take(world, &mut taken);
-        })
-        .before(STATS_APPLY);
+        let take = system("tomes_take", systems::take).before(STATS_APPLY);
         schedule.add(Stage::FixedUpdate, Phase::Tick.join(take));
         let panel = system("tomes_panel", systems::panel).after(CAMERA_UPDATE);
         schedule.add(Stage::PostUpdate, panel);

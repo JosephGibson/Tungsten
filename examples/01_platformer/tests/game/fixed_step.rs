@@ -5,7 +5,6 @@
 
 use example_01_platformer::features::level::systems::drawn_time;
 use example_01_platformer::features::player::components::Moves;
-use example_01_platformer::features::player::systems::AIR_JUMP_BURST;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::Ball;
 use example_01_platformer::features::toys::{self, BALL_CAP};
@@ -96,7 +95,7 @@ fn at_30_hz_a_double_jump_in_a_frames_first_step_plays_its_effect() {
     assert!(world.get::<Moves>(player).unwrap().tuck);
     let config = world
         .resource::<ParticleConfigRegistry>()
-        .id_for_name(AIR_JUMP_BURST)
+        .id_for_name("ex10_double_jump")
         .unwrap();
     assert!(
         world
@@ -186,16 +185,24 @@ fn at_144_hz_sprites_and_drips_sit_at_their_bodies_drawn_points() {
         Vec2::new(0.0, -400.0),
     )
     .unwrap();
-    // The missile's drips hang from it from its first step.
-    while harness.world().get::<Children>(missile).is_none() {
+    // The missile's drips hang from it from its first step, beside its
+    // glow's parts.
+    let emitters = |harness: &UiHarness| -> Vec<Entity> {
+        let world = harness.world();
+        world
+            .get::<Children>(missile)
+            .map(|children| {
+                children
+                    .iter()
+                    .filter(|&child| world.has::<ParticleEmitter>(child))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    while emitters(&harness).is_empty() {
         harness.step(1);
     }
-    let drips: Vec<Entity> = harness
-        .world()
-        .get::<Children>(missile)
-        .unwrap()
-        .iter()
-        .collect();
+    let drips = emitters(&harness);
     harness.harness_mut().press_action("move_right");
     let mut off = [0.0_f32; 3];
     for _ in 0..12 {

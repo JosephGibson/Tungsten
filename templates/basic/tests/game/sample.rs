@@ -7,17 +7,16 @@ use tungsten::core::assets::manifest::ResolvedManifest;
 use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::{
     ActionMap, AssetRegistry, Binding, BodyKind, CameraController, CameraRig, CameraState, Entity,
-    ParticleEmitter, Position, PrevPosition, RigKind, RigidBody, SoundRegistry, Sprite, Time,
-    Transform, UserFolder, Velocity, Voice, With,
+    ParticleEmitter, Position, PrefabRegistry, PrevPosition, RigKind, RigidBody, SoundRegistry,
+    Sprite, Time, Transform, UserFolder, Velocity, Voice, With,
 };
 use tungsten::kit::{
     Counters, Damaged, Effects, Flags, Health, Hit, HitFlash, LinearMotion, Projectile, Source,
-    Spawner, Stats, damage,
+    Spawner, Stats, Tags, damage,
 };
 use tungsten::testing::UiHarness;
 use tungsten::{App, SceneEntity, WindowSize};
 use tungsten_template_basic::game;
-use tungsten_template_basic::sample::components::Player;
 use tungsten_template_basic::sample::{
     DAMAGE_NUMBERS_FLAG, DUMMY_START, ENEMIES, ENEMY_RETURN_SECS, GEM_PREFAB, HAZARD_PREFAB,
     HAZARD_START, MUSIC_FADE, MUSIC_RUN, PICKUPS, PLAY_CENTRE, PLAYER_PREFAB, PLAYER_START,
@@ -31,21 +30,55 @@ use super::{
     release_and_settle, start, start_at, tap,
 };
 
-/// How far the player moves per second, in pixels: the prefab's
-/// `top_down_mover.speed`.
-const PLAYER_SPEED: f32 = 240.0;
+/// The number at `pointer` in `prefab`'s components as the harness loaded
+/// them, its first token the component (`/top_down_mover/speed`).
+fn prefab_number(harness: &UiHarness, prefab: &str, pointer: &str) -> f32 {
+    let (component, rest) = pointer
+        .strip_prefix('/')
+        .and_then(|path| path.split_once('/'))
+        .unwrap_or_else(|| panic!("{pointer} names a component's part"));
+    harness
+        .world()
+        .resource::<PrefabRegistry>()
+        .get(prefab)
+        .and_then(|data| data.components.get(component))
+        .and_then(|value| value.pointer(&format!("/{rest}")))
+        .and_then(|value| value.as_f64())
+        .unwrap_or_else(|| panic!("no number at {pointer} in the prefab `{prefab}`")) as f32
+}
 
-/// How far one fixed step moves the player: the drawn position trails the
-/// step by up to one, so a distance is checked within it.
-const ONE_STEP: f32 = PLAYER_SPEED / 60.0;
+/// The player's mover as its prefab's `top_down_mover` sets it: its top
+/// speed, px/s, and its acceleration, px/s², with the fixed step, s.
+#[derive(Debug, Clone, Copy)]
+struct Mover {
+    speed: f32,
+    acceleration: f32,
+    step: f32,
+}
 
-/// How far the player covers in `steps` fixed steps from rest at up to
-/// `top` px/s: the prefab's acceleration, 1,800 px/s², gains 30 px/s a
-/// step.
-fn ramp(steps: u32, top: f32) -> f32 {
-    (1..=steps)
-        .map(|step| (30.0 * step as f32).min(top) / 60.0)
-        .sum()
+fn mover(harness: &UiHarness) -> Mover {
+    Mover {
+        speed: prefab_number(harness, "player", "/top_down_mover/speed"),
+        acceleration: prefab_number(harness, "player", "/top_down_mover/acceleration"),
+        step: harness.world().resource::<Time>().fixed_step(),
+    }
+}
+
+impl Mover {
+    /// How far one fixed step moves the player at its top speed: the drawn
+    /// position trails the step by up to one, so a distance is checked
+    /// within it.
+    fn one_step(self) -> f32 {
+        self.speed * self.step
+    }
+
+    /// How far the player covers in `steps` fixed steps from rest at up to
+    /// `top` px/s, gaining its acceleration's share of a step each.
+    fn ramp(self, steps: u32, top: f32) -> f32 {
+        (1..=steps)
+            .map(|k| (self.acceleration * self.step * k as f32).min(top) * self.step)
+            .sum()
+    }
 }
 
 /// The hazard: the first spawner's enemy.
@@ -92,9 +125,9 @@ fn labels(harness: &UiHarness) -> Vec<(String, String)> {
 const SCHEDULE: &str = "\
 startup: shell_start
 pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, hud_toggle, ui_debug_toggle, ui_inspector_toggle, log_console_toggle, display_input, ui_state_roots, ui_route, inspector_pick, ui_animate, shell_save, state_dispatcher
-fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, ailment_tick, chemistry_tick, kit_intent, action_input, aim, ability_tick, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, kit_resolve, damage_resolve, ailment_feed, chemistry, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step, shell_checkpoint
-update: shell_frame, shell_flow, sample_frame
-post_update: physics_sync, transform_propagate, effect_look, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, effect_look_late, kit_debug_draw, camera_update
+fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, chemistry_tick, kit_intent, action_input, aim, ability_tick, kit_move, impact_record, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, impact_damage, despawn_outside, wrap, stay_in_view, kit_resolve, damage_resolve, chemistry, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step, shell_checkpoint
+update: shell_frame, sample_frame
+post_update: physics_sync, transform_propagate, effect_look, burst_cleanup, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, effect_look_late, kit_debug_draw, camera_update
 ";
 
 #[test]
@@ -157,9 +190,9 @@ fn a_new_run_spawns_the_player_owned_by_gameplay() {
     start(&mut harness);
     assert_eq!(player(&harness), Some(PLAYER_START));
     let world = harness.world();
-    let (sprite, owner) = world
-        .query_filtered::<(&Sprite, &SceneEntity), With<Player>>()
-        .next()
+    let (sprite, owner, _) = world
+        .query::<(&Sprite, &SceneEntity, &Tags)>()
+        .find(|(_, _, tags)| tags.has("team.player"))
         .expect("the player spawned");
     let assets = world.resource::<AssetRegistry>();
     assert_eq!(assets.sprite_name(sprite.asset_id), Some("player"));
@@ -173,9 +206,10 @@ fn player_moves_under_move_right_only_in_gameplay() {
     harness.harness_mut().press_action("move_right");
     harness.step(30);
     let [x, y] = player(&harness).expect("the player spawned");
-    let expected = PLAYER_START[0] + ramp(30, PLAYER_SPEED);
+    let mover = mover(&harness);
+    let expected = PLAYER_START[0] + mover.ramp(30, mover.speed);
     assert!(
-        (x - expected).abs() <= ONE_STEP + 1e-3,
+        (x - expected).abs() <= mover.one_step() + 1e-3,
         "x = {x}, expected {expected}"
     );
     assert!((y - PLAYER_START[1]).abs() < f32::EPSILON);
@@ -209,9 +243,10 @@ fn a_gamepad_stick_moves_the_player() {
     harness.harness_mut().press_action("move_right");
     harness.step(30);
     let [x, y] = player(&harness).expect("the player spawned");
-    let expected = PLAYER_START[0] + ramp(30, PLAYER_SPEED);
+    let mover = mover(&harness);
+    let expected = PLAYER_START[0] + mover.ramp(30, mover.speed);
     assert!(
-        (x - expected).abs() <= ONE_STEP + 1e-3,
+        (x - expected).abs() <= mover.one_step() + 1e-3,
         "x = {x}, expected {expected}"
     );
     assert!((y - PLAYER_START[1]).abs() < f32::EPSILON);
@@ -220,9 +255,11 @@ fn a_gamepad_stick_moves_the_player() {
 #[test]
 fn clock_half_scale_moves_the_player_half_as_far() {
     let mut moved = Vec::new();
+    let mut read = None;
     for scale in [1.0, 0.5] {
         let mut harness = harness();
         start(&mut harness);
+        read = Some(mover(&harness));
         // A scale set between frames applies from the next one.
         harness.world_mut().resource_mut::<Time>().set_scale(scale);
         harness.harness_mut().press_action("move_right");
@@ -232,12 +269,13 @@ fn clock_half_scale_moves_the_player_half_as_far() {
     }
     // Half the clock runs half the steps, each eased in the same.
     let (full, half) = (moved[0], moved[1]);
+    let mover = read.expect("a run read its mover");
     assert!(
-        (full - ramp(30, PLAYER_SPEED)).abs() <= ONE_STEP + 1e-3,
+        (full - mover.ramp(30, mover.speed)).abs() <= mover.one_step() + 1e-3,
         "full {full}"
     );
     assert!(
-        (half - ramp(15, PLAYER_SPEED)).abs() <= ONE_STEP + 1e-3,
+        (half - mover.ramp(15, mover.speed)).abs() <= mover.one_step() + 1e-3,
         "half {half}, full {full}"
     );
 }
@@ -337,20 +375,21 @@ fn a_player_kept_on_the_hazard_takes_one_hit_per_window() {
     assert_eq!(current(&harness, player), 3.0, "the next hit after it");
 }
 
-/// The hazard's patrol: the amplitude of its swing along x and its period,
-/// from `prefabs/hazard.json`.
-const HAZARD_SWING: f32 = 240.0;
-const HAZARD_PERIOD_FRAMES: usize = 240;
-
 #[test]
 fn the_hazard_patrols_its_line_and_a_player_walked_into_it_is_hit_once_and_pushed_away() {
     let mut harness = harness();
     start(&mut harness);
+    // The hazard's patrol, its prefab's `oscillator`: its swing along x and
+    // the fixed steps its period takes, a frame each.
+    let swing = prefab_number(&harness, "hazard", "/oscillator/position/amplitude/0");
+    let period = prefab_number(&harness, "hazard", "/oscillator/position/period");
+    let frames = (period / harness.world().resource::<Time>().fixed_step()).round() as usize;
+    let one_step = mover(&harness).one_step();
     let (player, hazard) = (player_entity(&harness), hazard_entity(&harness));
     let hazard_at = |harness: &UiHarness| harness.world().get::<Position>(hazard).unwrap().0;
     let first = hazard_at(&harness);
     let (mut left, mut right) = (f32::INFINITY, f32::NEG_INFINITY);
-    for _ in 0..HAZARD_PERIOD_FRAMES {
+    for _ in 0..frames {
         harness.step(1);
         let at = hazard_at(&harness);
         assert!(
@@ -360,14 +399,8 @@ fn the_hazard_patrols_its_line_and_a_player_walked_into_it_is_hit_once_and_pushe
         left = left.min(at.x);
         right = right.max(at.x);
     }
-    assert!(
-        (left - (HAZARD_START[0] - HAZARD_SWING)).abs() < 1.0,
-        "{left}"
-    );
-    assert!(
-        (right - (HAZARD_START[0] + HAZARD_SWING)).abs() < 1.0,
-        "{right}"
-    );
+    assert!((left - (HAZARD_START[0] - swing)).abs() < 1.0, "{left}");
+    assert!((right - (HAZARD_START[0] + swing)).abs() < 1.0, "{right}");
     assert!(
         (hazard_at(&harness).x - first.x).abs() < 1e-2,
         "a whole period"
@@ -381,11 +414,11 @@ fn the_hazard_patrols_its_line_and_a_player_walked_into_it_is_hit_once_and_pushe
     release_and_settle(&mut harness, "move_down");
     let stood = player_position(&harness).unwrap();
     assert!(
-        (stood[1] - HAZARD_START[1]).abs() <= ONE_STEP + 1e-3,
+        (stood[1] - HAZARD_START[1]).abs() <= one_step + 1e-3,
         "{stood:?}"
     );
     let mut hit = None;
-    for frame in 0..HAZARD_PERIOD_FRAMES {
+    for frame in 0..frames {
         harness.step(1);
         if current(&harness, player) < 5.0 {
             hit = Some(frame);
@@ -440,7 +473,8 @@ fn a_hazard_hit_slows_the_player_for_its_effects_seconds() {
     let from = player_position(&harness).unwrap();
     harness.step(30);
     let slowed = from[1] - player_position(&harness).unwrap()[1];
-    let expected = ramp(31, 120.0) - ramp(1, 120.0);
+    let mover = mover(&harness);
+    let expected = mover.ramp(31, 120.0) - mover.ramp(1, 120.0);
     assert!(
         (slowed - expected).abs() < 1.0,
         "slowed: {slowed} px in half a second, {expected} expected"
@@ -629,15 +663,13 @@ fn the_player_accelerates_and_stops() {
     harness.harness_mut().set_dt(1.0 / 60.0);
     let player = player_entity(&harness);
     let speed = |harness: &UiHarness| harness.world().get::<Velocity>(player).unwrap().0.length();
+    let top = mover(&harness).speed;
     assert_eq!(speed(&harness), 0.0, "at rest");
     harness.harness_mut().press_action("move_right");
     harness.step(1);
-    assert!(
-        speed(&harness) > 0.0 && speed(&harness) < PLAYER_SPEED,
-        "eased in"
-    );
+    assert!(speed(&harness) > 0.0 && speed(&harness) < top, "eased in");
     let mut steps = 1;
-    while (speed(&harness) - PLAYER_SPEED).abs() > 1e-3 {
+    while (speed(&harness) - top).abs() > 1e-3 {
         harness.step(1);
         steps += 1;
         assert!(steps <= 9, "full speed within nine steps");
@@ -796,7 +828,7 @@ fn the_speed_pickup_speeds_the_player_for_four_seconds() {
     harness.step(3 * 60);
     assert_eq!(speed(&harness), 360.0, "still at 3 s");
     harness.step(60 + 5);
-    assert_eq!(speed(&harness), PLAYER_SPEED, "over after 4 s");
+    assert_eq!(speed(&harness), mover(&harness).speed, "over after 4 s");
 }
 
 #[test]

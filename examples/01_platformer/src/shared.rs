@@ -1,79 +1,65 @@
 //! What two features share: the save IDs every saved entity carries, the
-//! actors' bodies as their data holds them, a body's centre and the
+//! actors' bodies as their data holds them, the parts of a loaded prefab
+//! that 01 reads where it places one, a body's centre and the
 //! distance to its surface, the short-lived particle bursts, cosmetic and
 //! key, and the actions read off the input the UI left to the game.
 
 use std::collections::BTreeMap;
 
 use glam::Vec2;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    ActionMap, Collider, DataRegistry, Entity, InputState, Particle, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, RoutedInput, Shape, Transform, World,
+    ActionMap, AnimationRegistry, AnimationState, AssetRegistry, Collider, CommandBuffer,
+    DataRegistry, Entity, InputState, Position, PrefabRegistry, RoutedInput, Shape, SpriteAssetId,
+    World,
 };
 
-use tungsten::kit::{Aim, Children, Hurtbox};
+use tungsten::kit::{Aim, Hurtbox, despawn_recursive};
 
 use crate::game::GAMEPLAY;
 
-/// A saved entity's stable identity: a save names entities by it, never by
-/// `Entity`, which the ECS reuses. The map's objects and the player take
-/// theirs from their names ([`SaveId::authored`]), at or above
-/// [`AUTHORED`]; anything spawned later takes the run's next
-/// ([`SaveIds`]), below it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct SaveId(pub u64);
+/// A saved entity's stable identity is core's [`SaveId`] in a [`Saved`]
+/// component: a save names entities by it, never by `Entity`, which the ECS
+/// reuses. The map's objects and the player take theirs from their names
+/// ([`SaveId::authored`]), at or above [`AUTHORED`], when the run's start
+/// names them; anything spawned later takes the run's next ([`take_id`]),
+/// below it, from the counter the engine's flush counts its spawns on: a
+/// kept identity (`Saved::kept`) that 01's own records save, or a spawn the
+/// engine saves whole.
+pub use tungsten::core::save::{AUTHORED, SaveId, Saved};
 
-/// The bit every authored save ID sets and no runtime one reaches.
-pub const AUTHORED: u64 = 1 << 31;
-
-impl SaveId {
-    /// The save ID of the object named `name`: the name's 32-bit FNV-1a
-    /// hash with [`AUTHORED`] set, so the map's order moves no save.
-    #[must_use]
-    pub fn authored(name: &str) -> Self {
-        let mut hash: u32 = 0x811c_9dc5;
-        for byte in name.bytes() {
-            hash ^= u32::from(byte);
-            hash = hash.wrapping_mul(0x0100_0193);
-        }
-        Self(u64::from(hash) | AUTHORED)
-    }
+/// Takes the run's next save ID, for a spawn of the run, from the counter
+/// the engine's flush takes its spawns' IDs from.
+///
+/// # Panics
+///
+/// Without a run, whose start names the player and gives the World its save
+/// state, or once the IDs run out.
+pub fn take_id(world: &mut World) -> SaveId {
+    tungsten::core::save::take_id(world).expect("a run's save state: its start names the player")
 }
 
-/// The run's next save ID, a `World` resource: what spawns during a run
-/// takes the next, counting from 0 below [`AUTHORED`].
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SaveIds {
-    next: u64,
+/// The save ID the run's next spawn takes; 0 without a run.
+#[must_use]
+pub fn next_id(world: &World) -> u64 {
+    world
+        .get_resource::<tungsten::core::save::SaveState>()
+        .map_or(0, tungsten::core::save::SaveState::next_id)
 }
 
-impl SaveIds {
-    /// A counter whose next ID is `next`, as a save holds it.
-    #[must_use]
-    pub fn starting_at(next: u64) -> Self {
-        Self { next }
-    }
-
-    /// The ID the next spawn takes.
-    #[must_use]
-    pub fn peek(&self) -> u64 {
-        self.next
-    }
-
-    /// Takes the next ID.
-    ///
-    /// # Panics
-    ///
-    /// When the count reaches [`AUTHORED`], where the map's IDs start.
-    pub fn take(&mut self) -> SaveId {
-        assert!(self.next < AUTHORED, "the run's save IDs ran out");
-        let id = SaveId(self.next);
-        self.next += 1;
-        id
-    }
+/// `entity`'s save ID, its [`Saved`] identity's; none for an entity no
+/// save names.
+#[must_use]
+pub fn save_id(world: &World, entity: Entity) -> Option<SaveId> {
+    world.get::<Saved>(entity).map(Saved::id)
 }
+
+/// A spawn of the kit's that 01 took in, a bullet, a fire missile or a
+/// rolled orb, or one 01 made in its place: its adopt system's work done,
+/// at its spawn or at a load. Rebuilt, not saved.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Joined;
 
 /// `entity`'s body centre: its `Position` plus its collider's offset, the
 /// point itself for an entity with no collider. None without a position.
@@ -200,6 +186,67 @@ pub fn fit_body(world: &mut World, entity: Entity, actor: &str) {
     }
 }
 
+/// The part of `prefab`'s loaded `components` at `path`, key by key
+/// (`&["rigid_body", "shape", "radius"]`), read as a `T` straight off the
+/// borrowed value: a number's or a pair's read allocates nothing. None
+/// when the prefab, the part or a `T` there is missing.
+#[must_use]
+pub fn prefab_part<'w, T: Deserialize<'w>>(
+    world: &'w World,
+    prefab: &str,
+    path: &[&str],
+) -> Option<T> {
+    let components = &world
+        .get_resource::<PrefabRegistry>()?
+        .get(prefab)?
+        .components;
+    let (first, rest) = path.split_first()?;
+    let part = rest
+        .iter()
+        .try_fold(components.get(*first)?, |part, key| part.get(*key))?;
+    T::deserialize(part).ok()
+}
+
+/// The number at `path` in `prefab`'s components ([`prefab_part`]).
+///
+/// # Panics
+///
+/// When it is missing: each prefab 01 places loads with the manifest.
+#[must_use]
+pub fn prefab_number(world: &World, prefab: &str, path: &[&str]) -> f32 {
+    prefab_part(world, prefab, path).unwrap_or_else(|| {
+        panic!(
+            "no number `{}` in the prefab `{prefab}`: each prefab 01 places loads with the manifest",
+            path.join(".")
+        )
+    })
+}
+
+/// `prefab`'s rigid body as its file sets it ([`prefab_part`]): its half
+/// size, a circle's radius as a square's, and its offset, the body's
+/// centre from the sprite's top-left, none when the file names none.
+///
+/// # Panics
+///
+/// When the prefab has no rigid body with a box or a circle: each prefab
+/// 01 places loads with the manifest.
+#[must_use]
+pub fn prefab_box(world: &World, prefab: &str) -> (Vec2, Vec2) {
+    let shape = ["rigid_body", "shape"];
+    let radius = prefab_part::<f32>(world, prefab, &[shape[0], shape[1], "radius"]);
+    let half = radius.map(Vec2::splat).or_else(|| {
+        prefab_part::<[f32; 2]>(world, prefab, &[shape[0], shape[1], "half_extents"])
+            .map(Vec2::from)
+    });
+    let offset = prefab_part::<[f32; 2]>(world, prefab, &["rigid_body", "offset"]);
+    let half = half.unwrap_or_else(|| {
+        panic!(
+            "no box or circle in the prefab `{prefab}`'s rigid body: each prefab 01 places loads with the manifest"
+        )
+    });
+    (half, offset.map_or(Vec2::ZERO, Vec2::from))
+}
+
 /// How far `at` lies from a body of `shape` about `centre`: 0 inside it.
 #[must_use]
 pub fn surface_distance(at: Vec2, centre: Vec2, shape: Shape) -> f32 {
@@ -212,137 +259,97 @@ pub fn surface_distance(at: Vec2, centre: Vec2, shape: Shape) -> f32 {
     }
 }
 
-/// At most this many bursts count at once; a cosmetic burst past it is
-/// dropped, and a key burst takes the oldest cosmetic one's slot.
+/// At most this many bursts count at once, the kit's [`Bursts`] budget's
+/// cap at boot (`game::register`); a cosmetic burst past it is dropped,
+/// and a key burst takes the oldest cosmetic one's slot.
 pub const BURST_CAP: usize = 16;
 
 /// A one-off particle burst at a point, a jump's puff or an impact's
-/// sparks, despawned once its particles are gone. Presentation: never
-/// saved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Burst {
-    /// Its place in the run's bursts, which orders the oldest first.
-    pub order: u64,
-    /// A key burst: a death, gore, a summon, a shatter or a refusal, which
-    /// the cap never drops.
-    pub key: bool,
-    /// It counts against [`BURST_CAP`]; a cosmetic burst that gave its
-    /// slot to a key one fades out uncounted.
-    pub counted: bool,
-}
+/// sparks, despawned once its particles are gone: the kit's, whose `key`
+/// marks a death, gore, a summon, a shatter or a refusal, which the cap
+/// never drops. Presentation: never saved.
+pub use tungsten::kit::ParticleBurst as Burst;
 
-/// The bursts a run has spawned, which seed the next, so a run's bursts
-/// look the same whatever entity IDs the ECS hands out.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Bursts(pub u64);
+/// The kit's burst budget, whose count of the bursts spawned seeds the
+/// next, so a run's bursts look the same whatever entity IDs the ECS hands
+/// out: a run starts it again.
+pub use tungsten::kit::BurstBudget as Bursts;
 
 /// Spawns a cosmetic burst of the particle config `name` at `at`, owned by
 /// gameplay, unless [`BURST_CAP`] bursts count or the config is unknown. It
-/// is spawned at once, so the engine's emit pass of this frame sees it.
+/// is spawned at once, so the engine's emit pass of this frame sees it
+/// ([`tungsten::kit::burst`]).
 pub fn spawn_burst(world: &mut World, name: &str, at: Vec2) -> Option<Entity> {
-    if counted_bursts(world) >= BURST_CAP {
-        return None;
-    }
-    burst(world, name, at, false)
+    tungsten::kit::burst_with(world, name, at, false, OWNED)
 }
 
 /// Spawns a key burst of the particle config `name` at `at`: a death,
 /// gore, a summon, a shatter or a refusal. At the cap, the oldest cosmetic
 /// burst gives up its slot, drained at once and no longer counted, its
-/// particles left to fade, and `burst_cleanup` sweeps it as it does a burst;
+/// particles left to fade, and the kit's sweep takes it as it does a burst;
 /// with every slot a key burst's, it is dropped.
 pub fn spawn_key_burst(world: &mut World, name: &str, at: Vec2) -> Option<Entity> {
-    if counted_bursts(world) >= BURST_CAP {
-        let oldest = world
-            .query::<(Entity, &Burst)>()
-            .filter(|(_, burst)| burst.counted && !burst.key)
-            .min_by_key(|(_, burst)| burst.order)
-            .map(|(entity, _)| entity)?;
-        if let Some(burst) = world.get_mut::<Burst>(oldest) {
-            burst.counted = false;
-        }
-        if let Some(state) = world.get_mut::<ParticleEmitterState>(oldest) {
-            state.drained = true;
-        }
-    }
-    burst(world, name, at, true)
+    tungsten::kit::burst_with(world, name, at, true, OWNED)
 }
 
-/// How many bursts count against [`BURST_CAP`].
-fn counted_bursts(world: &World) -> usize {
+/// The first frame's sprite of the animation `clip`, as an
+/// [`AnimationState`] starting it shows it, from the World's
+/// [`AnimationRegistry`]: a one-shot look's sprite before its clip's first
+/// tick, so no look names a frame by hand. None when the registry lacks the
+/// clip.
+#[must_use]
+pub fn clip_sprite(world: &World, clip: &str) -> Option<SpriteAssetId> {
+    AnimationState::new(clip).current_sprite(world.get_resource::<AnimationRegistry>()?)
+}
+
+/// The size of the sprite `name`, else of the first frame of the clip
+/// `name`, in its art's pixels, as the World's registry knows it: a loaded
+/// sprite's, or the size a headless run noted for it
+/// (`Harness::note_sprite_sizes`), so what is laid out, placed or tiled by
+/// its art reads the art.
+///
+/// # Panics
+///
+/// When the registry knows no size for it: each sprite and clip the game
+/// names loads with the manifest.
+#[must_use]
+pub fn sprite_size(world: &World, name: &str) -> Vec2 {
     world
-        .query::<&Burst>()
-        .filter(|burst| burst.counted)
-        .count()
-}
-
-/// A burst of `name` at `at`, the run's next.
-fn burst(world: &mut World, name: &str, at: Vec2, key: bool) -> Option<Entity> {
-    let config = world
-        .get_resource::<ParticleConfigRegistry>()?
-        .id_for_name(name)?;
-    let order = match world.get_resource_mut::<Bursts>() {
-        Some(bursts) => {
-            bursts.0 = bursts.0.wrapping_add(1);
-            bursts.0
-        }
-        None => 0,
-    };
-    Some(world.spawn_with((
-        Burst {
-            order,
-            key,
-            counted: true,
-        },
-        Transform::from_position(at),
-        ParticleEmitter::with_seed(config, 0x1a_0000 + order),
-        ParticleEmitterState::default(),
-        SceneEntity { state_id: GAMEPLAY },
-    )))
-}
-
-/// `burst_cleanup`: despawns each burst whose emitter has ticked, drained
-/// and reported it, and that owns no particle.
-pub fn burst_cleanup(world: &mut World) {
-    let drained: Vec<Entity> = world
-        .query::<(Entity, &Burst, &ParticleEmitterState)>()
-        .filter(|(_, _, state)| {
-            state.first_tick_done
-                && state.drained
-                && state.drain_reported
-                && state.active_count == 0
+        .get_resource::<AssetRegistry>()
+        .and_then(|assets| {
+            let named = assets.sprite_id(name).and_then(|id| assets.sprite_size(id));
+            named.or_else(|| {
+                let clip = world.get_resource::<AnimationRegistry>()?.get(name)?;
+                assets.sprite_size(clip.frames.first()?.sprite)
+            })
         })
-        .map(|(entity, ..)| entity)
-        .collect();
-    if drained.is_empty() {
-        return;
-    }
-    // One pass over the particles for every drained burst, not one each
-    // (P6).
-    let owning: std::collections::HashSet<Entity> = world
-        .query::<&Particle>()
-        .filter_map(|particle| particle.emitter)
-        .filter(|emitter| drained.contains(emitter))
-        .collect();
-    let finished: Vec<Entity> = drained
-        .into_iter()
-        .filter(|entity| !owning.contains(entity))
-        .collect();
-    for entity in finished {
-        world.despawn(entity);
-    }
+        .map(|(width, height)| Vec2::new(width as f32, height as f32))
+        .unwrap_or_else(|| {
+            panic!("no size for the sprite or clip `{name}`: each loads with the manifest")
+        })
 }
+
+/// A value in `[0, 1)` drawn from `seed`: the top 24 bits of core's
+/// `splitmix64` of it, over 2^24. Every hashed look and spread draws from
+/// it: a site with two numbers folds them as `(a << 32) | b`, one with
+/// several draws from one number takes the draw's index in the top byte
+/// (`seed ^ (k << 56)`).
+#[must_use]
+pub fn unit(seed: u64) -> f32 {
+    (tungsten::core::splitmix64(seed) >> 40) as f32 / (1u64 << 24) as f32
+}
+
+/// A burst's gameplay ownership, spawned with it in one archetype move.
+const OWNED: (SceneEntity,) = (SceneEntity { state_id: GAMEPLAY },);
 
 /// Despawns `entity` and every entity that hangs from it, down the tree,
 /// at once: a body that leaves mid-step takes its art and emitters along.
+/// The kit's `despawn_recursive`, queued on a buffer of its own and flushed
+/// here, so nothing else queued for the frame's flush runs early.
 pub fn despawn_tree(world: &mut World, entity: Entity) {
-    let mut stack = vec![entity];
-    while let Some(entity) = stack.pop() {
-        if let Some(children) = world.get::<Children>(entity) {
-            stack.extend(children.iter());
-        }
-        world.despawn(entity);
-    }
+    let mut commands = CommandBuffer::new();
+    despawn_recursive(&mut commands, entity);
+    world.flush(commands);
 }
 
 /// Whether `action` is held, through the `ActionMap`, in the input the UI

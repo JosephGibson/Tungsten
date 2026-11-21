@@ -1,22 +1,23 @@
-//! The player's gameplay options, beside the engine's `Settings`: their own
-//! `SaveData` type in their own store, the slot `options` of
-//! `SaveSlots::new(<user folder>/options)`, so the save slots never list
-//! them. A damaged file logs, toasts and falls back to the defaults.
+//! The player's gameplay options: the game section of the engine's
+//! `Settings` (`settings.json`'s `game`), read once into a `World` resource,
+//! the live copy, and written back by [`save`]. Bloom and the mute while the
+//! window has no focus are the engine's own switches (`Settings::bloom`,
+//! `Settings::mute_unfocused`). The options file of a shell before the game
+//! section, `<user folder>/options/options.json`, is read once, into both,
+//! while `Settings` holds no game section.
 
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
-use tungsten::core::save::SaveError;
-use tungsten::core::{CameraController, SaveData, SaveSlots, World};
+use tungsten::core::settings::SettingsError;
+use tungsten::core::{CameraController, SaveData, SaveSlots, Settings, World};
 
-use super::toast;
-
-const SLOT: &str = "options";
+/// The older shell's options slot and its folder under the user folder.
+const OLD: &str = "options";
 
 /// The gameplay options: a `World` resource.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GameOptions {
-    /// Silence the game while its window has no focus.
-    pub mute_unfocused: bool,
     /// Pause gameplay when its window loses focus.
     pub pause_unfocused: bool,
     /// Float the damage a hit deals.
@@ -24,27 +25,18 @@ pub struct GameOptions {
     /// Write the autosaves: at a run's start, at pause, on quitting and at
     /// the exit, and when the game asks.
     pub autosave: bool,
-    /// Draw the game's Bloom passes; off, the shell takes them out of its
-    /// `PostStack` until the option comes back on.
-    pub bloom: bool,
     screen_shake: f32,
 }
 
 impl Default for GameOptions {
     fn default() -> Self {
         Self {
-            mute_unfocused: false,
             pause_unfocused: true,
             damage_numbers: true,
             autosave: true,
-            bloom: true,
             screen_shake: 1.0,
         }
     }
-}
-
-impl SaveData for GameOptions {
-    const SCHEMA: u32 = 1;
 }
 
 impl GameOptions {
@@ -63,36 +55,70 @@ impl GameOptions {
     }
 }
 
-/// The options' store.
-struct OptionsStore {
-    slots: SaveSlots,
+/// The older shell's options file: the options with the two switches the
+/// engine now keeps.
+#[derive(Serialize, Deserialize)]
+#[serde(default)]
+struct OldOptions {
+    mute_unfocused: bool,
+    bloom: bool,
+    #[serde(flatten)]
+    options: GameOptions,
 }
 
-/// Loads the options into the world: `ShellPlugin`'s build calls it, and
-/// `shell_start` applies them.
-pub(crate) fn load(world: &mut World) {
+impl Default for OldOptions {
+    fn default() -> Self {
+        Self {
+            mute_unfocused: false,
+            bloom: true,
+            options: GameOptions::default(),
+        }
+    }
+}
+
+impl SaveData for OldOptions {
+    const SCHEMA: u32 = 1;
+}
+
+/// Reads the older shell's options file into `Settings` while they hold no
+/// game section: Bloom off and the mute on go to the engine's switches, the
+/// rest to the section, and `Settings` save, so the file is read once.
+fn adopt_old(world: &mut World) {
+    let settings = world.resource::<Settings>();
+    if settings.game::<Option<IgnoredAny>>().is_some() {
+        return;
+    }
     let dir = world
         .get_resource::<SaveSlots>()
         .and_then(SaveSlots::dir)
         .and_then(|saves| saves.parent())
-        .map(|user| user.join(SLOT));
-    let slots = SaveSlots::new(dir);
-    let options = match slots.load::<GameOptions>(SLOT) {
-        Ok(mut options) => {
-            // Serde writes the fields as they are; the setter checks them.
-            let shake = options.screen_shake;
-            options.screen_shake = 1.0;
-            options.set_screen_shake(shake);
-            options
-        }
-        Err(SaveError::NotFound { .. } | SaveError::NoFolder) => GameOptions::default(),
-        Err(error) => {
-            log::warn!("Options not loaded, so the defaults apply: {error}");
-            toast::toast(world, "Options could not be read; using the defaults");
-            GameOptions::default()
-        }
+        .map(|user| user.join(OLD));
+    let Ok(old) = SaveSlots::new(dir).load::<OldOptions>(OLD) else {
+        return;
     };
-    world.insert_resource(OptionsStore { slots });
+    let settings = world.resource_mut::<Settings>();
+    if !old.bloom {
+        settings.set_bloom(Some(false));
+    }
+    if old.mute_unfocused {
+        settings.set_mute_unfocused(Some(true));
+    }
+    settings.set_game(&old.options);
+    if let Err(error) = settings.save() {
+        log::warn!("The old options were read but not saved: {error}");
+    }
+}
+
+/// Loads the options into the world from `Settings`' game section, the
+/// defaults without one: `ShellPlugin`'s build calls it, and `shell_start`
+/// applies them.
+pub(crate) fn load(world: &mut World) {
+    adopt_old(world);
+    let mut options: GameOptions = world.resource::<Settings>().game();
+    // Serde writes the fields as they are; the setter checks them.
+    let shake = options.screen_shake;
+    options.screen_shake = 1.0;
+    options.set_screen_shake(shake);
     world.insert_resource(options);
 }
 
@@ -105,11 +131,14 @@ pub fn apply(world: &mut World) {
     }
 }
 
-/// Writes the options; a failure logs.
-pub fn save(world: &World) {
-    let store = world.resource::<OptionsStore>();
-    match store.slots.save(SLOT, world.resource::<GameOptions>()) {
-        Ok(()) | Err(SaveError::NoFolder) => {}
-        Err(error) => log::warn!("Options not saved: {error}"),
+/// Writes `Settings`, the options in their game section; a failure logs,
+/// and no user folder saves nothing.
+pub fn save(world: &mut World) {
+    let options = *world.resource::<GameOptions>();
+    let settings = world.resource_mut::<Settings>();
+    settings.set_game(&options);
+    match settings.save() {
+        Ok(()) | Err(SettingsError::NoFolder) => {}
+        Err(error) => log::warn!("Settings not saved: {error}"),
     }
 }

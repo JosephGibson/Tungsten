@@ -1,51 +1,51 @@
 //! The toxic flask (e01flask, V39): a glass flask of poison the wizard lobs
-//! at the cursor on the world's gravity ([`throw`]). Its `toxic_flask`
-//! prefab is the fire missile's kit projectile on its linear motion, which
-//! is exact under a constant fall, so it passes through the cursor; it has
-//! no body, so nothing pushes it and it passes through the wizard. It
-//! bursts where its step first meets a tile or a body but the wizard's
-//! ([`contacts`]), where the kit's projectile step ends it at a wall, or at
-//! its range's end in the air ([`ends`]): a splash of poison on the living
-//! in reach ([`SPLASH_RADIUS`]). At most [`FLASK_CAP`] fly at once.
+//! at the cursor ([`throw`]), aimed by the acceleration it flies by, its
+//! prefab's `linear_motion.acceleration`, whatever the world's gravity. Its
+//! `toxic_flask` prefab is the fire missile's kit projectile on its linear
+//! motion, which is exact under a constant fall, so it passes through the
+//! cursor; it has
+//! no body, so nothing pushes it and it passes through the wizard. The
+//! kit's projectile step ends it where its own shape's sweep first meets a
+//! tile or a body in its body walls but the wizard's, or at its range's end
+//! in the air, and sets off its prefab's end blast, its splash: poison on
+//! the living in reach, the wizard spared, a spell's hit from him while he
+//! lives, at the step's resolve. [`ends`] shows its burst. At most three
+//! fly at once, its prefab's refusing kit `cap`.
 
 use glam::Vec2;
+use serde::Deserialize;
 use tungsten::SceneEntity;
+use tungsten::core::save::Value;
 use tungsten::core::{
-    AnimationState, AssetRegistry, Collider, Entity, EventCursor, EventQueue, Position,
-    PrevPosition, Sprite, Transform, Visibility, World,
+    AnimationState, Entity, EventCursor, EventQueue, PhysicsLayers, PrefabRegistry, PrevPosition,
+    Sprite, Transform, Visibility, World,
 };
-use tungsten::kit::{Health, Lifetime, LinearMotion, ProjectileExpired, Source, Tags};
+use tungsten::kit::{
+    Blast, HitShape, Lifetime, LinearMotion, Projectile, ProjectileExpired, Source, WorldCue,
+    cap_refuses, lob_velocity,
+};
 
 use super::components::ToxicFlask;
-use super::systems::first_contact;
-use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{Hit, Kind, LIVING};
-use crate::features::enemies::troll;
-use crate::features::level::GRAVITY;
-use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, despawn_tree, spawn_burst, surface_distance};
+use crate::shared::{SaveId, Saved, prefab_part};
 
-/// Its prefab, its radius, its centre from its sprite's top-left and the
-/// most that fly at once, past which a toss is refused.
+/// Its prefab, whose `cap` refuses a toss past three in flight, its radius
+/// and its centre from its sprite's top-left.
 pub const FLASK_PREFAB: &str = "toxic_flask";
 pub const FLASK_RADIUS: f32 = 5.0;
 pub const FLASK_CENTRE: Vec2 = Vec2::splat(8.0);
-pub const FLASK_CAP: usize = 3;
 /// Its flight to the cursor: `sqrt(2 d / g)` seconds over the distance `d`,
 /// within these (Q10).
 pub const FLIGHT_LEAST: f32 = 0.25;
 pub const FLIGHT_MOST: f32 = 0.9;
-/// Its splash: the poison at its centre, half of it at its reach, measured
-/// to each target's surface (Q9).
-pub const SPLASH_RADIUS: f32 = 96.0;
-pub const SPLASH_POISON: f32 = 16.0;
 /// Its burst: the clip played once over its centre, its frames' seconds,
-/// the clip's frame's centre, its particles and its draw order, the
-/// flask's.
+/// the clip's frame's centre and its draw order, the flask's; and its
+/// world cue (`data/world_cues/`), which bursts its particles,
+/// [`BURST_PARTICLES`], and plays its sound.
 pub const BURST_CLIP: &str = "ex10_toxic_flask_burst";
 pub const BURST_CENTRE: Vec2 = Vec2::splat(48.0);
 pub const BURST_SECS: f32 = 0.3;
+pub const BURST_CUE: &str = "flask_burst";
 pub const BURST_PARTICLES: &str = "ex10_flask_splash";
 const BURST_Z: i32 = 14;
 
@@ -53,8 +53,8 @@ const BURST_Z: i32 = 14;
 #[must_use]
 pub fn flying(world: &World) -> Vec<(SaveId, Entity)> {
     let mut flasks: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &ToxicFlask, &SaveId)>()
-        .map(|(entity, _, id)| (*id, entity))
+        .query::<(Entity, &ToxicFlask, &Saved)>()
+        .map(|(entity, _, id)| (id.id(), entity))
         .collect();
     flasks.sort_unstable_by_key(|&(id, _)| id);
     flasks
@@ -66,30 +66,51 @@ pub fn count(world: &World) -> usize {
     world.query::<&ToxicFlask>().count()
 }
 
-/// The seconds a toss takes over `distance`.
+/// The acceleration a flask flies by, px/s²: its prefab's
+/// `linear_motion.acceleration`, which its motion integrates; none when
+/// the prefab or the part is missing.
 #[must_use]
-pub fn flight(distance: f32) -> f32 {
-    (2.0 * distance / GRAVITY)
+pub fn acceleration(world: &World) -> Vec2 {
+    prefab_part::<[f32; 2]>(world, FLASK_PREFAB, &["linear_motion", "acceleration"])
+        .map_or(Vec2::ZERO, Vec2::from)
+}
+
+/// The seconds a toss takes over `distance`, falling by a flask's
+/// [`acceleration`]; the most when it does not fall.
+#[must_use]
+pub fn flight(world: &World, distance: f32) -> f32 {
+    let fall = acceleration(world).length();
+    if fall <= 0.0 {
+        return FLIGHT_MOST;
+    }
+    (2.0 * distance / fall)
         .sqrt()
         .clamp(FLIGHT_LEAST, FLIGHT_MOST)
 }
 
 /// `thrower` tosses a flask from `from`, its centre, through `to` in
-/// [`flight`]'s seconds. None at [`FLASK_CAP`].
+/// [`flight`]'s seconds. None at its prefab's cap, which refuses it.
 pub fn throw(world: &mut World, thrower: Entity, from: Vec2, to: Vec2) -> Option<Entity> {
-    if count(world) >= FLASK_CAP {
+    if cap_refuses(world, FLASK_PREFAB) {
         return None;
     }
-    let time = flight(from.distance(to));
-    let velocity = troll::ballistic(from, to, time, Vec2::new(0.0, GRAVITY));
-    Some(spawn(world, from - FLASK_CENTRE, velocity, Some(thrower)))
+    let time = flight(world, from.distance(to));
+    let velocity = lob_velocity(from, to, time, acceleration(world));
+    spawn(world, from - FLASK_CENTRE, velocity, Some(thrower))
 }
 
 /// A flask with its sprite's top-left at `corner` flying at `velocity`,
-/// from `source`, at once, with the run's next save ID: a toss's, or a
-/// load's.
-pub fn spawn(world: &mut World, corner: Vec2, velocity: Vec2, source: Option<Entity>) -> Entity {
-    let flask = super::spawn_toy(world, FLASK_PREFAB, corner, 1.0);
+/// from `source`, at once, one of the run's records admitted under its
+/// prefab's `cap` from `source`: a toss's. None when the cap refuses it.
+pub fn spawn(
+    world: &mut World,
+    corner: Vec2,
+    velocity: Vec2,
+    source: Option<Entity>,
+) -> Option<Entity> {
+    let flask = super::admit_toy(world, FLASK_PREFAB, corner, 1.0, source)?
+        .prepared
+        .spawn(world);
     if let Some(motion) = world.get_mut::<LinearMotion>(flask) {
         motion.set_velocity(velocity);
     }
@@ -99,32 +120,13 @@ pub fn spawn(world: &mut World, corner: Vec2, velocity: Vec2, source: Option<Ent
     if let Some(source) = source {
         world.insert(flask, Source::new(source));
     }
-    flask
+    Some(flask)
 }
 
-/// `flask_contacts`, in the overlap phase before the kit's projectile step:
-/// each flask in save-ID order whose centre's step met a tile or a body
-/// but the wizard's, within its radius, bursts at the first point it met.
-pub fn contacts(world: &mut World) {
-    for (_, flask) in flying(world) {
-        let (Some(at), Some(prev)) = (
-            world.get::<Position>(flask).map(|at| at.0),
-            world.get::<PrevPosition>(flask).map(|prev| prev.0),
-        ) else {
-            continue;
-        };
-        let hit = first_contact(world, prev + FLASK_CENTRE, at + FLASK_CENTRE, FLASK_RADIUS);
-        if let Some(hit) = hit {
-            despawn_tree(world, flask);
-            burst(world, hit);
-        }
-    }
-}
-
-/// `flask_ends`, in the overlap phase after the kit's projectile step,
-/// so its splash takes the step's resolve: a flask the step ended, at a
-/// wall it swept to or at its range's end, bursts where it ended. `cursor`
-/// reads each end once.
+/// `flask_ends`, in the overlap phase after the kit's projectile step: a
+/// flask the step ended, at a wall or a body it swept its shape to or at
+/// its range's end, shows its burst where its shape's centre ended, its
+/// end's blast the kit's splash. `cursor` reads each end once.
 pub fn ends(world: &mut World, cursor: &mut EventCursor<ProjectileExpired>) {
     let Some(events) = world.get_resource::<EventQueue<ProjectileExpired>>() else {
         return;
@@ -139,12 +141,11 @@ pub fn ends(world: &mut World, cursor: &mut EventCursor<ProjectileExpired>) {
     }
 }
 
-/// A flask's burst at `at`: its splash, its clip once over its centre, its
-/// particles and its sound.
+/// A flask's burst's look at `at`, its splash the kit's: its clip once over
+/// its centre, and its world cue, its particles and its sound.
 pub fn burst(world: &mut World, at: Vec2) {
-    splash(world, at);
-    if let Some(assets) = world.get_resource_mut::<AssetRegistry>() {
-        let mut sprite = Sprite::new(assets.intern_sprite(&format!("{BURST_CLIP}_0")));
+    if let Some(frame) = crate::shared::clip_sprite(world, BURST_CLIP) {
+        let mut sprite = Sprite::new(frame);
         sprite.z_order = BURST_Z;
         world.spawn_with((
             Transform::from_position(at - BURST_CENTRE),
@@ -155,37 +156,74 @@ pub fn burst(world: &mut World, at: Vec2) {
             SceneEntity { state_id: GAMEPLAY },
         ));
     }
-    spawn_burst(world, BURST_PARTICLES, at);
-    audio::play(world, Sound::FlaskBurst, at);
+    WorldCue::new(BURST_CUE, at).play(world);
 }
 
-/// The splash at `at`: each live `living` target with health but the
-/// wizard whose surface lies within [`SPLASH_RADIUS`] takes
-/// [`SPLASH_POISON`] at the burst's centre falling to half at the reach, a
-/// spell's hit from the wizard while he lives, in save-ID order.
-fn splash(world: &mut World, at: Vec2) {
-    let player = world.get_resource::<Run>().map(|run| run.player);
-    let caster = player.filter(|&player| {
-        world.is_alive(player) && world.get::<Health>(player).is_some_and(|h| !h.is_dead())
-    });
-    let mut targets: Vec<(Option<SaveId>, Entity, f32)> = world
-        .query::<(Entity, &Health, &Tags, &Position, &Collider)>()
-        .filter(|(entity, health, tags, ..)| {
-            !health.is_dead() && Some(*entity) != player && tags.has(LIVING)
-        })
-        .filter_map(|(entity, _, _, p, collider)| {
-            let distance = surface_distance(at, p.0 + collider.offset, collider.shape);
-            (distance <= SPLASH_RADIUS)
-                .then(|| (world.get::<SaveId>(entity).copied(), entity, distance))
-        })
-        .collect();
-    targets.sort_by_key(|(id, ..)| *id);
-    for (_, target, distance) in targets {
-        let amount = SPLASH_POISON * (1.0 - 0.5 * distance / SPLASH_RADIUS);
-        let mut hit = Hit::new(target, [(Kind::Poison, amount)]).at(at).spell();
-        if let Some(caster) = caster {
-            hit = hit.from(caster);
-        }
-        hit.queue(world);
+/// What a restored flask's spawn gave it beyond its saved state: an older
+/// save's, whose projectile has no end, shape or body walls, takes its
+/// prefab's, read from the prefab's data, so it splashes and meets bodies
+/// as a fresh toss does.
+pub fn restored(world: &mut World, flask: Entity) {
+    let Some(projectile) = world.get::<Projectile>(flask) else {
+        return;
+    };
+    let (end, shape, walls) = (
+        projectile.end_blast().is_none(),
+        projectile.shape().is_none(),
+        projectile.body_walls() == 0,
+    );
+    if projectile.is_spent() || !(end || shape || walls) {
+        return;
     }
+    let Some(data) = world
+        .get_resource::<PrefabRegistry>()
+        .and_then(|prefabs| prefabs.get(FLASK_PREFAB))
+        .and_then(|data| data.components.get("projectile"))
+    else {
+        return;
+    };
+    let mut whole = projectile.clone();
+    if end
+        && let Some(blast) = data
+            .get("end")
+            .and_then(|end| end.get("blast"))
+            .and_then(|blast| Blast::deserialize(blast.clone()).ok())
+    {
+        whole = whole.with_end(blast);
+    }
+    if shape
+        && let Some(own) = data
+            .get("shape")
+            .and_then(|own| HitShape::deserialize(own.clone()).ok())
+    {
+        let offset = data
+            .get("offset")
+            .and_then(Value::as_array)
+            .and_then(|xy| {
+                Some(Vec2::new(
+                    xy.first()?.as_f64()? as f32,
+                    xy.get(1)?.as_f64()? as f32,
+                ))
+            })
+            .unwrap_or(Vec2::ZERO);
+        whole = whole.with_shape(own, offset);
+    }
+    if walls && let Some(list) = data.get("body_walls").and_then(Value::as_array) {
+        whole = whole.with_body_walls(layer_mask(world, list));
+    }
+    if let Some(projectile) = world.get_mut::<Projectile>(flask) {
+        *projectile = whole;
+    }
+}
+
+/// A prefab's layer list as a mask, one bit per layer: each entry a layer
+/// number or the manifest's `physics_layers` name for one.
+fn layer_mask(world: &World, list: &[Value]) -> u32 {
+    let names = world.get_resource::<PhysicsLayers>();
+    list.iter()
+        .filter_map(|entry| match entry {
+            Value::String(name) => names?.bit(name),
+            number => 1_u32.checked_shl(u32::try_from(number.as_u64()?).ok()?),
+        })
+        .fold(0, |mask, bit| mask | bit)
 }

@@ -1,7 +1,9 @@
 //! The player's systems and queries: the staff light and zoom actions,
-//! the jump's shove, the kill row, the hurt a blow plays, the bursts and
-//! one-shot clips its moves start, a cast's gesture, and the staff light's
-//! glow with its flare.
+//! the jump's shove, the kill row, the hurt a blow plays, the one-shot
+//! clips its moves start, a cast's gesture, and the staff light's glow
+//! with its flare. Its jumps', bounds' and landings' bursts and sounds are
+//! the controller's cue events, played by the prefab's `cues` and the
+//! `air_jumped` rules.
 
 use glam::Vec2;
 use tungsten::core::{
@@ -10,46 +12,29 @@ use tungsten::core::{
     With, World,
 };
 use tungsten::kit::{
-    DamageRequest, Damaged, Facing, Health, Intent, PlatformerController, Shield, Stats, Used,
+    CharacterAnimator, Damaged, Facing, Health, Intent, PlatformerController, Stats, Used,
     use_ability,
 };
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::components::{Lantern, LanternAnchors, Moves, Player, Shown, StaffGlow};
 use super::{
-    FLARE_CORE, FLARE_LIGHT, FLARE_RADIUS, GUTTER_PUFF, Gesture, JUMP_SPEED, LAND_SECS,
-    RELIGHT_MANA, SHOVE_BESIDE, SHOVE_HEAD, SHOVE_OVER, SHOVE_SIDE, STAFF_LIGHT, STUCK_BY,
-    ZOOM_MAX, ZOOM_MIN, ZOOM_STEP,
+    FLARE_CORE, FLARE_LIGHT, FLARE_RADIUS, GUTTER_PUFF, JUMP_SPEED, LAND_SECS, RELIGHT_MANA,
+    SHOVE_BESIDE, SHOVE_HEAD, SHOVE_OVER, SHOVE_SIDE, STAFF_LIGHT, STUCK_BY, ZOOM_MAX, ZOOM_MIN,
+    ZOOM_STEP,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::{Glow, Zoom};
-use crate::features::level::{KILL_Y, WORLD_MAX, WORLD_MIN};
 use crate::features::tomes;
 use crate::shared::{body_centre, just_pressed, spawn_burst};
 
-/// The one-shot clips, each with a left-facing twin named `<clip>_left`:
-/// the land, the air jump's tuck, a blow's hurt, the death and the
-/// gestures'.
+/// 01's one-shot clips, each with a left-facing twin named `<clip>_left`:
+/// the land, the air jump's tuck, a blow's hurt and the death. A pressed
+/// spell's gesture is its ability's `clip`, which the kit's animator plays.
 pub const LAND_CLIP: &str = "ex10_player_land";
 pub const AIR_JUMP_CLIP: &str = "ex10_player_double_jump";
 pub const HURT_CLIP: &str = "ex10_player_hurt";
 pub const DEATH_CLIP: &str = "ex10_player_death";
-pub const TOSS_CLIP: &str = "ex10_player_toss";
-pub const BOLT_CLIP: &str = "ex10_player_bolt";
-pub const PUSH_CLIP: &str = "ex10_player_push";
-pub const CONJURE_CLIP: &str = "ex10_player_conjure";
-/// The idle clip, which a cast's pose replaces with a pose frame.
-pub const IDLE_CLIP: &str = "ex10_player_idle";
-/// The pose frames, facing right from straight up (0) to straight down (4)
-/// by eighths of a turn, each with a left-facing twin: the staff levelled
-/// along the aim, the sprays' and the small balls', and the pistol, the
-/// gun's.
-pub const STAFF_FRAME: &str = "ex10_player_staff";
-pub const AIM_FRAME: &str = "ex10_player_aim";
-/// The bursts a jump, an air jump and a landing play.
-pub const JUMP_PUFF: &str = "ex10_jump_puff";
-pub const AIR_JUMP_BURST: &str = "ex10_double_jump";
-pub const LANDING_DUST: &str = "ex10_landing_dust";
 /// The lantern's anchors, by their data entry.
 pub const ANCHORS: &str = "player";
 /// Game seconds the wizard shows red after a blow, fading, and holds the
@@ -202,61 +187,6 @@ pub fn unstick(world: &mut World) {
     world.insert_resource(Shove(Some(centre)));
 }
 
-/// Whether a body at `at` with `collider` lies wholly outside the box the
-/// level's bodies live in.
-#[must_use]
-pub fn escaped(at: Vec2, collider: Option<&Collider>) -> bool {
-    let (min, max) = extent(at, collider);
-    max.y < WORLD_MIN.y || past_the_sides_or_foot(min, max)
-}
-
-/// The box of a body at `at` with `collider`, min and max; its point with
-/// none.
-fn extent(at: Vec2, collider: Option<&Collider>) -> (Vec2, Vec2) {
-    collider.map_or((at, at), |collider| {
-        let centre = at + collider.offset;
-        let half = collider.shape.half_extents();
-        (centre - half, centre + half)
-    })
-}
-
-/// Whether a box, min to max, lies wholly past the level box's sides or its
-/// foot: what the player's check reads, since a bound may carry the wizard
-/// over its top, and gravity always brings him back.
-fn past_the_sides_or_foot(min: Vec2, max: Vec2) -> bool {
-    max.x < WORLD_MIN.x || min.x > WORLD_MAX.x || min.y > WORLD_MAX.y
-}
-
-/// `player_bounds`, in the overlap phase: a player whose body falls past
-/// the kill row, or leaves the level's box by a side or its foot, takes a
-/// hit of all its health and the pact's shield over it; over the box's top,
-/// where a bound may carry him, he falls back. The hit is periodic, so it
-/// lands inside the invulnerability window.
-pub fn bounds(world: &mut World) {
-    let Some(player) = player(world) else {
-        return;
-    };
-    let (Some(at), Some(health)) = (
-        world.get::<Position>(player).map(|p| p.0),
-        world.get::<Health>(player),
-    ) else {
-        return;
-    };
-    if health.is_dead() {
-        return;
-    }
-    // Through the pact's shield too, which takes a hit first.
-    let amount = health.current() + world.get::<Shield>(player).map_or(0.0, Shield::current);
-    let collider = world.get::<Collider>(player);
-    let below = body_centre(world, player).is_some_and(|centre| centre.y > KILL_Y);
-    let (min, max) = extent(at, collider);
-    if below || past_the_sides_or_foot(min, max) {
-        DamageRequest::new(player, amount)
-            .with_periodic(true)
-            .queue(world);
-    }
-}
-
 /// `player_staff_light`, in the intent phase before the spells: a lit
 /// staff light burns its ability's mana each step, its effect granting
 /// `staff.lit`; at full mana the regeneration's surplus feeds it, so the
@@ -313,12 +243,11 @@ pub fn staff_light(world: &mut World) {
     }
 }
 
-/// `player_hurt`, in the react phase: a blow on the player plays its hurt
-/// sound, shake, tint and clip and fills the hurt edge, and the hit that
-/// kills it, a blow or a tick, its death sound and a harder shake in their
-/// place; a tick of burning or bleeding that does not kill raises the edge
-/// to [`TICK_EDGE`] at least and plays its soft tick, once a step however
-/// many land (K1 stays). `cursor` reads each hit once.
+/// `player_hurt`, in the react phase: a blow on the player plays its tint
+/// and clip and fills the hurt edge; a tick of burning or bleeding that does
+/// not kill raises the edge to [`TICK_EDGE`] at least (K1 stays). Its
+/// sounds and shakes are the `player_hurt` group's cue rules: the death's,
+/// a blow's or a tick's, once a step. `cursor` reads each hit once.
 pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     let Some(player) = player(world) else {
         return;
@@ -341,26 +270,16 @@ pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
             moves.edge = moves.edge.max(TICK_EDGE);
         }
     }
-    let sound = if killed {
-        Sound::PlayerDied
-    } else if hurt {
-        Sound::PlayerHurt
-    } else {
-        Sound::PlayerTicked
-    };
-    if (hurt || ticked || killed)
-        && let Some(at) = body_centre(world, player)
-    {
-        audio::play(world, sound, at);
-    }
 }
 
-/// `player_moves`, in the react phase: a jump puffs at the feet it left
-/// from and an air jump bursts there with its whoosh and tucks, a bound
-/// with its ring and its sound, and a bound refused for mana sounds its
-/// refusal; a landing after the first raises dust and holds the land clip.
-/// A dead player's body drops where it died and falls as its controller
-/// falls, its input locked for good (F13), and its clips and bursts end.
+/// `player_moves`, in the react phase: an air jump tucks, a bound opens
+/// its ring under the feet it left from, and a landing holds the land
+/// clip. The puff, the bursts, the dust and the sounds are the cues' (the
+/// prefab's `jumped`, `landed` and `jump_refused`, and the two
+/// `air_jumped` rules, a free one's and a paid one's). A dead player's
+/// body drops where it died and falls as its controller falls, its input
+/// locked for good (F13), as its health's death policy (`disarm`) stopped
+/// it at the kill, and its clips end.
 pub fn moves(world: &mut World) {
     let Some(player) = player(world) else {
         return;
@@ -370,28 +289,14 @@ pub fn moves(world: &mut World) {
         let left = world
             .get::<Facing>(player)
             .is_some_and(|facing| facing.direction().x < 0.0);
-        let first = world.get_mut::<Moves>(player).is_some_and(|moves| {
+        if let Some(moves) = world.get_mut::<Moves>(player) {
             moves.landing = 0.0;
             moves.tuck = false;
-            let first = !std::mem::replace(&mut moves.dead, true);
-            if first {
+            if !std::mem::replace(&mut moves.dead, true) {
                 // The death clip takes over from any gesture, flare or
                 // hurt, facing as the wizard faced.
                 (moves.cast, moves.glow, moves.hurt_clip) = (0.0, 0.0, 0.0);
                 moves.dead_left = left;
-            }
-            first
-        });
-        if first {
-            // Straight down from where it died: no run or knockback slides
-            // it, and its rise or fall carries on.
-            let fall = world
-                .get::<Velocity>(player)
-                .map_or(0.0, |velocity| velocity.0.y);
-            if let Some(controller) = world.get_mut::<PlatformerController>(player) {
-                controller.set_run(0.0);
-                controller.launch(Vec2::new(0.0, fall));
-                controller.lock_input(f32::MAX);
             }
         }
         return;
@@ -404,16 +309,11 @@ pub fn moves(world: &mut World) {
         controller.air_jumped(),
         controller.grounded(),
     );
-    let (bound, refused) = (controller.paid_air_jumped(), controller.air_jump_refused());
-    let body = super::body(world);
-    let feet = body.centre + Vec2::new(0.0, body.half.y);
-    let at = world.get::<Position>(player).map_or(Vec2::ZERO, |p| p.0);
-    let from = world.get::<PrevPosition>(player).map_or(at, |p| p.0);
+    let (bound, landed) = (controller.paid_air_jumped(), controller.landed());
     let rising = world.get::<Velocity>(player).is_some_and(|v| v.0.y < 0.0);
     let Some(moves) = world.get_mut::<Moves>(player) else {
         return;
     };
-    let landed = grounded && !moves.grounded && moves.settled;
     if jumped {
         moves.landing = 0.0;
         moves.tuck = air;
@@ -421,38 +321,30 @@ pub fn moves(world: &mut World) {
     if landed {
         moves.landing = LAND_SECS;
     }
-    if grounded {
-        moves.settled = true;
-    }
     if grounded || !rising {
         moves.tuck = false;
     }
-    moves.grounded = grounded;
     if jumped && bound {
+        // The ring stays a one-shot of 01's: a cue's prefab, spawned from
+        // the saved player, would be saved with the run.
+        let body = super::body(world);
+        let feet = body.centre + Vec2::new(0.0, body.half.y);
+        let at = world.get::<Position>(player).map_or(Vec2::ZERO, |p| p.0);
+        let from = world.get::<PrevPosition>(player).map_or(at, |p| p.0);
         tomes::systems::bound(world, from + feet);
-    } else if jumped {
-        let burst = if air { AIR_JUMP_BURST } else { JUMP_PUFF };
-        spawn_burst(world, burst, from + feet);
-        if air {
-            audio::play(world, Sound::AirJumped, from + feet);
-        }
-    }
-    // A bound the mana could not pay for, once a press.
-    if refused {
-        audio::play(world, Sound::NoMana, at + feet);
-    }
-    if landed {
-        spawn_burst(world, LANDING_DUST, at + feet);
     }
 }
 
 /// `player_clips`, in the present phase after the character animator: the
 /// death clip once the wizard dies, held on its last frame, facing as he
-/// died; else the hurt clip after a blow, facing as he does; a cast's
-/// gesture facing its aim; the air jump's tuck while he rises and the land
-/// clip while it holds on the ground, facing as he does: shown over the
-/// animator's clip and then handed back to it. Then, standing, a cast's
-/// pose over the idle clip's frame.
+/// died; else the hurt clip after a blow, facing as he does; else, while
+/// the animator plays no one-shot (a pressed spell's gesture, its
+/// ability's clip), the air jump's tuck while he rises and the land clip
+/// while it holds on the ground, facing as he does: shown over the
+/// animator's clip and then handed back to it. And the pose tags, held
+/// exactly while a pour's or a shot's cast seconds run, whose rules show
+/// the pose strips on the animator, standing ([`super::pose_tags`]): a tag
+/// a load restored goes at its first frame.
 pub fn clips(world: &mut World) {
     let Some(player) = player(world) else {
         return;
@@ -465,6 +357,9 @@ pub fn clips(world: &mut World) {
     let left = world
         .get::<Facing>(player)
         .is_some_and(|facing| facing.direction().x < 0.0);
+    let gesturing = world
+        .get::<CharacterAnimator>(player)
+        .is_some_and(|animator| animator.playing().is_some());
     let Some(moves) = world.get_mut::<Moves>(player) else {
         return;
     };
@@ -478,14 +373,13 @@ pub fn clips(world: &mut World) {
         *timer = (*timer - dt).max(0.0);
     }
     moves.edge = (moves.edge - dt / EDGE_SECS).max(0.0);
-    let aim = moves.aim;
     let gesture = moves.gesture.filter(|_| moves.cast > 0.0);
     let clip = if moves.dead {
         Some((DEATH_CLIP, moves.dead_left))
     } else if moves.hurt_clip > 0.0 {
         Some((HURT_CLIP, left))
-    } else if let Some(clip) = gesture.and_then(one_shot) {
-        Some((clip, aim.x < 0.0))
+    } else if gesturing {
+        None
     } else if !grounded && rising && moves.tuck {
         Some((AIR_JUMP_CLIP, left))
     } else if grounded && moves.landing > 0.0 {
@@ -501,6 +395,7 @@ pub fn clips(world: &mut World) {
         }
     });
     let shown = moves.shown.take();
+    super::pose_tags(world, player, gesture);
     let Some(registry) = world.remove_resource::<AnimationRegistry>() else {
         return;
     };
@@ -541,83 +436,10 @@ pub fn clips(world: &mut World) {
         }
         (None, None) => None,
     };
-    let pose = gesture
-        .and_then(pose_frames)
-        .filter(|_| grounded && next.is_none());
     if let Some(moves) = world.get_mut::<Moves>(player) {
         moves.shown = next;
     }
-    dress(world, player, &registry, pose, aim);
     world.insert_resource(registry);
-}
-
-/// A gesture's one-shot clip, none for a pose.
-fn one_shot(gesture: Gesture) -> Option<&'static str> {
-    match gesture {
-        Gesture::Toss => Some(TOSS_CLIP),
-        Gesture::Bolt => Some(BOLT_CLIP),
-        Gesture::Push => Some(PUSH_CLIP),
-        Gesture::Conjure => Some(CONJURE_CLIP),
-        Gesture::Pour | Gesture::Shoot => None,
-    }
-}
-
-/// A pose's frames, none for a one-shot gesture.
-fn pose_frames(gesture: Gesture) -> Option<&'static str> {
-    match gesture {
-        Gesture::Pour => Some(STAFF_FRAME),
-        Gesture::Shoot => Some(AIM_FRAME),
-        _ => None,
-    }
-}
-
-/// Dresses the frame `player` shows for a cast's pose: standing in its idle
-/// clip, the frame of `pose`'s set nearest `aim`, facing it. A pose no
-/// longer wanted gives the clip's frame back.
-fn dress(
-    world: &mut World,
-    player: Entity,
-    registry: &AnimationRegistry,
-    pose: Option<&str>,
-    aim: Vec2,
-) {
-    let (Some(state), Some(assets)) = (
-        world.get::<AnimationState>(player),
-        world.get_resource::<AssetRegistry>(),
-    ) else {
-        return;
-    };
-    let shown = world.get::<Sprite>(player).map(|sprite| sprite.asset_id);
-    let dressed = shown
-        .and_then(|id| assets.sprite_name(id))
-        .is_some_and(|name| name.starts_with(STAFF_FRAME) || name.starts_with(AIM_FRAME));
-    let Some(frame) = state.current_sprite(registry) else {
-        return;
-    };
-    let name = match pose {
-        Some(frames) if state.animation_id.starts_with(IDLE_CLIP) => pose_frame(frames, aim),
-        _ if dressed => match assets.sprite_name(frame) {
-            Some(name) => name.to_string(),
-            None => return,
-        },
-        _ => return,
-    };
-    let id = assets.sprite_id(&name).unwrap_or(frame);
-    if let Some(sprite) = world.get_mut::<Sprite>(player) {
-        sprite.asset_id = id;
-    }
-}
-
-/// The frame of the pose set `frames` nearest `aim`, facing it.
-#[must_use]
-pub fn pose_frame(frames: &str, aim: Vec2) -> String {
-    let up = (-aim.y).atan2(aim.x.abs()).to_degrees();
-    let index = ((90.0 - up) / 45.0).round().clamp(0.0, 4.0) as usize;
-    if aim.x < 0.0 {
-        format!("{frames}_{index}_left")
-    } else {
-        format!("{frames}_{index}")
-    }
 }
 
 /// Shows `state` on `player`, its current frame in the sprite at once.

@@ -20,10 +20,25 @@
           "team.player"
         ]
       },
-      "magnet": 480
+      "magnet": 480,
+      "fall": 120,
+      "fall_layers": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
     },
     "lifetime": {
-      "seconds": 20
+      "seconds": 20,
+      "blink": {
+        "last": 3,
+        "rate": [
+          5,
+          5
+        ]
+      }
     },
     "glow": {
       "offset": [
@@ -46,8 +61,20 @@
             "id": "ex10_orb_pickup_sfx",
             "min_interval": 0.05
           }
+        },
+        {
+          "effect": {
+            "id": "orb_heal",
+            "target": "other"
+          }
+        },
+        {
+          "burst": "ex10_orb_health"
         }
       ]
-    }
+    },
+    "tags": [
+      "level.saved"
+    ]
   }
 }

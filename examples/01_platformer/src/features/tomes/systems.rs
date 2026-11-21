@@ -2,26 +2,28 @@
 
 use glam::Vec2;
 use tungsten::SceneEntity;
-use tungsten::core::{
-    AnimationState, AssetRegistry, Entity, Sprite, Time, Transform, Visibility, World,
+use tungsten::core::{AnimationState, Entity, Sprite, Transform, Visibility, World};
+use tungsten::kit::{
+    Health, Lifetime, Line, Modifier, PlatformerController, Shield, Stats, TagFilter, WorldCue,
 };
-use tungsten::kit::{Health, Lifetime, Modifier, PlatformerController, Shield, Stats};
 
 use super::components::{TomeKind, Tomes};
 use super::{
-    ARCANE_FACTOR, ARCANE_SOURCE, BOUND_CENTRE, BOUND_CLIP, BOUND_COST, BOUND_SECS, BOUND_SPARKS,
-    BOUND_TRAIL, BOUND_Z, INTERACT, PACT_DELAY, PACT_RECHARGE, PACT_SHIELD, PACT_SOURCE,
-    TAKE_CENTRE, TAKE_SECS, TAKE_Z, nearest,
+    ARCANE_FACTOR, ARCANE_SOURCE, BOUND_CENTRE, BOUND_CLIP, BOUND_COST, BOUND_SECS, BOUND_Z,
+    INTERACT, PACT_DELAY, PACT_RECHARGE, PACT_SHIELD, PACT_SOURCE, TAKE_CENTRE, TAKE_SECS, TAKE_Z,
+    nearest,
 };
-use crate::features::audio;
-use crate::features::audio::components::Sound;
-use crate::features::combat::SPELL_POWER;
+use crate::features::combat::{SPELL, STATUS_THRESHOLD};
 use crate::features::run::Run;
 use crate::features::spells::SPELL_COST;
 use crate::features::spells::hud;
 use crate::game::GAMEPLAY;
-use crate::shared::{despawn_tree, just_pressed, spawn_burst, spawn_key_burst};
+use crate::shared::{despawn_tree, just_pressed};
 use crate::shell;
+
+/// The pact's factor on the player's [`STATUS_THRESHOLD`]: 50 to 40, as
+/// the kit's ladder had it at 30 plus a fifth of the halved health.
+pub const PACT_THRESHOLD: f32 = 0.8;
 
 /// The run's player while it lives.
 fn live_player(world: &World) -> Option<Entity> {
@@ -33,14 +35,14 @@ fn live_player(world: &World) -> Option<Entity> {
 }
 
 /// `tomes_take`, in the tick phase before the kit's `stats_apply`: on an
-/// `interact` press the live player takes the nearest book in reach, once
-/// a frame (`taken` holds the frame of the last). Its kind joins the
-/// player's [`Tomes`], its change applies ([`apply`]), its take clip and key
-/// burst play at its centre with its pickup sound, and the book goes with
-/// its children.
-pub fn take(world: &mut World, taken: &mut Option<u64>) {
-    let frame = world.resource::<Time>().frame();
-    if *taken == Some(frame) || !just_pressed(world, INTERACT) {
+/// `interact` press the live player takes the nearest book in reach. A
+/// press is fresh in one fixed step alone, the engine's rule, so a frame
+/// of two steps takes one book. Its kind joins the player's [`Tomes`], its
+/// change applies ([`apply`]), its take clip plays at its centre with its
+/// world cue, the tome data's `take_cue`, its key burst and its pickup
+/// sound, and the book goes with its children.
+pub fn take(world: &mut World) {
+    if !just_pressed(world, INTERACT) {
         return;
     }
     let Some(player) = live_player(world) else {
@@ -49,31 +51,39 @@ pub fn take(world: &mut World, taken: &mut Option<u64>) {
     let Some((book, kind, at)) = nearest(world, player) else {
         return;
     };
-    *taken = Some(frame);
     match world.get_mut::<Tomes>(player) {
         Some(tomes) => tomes.0.push(kind),
         None => world.insert(player, Tomes(vec![kind])),
     }
     apply(world, player, kind);
     despawn_tree(world, book);
-    one_shot(world, kind.take_clip(), at - TAKE_CENTRE, TAKE_SECS, TAKE_Z);
-    spawn_key_burst(world, kind.take_sparks(), at);
-    audio::play(world, kind.sound(), at);
+    let (clip, cue) = {
+        let tome = super::data(world, kind);
+        (tome.take_clip.clone(), tome.take_cue.clone())
+    };
+    one_shot(world, &clip, at - TAKE_CENTRE, TAKE_SECS, TAKE_Z);
+    WorldCue::new(cue, at).play(world);
 }
 
 /// What taking `kind` changes on `player`. The pact: half the maximum
 /// health for good, a `Mul(0.5)` on `max_health` that `stats_apply` writes
-/// into `Health` in the take's own step, keeping its share, and a full
+/// into `Health` in the take's own step, keeping its share, its status
+/// threshold with it ([`PACT_THRESHOLD`], 50 to 40, as the ladder's fifth
+/// of its health had it), and a full
 /// shield of [`PACT_SHIELD`] that recharges [`PACT_RECHARGE`] a second
 /// [`PACT_DELAY`] seconds after a hit. Bounding: an air jump past the
 /// controller's free one costs [`BOUND_COST`] mana, with no cap. Arcane
-/// power: [`SPELL_COST`] and [`SPELL_POWER`] at a base of 1 where the
-/// player lacks them, an older save's, each times [`ARCANE_FACTOR`].
+/// power: [`SPELL_COST`] at a base of 1 where the player lacks it, an older
+/// save's, times [`ARCANE_FACTOR`], and a line on its `damage_dealt`, at a
+/// base of 1 where it lacks the stat, of [`ARCANE_FACTOR`] on the hits in
+/// the [`SPELL`] context.
 fn apply(world: &mut World, player: Entity, kind: TomeKind) {
     match kind {
         TomeKind::Pact => {
             if let Some(stats) = world.get_mut::<Stats>(player) {
                 stats.add_modifier(Stats::MAX_HEALTH, PACT_SOURCE, Modifier::Mul(0.5));
+                let threshold = Modifier::Mul(PACT_THRESHOLD);
+                stats.add_modifier(STATUS_THRESHOLD, PACT_SOURCE, threshold);
             }
             let shield = Shield::new(PACT_SHIELD).with_recharge(PACT_RECHARGE, PACT_DELAY);
             world.insert(player, shield);
@@ -85,34 +95,34 @@ fn apply(world: &mut World, player: Entity, kind: TomeKind) {
         }
         TomeKind::Arcane => {
             if let Some(stats) = world.get_mut::<Stats>(player) {
-                for stat in [SPELL_COST, SPELL_POWER] {
+                for stat in [SPELL_COST, Stats::DAMAGE_DEALT] {
                     if stats.base(stat).is_none() {
                         stats.set_base(stat, 1.0);
                     }
-                    stats.add_modifier(stat, ARCANE_SOURCE, Modifier::Mul(ARCANE_FACTOR));
                 }
+                stats.add_modifier(SPELL_COST, ARCANE_SOURCE, Modifier::Mul(ARCANE_FACTOR));
+                let spells = TagFilter::new().all([SPELL]);
+                let line = Line::new(Modifier::Mul(ARCANE_FACTOR)).with(spells);
+                stats.add_line(Stats::DAMAGE_DEALT, ARCANE_SOURCE, line);
             }
         }
     }
 }
 
-/// A bound from `feet`, in place of the double jump's burst and whoosh:
-/// its ring opening under them, its sparks and its trail, and its sound.
+/// A bound's ring, opening under `feet`: its sparks, its trail and its
+/// sound are the paid `air_jumped` rule's, in `cue_rules/sounds.json`.
 pub fn bound(world: &mut World, feet: Vec2) {
     one_shot(world, BOUND_CLIP, feet - BOUND_CENTRE, BOUND_SECS, BOUND_Z);
-    spawn_burst(world, BOUND_SPARKS, feet);
-    spawn_burst(world, BOUND_TRAIL, feet);
-    audio::play(world, Sound::Bounded, feet);
 }
 
 /// The clip `clip` once, its sprite's top-left at `corner` at `z`, shown
 /// (the sprite extract draws only what says so), owned by gameplay and gone
 /// `secs` later, as it ends.
 fn one_shot(world: &mut World, clip: &str, corner: Vec2, secs: f32, z: i32) {
-    let Some(assets) = world.get_resource_mut::<AssetRegistry>() else {
+    let Some(frame) = crate::shared::clip_sprite(world, clip) else {
         return;
     };
-    let mut sprite = Sprite::new(assets.intern_sprite(&format!("{clip}_0")));
+    let mut sprite = Sprite::new(frame);
     sprite.z_order = z;
     world.spawn_with((
         Transform::from_position(corner),

@@ -16,16 +16,15 @@ use tungsten::core::ui::{
     Edges, Justify, LayoutStyle, Sizing, StyleOverrides, UiBindings, UiKey, UiTree, WidgetId,
     screen_build, widgets,
 };
+use tungsten::screens::{self, Confirm, toast};
 use tungsten::{GameState, StateContext, StateId, StateMusic};
 
-use super::confirm::{self, ConfirmState};
 use super::options::GameOptions;
 use super::saves::{Mode, SavesState, age, slot_name};
 use super::settings::SettingsState;
 use super::{
     AUTOSAVES, BACK, Difficulty, GameInfo, Menu, RunStart, RunState, Shell, SlotState, activated,
     cancelled, enter, idle, load, newest, push, quit_game, read_slots, stack, start_run, theme,
-    toast,
 };
 use crate::game::difficulty_note;
 use crate::save::SaveGame;
@@ -163,8 +162,8 @@ impl TitleState {
             return start_run(world, start, None);
         }
         let question = "Start a new game? Its autosaves will replace the oldest ones.";
-        let ask = ConfirmState::new(question, "Start", "Cancel");
-        confirm::ask(
+        let ask = Confirm::new(question, "Start", "Cancel");
+        screens::ask(
             world,
             ask.on_yes(move |world| start_run(world, start, None)),
         );
@@ -179,7 +178,6 @@ impl GameState for TitleState {
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let world = &mut *ctx.world;
         world.remove_resource::<RunState>();
-        theme::apply(world);
         let (slots, warnings) = read_slots(world);
         self.newest = newest(&slots);
         let ready = |(slot, state): &(&str, SlotState)| {
@@ -207,7 +205,7 @@ impl GameState for TitleState {
         let shell = world.resource_mut::<Shell>();
         if warnings > 0 && !std::mem::replace(&mut shell.warned, true) {
             let files = if warnings == 1 { "file" } else { "files" };
-            toast::toast(world, format!("{warnings} save {files} could not be read"));
+            toast(world, format!("{warnings} save {files} could not be read"));
         }
     }
 

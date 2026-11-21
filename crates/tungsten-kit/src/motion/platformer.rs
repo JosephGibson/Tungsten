@@ -25,6 +25,7 @@ use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::layers::{LayerRef, check_layers, layer_bits, layer_list};
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::stats::Stats;
+use crate::foundation::tags::Tags;
 use crate::foundation::{
     fraction, non_negative, optional_non_negative, optional_positive, optional_vec2, positive, vec2,
 };
@@ -1969,8 +1970,13 @@ impl Runner {
             let ground = controller.ground();
             *world.get_mut::<PlatformerController>(entity).unwrap() = controller;
             world.get_mut::<Velocity>(entity).unwrap().0 = moved.velocity;
-            // A lift reads its rider at its next step.
-            if let Some(follower) = ground.and_then(|ground| world.get_mut::<PathFollower>(ground))
+            // A lift reads its rider at its next step: the controller its
+            // rule's filter passes marks it.
+            if let Some(ground) = ground
+                && world
+                    .get::<PathFollower>(ground)
+                    .is_some_and(|follower| follower.takes(world.get::<Tags>(entity)))
+                && let Some(follower) = world.get_mut::<PathFollower>(ground)
             {
                 follower.mark_ridden();
             }

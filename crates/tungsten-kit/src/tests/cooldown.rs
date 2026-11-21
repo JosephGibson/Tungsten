@@ -199,3 +199,31 @@ fn the_scene_form_builds_and_the_save_form_round_trips() {
 fn a_zero_cycle_panics() {
     let _ = Cooldown::new(0.0);
 }
+
+// example-01-spells-toys-gun, Step 7: a cooldown's seconds left set.
+
+#[test]
+fn a_cooldowns_left_can_be_set() {
+    let (mut world, mut schedule) = rig();
+    let mut cooldown = Cooldown::new(6.0).with_count(1);
+    cooldown.set_left(0.25);
+    assert_eq!(cooldown.left(), 0.25);
+    assert_eq!(cooldown.seconds(), 6.0, "its cycle's seconds kept");
+    assert_eq!(cooldown.remaining(), Some(1), "its elapses kept");
+    let saved: Cooldown = serde_json::from_value(serde_json::to_value(&cooldown).unwrap()).unwrap();
+    assert_eq!(saved, cooldown, "saved and loaded with that left");
+    let fuse = world.spawn_with((saved,));
+    let mut at = None;
+    for step in 1..=30 {
+        if frame(&mut world, &mut schedule, 1.0 / 60.0).contains(&fuse) {
+            at = Some(step);
+            break;
+        }
+    }
+    assert_eq!(at, Some(15), "0.25 s at 1/60 s");
+    assert_eq!(world.get::<Cooldown>(fuse).unwrap().remaining(), Some(0));
+    for bad in [-0.5, f32::NAN, f32::INFINITY] {
+        let set = std::panic::catch_unwind(|| Cooldown::new(1.0).set_left(bad));
+        assert!(set.is_err(), "{bad} panics");
+    }
+}

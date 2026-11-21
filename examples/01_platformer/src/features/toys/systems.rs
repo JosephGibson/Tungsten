@@ -2,57 +2,51 @@
 
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
-use tungsten::WindowSize;
-use tungsten::core::assets::LayerKind;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, BodyKind, CameraState,
-    Collider, Entity, EventCursor, EventQueue, Light, LightKind, Particle, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, RigidBody, ShakeEvent, Shape,
-    SoundRegistry, Sprite, TilemapInstance, TilemapRegistry, Time, Transform, Velocity, Visibility,
-    With, World,
+    AssetRegistry, AudioCommands, BodyKind, Bundle, Collider, Easing, Entity, EventCursor,
+    EventQueue, Light, LightKind, Particle, ParticleConfigRegistry, ParticleEmitter,
+    ParticleEmitterState, Position, PrevPosition, RigidBody, Shape, SoundRegistry, Sprite, Time,
+    Transform, Tween, TweenChannel, Velocity, Visibility, With, World,
 };
 use tungsten::kit::{
-    Children, Health, LinearMotion, Modifier, PlatformerController, Projectile, ProjectileExpired,
-    Stats, TopDownMover, knock_back,
+    Blast, Children, CooldownElapsed, EffectInstance, Effects, Health, LinearMotion, Modifier,
+    PlatformerController, Projectile, ProjectileExpired, Stats, Steering, Tags, TopDownMover,
+    WorldCue, blast, carrier_of, knock_back, steered_direction, stimulate,
 };
-use tungsten::physics::wake;
+use tungsten::physics::{SpatialFilter, SpatialHit, cast_shape_where, wake};
 
 use super::components::{
-    Ball, BallHue, BlackHole, BowlingBall, Element, FireMissile, Flare, HoleHold, IronBlock,
-    IronScrap, OpeningOf, Oriented, PreviousVelocity, Ring, ScrapTumble, ShockRing, SmallBall,
+    Ball, BallHue, BlackHole, Element, FireMissile, Flare, HoleHold, IronBlock, IronScrap,
+    OpenRing, OpeningOf, Oriented, PreviousVelocity, Pull, Ring, RingLook, ShockRing, SmallBall,
     Spray, SprayEmitter,
 };
+use super::draw;
 use super::{
-    BLAST_RADIUS, BLAST_TRAUMA, BOWLING_PULL, BROOM_MOST, BROOM_REACH, COLLAPSE_RING,
-    FIRE_SPRAY_RANGE, FROZEN_FRICTION, HOLD_EASE, HOLD_RING, HOLD_SWIRL, HOLE_FORCE, HOLE_RADIUS,
-    IRON_FALL_FROM, IRON_FRICTION, IRON_LAND_SHAKE, IRON_PULL, IRON_WEIGHT, LOOP_FADE,
-    MISSILE_RADIUS, MISSILE_SIZE, OPEN_INWARD, OPEN_REACH, PUSH_RADIUS, PUSH_SPEED, RING_SECS,
-    SCRAP_PULL, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
+    BLAST_RADIUS, BROOM_MOST, BROOM_REACH, COLLAPSE_RING, FIRE_SPRAY_RANGE, FROZEN_FRICTION,
+    HOLD_EASE, HOLD_RING, HOLD_SWIRL, HOLE_FORCE, HOLE_RADIUS, IRON_FALL_FROM, IRON_FRICTION,
+    IRON_WEIGHT, LOOP_FADE, MISSILE_RADIUS, OPEN_INWARD, OPEN_REACH, PUSH_RADIUS, PUSH_SPEED,
+    RING_SECS, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{
-    self, BLAST_FIRE, COLD_SPRAY_DPS, FIRE_SPRAY_DPS, FROZEN, Kind, SPRAY_PULSE, has_status,
+    self, BLAST_FIRE, COLD_SPRAY_DPS, FIRE_SPRAY_DPS, FROZEN, Kind, SPELL, SPRAY_PULSE, has_status,
 };
 use crate::features::dummy::components::Dummy;
-use crate::features::elements::cascade::{self, CascadeKind};
-use crate::features::elements::components::{BallBurn, Frozen};
-use crate::features::elements::{
-    self, FIRE_CENTRE, FIRE_HALF, SMALL_STEAM_REACH, STEAM_REACH, freeze_amount,
-};
+use crate::features::elements::cascade;
+use crate::features::elements::components::Flame;
+use crate::features::elements::{self, FIRE_CENTRE, FIRE_HALF, STEAM_REACH, freeze_amount};
+use crate::features::elements::{BALL_BURN, COAT, is_burning, is_frozen};
+use crate::features::elements::{Impact, Raised};
 use crate::features::enemies;
-use crate::features::enemies::components::{Enemy, EnemyKind, Held, Throws};
-use crate::features::level::components::{Doused, Hazard};
+use crate::features::enemies::components::{Enemy, EnemyKind, Throws};
+use crate::features::level::components::Hazard;
 use crate::features::level::geyser::{self, Geyser};
-use crate::features::level::systems::drawn_time;
+use crate::features::level::systems::{CORE, CORE_MATERIAL, drawn_time};
 use crate::features::player::components::Player;
-use crate::features::player::systems::escaped;
-use crate::features::props::{
-    self,
-    components::{Crate, Keg},
-};
+use crate::features::props::{self, components::Crate};
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst, surface_distance};
+use crate::shared::{SaveId, Saved, body_centre, despawn_tree, spawn_burst, surface_distance};
 
 /// The light a missile leaves where it ends, and its fades.
 const FLARE_COLOR: Vec3 = Vec3::new(1.0, 0.56, 0.22);
@@ -60,8 +54,6 @@ const FLARE_RADIUS: f32 = 192.0;
 const FLARE_INTENSITY: f32 = 2.4;
 const FLARE_SECS: f32 = 0.3;
 const BLAST_FLARE_SECS: f32 = 0.5;
-/// Longest gap between a missile's contact samples along its step.
-const SAMPLE_STEP: f32 = 6.0;
 /// A spray's beam half width, its start from the caster's centre, and how
 /// fast iron frosts and thaws under it.
 const BEAM_HALF_WIDTH: f32 = 4.0;
@@ -81,31 +73,35 @@ pub const FLAME_WALL_HIT: &str = "ex10_flame_wall_hit";
 const COLD_LOOP: &str = "ex10_ice_spray_sfx";
 const FIRE_LOOP: &str = "ex10_flame_spray_sfx";
 
-/// `toys_tick`, in the tick phase: the holes' lives, each collapsing at
-/// its end, the small balls' impact cooldowns, the hues' turn and the
-/// shock rings' growth, each by the step.
-pub fn tick(world: &mut World) {
+/// `toys_tick`, in the tick phase after the kit's cooldowns: the hues' turn
+/// and the shock rings' growth, each by the step, then each hole whose
+/// life's cooldown elapsed this step ([`CooldownElapsed`], read once
+/// through `cursor`) collapsing, in save-ID order.
+pub fn tick(world: &mut World, cursor: &mut EventCursor<CooldownElapsed>) {
+    let mut collapsed: Vec<(Option<SaveId>, Entity)> = world
+        .get_resource::<EventQueue<CooldownElapsed>>()
+        .map(|events| {
+            cursor
+                .read(events)
+                .filter(|elapsed| world.has::<BlackHole>(elapsed.entity))
+                .map(|elapsed| {
+                    let id = world.get::<Saved>(elapsed.entity).map(Saved::id);
+                    (id, elapsed.entity)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let dt = world.resource::<Time>().delta();
     if dt <= 0.0 {
         return;
     }
     let mut closed = Vec::new();
-    let mut collapsed: Vec<(Option<SaveId>, Entity)> = Vec::new();
-    for (entity, hole, id) in world.query_mut::<(Entity, &mut BlackHole, Option<&SaveId>)>() {
-        hole.left -= dt;
-        if hole.left <= 0.0 {
-            collapsed.push((id.copied(), entity));
-        }
-    }
-    for ball in world.query_mut::<&mut SmallBall>() {
-        ball.impact_cooldown = (ball.impact_cooldown - dt).max(0.0);
-    }
     for hue in world.query_mut::<&mut BallHue>() {
         hue.hue = (hue.hue + hue.speed * dt).rem_euclid(1.0);
     }
-    for (entity, ring) in world.query_mut::<(Entity, &mut ShockRing)>() {
-        ring.age += dt;
-        if ring.age >= RING_SECS {
+    for (entity, opening) in world.query_mut::<(Entity, &mut OpenRing)>() {
+        opening.age += dt;
+        if opening.age >= RING_SECS {
             closed.push(entity);
         }
     }
@@ -118,13 +114,21 @@ pub fn tick(world: &mut World) {
     }
 }
 
+/// The toys' looks at a point, named world cues (`data/world_cues/`): a
+/// hole's collapse's sound; a hard landing of iron's thud, with its shake
+/// by the distance from the listener; and a fireball's blast's boom and
+/// its shake, as far.
+pub const HOLE_COLLAPSED: &str = "hole_collapsed";
+pub const IRON_LANDED: &str = "iron_landed";
+pub const FIREBALL_BLAST: &str = "fireball_blast";
+
 /// Closes `hole`, by its time or the cap: its collapse sounds where it
-/// stood and leaves a small pale ring there, which pushes nothing, and it
-/// goes with its emitters.
+/// stood, by its world cue, and leaves a small pale ring there, which
+/// pushes nothing, and it goes with its emitters.
 pub fn collapse(world: &mut World, hole: Entity) {
     if let Some(at) = world.get::<Transform>(hole).map(|at| at.position) {
         ring(world, at, COLLAPSE_RING, Ring::Collapse);
-        audio::play(world, Sound::HoleCollapsed, at);
+        WorldCue::new(HOLE_COLLAPSED, at).play(world);
     }
     despawn_tree(world, hole);
 }
@@ -135,8 +139,8 @@ pub fn collapse(world: &mut World, hole: Entity) {
 /// every eighth it takes puffs.
 pub fn broom(world: &mut World) {
     let mut holes: Vec<(SaveId, Vec2)> = world
-        .query::<(&BlackHole, &Transform, &SaveId)>()
-        .map(|(_, at, id)| (*id, at.position))
+        .query::<(&BlackHole, &Transform, &Saved)>()
+        .map(|(_, at, id)| (id.id(), at.position))
         .collect();
     if holes.is_empty() {
         return;
@@ -144,13 +148,13 @@ pub fn broom(world: &mut World) {
     holes.sort_by_key(|(id, _)| *id);
     let reach = BROOM_REACH * BROOM_REACH;
     let near: Vec<(SaveId, Entity, Vec2)> = world
-        .query::<(Entity, &SmallBall, &Position, &Collider, &SaveId)>()
+        .query::<(Entity, &SmallBall, &Position, &Collider, &Saved)>()
         .filter_map(|(entity, _, p, collider, id)| {
             let centre = p.0 + collider.offset;
             holes
                 .iter()
                 .any(|(_, hole)| hole.distance_squared(centre) <= reach)
-                .then_some((*id, entity, centre))
+                .then_some((id.id(), entity, centre))
         })
         .collect();
     let mut taken: Vec<(Entity, Vec2)> = Vec::new();
@@ -203,7 +207,7 @@ pub fn weight(world: &mut World) {
         .query::<(Entity, &IronBlock, &Velocity)>()
         .filter(|(block, _, velocity)| {
             velocity.0.y > IRON_FALL_FROM
-                && !world.has::<Held>(*block)
+                && carrier_of(world, *block).is_none()
                 && throws.is_none_or(|throws| throws.of(*block).is_none())
         })
         .map(|(block, ..)| block)
@@ -215,17 +219,19 @@ pub fn weight(world: &mut World) {
     }
 }
 
-/// A block landing hard at `at`, its contact: dust there, the camera's
-/// shake by its distance ([`IRON_LAND_SHAKE`] of a blast's) and its thud.
-pub fn iron_landed(world: &mut World, at: Vec2) {
-    spawn_burst(world, "ex10_iron_dust", at);
-    let trauma = blast_trauma(world, at) * IRON_LAND_SHAKE;
-    if trauma > 0.0
-        && let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>()
-    {
-        queue.send(ShakeEvent { trauma_add: trauma });
+/// `block` landing hard at `at`, its contact: its `iron_dusted` impact,
+/// whose rule raises dust there, and its world cue, its thud and the
+/// camera's shake by its distance from the listener.
+pub fn iron_landed(world: &mut World, block: Entity, at: Vec2) {
+    let impact = Impact {
+        raised: Raised::IronDust,
+        body: block,
+        at,
+    };
+    if let Some(queue) = world.get_resource_mut::<EventQueue<Impact>>() {
+        queue.send(impact);
     }
-    audio::play(world, Sound::IronLanded, at);
+    WorldCue::new(IRON_LANDED, at).play(world);
 }
 
 /// The open holes' centres.
@@ -254,30 +260,14 @@ pub fn hole_pull(holes: &[Vec2], at: Vec2) -> Vec2 {
     pull
 }
 
-/// How much of a hole's pull `entity` takes: iron a fifth of a ball's, a
-/// bowling ball [`BOWLING_PULL`], which lifts it near the core, scraps as
-/// balls, a crate a half and a keg two fifths, a frozen dummy as iron and a
-/// thawed one none, the rest by their mass.
+/// How much of a hole's pull `entity` takes: its prefab's [`Pull`] (iron a
+/// fifth of a ball's, a bowling ball enough to lift it near the core,
+/// scraps as balls, a crate a half and a keg two fifths, a frozen dummy as
+/// iron and a thawed one none), the rest by their mass.
 fn pull_response(world: &World, entity: Entity, inv_mass: f32) -> f32 {
-    if world.has::<IronBlock>(entity) {
-        IRON_PULL
-    } else if world.has::<BowlingBall>(entity) {
-        BOWLING_PULL
-    } else if world.has::<IronScrap>(entity) {
-        SCRAP_PULL
-    } else if world.has::<Crate>(entity) {
-        props::CRATE_PULL
-    } else if world.has::<Keg>(entity) {
-        props::KEG_PULL
-    } else if world.has::<Dummy>(entity) {
-        if has_status(world, entity, FROZEN) {
-            IRON_PULL
-        } else {
-            0.0
-        }
-    } else {
-        inv_mass
-    }
+    world.get::<Pull>(entity).map_or(inv_mass, |pull| {
+        pull.taken(has_status(world, entity, FROZEN))
+    })
 }
 
 /// The seconds of a hole's pull an enemy's mover takes each step.
@@ -352,7 +342,8 @@ pub fn pull(world: &mut World) {
         .filter(|(.., health)| !health.is_dead())
         .filter_map(|(entity, enemy, at, _)| {
             let centre = at.0 + enemies::body(world, enemy.kind).centre;
-            let pull = hole_pull(&holes, centre) * enemy.kind.info().pull * ENEMY_PULL_SECS;
+            let pull =
+                hole_pull(&holes, centre) * enemies::info(world, enemy.kind).pull * ENEMY_PULL_SECS;
             (pull != Vec2::ZERO).then_some((entity, pull))
         })
         .collect();
@@ -372,18 +363,22 @@ pub fn pull(world: &mut World) {
 /// easing within [`HOLD_EASE`] of the ring and circling there at
 /// [`HOLD_SWIRL`] of its speed. That is blended with its own direction by
 /// the pull over its speed, so near the core the hole holds it and at its
-/// edge its own steering wins. Its own direction is kept for
-/// `toys_release`, so the hole's correction never stays.
+/// edge its own steering wins. Its own direction is the one its kit
+/// steering would give its mover this step (`steered_direction`), whose
+/// steering it switches off for the step, else its mover's, a bat's dive
+/// or a rest; it is kept for `toys_release`, so the hole's correction never
+/// stays.
 pub fn hold(world: &mut World) {
     let holes = holes(world);
     if holes.is_empty() {
         return;
     }
-    let held: Vec<(Entity, Vec2, Vec2)> = world
+    let dt = world.resource::<Time>().delta();
+    let held: Vec<(Entity, Vec2, bool, Vec2)> = world
         .query::<(Entity, &Enemy, &Position, &Health, &TopDownMover)>()
         .filter(|(.., health, _)| !health.is_dead())
         .filter_map(|(entity, enemy, at, _, mover)| {
-            let info = enemy.kind.info();
+            let info = enemies::info(world, enemy.kind);
             let centre = at.0 + enemies::body(world, enemy.kind).centre;
             let core = holes
                 .iter()
@@ -404,15 +399,24 @@ pub fn hold(world: &mut World) {
             let near = 1.0 - (off / (2.0 * HOLD_EASE)).clamp(0.0, 1.0);
             let wanted = to_core / distance * inward + tangent * HOLD_SWIRL * speed * near;
             let hold = (pull / speed).min(1.0);
-            let own = mover.direction();
-            Some((entity, own, own * (1.0 - hold) + wanted / speed * hold))
+            let steered = steered_direction(world, entity, dt);
+            let own = steered.unwrap_or_else(|| mover.direction());
+            Some((
+                entity,
+                own,
+                steered.is_some(),
+                own * (1.0 - hold) + wanted / speed * hold,
+            ))
         })
         .collect();
     let mut kept = Vec::with_capacity(held.len());
-    for (flyer, own, steered) in held {
+    for (flyer, own, steered, blend) in held {
+        if steered && let Some(steering) = world.get_mut::<Steering>(flyer) {
+            steering.set_on(false);
+        }
         if let Some(mover) = world.get_mut::<TopDownMover>(flyer) {
-            mover.set_direction(steered);
-            kept.push((flyer, own));
+            mover.set_direction(blend);
+            kept.push((flyer, own, steered));
         }
     }
     world.resource_mut::<HoleHold>().0 = kept;
@@ -421,12 +425,16 @@ pub fn hold(world: &mut World) {
 /// `toys_release`, in the move phase after the top-down mover: each flyer
 /// `toys_hold` steered takes its own direction back once its mover has
 /// moved, so a direction its state set once, a bat's dive, is whole again
-/// when the hole closes or it leaves the reach.
+/// when the hole closes or it leaves the reach, and a flyer its kit
+/// steering flew has that steering on again.
 pub fn release(world: &mut World) {
     let kept = std::mem::take(&mut world.resource_mut::<HoleHold>().0);
-    for (flyer, own) in kept {
+    for (flyer, own, steered) in kept {
         if let Some(mover) = world.get_mut::<TopDownMover>(flyer) {
             mover.set_direction(own);
+        }
+        if steered && let Some(steering) = world.get_mut::<Steering>(flyer) {
+            steering.set_on(true);
         }
     }
 }
@@ -439,94 +447,39 @@ pub fn bend(world: &mut World) {
     if dt <= 0.0 || holes.is_empty() {
         return;
     }
-    let centre = Vec2::splat(MISSILE_SIZE * 0.5);
+    let centre = super::missile_size(world).0 * 0.5;
     for (_, at, motion) in world.query_mut::<(&FireMissile, &Position, &mut LinearMotion)>() {
         let velocity = motion.velocity() + hole_pull(&holes, at.0 + centre) * dt;
         motion.set_velocity(velocity);
     }
 }
 
-/// The world's maps, looked up once for many point tests: a query and a
-/// registry lookup per sampled point cost more than the test itself.
-pub struct SolidTiles<'w> {
-    maps: Vec<(Vec2, &'w tungsten::core::TilemapData)>,
-}
-
-impl<'w> SolidTiles<'w> {
-    #[must_use]
-    pub fn of(world: &'w World) -> Self {
-        let Some(registry) = world.get_resource::<TilemapRegistry>() else {
-            return Self { maps: Vec::new() };
-        };
-        let maps = world
-            .query::<&TilemapInstance>()
-            .filter_map(|instance| Some((instance.origin, registry.get(&instance.id)?)))
-            .collect();
-        Self { maps }
-    }
-
-    /// Whether `point` lies in a solid collision tile of one of the maps.
-    #[must_use]
-    pub fn contains(&self, point: Vec2) -> bool {
-        self.maps.iter().any(|&(origin, map)| {
-            let tile = Vec2::new(map.tile_width as f32, map.tile_height as f32);
-            let cell = ((point - origin) / tile).floor();
-            if cell.x < 0.0
-                || cell.y < 0.0
-                || cell.x >= map.width as f32
-                || cell.y >= map.height as f32
-            {
-                return false;
-            }
-            let index = cell.y as usize * map.width as usize + cell.x as usize;
-            map.layers
-                .iter()
-                .any(|layer| layer.kind == LayerKind::Collision && layer.tiles[index] >= 0)
-        })
-    }
-}
-
-/// Whether `point` lies in a solid collision tile of a map in the world.
-#[must_use]
-pub fn solid_tile(world: &World, point: Vec2) -> bool {
-    SolidTiles::of(world).contains(point)
-}
-
-/// Whether a point meets a body of `shape` about `centre`, the missile's
-/// radius included.
-fn touches(centre: Vec2, shape: Shape, point: Vec2, margin: f32) -> bool {
-    match shape {
-        Shape::Circle { radius } => point.distance_squared(centre) <= (radius + margin).powi(2),
-        other => ((point - centre).abs() - other.half_extents())
-            .cmple(Vec2::splat(margin))
-            .all(),
-    }
-}
-
-/// The first sampled point on `start..end` that meets a solid tile or a
-/// body other than the player's or a sensor, for a flyer of `radius`:
-/// balls, iron, decks, lifts.
-pub(crate) fn first_contact(world: &World, start: Vec2, end: Vec2, radius: f32) -> Option<Vec2> {
+/// Where a missile's circle, its centre moving from `start` to `end`, first
+/// meets a solid tile or a body other than the player's or a sensor (balls,
+/// iron, decks, lifts): its centre then, by a core shape cast of the
+/// step's own bodies, so its blast is where it met. A start overlapping
+/// something passes it unless the missile moves into it.
+fn sweep(world: &World, start: Vec2, end: Vec2) -> Option<Vec2> {
     let travel = end - start;
-    let lead = travel.normalize_or_zero() * radius;
-    let steps = (travel.length() / SAMPLE_STEP).ceil().max(1.0) as usize;
-    let solids: Vec<(Vec2, Shape)> = world
-        .query::<(Entity, &Collider, &Position, &RigidBody)>()
-        .filter(|(entity, _, _, body)| {
-            body.kind != BodyKind::Sensor && !world.has::<Player>(*entity)
-        })
-        .map(|(_, collider, at, _)| (at.0 + collider.offset, collider.shape))
-        .collect();
-    let tiles = SolidTiles::of(world);
-    (0..=steps)
-        .map(|i| start + travel * (i as f32 / steps as f32))
-        .find(|&point| {
-            tiles.contains(point)
-                || tiles.contains(point + lead)
-                || solids
-                    .iter()
-                    .any(|&(centre, shape)| touches(centre, shape, point, radius))
-        })
+    let length = travel.length();
+    if length <= 0.0 {
+        return None;
+    }
+    let direction = travel / length;
+    let circle = Shape::Circle {
+        radius: MISSILE_RADIUS,
+    };
+    let spare_player = |hit: &SpatialHit| hit.entity.is_none_or(|body| !world.has::<Player>(body));
+    cast_shape_where(
+        world,
+        circle,
+        start,
+        direction,
+        length,
+        &SpatialFilter::new(),
+        spare_player,
+    )
+    .map(|hit| start + direction * hit.distance)
 }
 
 /// Shows `entity`, a prefab spawned hidden.
@@ -536,31 +489,19 @@ pub fn show(world: &mut World, entity: Entity) {
     }
 }
 
-/// Moves `entity` by `by`: its point, its last step's and its drawn one,
-/// so nothing draws it sliding.
-pub fn shift(world: &mut World, entity: Entity, by: Vec2) {
-    if let Some(at) = world.get_mut::<Position>(entity) {
-        at.0 += by;
-    }
-    if let Some(prev) = world.get_mut::<PrevPosition>(entity) {
-        prev.0 += by;
-    }
-    if let Some(transform) = world.get_mut::<Transform>(entity) {
-        transform.position += by;
-    }
-}
-
 /// `missile_contacts`, in the overlap phase before the kit's projectile
-/// step: a missile whose step met a tile or a body blasts where it met it
-/// and goes, its drips with it.
+/// step: a missile whose circle met a tile or a body in its step
+/// ([`sweep`]) blasts where it met it and goes, its drips with it.
 pub fn missile_contacts(world: &mut World) {
-    let centre = Vec2::splat(MISSILE_SIZE * 0.5);
     let missiles: Vec<(Entity, Vec2, Vec2)> = world
         .query::<(Entity, &FireMissile, &Position, &PrevPosition)>()
-        .map(|(entity, _, at, prev)| (entity, prev.0 + centre, at.0 + centre))
+        .map(|(entity, _, at, prev)| {
+            let centre = super::missile_size(world).0 * 0.5;
+            (entity, prev.0 + centre, at.0 + centre)
+        })
         .collect();
     for (missile, start, end) in missiles {
-        if let Some(hit) = first_contact(world, start, end, MISSILE_RADIUS) {
+        if let Some(hit) = sweep(world, start, end) {
             flare(world, hit, true);
             despawn_tree(world, missile);
             explode(world, hit);
@@ -576,11 +517,11 @@ pub fn missile_ends(world: &mut World, cursor: &mut EventCursor<ProjectileExpire
     let Some(events) = world.get_resource::<EventQueue<ProjectileExpired>>() else {
         return;
     };
-    let centre = Vec2::splat(MISSILE_SIZE * 0.5);
     let ended: Vec<(Vec2, bool)> = cursor
         .read(events)
         .filter(|end| world.has::<FireMissile>(end.entity))
         .map(|end| {
+            let centre = super::missile_size(world).0 * 0.5;
             let spent = world
                 .get::<Projectile>(end.entity)
                 .is_some_and(|p| p.range().is_some_and(|range| p.travelled() >= range - 1.0));
@@ -601,7 +542,7 @@ pub(crate) fn flare(world: &mut World, at: Vec2, blast: bool) {
     let mut light = Light::point(FLARE_COLOR, FLARE_RADIUS * if blast { 2.0 } else { 1.0 });
     light.intensity = FLARE_INTENSITY;
     let secs = if blast { BLAST_FLARE_SECS } else { FLARE_SECS };
-    let phase = world.resource::<crate::shared::SaveIds>().peek() as f32;
+    let phase = crate::shared::next_id(world) as f32;
     world.spawn_with((
         Transform::from_position(at),
         light,
@@ -638,13 +579,25 @@ pub fn flares(world: &mut World) {
     }
 }
 
-/// A fireball's blast at `at`: its fire on each live target in its heat but
-/// the player who cast it, [`BLAST_FIRE`] at its centre falling to half at
-/// the heat's edge, from the player; the small balls in its heat lit by
-/// their centres, and the crates in it lit and its kegs set off by their
-/// boxes, credited to the player.
+/// A fireball's blast at `at`: its heat, the kit's blast of
+/// [`BLAST_FIRE`] fire on each live target whose body lies within
+/// [`BLAST_RADIUS`], half at its edge, a spell's hit from the player who
+/// cast it, who is spared, queued for the step's resolve; the small balls
+/// in its heat lit by their centres, and the crates in it lit and its kegs
+/// set off by their boxes, credited to the player; its world cue plays its
+/// boom and shakes the camera, beside its four bursts, spawned at once,
+/// its ring, its shatter and its push, which stay here.
 pub fn explode(world: &mut World, at: Vec2) {
-    burn_targets(world, at);
+    let player = world.get_resource::<Run>().map(|run| run.player);
+    let heat = Blast::new(BLAST_RADIUS)
+        .with_part(Kind::Fire.tag(), BLAST_FIRE)
+        .with_far(0.5)
+        .with_context([SPELL])
+        .sparing_source()
+        .at_centre()
+        .with_stimulus(false)
+        .with_prepare(enemies::armour::PREPARE);
+    blast(world, at, &heat, player, None);
     for burst in [
         "ex10_fireball_blast",
         "ex10_blast_embers",
@@ -656,23 +609,17 @@ pub fn explode(world: &mut World, at: Vec2) {
     ring(world, at, 2.0 * PUSH_RADIUS, Ring::Fireball);
     elements::thermal_shatter(world, at, BLAST_RADIUS);
     radial_push(world, at, PUSH_RADIUS, PUSH_SPEED);
-    let trauma = blast_trauma(world, at);
-    if trauma > 0.0
-        && let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>()
-    {
-        queue.send(ShakeEvent { trauma_add: trauma });
-    }
     let mut lit: Vec<(SaveId, Entity)> = world
-        .query::<(Entity, &SmallBall, &Position, &Collider, &SaveId)>()
+        .query::<(Entity, &SmallBall, &Position, &Collider, &Saved)>()
         .filter(|(_, _, p, c, _)| (p.0 + c.offset).distance_squared(at) <= BLAST_RADIUS.powi(2))
-        .map(|(entity, .., id)| (*id, entity))
+        .map(|(entity, .., id)| (id.id(), entity))
         .collect();
     lit.sort_by_key(|(id, _)| *id);
     for (_, ball) in lit {
         elements::ignite(world, ball);
     }
     heat_props(world, at);
-    audio::play(world, Sound::Blasted, at);
+    WorldCue::new(FIREBALL_BLAST, at).play(world);
 }
 
 /// A fireball's heat on the props whose bodies lie within [`BLAST_RADIUS`]
@@ -690,62 +637,174 @@ fn heat_props(world: &mut World, at: Vec2) {
             };
             surface_distance(at, centre, collider.shape) <= BLAST_RADIUS
         })
-        .map(|prop| (world.get::<SaveId>(prop).copied(), prop))
+        .map(|prop| (crate::shared::save_id(world, prop), prop))
         .collect();
     near.sort_by_key(|(id, _)| *id);
     let player = cascade::player_credit(world);
     for (_, prop) in near {
-        if world.has::<Frozen>(prop) {
+        if is_frozen(world, prop) {
             continue;
         }
         if world.has::<Crate>(prop) {
             props::light(world, prop, player);
         } else {
-            props::set_off(world, prop, None, player);
+            props::set_off(world, prop, player);
         }
     }
 }
 
-/// Queues the blast's fire on each live target with a body within
-/// [`BLAST_RADIUS`] of `at`, its surface's distance, in save-ID order.
-fn burn_targets(world: &mut World, at: Vec2) {
-    let player = world.get_resource::<Run>().map(|run| run.player);
-    let mut targets: Vec<(Option<SaveId>, Entity, f32)> = world
-        .query::<(Entity, &tungsten::kit::Health, &Position, &Collider)>()
-        .filter(|(entity, health, ..)| !health.is_dead() && Some(*entity) != player)
-        .filter_map(|(entity, _, p, collider)| {
-            let distance = surface_distance(at, p.0 + collider.offset, collider.shape);
-            (distance <= BLAST_RADIUS)
-                .then(|| (world.get::<SaveId>(entity).copied(), entity, distance))
-        })
-        .collect();
-    targets.sort_by_key(|(id, ..)| *id);
-    for (_, target, distance) in targets {
-        let amount = BLAST_FIRE * (1.0 - 0.5 * distance / BLAST_RADIUS);
-        let mut hit = combat::Hit::new(target, [(Kind::Fire, amount)])
-            .at(at)
-            .spell();
-        if let Some(player) = player {
-            hit = hit.from(player);
-        }
-        hit.queue(world);
-    }
-}
-
-/// A shock ring at `at`, growing to `size`, unless [`RING_CAP`] live.
+/// A shock ring at `at`, growing to `size` from [`RING_FROM`] across over
+/// [`RING_SECS`], unless [`RING_CAP`] live: a tweened sprite fading from
+/// [`RING_ALPHA`], ended by its tween, linear but a fireball's, which eases
+/// out with a hot front and a flash; a hole's opening a ring drawn by hand
+/// from its age (`toys::draw`).
 pub fn ring(world: &mut World, at: Vec2, size: f32, kind: Ring) {
     if rings_full(world) {
         return;
     }
-    world.spawn_with((
-        ShockRing {
-            age: 0.0,
-            size,
-            kind,
+    let ring = ShockRing { size, kind };
+    if kind == Ring::Open {
+        world.spawn_with((
+            ring,
+            OpenRing { age: 0.0 },
+            Transform::from_position(at),
+            SceneEntity { state_id: GAMEPLAY },
+        ));
+        return;
+    }
+    let fireball = kind == Ring::Fireball;
+    let grow = if fireball {
+        Easing::CubicOut
+    } else {
+        Easing::Linear
+    };
+    let shock = RingCurve {
+        art: draw::SHOCK_RING,
+        across: (RING_FROM, size),
+        grow,
+        color: if kind == Ring::Collapse {
+            [244, 166, 250, RING_ALPHA]
+        } else {
+            [255, 210, 140, RING_ALPHA]
         },
-        Transform::from_position(at),
+        fade: Easing::Linear,
+        secs: RING_SECS,
+        material: None,
+    };
+    let look = ring_look(world, at, &shock);
+    let main = world.spawn_with(look.with((ring,)));
+    if !fireball {
+        return;
+    }
+    // Its front, at a share of its size, fading by the square of what is
+    // left; its flash, growing and fading as one over its first seconds.
+    let front = RingCurve {
+        across: (RING_FROM * FRONT, size * FRONT),
+        color: [255, 95, 28, 240],
+        fade: Easing::QuadOut,
+        ..shock
+    };
+    let flash = RingCurve {
+        art: CORE,
+        across: (100.0, 280.0),
+        grow: Easing::Linear,
+        color: [255, 245, 200, 255],
+        fade: Easing::Linear,
+        secs: FLASH_SECS,
+        material: Some(CORE_MATERIAL),
+    };
+    let front = ring_look(world, at, &front);
+    let front = world.spawn_with(front);
+    let flash = ring_look(world, at, &flash);
+    let flash = world.spawn_with(flash);
+    if let Some(look) = world.get_mut::<RingLook>(main) {
+        *look = RingLook {
+            front: Some(front),
+            flash: Some(flash),
+        };
+    }
+}
+
+/// A shock ring's size at its birth, its alpha then, its fireball's front's
+/// share of its size and its flash's seconds.
+pub const RING_FROM: f32 = 32.0;
+pub const RING_ALPHA: u8 = 220;
+pub const FRONT: f32 = 0.72;
+pub const FLASH_SECS: f32 = 0.18;
+
+/// A ring look's curve: its art, its pixels across at its start and end in
+/// `grow`, its tint and alpha, its alpha falling to none in `fade`, its
+/// seconds and its material.
+#[derive(Clone, Copy)]
+struct RingCurve {
+    art: &'static str,
+    across: (f32, f32),
+    grow: Easing,
+    color: [u8; 4],
+    fade: Easing,
+    secs: f32,
+    material: Option<&'static str>,
+}
+
+/// A ring look of `curve` centred on `at`, to spawn: a sprite with no
+/// `Visibility` ([`RingLook`]), its `Transform` its top-left, its scale and
+/// top-left tweened in its curve's `grow` so its centre holds, its alpha
+/// in its `fade`, and its tween ending it.
+fn ring_look(
+    world: &mut World,
+    at: Vec2,
+    curve: &RingCurve,
+) -> (Transform, Sprite, Tween, RingLook, SceneEntity) {
+    let art = crate::shared::sprite_size(world, curve.art);
+    let material = curve
+        .material
+        .and_then(|name| crate::features::level::draw::material(world, name));
+    let id = world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprite(curve.art);
+    let mut sprite = Sprite::new(id);
+    sprite.color = curve.color;
+    sprite.material_id = material;
+    let (from, to) = curve.across;
+    let corner = |across: f32| at - Vec2::splat(across * 0.5);
+    let scale = |across: f32| Vec2::splat(across) / art;
+    let tween = Tween::new(curve.secs, curve.grow)
+        .with_channel(TweenChannel::PositionX {
+            from: corner(from).x,
+            to: corner(to).x,
+        })
+        .with_channel(TweenChannel::PositionY {
+            from: corner(from).y,
+            to: corner(to).y,
+        })
+        .with_channel(TweenChannel::ScaleX {
+            from: scale(from).x,
+            to: scale(to).x,
+        })
+        .with_channel(TweenChannel::ScaleY {
+            from: scale(from).y,
+            to: scale(to).y,
+        })
+        .with_channel_eased(
+            TweenChannel::ColorA {
+                from: curve.color[3],
+                to: 0,
+            },
+            curve.fade,
+        )
+        .with_despawn_at_end();
+    let transform = Transform {
+        position: corner(from),
+        rotation: 0.0,
+        scale: scale(from),
+    };
+    (
+        transform,
+        sprite,
+        tween,
+        RingLook::default(),
         SceneEntity { state_id: GAMEPLAY },
-    ));
+    )
 }
 
 /// Pushes what stands within `radius` of `at` straight away from it, up at
@@ -753,9 +812,9 @@ pub fn ring(world: &mut World, at: Vec2, size: f32, kind: Ring) {
 /// measured from each body's centre: each dynamic body over its mass, and
 /// each live enemy through the kit's `knock_back` by its kind's pull, the
 /// hole's own response, so both gravity spells move each kind alike, the
-/// kit taking the knockback's resist. A kind that stands firm (the troll)
-/// takes nothing (`enemies::stands_firm`). The holes' own pull stays its
-/// own (`toys_pull`): a knockback each step would lock a walker's input.
+/// kit taking the knockback's resist, so a kind that resists whole (the
+/// troll) stands firm. The holes' own pull stays its own (`toys_pull`): a
+/// knockback each step would lock a walker's input.
 pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
     let away = |centre: Vec2| -> Option<Vec2> {
         let offset = centre - at;
@@ -778,65 +837,15 @@ pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
     }
     let mut thrown: Vec<(Option<SaveId>, Entity, Vec2)> = world
         .query::<(Entity, &Enemy, &Health)>()
-        .filter(|(entity, _, health)| !health.is_dead() && !enemies::stands_firm(world, *entity))
+        .filter(|(_, _, health)| !health.is_dead())
         .filter_map(|(entity, enemy, _)| {
-            let push = away(body_centre(world, entity)?)? * enemy.kind.info().pull;
-            Some((world.get::<SaveId>(entity).copied(), entity, push))
+            let push = away(body_centre(world, entity)?)? * enemies::info(world, enemy.kind).pull;
+            Some((crate::shared::save_id(world, entity), entity, push))
         })
         .collect();
     thrown.sort_by_key(|(id, ..)| *id);
     for (_, enemy, push) in thrown {
         knock_back(world, enemy, push);
-    }
-}
-
-/// [`BLAST_TRAUMA`] near the view's centre, falling linearly to none a view
-/// width and a half away, so a blast far off screen leaves the camera
-/// still: a missile's and a keg's.
-pub(crate) fn blast_trauma(world: &World, at: Vec2) -> f32 {
-    let Some(camera) = world.get_resource::<CameraState>() else {
-        return 0.0;
-    };
-    let window = world
-        .get_resource::<WindowSize>()
-        .copied()
-        .unwrap_or(WindowSize {
-            width: 1280,
-            height: 720,
-        });
-    let (min, max) = camera.visible_world_aabb(window.width as f32, window.height as f32);
-    let width = (max.x - min.x).max(1.0);
-    BLAST_TRAUMA * falloff(at.distance((min + max) * 0.5), 0.25 * width, 1.5 * width)
-}
-
-/// A shake's share at `distance`: whole within `near`, falling linearly to
-/// none at `far`. A blast's by the view's centre, a troll's slam by the
-/// courier.
-#[must_use]
-pub fn falloff(distance: f32, near: f32, far: f32) -> f32 {
-    (1.0 - (distance - near) / (far - near).max(1.0)).clamp(0.0, 1.0)
-}
-
-/// `toys_bounds`, in the overlap phase: a ball, block, scrap, crate, keg,
-/// dummy or enemy that has left the level's box goes, as the player's
-/// escape ends a run: a placed enemy is gone from the next save, and what a
-/// troll held drops at the next `troll_holds`.
-pub fn bounds(world: &mut World) {
-    let escaped: Vec<Entity> = world
-        .query::<(Entity, &Position, Option<&Collider>)>()
-        .filter(|(_, at, collider)| escaped(at.0, *collider))
-        .filter(|(entity, ..)| {
-            world.has::<Ball>(*entity)
-                || world.has::<IronBlock>(*entity)
-                || world.has::<IronScrap>(*entity)
-                || props::is_prop(world, *entity)
-                || world.has::<Dummy>(*entity)
-                || world.has::<Enemy>(*entity)
-        })
-        .map(|(entity, ..)| entity)
-        .collect();
-    for entity in escaped {
-        despawn_tree(world, entity);
     }
 }
 
@@ -897,7 +906,7 @@ pub fn friction(world: &mut World) {
         })
         .collect();
     for iron in supported {
-        let base = if world.has::<Frozen>(iron) || has_status(world, iron, FROZEN) {
+        let base = if has_status(world, iron, FROZEN) {
             FROZEN_FRICTION
         } else if let Some(kind) = props::kind(world, iron) {
             if props::rolls(kind) {
@@ -959,88 +968,51 @@ fn ray_distance(start: Vec2, aim: Vec2, centre: Vec2, shape: Shape, range: f32) 
     }
 }
 
-/// A body a trace can stop on: its entity, centre, shape and save ID.
-#[derive(Debug, Clone, Copy)]
-pub struct Traced {
-    entity: Entity,
-    centre: Vec2,
-    shape: Shape,
-    id: Option<SaveId>,
-}
-
-/// The bodies, in query order, that a trace from within `radius` of
-/// `centre` could stop on, when its rays reach no farther than `radius`
-/// from `centre`: all but the caster's, the player's and sensors.
+/// Casts a spray's beam, a circle of [`BEAM_HALF_WIDTH`], from `start`
+/// along `aim` for `range`: where it stops on its centreline, and the body
+/// it stops on. A core shape cast of the last step's bodies (all but the
+/// caster's, the player's and sensors) and solid tiles: a body met stops it
+/// at the circle's centre where they meet; a tile met at its contact's
+/// place along the centreline, when that lies within the reach, else it
+/// runs its reach; nothing met, its reach. Ties go by the index's order.
 #[must_use]
-pub fn traced_near(world: &World, caster: Entity, centre: Vec2, radius: f32) -> Vec<Traced> {
-    let reach = Vec2::splat(radius + BEAM_HALF_WIDTH);
-    world
-        .query::<(Entity, &Collider, &Position, &RigidBody)>()
-        .filter(|(entity, _, _, body)| {
-            *entity != caster && body.kind != BodyKind::Sensor && !world.has::<Player>(*entity)
-        })
-        .filter_map(|(entity, collider, at, _)| {
-            let body = at.0 + collider.offset;
-            let half = collider.shape.half_extents();
-            ((body - centre).abs().cmple(reach + half).all()).then(|| Traced {
-                entity,
-                centre: body,
-                shape: collider.shape,
-                id: world.get::<SaveId>(entity).copied(),
-            })
-        })
-        .collect()
-}
-
-/// Traces a ray from `start` along `aim` for `range`: where it stops, on a
-/// body or a solid tile, and the body, by exact intersections and tile
-/// samples four pixels apart. Ties go to the body with the lower save ID.
-#[must_use]
-pub fn trace(
+pub fn beam(
     world: &World,
     caster: Entity,
     start: Vec2,
     aim: Vec2,
     range: f32,
 ) -> (Vec2, Option<Entity>) {
-    let bodies = traced_near(world, caster, start, range);
-    trace_among(&bodies, &SolidTiles::of(world), start, aim, range)
-}
-
-/// [`trace`] over `bodies`, which hold every body the ray can meet.
-#[must_use]
-pub fn trace_among(
-    bodies: &[Traced],
-    tiles: &SolidTiles,
-    start: Vec2,
-    aim: Vec2,
-    range: f32,
-) -> (Vec2, Option<Entity>) {
-    let mut distance = range;
-    let mut hit: Option<(Entity, Option<SaveId>)> = None;
-    for body in bodies {
-        let Some(t) = ray_distance(start, aim, body.centre, body.shape, range) else {
-            continue;
-        };
-        let earlier = hit.is_none_or(|(_, old)| body.id < old);
-        if t < distance || (t == distance && earlier) {
-            distance = t;
-            hit = Some((body.entity, body.id));
+    let circle = Shape::Circle {
+        radius: BEAM_HALF_WIDTH,
+    };
+    let keep = |hit: &SpatialHit| {
+        hit.entity
+            .is_none_or(|body| body != caster && !world.has::<Player>(body))
+    };
+    let reached = (start + aim * range, None);
+    let Some(hit) = cast_shape_where(
+        world,
+        circle,
+        start,
+        aim,
+        range,
+        &SpatialFilter::new(),
+        keep,
+    ) else {
+        return reached;
+    };
+    match hit.entity {
+        Some(body) => (start + aim * hit.distance, Some(body)),
+        None => {
+            let along = (hit.point - start).dot(aim).max(0.0);
+            if along <= range {
+                (start + aim * along, None)
+            } else {
+                reached
+            }
         }
     }
-    let normal = Vec2::new(-aim.y, aim.x) * BEAM_HALF_WIDTH;
-    let steps = (distance / 4.0).ceil().max(1.0) as usize;
-    for i in 0..=steps {
-        let t = distance * i as f32 / steps as f32;
-        let at = start + aim * t;
-        if [at, at + normal, at - normal]
-            .into_iter()
-            .any(|p| tiles.contains(p))
-        {
-            return (at, None);
-        }
-    }
-    (start + aim * distance, hit.map(|(entity, _)| entity))
 }
 
 /// A spray's reach by its element.
@@ -1084,7 +1056,7 @@ pub fn hold_spray(
 fn fires_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Entity> {
     world
         .query::<(Entity, &Hazard, &Position)>()
-        .filter(|(entity, hazard, _)| hazard.fire && !world.has::<Doused>(*entity))
+        .filter(|(entity, hazard, _)| hazard.fire && !elements::is_doused(world, *entity))
         .filter(|(_, _, at)| {
             let shape = Shape::Aabb {
                 half_extents: FIRE_HALF,
@@ -1139,10 +1111,8 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     let mut geysers: Vec<Entity> = Vec::new();
     // The nearest ray stop on a tile short of the reach.
     let mut wall: Option<Vec2> = None;
-    let bodies = traced_near(world, caster, centre, reach(element));
-    let tiles = SolidTiles::of(world);
     for direction in rays(aim) {
-        let (at, hit) = trace_among(&bodies, &tiles, centre, direction, reach(element));
+        let (at, hit) = beam(world, caster, centre, direction, reach(element));
         let short = centre.distance(at) < reach(element) - 0.01;
         if hit.is_none()
             && short
@@ -1179,7 +1149,7 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
         elements::douse_hazard(world, fire);
     }
     for basin in basins {
-        crate::features::level::lava::chill(world, basin);
+        crate::features::level::lava::chill(world, basin, dt);
     }
     for geyser in geysers {
         geyser::chill(world, geyser);
@@ -1234,23 +1204,13 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     match element {
         Element::Cold => {
             for (hit, contact) in met {
-                let burning = world
-                    .get::<BallBurn>(hit)
-                    .is_some_and(|burn| burn.remaining > 0.0);
-                if burning && world.has::<SmallBall>(hit) {
-                    let at = body_centre(world, hit).unwrap_or(contact);
-                    cascade::queue(
-                        world,
-                        CascadeKind::Steam,
-                        Some(hit),
-                        at,
-                        at,
-                        SMALL_STEAM_REACH,
-                    );
+                if is_burning(world, hit) && world.has::<SmallBall>(hit) {
+                    // Cold on a burning ball: its steam rule's burst.
+                    stimulate(world, hit, elements::COLD, dt / FREEZE_TIME, Some(caster));
                 } else if props::burning(world, hit) {
-                    let at = body_centre(world, hit).unwrap_or(contact);
+                    // A prop's fire is its fuel's, no status: its steam at once.
                     props::put_out(world, hit);
-                    cascade::queue(world, CascadeKind::Steam, Some(hit), at, at, STEAM_REACH);
+                    cascade::steam_at(world, hit, STEAM_REACH, Some(caster));
                 } else if world.has::<IronBlock>(hit)
                     || world.has::<IronScrap>(hit)
                     || world.has::<Ball>(hit)
@@ -1261,11 +1221,10 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
             }
         }
         Element::Fire => {
-            let lighter = world.get::<SaveId>(caster).map(|id| id.0);
+            let lighter = crate::shared::save_id(world, caster).map(|id| id.0);
             for (hit, contact) in met {
-                if world.has::<Frozen>(hit) {
-                    let at = body_centre(world, hit).unwrap_or(contact);
-                    cascade::thermal_shock(world, hit, at, at);
+                if is_frozen(world, hit) {
+                    cascade::heat(world, hit, contact, Some(caster));
                 } else if world.has::<SmallBall>(hit) {
                     elements::ignite(world, hit);
                 } else if props::is_prop(world, hit) {
@@ -1285,13 +1244,13 @@ fn start_spray(
     aim: Vec2,
     element: Element,
 ) -> Entity {
-    let (end, _) = trace(world, caster, centre, aim, reach(element));
+    let (end, _) = beam(world, caster, centre, aim, reach(element));
     let start = centre + aim * SPRAY_MUZZLE.min(centre.distance(end));
     let names = match element {
         Element::Cold => COLD_EMITTERS,
         Element::Fire => FIRE_EMITTERS,
     };
-    let seed = world.resource::<crate::shared::SaveIds>().peek();
+    let seed = crate::shared::next_id(world);
     let emitters = names.map(|name| {
         let config = world
             .get_resource::<ParticleConfigRegistry>()?
@@ -1431,13 +1390,8 @@ pub fn spray_look(world: &mut World) {
             .map_or(Vec2::ZERO, |c| c.offset);
         let centre = at + offset;
         let range = reach(spray.element);
-        let (end, contact) = {
-            let bodies = traced_near(world, spray.caster, centre, range);
-            let tiles = SolidTiles::of(world);
-            let (end, _) = trace_among(&bodies, &tiles, centre, spray.aim, range);
-            let contact = contact_point(world, &bodies, &tiles, centre, spray.aim, range);
-            (end, contact)
-        };
+        let (end, _) = beam(world, spray.caster, centre, spray.aim, range);
+        let contact = contact_point(world, spray.caster, centre, spray.aim, range);
         spray.start = centre + spray.aim * SPRAY_MUZZLE.min(centre.distance(end));
         spray.end = end;
         spray.contact = contact;
@@ -1468,8 +1422,7 @@ pub fn spray_look(world: &mut World) {
 /// Where a spray's cone meets a surface, iron before anything else.
 fn contact_point(
     world: &World,
-    bodies: &[Traced],
-    tiles: &SolidTiles,
+    caster: Entity,
     centre: Vec2,
     aim: Vec2,
     range: f32,
@@ -1479,7 +1432,7 @@ fn contact_point(
         best.is_none_or(|p| centre.distance_squared(at) < centre.distance_squared(p))
     };
     for direction in rays(aim) {
-        let (at, hit) = trace_among(bodies, tiles, centre, direction, range);
+        let (at, hit) = beam(world, caster, centre, direction, range);
         if centre.distance(at) >= range - 0.01 {
             continue;
         }
@@ -1513,18 +1466,6 @@ fn orient_newborns(world: &mut World) {
     if emitters.is_empty() {
         return;
     }
-    let tiles = SolidTiles::of(world);
-    let near: Vec<(Entity, Vec<Traced>)> = world
-        .query::<&Spray>()
-        .map(|spray| {
-            let centre = body_centre(world, spray.caster).unwrap_or(spray.start);
-            let radius = SPRAY_RANGE + 2.0 * SPRAY_MUZZLE;
-            (
-                spray.caster,
-                traced_near(world, spray.caster, centre, radius),
-            )
-        })
-        .collect();
     let newborns: Vec<(Entity, Option<(Vec2, f32)>)> = world
         .query::<(Entity, &Particle, &Transform)>()
         .filter_map(|(entity, particle, at)| {
@@ -1546,17 +1487,9 @@ fn orient_newborns(world: &mut World) {
                 .map_or((entity, Element::Cold), |spray| {
                     (spray.caster, spray.element)
                 });
-            let fallback;
-            let bodies = match near.iter().find(|(c, _)| *c == caster) {
-                Some((_, bodies)) => bodies.as_slice(),
-                None => {
-                    fallback = traced_near(world, caster, at.position, SPRAY_RANGE);
-                    fallback.as_slice()
-                }
-            };
-            let (end, _) = trace_among(
-                bodies,
-                &tiles,
+            let (end, _) = beam(
+                world,
+                caster,
                 at.position,
                 direction,
                 reach(element) - SPRAY_MUZZLE,
@@ -1585,28 +1518,41 @@ fn orient_newborns(world: &mut World) {
 /// own colours.
 pub fn ball_look(world: &mut World) {
     let time = drawn_time(world);
-    for (_, id, sprite, burn, hue, frozen, chill) in world.query_mut::<(
+    for (_, id, sprite, flame, hue, effects, tags) in world.query_mut::<(
         &Ball,
-        Option<&SaveId>,
+        Option<&Saved>,
         &mut Sprite,
-        Option<&BallBurn>,
+        Option<&Flame>,
         Option<&BallHue>,
-        Option<&Frozen>,
-        Option<&crate::features::elements::components::Chill>,
+        Option<&Effects>,
+        Option<&Tags>,
     )>() {
         // `freeze_amount` from the row; the frost wins, as it wrote last.
-        let frost = if frozen.is_some() {
+        let frost = if tags.is_some_and(|tags| tags.has(FROZEN)) {
             1.0
         } else {
-            chill.map_or(0.0, |chill| chill.amount)
+            effects
+                .and_then(|effects| effects.intensity(COAT))
+                .unwrap_or(0.0)
         };
         if frost > 0.0 {
             sprite.color = frost_tint(frost);
             continue;
         }
         let Some(id) = id else { continue };
-        sprite.color = match (burn, hue) {
-            (Some(burn), _) => elements::ember_tint(*id, *burn, time),
+        // A lit ball's burn's seconds left, 0 once spent.
+        let left = || {
+            effects
+                .and_then(|effects| {
+                    effects
+                        .instances()
+                        .find(|instance| instance.effect().id() == Some(BALL_BURN))
+                })
+                .and_then(EffectInstance::left)
+                .unwrap_or(0.0)
+        };
+        sprite.color = match (flame, hue) {
+            (Some(_), _) => elements::ember_tint(id.id(), left(), time),
             (None, Some(hue)) => rainbow_rgba(hue.hue),
             (None, None) => [255; 4],
         };
@@ -1668,11 +1614,10 @@ pub fn show_scrap_variant(world: &mut World, scrap: Entity, variant: usize) {
     }
 }
 
-/// `iron_look`, in the present phase: iron takes the frost's tint, and its
-/// frost art shows as deep as the frost, over the metal; a scrap tumbles
-/// as it flies, its frost turning with it.
+/// `iron_look`, in the present phase after the tween tick: iron takes the
+/// frost's tint, and its frost art shows as deep as the frost, over the
+/// metal; a scrap's frost turns with it as it tumbles ([`toys::tumble`]).
 pub fn iron_look(world: &mut World) {
-    let time = drawn_time(world);
     let blocks: Vec<(Entity, f32, Vec<Entity>)> = world
         .query::<(Entity, &IronBlock, &Children)>()
         .map(|(entity, _, children)| {
@@ -1685,14 +1630,14 @@ pub fn iron_look(world: &mut World) {
         .collect();
     for (_, amount, children) in blocks {
         for (index, child) in children.into_iter().enumerate() {
-            let frost = index >= 4;
+            let frost = index >= 1;
             tint(world, child, amount, frost);
         }
     }
     let scraps: Vec<(Entity, f32, usize, f32, Vec<Entity>)> = world
-        .query::<(Entity, &IronScrap, Option<&ScrapTumble>, Option<&Children>)>()
-        .map(|(entity, scrap, tumble, children)| {
-            let turn = tumble.map_or(0.0, |tumble| tumble.rotation(time));
+        .query::<(Entity, &IronScrap, &Transform, Option<&Children>)>()
+        .map(|(entity, scrap, transform, children)| {
+            let turn = transform.rotation;
             let children = children.map(|c| c.iter().collect()).unwrap_or_default();
             (
                 entity,
@@ -1706,9 +1651,6 @@ pub fn iron_look(world: &mut World) {
     for (scrap, amount, variant, turn, children) in scraps {
         if let Some(sprite) = world.get_mut::<Sprite>(scrap) {
             sprite.color = frost_tint(amount);
-        }
-        if let Some(transform) = world.get_mut::<Transform>(scrap) {
-            transform.rotation = turn;
         }
         for child in children {
             let id = world
@@ -1739,46 +1681,6 @@ fn tint(world: &mut World, piece: Entity, amount: f32, frost: bool) {
     if frost && let Some(visibility) = world.get_mut::<Visibility>(piece) {
         visibility.visible = amount > 0.0;
     }
-}
-
-/// `missile_look`, in the present phase: a missile's rocket faces along its
-/// flight, mirrored when it flies left so its lit side stays up.
-pub fn missile_look(world: &mut World) {
-    let Some(registry) = world.remove_resource::<AnimationRegistry>() else {
-        return;
-    };
-    let missiles: Vec<(Entity, Vec2, String)> = world
-        .query::<(Entity, &FireMissile, &LinearMotion, &AnimationState)>()
-        .map(|(entity, _, motion, state)| (entity, motion.velocity(), state.animation_id.clone()))
-        .collect();
-    for (missile, v, clip) in missiles {
-        let left = v.x < 0.0;
-        let wanted = if left {
-            "ex10_fire_missile_left"
-        } else {
-            "ex10_fire_missile"
-        };
-        if clip != wanted {
-            let mut state = AnimationState::new(wanted);
-            if let Some(old) = world.get::<AnimationState>(missile) {
-                state.frame_index = old.frame_index;
-                state.accumulated_ms = old.accumulated_ms;
-            }
-            let frame = state.current_sprite(&registry);
-            world.insert(missile, state);
-            if let (Some(frame), Some(sprite)) = (frame, world.get_mut::<Sprite>(missile)) {
-                sprite.asset_id = frame;
-            }
-        }
-        if let Some(transform) = world.get_mut::<Transform>(missile) {
-            transform.rotation = if left {
-                (-v.y).atan2(-v.x)
-            } else {
-                v.y.atan2(v.x)
-            };
-        }
-    }
-    world.insert_resource(registry);
 }
 
 /// `hole_particles`, in the present phase: a hole's newborn particles are

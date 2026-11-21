@@ -6,6 +6,7 @@ use glam::{DVec2, Vec2};
 use tungsten_core::physics::{Position, PrevPosition, Shape};
 use tungsten_core::{Entity, EventQueue, Transform, World};
 
+use crate::chemistry::blast::credits;
 use crate::damage::health::Health;
 use crate::damage::pipeline::{DamageRequest, Side};
 use crate::foundation::saved::order_of;
@@ -496,13 +497,24 @@ pub(crate) fn strike_from(
         }
         return;
     }
-    let source = world
-        .get::<Source>(blow.hitter)
-        .map_or(blow.hitter, |source| source.entity());
+    // A live credit names its source while that lives, else nobody.
+    let live = world
+        .get::<Hitbox>(blow.hitter)
+        .is_some_and(Hitbox::credits_live);
+    let source = match world.get::<Source>(blow.hitter) {
+        Some(source) if live => Some(source.entity()).filter(|&source| credits(world, source)),
+        Some(source) => Some(source.entity()),
+        None if live => None,
+        None => Some(blow.hitter),
+    };
+    let credited = |request: DamageRequest| match source {
+        Some(source) => request.with_source(source),
+        None => request,
+    };
     let request = match (delivery, blow.typed) {
         (Some(delivery), _) => DamageRequest::from_delivery(world, blow.target, delivery),
-        (None, Some(typed)) => typed.request(blow.target, blow.damage).with_source(source),
-        (None, None) => DamageRequest::new(blow.target, blow.damage).with_source(source),
+        (None, Some(typed)) => credited(typed.request(blow.target, blow.damage)),
+        (None, None) => credited(DamageRequest::new(blow.target, blow.damage)),
     };
     let side = direction_of(blow).and_then(|direction| {
         let aim = world.get::<Aim>(blow.target)?.direction()?;

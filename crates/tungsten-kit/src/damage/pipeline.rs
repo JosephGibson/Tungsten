@@ -7,7 +7,7 @@
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
-use tungsten_core::{Entity, EventQueue, World};
+use tungsten_core::{Entity, EventQueue, MissingAsset, World};
 
 use crate::damage::defense::{Resist, Shield};
 use crate::damage::health::{
@@ -144,9 +144,16 @@ impl PartialEq for Parts {
 ///    No part left, or a target that is gone, being despawned by the kit,
 ///    without [`Health`], dead or, unless the request is periodic, inside
 ///    its invulnerability window, is [`Hit::Ignored`], with no side effect.
-/// 2. Conversion: the hit's own rules, then its source's [`Conversion`],
-///    in one pass, each share a new part of its rule's type alone; parts of
-///    equal types then merge in first-appearance order.
+/// 2. Dealt damage, then conversion: a request that is not periodic, whose
+///    source lives and holds [`Stats::DAMAGE_DEALT`], has every part
+///    multiplied by that stat read in the hit's context (its context,
+///    track, state tags and side, with the source's tags for `while` lines
+///    and the target's for `against` lines), at least 0, so its landed and
+///    immune amounts and its damage-over-time base carry it; a crit its
+///    builder decided multiplies with it. Then the hit's own rules, then
+///    its source's [`Conversion`], in one pass, each share a new part of
+///    its rule's type alone; parts of equal types then merge in
+///    first-appearance order.
 /// 3. Penetration: each part's points, the hit's own [`Penetration`]'s and
 ///    its source's matching entries, summed and capped at 1; a periodic
 ///    request takes none.
@@ -1564,6 +1571,130 @@ fn hit_status_effect(world: &World, request: &DamageRequest) -> f32 {
     }
 }
 
+/// What a request's parts are multiplied by before the conversion: its live
+/// source's [`Stats::DAMAGE_DEALT`] read in the hit's context, at least 0;
+/// 1 for a periodic request and a source gone or without the stat, which
+/// reads nothing more.
+fn dealt(world: &World, request: &DamageRequest, side: Option<Side>) -> f64 {
+    if request.is_periodic() {
+        return 1.0;
+    }
+    let Some(source) = request.source.filter(|&source| world.is_alive(source)) else {
+        return 1.0;
+    };
+    let Some(stats) = world
+        .get::<Stats>(source)
+        .filter(|stats| stats.get(Stats::DAMAGE_DEALT).is_some())
+    else {
+        return 1.0;
+    };
+    let sets = [
+        TagSet::Tags(request.context()),
+        TagSet::Name(TRACK_HIT),
+        TagSet::Tags(request.state()),
+        side.map_or(TagSet::Names(&[]), |side| TagSet::Name(side.tag())),
+    ];
+    let read = Read::new(&sets)
+        .holder(world.get::<Tags>(source))
+        .against(world.get::<Tags>(request.target));
+    stats
+        .read(Stats::DAMAGE_DEALT, &read)
+        .map_or(1.0, |value| f64::from(value.max(0.0)))
+}
+
+/// A game's hit preparation, registered by name with [`add_hit_prep`]: it
+/// reads the World and the hit a [`Blast`](crate::Blast) or an impact
+/// builds, its target ([`DamageRequest::target`]) and point
+/// ([`DamageRequest::position`]) among it, and changes the hit, such as a
+/// penetration by the side of the target its point lies on.
+pub type HitPrep = fn(&World, &mut DamageRequest);
+
+/// The hit preparations a game registered, by name, and the names a Rust
+/// blast gave that none holds, each warned of once: a World resource
+/// [`add_hit_prep`] inserts.
+#[derive(Debug, Default)]
+pub(crate) struct HitPreps {
+    preps: Vec<(String, HitPrep)>,
+    warned: Vec<String>,
+}
+
+/// Registers `prep` as the hit preparation `name`, replacing one of that
+/// name, for the blasts and impacts whose `prepare` names it: each runs it
+/// on each hit it builds, after the hit's own fields and before its crit's
+/// roll. Register it before the data that names it loads: the load refuses
+/// a name no preparation holds.
+///
+/// # Panics
+///
+/// When `name` is not `[a-z][a-z0-9_]*`.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_core::World;
+/// use tungsten_kit::{DamageRequest, Penetration, add_hit_prep};
+///
+/// // Every hit it prepares passes physical resistance whole.
+/// fn armour(_: &World, hit: &mut DamageRequest) {
+///     *hit = hit
+///         .clone()
+///         .with_penetration(Penetration::new().with_points("physical", 1.0));
+/// }
+///
+/// let mut world = World::new();
+/// add_hit_prep(&mut world, "armour", armour);
+/// ```
+#[track_caller]
+pub fn add_hit_prep(world: &mut World, name: impl Into<String>, prep: HitPrep) {
+    let name = name.into();
+    assert!(
+        crate::foundation::stats::valid_stat(&name),
+        "add_hit_prep: `{name}` is not a preparation name (`[a-z][a-z0-9_]*`)"
+    );
+    if !world.has_resource::<HitPreps>() {
+        world.insert_resource(HitPreps::default());
+    }
+    let preps = world.resource_mut::<HitPreps>();
+    preps.preps.retain(|(known, _)| *known != name);
+    preps.preps.push((name, prep));
+}
+
+/// The hit preparation `name`, when a game registered it.
+pub(crate) fn hit_prep(world: &World, name: &str) -> Option<HitPrep> {
+    world.get_resource::<HitPreps>().and_then(|preps| {
+        preps
+            .preps
+            .iter()
+            .find(|(known, _)| known == name)
+            .map(|&(_, prep)| prep)
+    })
+}
+
+/// The load's check of a `prepare` at `field`: a name some preparation
+/// holds.
+pub(crate) fn check_hit_prep(world: &World, field: &str, name: &str) -> Result<(), MissingAsset> {
+    match hit_prep(world, name) {
+        Some(_) => Ok(()),
+        None => Err(MissingAsset::new(field, "hit preparation", name)),
+    }
+}
+
+/// Warns, once a World for each name, that `what` was refused for naming
+/// `name`, which no preparation holds.
+pub(crate) fn refuse_hit_prep(world: &mut World, what: &str, name: &str) {
+    if !world.has_resource::<HitPreps>() {
+        world.insert_resource(HitPreps::default());
+    }
+    let preps = world.resource_mut::<HitPreps>();
+    if preps.warned.iter().any(|warned| warned == name) {
+        return;
+    }
+    preps.warned.push(name.to_owned());
+    log::warn!(
+        "{what} refused: no hit preparation `{name}` is registered (add_hit_prep); later ones go unwarned"
+    );
+}
+
 /// Puts one part's landing in its list, with its damage-over-time base.
 fn record(landing: Landing, dot_base: f64, landed: &mut Vec<Landed>, immune: &mut Vec<Landed>) {
     let dot_base = dot_base.clamp(0.0, f64::from(f32::MAX)) as f32;
@@ -1597,6 +1728,7 @@ fn land_parts<'a>(
         let aim = world.get::<Aim>(target)?.direction()?;
         Side::of(direction, aim)
     });
+    let dealt = dealt(world, request, side);
     let defences = Defences {
         resist: world.get::<Resist>(target),
         own: request.penetration.as_ref(),
@@ -1627,6 +1759,7 @@ fn land_parts<'a>(
     // A delivery's hit: its drawn amounts and own points, converted at use.
     if let Some(sheet) = request.sheet() {
         for (at, (part, &(amount, points, dot_base))) in sheet.parts.iter().zip(drawn).enumerate() {
+            let amount = amount * dealt;
             if amount > 0.0 {
                 let tags = Tags::new([part.kind.as_str()]);
                 let amount = amount.min(f64::from(f32::MAX));
@@ -1637,7 +1770,7 @@ fn land_parts<'a>(
                 {
                     defences.note(noted, &tags, &part.history, points, landing);
                 }
-                record(landing, dot_base, landed, immune);
+                record(landing, dot_base * dealt, landed, immune);
             }
         }
         return;
@@ -1661,20 +1794,16 @@ fn land_parts<'a>(
         && own_rules.is_empty()
         && lent_rules.is_empty()
     {
-        if part.amount != 0.0 {
-            let amount = (f64::from(part.amount) * crit).min(f64::from(f32::MAX));
+        let dealt_amount = f64::from(part.amount) * dealt;
+        if dealt_amount != 0.0 {
+            let amount = (dealt_amount * crit).min(f64::from(f32::MAX));
             let landing = defences.land(typed(part), amount);
             if let Some(notes) = notes {
                 notes
                     .parts
                     .push(defences.noted(typed(part), amount, crit, landing));
             }
-            record(
-                landing,
-                f64::from(part.amount) * status_effect,
-                landed,
-                immune,
-            );
+            record(landing, dealt_amount * status_effect, landed, immune);
         }
         return;
     }
@@ -1682,7 +1811,7 @@ fn land_parts<'a>(
     for part in parts.iter().filter(|part| part.amount != 0.0) {
         convert(
             typed(part),
-            f64::from(part.amount) * crit,
+            f64::from(part.amount) * dealt * crit,
             own_rules.iter().chain(lent_rules),
             &mut working,
         );

@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 1,
+    "decay": 0.5
+  },
+  "bands": [
+    {
+      "at": 0.9999,
+      "enter": [
+        {
+          "apply": {
+            "status": "dissolved"
+          }
+        },
+        {
+          "remove": "dissolve_build"
+        }
+      ]
+    }
+  ]
+}

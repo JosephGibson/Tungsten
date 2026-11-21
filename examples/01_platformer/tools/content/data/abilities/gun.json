@@ -13,7 +13,8 @@
       "spawn": {
         "prefab": "bullet",
         "speed": 2400,
-        "offset": 24
+        "offset": 24,
+        "centred": true
       }
     }
   ]

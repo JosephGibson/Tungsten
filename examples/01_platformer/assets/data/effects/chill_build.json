@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 0.15,
+    "decay": 0.1666666667
+  },
+  "bands": [
+    {
+      "at": 0.15,
+      "enter": [
+        {
+          "apply": {
+            "status": "chilled"
+          }
+        },
+        {
+          "remove": "chill_build"
+        }
+      ]
+    }
+  ]
+}

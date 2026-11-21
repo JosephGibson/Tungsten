@@ -558,6 +558,82 @@ fn a_tag_two_instances_grant_leaves_with_the_second_to_expire_in_both_orders() {
 }
 
 #[test]
+fn an_effect_that_only_counts_down_keeps_the_full_steps_time_and_end() {
+    // Alone, and among a crowd of ticking effects that rests the counting
+    // pass, so the full step counts it on most steps.
+    for crowd in [0, 40] {
+        only_counting_effects_end_as_ticking_ones_do(crowd);
+    }
+}
+
+fn only_counting_effects_end_as_ticking_ones_do(crowd: usize) {
+    let (mut world, mut schedule) = rig();
+    // `plain` and the inline twin only count their time, which the tick
+    // does in place; `ticking` has a period, so it takes the full step.
+    let timed = || Effect::new().with_duration(0.25);
+    let plain = insert(&mut world, "plain", timed().with_grant(["status.marked"]));
+    let ticking = insert(&mut world, "ticking", timed().with_period(10.0));
+    for _ in 0..crowd {
+        let holder = world.spawn();
+        EffectRequest::new(holder, ticking.clone()).apply(&mut world);
+    }
+    let holders = [plain, DataRef::inline(timed()), ticking].map(|effect| {
+        let holder = world.spawn();
+        EffectRequest::new(holder, effect).apply(&mut world);
+        holder
+    });
+    let lefts = |world: &World| {
+        holders.map(|holder| instances(world, holder).first().map(|instance| instance.2))
+    };
+    // A step of no time moves none of them.
+    let before = lefts(&world);
+    step(&mut world, &mut schedule, 0.0);
+    assert_eq!(lefts(&world), before);
+    let mut ended = [None; 3];
+    for at in 1..=20 {
+        step(&mut world, &mut schedule, STEP);
+        let [plain, inline, ticking] = lefts(&world);
+        assert_eq!(
+            (plain, inline),
+            (ticking, ticking),
+            "step {at}, crowd {crowd}"
+        );
+        for (holder, end) in ended.iter_mut().enumerate() {
+            if end.is_none() && instances(&world, holders[holder]).is_empty() {
+                *end = Some(at);
+                assert!(
+                    expired(&world)
+                        .iter()
+                        .any(|event| event.0 == holders[holder]),
+                    "the end's event in its step"
+                );
+            }
+        }
+        assert_eq!(
+            has_tag(&world, holders[0], "status.marked"),
+            ended[0].is_none()
+        );
+    }
+    assert_eq!(ended, [Some(15); 3]);
+    // An entry reloaded with a period takes the full step from the next
+    // one: its payload lands.
+    let golem = world.spawn_with((Health::new(10.0),));
+    let burn = insert(&mut world, "burn", Effect::new().with_duration(1.0));
+    EffectRequest::new(golem, burn).apply(&mut world);
+    steps(&mut world, &mut schedule, 2);
+    insert(
+        &mut world,
+        "burn",
+        Effect::new()
+            .with_duration(1.0)
+            .with_period(STEP)
+            .with_damage(1.0),
+    );
+    steps(&mut world, &mut schedule, 3);
+    assert!(world.get::<Health>(golem).unwrap().current() < 10.0);
+}
+
+#[test]
 fn a_blocking_tag_refuses_the_effect() {
     let (mut world, _) = rig();
     let frost = DataRef::inline(

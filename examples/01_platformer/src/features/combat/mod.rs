@@ -1,35 +1,39 @@
 //! Combat: 01's damage model on the kit's damage types, `damage` and under
 //! it `damage.physical` (with `damage.physical.bleed`), `damage.fire`,
 //! `damage.cold`, `damage.shock` and `damage.poison`, each with its colour
-//! and its ailment ladder (`data/damage_types/game.json`). A hit starts
-//! from its attack's base amounts, doubles on a crit, then takes the kit's
-//! pipeline: the target's resistances, with shocked's half again on every
-//! type, then its shield and its health. The ladders put burning, chilled,
-//! frozen, shocked, stunned and bleeding on whatever has health, and
-//! poisoned on what is `living`; 01 reads their `status.*` tags for its
-//! looks and its physics.
+//! (`data/damage_types/game.json`). A hit starts from its attack's base
+//! amounts, doubles on a crit, then takes the kit's pipeline: the target's
+//! resistances, with shocked's half again on every type, then its shield
+//! and its health. Its landed parts are chemistry's stimuli: a type's
+//! `interactions` rules build a status a rung (`data/effects/*_build.json`)
+//! in shares of the target's [`STATUS_THRESHOLD`], each build's band
+//! applying its rung's effect, so burning, chilled, frozen, shocked,
+//! stunned and bleeding go on whatever has health, and poisoned on what is
+//! `living`; 01 reads their `status.*` tags for its looks and its physics.
 //!
-//! Combat also floats the damage numbers ([`numbers`]).
+//! Its damage numbers are the kit's part labels, the `numbers` cue rule's
+//! (`data/cue_rules/numbers.json`), under the game's
+//! [`DAMAGE_NUMBERS_FLAG`], which the Damage numbers option sets each step.
 //!
 //! The frame rule: every request is built and queued in the intent, move or
-//! overlap phase, so the step's resolve takes it. The kit's queues are not
-//! saved, so a request queued after the resolve would not survive a save
-//! between two frames.
+//! overlap phase, so the step's resolve takes it. The kit saves its queued
+//! requests (`damage_requests`) with the World, so one queued after the
+//! resolve waits for the next step's, a save between two frames included.
 
 pub mod components;
 pub mod draw;
-pub mod numbers;
 pub mod systems;
 
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
-    DAMAGE_RESOLVE, DamagePart, DamageRequest, Penetration, Phase, Stats, Tags, ensure_phases,
+    CUES, DAMAGE_RESOLVE, DamagePart, DamageRequest, Flags, Penetration, Phase, Tags, ensure_phases,
 };
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
-use crate::features::enemies::{self, armour};
+use crate::features::enemies::armour;
+use crate::shell::options::GameOptions;
 
 /// The share of the player's hits that crit, and a crit's factor on every
 /// part (Q8): the player's `crit_chance` and `crit_multiplier` in
@@ -42,19 +46,29 @@ pub const PLAYER_BLAST_SHARE: f32 = 0.5;
 /// The context a blast's or a steam burst's hit carries, which the player's
 /// `damage_taken` halves.
 pub const BLAST: &str = "hit.blast";
+/// The context a spell's own hit carries, which the caster's
+/// `damage_dealt` reads: arcane power doubles it (`tomes`).
+pub const SPELL: &str = "hit.spell";
 /// What the sprays deal a second to a target in their cone, in pulses this
-/// far apart: the frost half the flame's, its ladder's gates half the
-/// others' (`damage.cold` in `data/damage_types/game.json`), so it chills
-/// and freezes as fast.
+/// far apart: the frost half the flame's, its builds' decay half the
+/// others' (`data/effects/chill_build.json`, `freeze_build.json`), so it
+/// chills and freezes as fast.
 pub const COLD_SPRAY_DPS: f32 = 15.0;
 pub const FIRE_SPRAY_DPS: f32 = 30.0;
 pub const SPRAY_PULSE: f32 = 0.1;
-/// The cold ladder's chill rung and freeze rung, their shares of a target's
+/// The cold's chill and freeze, their builds' bands in shares of a target's
 /// threshold: the frost climbs to the chill's before it, and the chill's
 /// grade climbs to the freeze's after it ([`systems::frost_level`],
 /// [`systems::chill_grade`]).
 pub const CHILL_NEEDS: f32 = 0.15;
 pub const FREEZE_NEEDS: f32 = 0.5;
+/// The game stat a target's builds are shares of (`build`'s `per`), its
+/// prefab's: what the kit's ladder called its ailment threshold.
+pub const STATUS_THRESHOLD: &str = "status_threshold";
+/// The cold's builds by their `effects` IDs: the chill's, and the freeze's,
+/// the troll's of its own.
+pub const CHILL_BUILD: &str = "chill_build";
+pub const FREEZE_BUILDS: [&str; 2] = ["freeze_build", "troll_freeze_build"];
 /// The fire missile's blast: its fire at its centre, half of it at the
 /// heat's reach.
 pub const BLAST_FIRE: f32 = 20.0;
@@ -109,12 +123,14 @@ impl Kind {
 /// stats, so a hit from the player crits on one draw under [`CRIT_CHANCE`],
 /// doubling every part ([`CRIT_FACTOR`]); a blast's or a steam burst's
 /// carries [`BLAST`] in its context, which the player's `damage_taken`
-/// takes [`PLAYER_BLAST_SHARE`] of; one landing
-/// on an armoured creature's rear half, or one made whole, takes physical
-/// penetration 1, so its armour's physical resistance takes nothing; and one on a kind
-/// that resists knockback whole carries no push (`enemies::stands_firm`).
-/// A spell's own hit ([`Hit::spell`]) takes its source's [`SPELL_POWER`]
-/// too, which arcane power doubles; the build-up follows the damage.
+/// takes [`PLAYER_BLAST_SHARE`] of; a spell's own ([`Hit::spell`]) carries
+/// [`SPELL`], which its source's `damage_dealt` reads at the resolve, so
+/// arcane power doubles it and the build-up follows the damage; one made
+/// whole takes physical penetration 1, and one landing on an armoured
+/// creature's rear half takes it from the `armour` hit preparation
+/// ([`armour::prepare`]), the rule the kit's blasts and impacts name, so
+/// its armour's physical resistance takes nothing; its push goes to the
+/// kit's `knock_back`, which a whole resist stands firm against.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hit {
     target: Entity,
@@ -126,10 +142,6 @@ pub struct Hit {
     whole: bool,
     spell: bool,
 }
-
-/// The stat a spell's own hit is multiplied by, its source's: 1 without
-/// it, 2 under the tome of arcane power.
-pub const SPELL_POWER: &str = "spell_power";
 
 impl Hit {
     /// A hit on `target` of `parts`, from nobody.
@@ -185,54 +197,46 @@ impl Hit {
     }
 
     /// The hit, a spell's own: the missile's blast, a spray's pulse, the
-    /// strike or a jump of its chain, which its source's [`SPELL_POWER`]
-    /// multiplies.
+    /// strike or a jump of its chain, in the [`SPELL`] context, which its
+    /// source's `damage_dealt` reads.
     #[must_use]
     pub fn spell(mut self) -> Self {
         self.spell = true;
         self
     }
 
-    /// The kit's request: the base amounts, a spell's times its source's
-    /// [`SPELL_POWER`], its crit rolled by the kit from its source's stats
-    /// (one draw, for the player's), a blast's in the [`BLAST`] context,
-    /// with physical penetration 1 when whole or on armour's rear half, and
-    /// its push unless the target stands firm.
+    /// The kit's request: the base amounts, its crit rolled by the kit from
+    /// its source's stats (one draw, for the player's), a blast's in the
+    /// [`BLAST`] context and a spell's in the [`SPELL`] one, its point and
+    /// its push, with physical penetration 1 when whole, else the `armour`
+    /// preparation's on armour's rear half.
     pub fn request(&self, world: &mut World) -> DamageRequest {
-        let mut factor = 1.0;
-        if self.spell
-            && let Some(power) = self
-                .source
-                .and_then(|source| world.get::<Stats>(source))
-                .and_then(|stats| stats.get(SPELL_POWER))
-        {
-            factor *= power.max(0.0);
-        }
         let parts = self.parts.iter().map(|&(kind, amount)| {
-            DamagePart::new((amount * factor).max(0.0)).with_tags(Tags::new([kind.tag()]))
+            DamagePart::new(amount.max(0.0)).with_tags(Tags::new([kind.tag()]))
         });
         let mut request = DamageRequest::from_parts(self.target, parts);
         if let Some(source) = self.source {
             request = request.with_source(source);
         }
         request = request.roll_crit(world);
-        if self.blast {
-            request = request.with_context(Tags::new([BLAST]));
+        let context: Vec<&str> = [(self.blast, BLAST), (self.spell, SPELL)]
+            .into_iter()
+            .filter_map(|(on, tag)| on.then_some(tag))
+            .collect();
+        if !context.is_empty() {
+            request = request.with_context(Tags::new(context));
         }
         if let Some(at) = self.at {
             request = request.with_position(at);
         }
-        if let Some(push) = self.push
-            && !enemies::stands_firm(world, self.target)
-        {
+        if let Some(push) = self.push {
             request = request.with_knockback(push);
         }
-        let rear = self
-            .at
-            .is_some_and(|at| armour::rear(world, self.target, at));
-        if self.whole || rear {
+        if self.whole {
             let pen = Penetration::new().with_points(Kind::Physical.tag(), 1.0);
             request = request.with_penetration(pen);
+        } else {
+            armour::prepare(world, &mut request);
         }
         request
     }
@@ -250,25 +254,46 @@ pub fn has_status(world: &World, entity: Entity, tag: &str) -> bool {
     world.get::<Tags>(entity).is_some_and(|tags| tags.has(tag))
 }
 
+/// The game's flag the `numbers` cue rule floats a part's damage under (its
+/// `flags` filter), set from the Damage numbers option.
+pub const DAMAGE_NUMBERS_FLAG: &str = "show.damage_numbers";
+
+/// `damage_numbers_flag`, in the react phase before the kit's cues: the
+/// game's [`DAMAGE_NUMBERS_FLAG`] set from the Damage numbers option each
+/// step (on without the options), so a change takes the next step's parts.
+fn damage_numbers_flag(world: &mut World) {
+    let shown = world
+        .get_resource::<GameOptions>()
+        .is_none_or(|options| options.damage_numbers);
+    if !world.has_resource::<Flags>() {
+        world.insert_resource(Flags::new());
+    }
+    let flags = world.resource_mut::<Flags>();
+    if flags.has(DAMAGE_NUMBERS_FLAG) != shown {
+        flags.set(DAMAGE_NUMBERS_FLAG, shown);
+    }
+}
+
 /// Combat as a plugin: in the fixed step, the states the resolve begins
 /// with, recorded before the kit's damage resolve, and in the react phase
 /// the reactions to the step's landed parts, the thaws and the damage
-/// numbers; in the present phase the statuses' tints, before the
+/// numbers' flag; in the present phase the statuses' tints, before the
 /// frame's particles their emitters, and their overlays drawn after the
 /// sprites. The chill's grades run in the enemies' intent phase.
 pub struct CombatPlugin;
 
 impl Plugin for CombatPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        world.insert_resource(systems::Grades::default());
+        world.insert_resource(systems::StatusTinted::default());
         world.resource_mut::<Extracts>().add_sprites(draw::overlays);
         world.resource_mut::<Extracts>().add_sprites(draw::edge);
         ensure_phases(schedule);
         let states = system("combat_states", systems::states).before(DAMAGE_RESOLVE);
         schedule.add(Stage::FixedUpdate, Phase::Resolve.join(states));
-        let (mut parts, mut immune, mut applied) =
-            (EventCursor::new(), EventCursor::new(), EventCursor::new());
+        let (mut parts, mut immune) = (EventCursor::new(), EventCursor::new());
         let reactions = system("combat_reactions", move |world: &mut World| {
-            systems::reactions(world, &mut parts, &mut immune, &mut applied);
+            systems::reactions(world, &mut parts, &mut immune);
         });
         schedule.add(Stage::FixedUpdate, Phase::React.join(reactions));
         let mut expired = EventCursor::new();
@@ -276,11 +301,8 @@ impl Plugin for CombatPlugin {
             systems::thaws(world, &mut expired);
         });
         schedule.add(Stage::FixedUpdate, Phase::React.join(thaws));
-        let mut parts = EventCursor::new();
-        let numbers = system("damage_numbers", move |world: &mut World| {
-            numbers::numbers(world, &mut parts);
-        });
-        schedule.add(Stage::FixedUpdate, Phase::React.join(numbers));
+        let flag = system("damage_numbers_flag", damage_numbers_flag).before(CUES);
+        schedule.add(Stage::FixedUpdate, Phase::React.join(flag));
         schedule.add(
             Stage::PostUpdate,
             Phase::Present.join(system("status_tints", systems::tints)),

@@ -18,6 +18,7 @@ use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::{finite, non_negative, vec2};
 use crate::intent::action_input::Intent;
 use crate::intent::aim::Aim;
+use crate::motion::linear::LinearMotion;
 
 /// [`FacingPlugin`]'s system, in the present phase.
 pub const FACING: &str = "facing";
@@ -54,7 +55,9 @@ enum Snap {
 /// character looks, a ship's heading, a gun's barrel. [`FacingPlugin`]'s
 /// system takes it from one source:
 ///
-/// - `motion`, the entity's velocity: its `Velocity`, else its last step's
+/// - `motion`, the entity's velocity: its `Velocity`, else its
+///   [`LinearMotion`](crate::LinearMotion)'s, so a bodiless shot faces its
+///   flight from its first frame and through a turn, else its last step's
 ///   move (`Position − PrevPosition`) over the step;
 /// - `intent`, its [`Intent`](crate::Intent)'s movement;
 /// - `aim`, its [`Aim`](crate::Aim)'s direction.
@@ -634,11 +637,14 @@ pub(crate) fn write_flip(world: &mut World, entity: Entity, flipped: bool) {
     }
 }
 
-/// An entity's velocity: its `Velocity`, else its last step's move over the
-/// step.
+/// An entity's velocity: its `Velocity`, else its [`LinearMotion`]'s,
+/// else its last step's move over the step.
 fn motion_of(world: &World, entity: Entity, step: f32) -> Option<Vec2> {
     if let Some(velocity) = world.get::<Velocity>(entity) {
         return Some(velocity.0);
+    }
+    if let Some(motion) = world.get::<LinearMotion>(entity) {
+        return Some(motion.velocity());
     }
     let moved = world.get::<Position>(entity)?.0 - world.get::<PrevPosition>(entity)?.0;
     (step > 0.0).then(|| moved / step)

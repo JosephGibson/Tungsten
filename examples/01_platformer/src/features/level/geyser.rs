@@ -6,9 +6,12 @@
 //! for [`CRUST_SECS`], an eruption cut short in steam, and it starts its
 //! idle again after.
 //!
-//! Its look reads only its phase, the phase's seconds left and the choke,
-//! which a save keeps: the vent's sprite, choked or not, and a child plume
-//! that steps through the sputter's frames or the eruption's by the phase's
+//! Its cycle is the kit's timed state machine over [`GeyserPhase`], saved
+//! as `geyser_phase`, whose hooks switch its touch, the kit's
+//! `ContactDamage`, on and off and play each change's sound and burst. Its
+//! look reads only the machine's state and the seconds spent in it, which a
+//! save keeps: the vent's sprite, choked or not, and a child plume that
+//! steps through the sputter's frames or the eruption's by the state's
 //! time, with embers from the mouth while it sputters or erupts.
 
 use glam::Vec2;
@@ -18,7 +21,9 @@ use tungsten::core::{
     AssetRegistry, Entity, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Sprite,
     Time, Transform, Visibility, World,
 };
-use tungsten::kit::{Children, ContactDamage, LocalOffset, spawn_child};
+use tungsten::kit::{
+    Children, ContactDamage, LocalOffset, StateMachine, StateMachinePlugin, spawn_child,
+};
 
 use super::lava::{CRUST_COLD, CRUST_SECS};
 use crate::features::audio::{self, components::Sound};
@@ -31,6 +36,8 @@ pub const IDLE_SECS: f32 = 2.5;
 pub const SPUTTER_SECS: f32 = 0.6;
 pub const ERUPT_SECS: f32 = 0.8;
 pub const CYCLE_SECS: f32 = IDLE_SECS + SPUTTER_SECS + ERUPT_SECS;
+/// The cycle's system, the kit's machine's visits, in the intent phase.
+pub const GEYSER_CYCLE: &str = "geyser_cycle";
 /// The vent's box, its half extents and its centre from the geyser's point,
 /// the vent sprite's top-left: over the floor, where a cold ray meets it
 /// before the tile stops the ray.
@@ -49,7 +56,9 @@ const PLUME_Z: i32 = 6;
 /// The embers' config.
 const EMBERS: &str = "ex10_geyser_embers";
 
-/// Where a geyser stands in its cycle.
+/// Where a geyser stands in its cycle, its machine's states: the cycle's
+/// three, each timed into the next, and the choke the ice spray sets, timed
+/// back into a fresh idle.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeyserPhase {
@@ -57,90 +66,165 @@ pub enum GeyserPhase {
     Idle,
     Sputter,
     Erupt,
+    Choked,
 }
 
 /// A fire geyser, its prefab's `geyser`: `offset` seconds into its cycle at
-/// a run's start, and its state, which its prefab never sets.
+/// a run's start, and its chill, which its prefab never sets. Its cycle is
+/// its `StateMachine<GeyserPhase>`, which [`start`] gives it.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Geyser {
     /// Seconds into its cycle at a run's start.
     #[serde(default)]
     pub offset: f32,
-    #[serde(skip)]
-    pub phase: GeyserPhase,
-    /// Seconds left of the phase.
-    #[serde(skip)]
-    pub left: f32,
     /// Seconds of cold spray on it, draining when unsprayed.
     #[serde(skip)]
     pub cold: f32,
     /// Whether the ice spray reached its vent this step.
     #[serde(skip)]
     pub sprayed: bool,
-    /// Seconds left of its choke, 0 when it runs.
-    #[serde(skip)]
-    pub choked: f32,
-    /// Its touch, held aside outside an eruption.
-    #[serde(skip)]
-    pub touch: Option<ContactDamage>,
     /// Its cycle has begun ([`start`]).
     #[serde(skip)]
     pub started: bool,
 }
 
-/// The phase and its seconds left `offset` seconds into a cycle.
+/// [`Geyser`]'s saved form: its offset, its chill and whether its cycle has
+/// begun. The cycle itself is its machine's, and its touch's switch the
+/// kit's, each saved beside it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeyserForm {
+    pub offset: f32,
+    pub cold: f32,
+    pub started: bool,
+}
+
+impl From<&Geyser> for GeyserForm {
+    fn from(geyser: &Geyser) -> Self {
+        Self {
+            offset: geyser.offset,
+            cold: geyser.cold,
+            started: geyser.started,
+        }
+    }
+}
+
+impl From<GeyserForm> for Geyser {
+    fn from(form: GeyserForm) -> Self {
+        Self {
+            offset: form.offset,
+            cold: form.cold,
+            sprayed: false,
+            started: form.started,
+        }
+    }
+}
+
+/// The phase `offset` seconds into a cycle, and the seconds into it.
 #[must_use]
 pub fn at_offset(offset: f32) -> (GeyserPhase, f32) {
     let t = offset.rem_euclid(CYCLE_SECS);
     if t < IDLE_SECS {
-        (GeyserPhase::Idle, IDLE_SECS - t)
+        (GeyserPhase::Idle, t)
     } else if t < IDLE_SECS + SPUTTER_SECS {
-        (GeyserPhase::Sputter, IDLE_SECS + SPUTTER_SECS - t)
+        (GeyserPhase::Sputter, t - IDLE_SECS)
     } else {
-        (GeyserPhase::Erupt, CYCLE_SECS - t)
+        (GeyserPhase::Erupt, t - IDLE_SECS - SPUTTER_SECS)
+    }
+}
+
+/// The cycle as the kit's plugin: each phase timed into the next and the
+/// choke into a fresh idle, with the hooks that switch the touch and play
+/// each change ([`sputter`], [`erupt`], [`end`], [`choke`]).
+#[must_use]
+pub fn machine() -> StateMachinePlugin<GeyserPhase> {
+    StateMachinePlugin::new(GEYSER_CYCLE)
+        .after(GeyserPhase::Idle, IDLE_SECS, GeyserPhase::Sputter)
+        .after(GeyserPhase::Sputter, SPUTTER_SECS, GeyserPhase::Erupt)
+        .after(GeyserPhase::Erupt, ERUPT_SECS, GeyserPhase::Idle)
+        .after(GeyserPhase::Choked, CRUST_SECS, GeyserPhase::Idle)
+        .on_enter(GeyserPhase::Sputter, sputter)
+        .on_enter(GeyserPhase::Erupt, erupt)
+        .on_exit(GeyserPhase::Erupt, end)
+        .on_enter(GeyserPhase::Choked, choke)
+}
+
+/// Whether `geyser`'s machine came to its state from another: a cycle
+/// starting part-way, or staged, enters its first state quietly.
+fn arrived(world: &World, geyser: Entity) -> bool {
+    world
+        .get::<StateMachine<GeyserPhase>>(geyser)
+        .is_some_and(|machine| machine.previous().is_some())
+}
+
+/// Switches `geyser`'s touch on or off, where it stays on the entity.
+fn switch(world: &mut World, geyser: Entity, on: bool) {
+    if let Some(touch) = world.get_mut::<ContactDamage>(geyser) {
+        touch.set_on(on);
+    }
+}
+
+/// A sputter begun: its gurgle.
+fn sputter(world: &mut World, geyser: Entity) {
+    if arrived(world, geyser)
+        && let Some(at) = mouth(world, geyser)
+    {
+        audio::play(world, Sound::GeyserSputter, at);
+    }
+}
+
+/// An eruption begun: its touch on, with its burst and its roar.
+fn erupt(world: &mut World, geyser: Entity) {
+    switch(world, geyser, true);
+    if arrived(world, geyser)
+        && let Some(at) = mouth(world, geyser)
+    {
+        spawn_key_burst(world, "ex10_geyser_burst", at);
+        audio::play(world, Sound::GeyserErupt, at);
+    }
+}
+
+/// An eruption left, ended or choked: its touch off.
+fn end(world: &mut World, geyser: Entity) {
+    switch(world, geyser, false);
+}
+
+/// A choke set: its touch off, in steam.
+fn choke(world: &mut World, geyser: Entity) {
+    switch(world, geyser, false);
+    if arrived(world, geyser)
+        && let Some(at) = mouth(world, geyser)
+    {
+        spawn_burst(world, "ex10_steam_burst", at);
+        audio::play(world, Sound::Steamed, at);
     }
 }
 
 /// At a run's start, and for a geyser spawned since: each geyser's cycle
-/// begins `offset` seconds in, its touch taken aside, on again only in an
-/// eruption, and its plume and embers hung from it.
+/// begins `offset` seconds in ([`set`]), and its plume and embers are hung
+/// from it.
 pub fn start(world: &mut World) {
-    let geysers: Vec<Entity> = world
+    let geysers: Vec<(Entity, f32)> = world
         .query::<(Entity, &Geyser)>()
         .filter(|(_, geyser)| !geyser.started)
-        .map(|(entity, _)| entity)
+        .map(|(entity, geyser)| (entity, geyser.offset))
         .collect();
-    for geyser in geysers {
-        let touch = world.remove_component::<ContactDamage>(geyser);
-        let Some(state) = world.get_mut::<Geyser>(geyser) else {
-            continue;
-        };
-        let (phase, left) = at_offset(state.offset);
-        state.touch = touch;
-        state.started = true;
-        set(world, geyser, phase, left, 0.0);
+    for (geyser, offset) in geysers {
+        if let Some(state) = world.get_mut::<Geyser>(geyser) {
+            state.started = true;
+        }
+        let (phase, elapsed) = at_offset(offset);
+        set(world, geyser, phase, elapsed);
         spawn_look(world, geyser);
     }
 }
 
-/// Sets `geyser`'s phase, its seconds left and its choke, quietly: its
-/// touch on in an eruption and held aside else. A load's, and the cycle's.
-pub fn set(world: &mut World, geyser: Entity, phase: GeyserPhase, left: f32, choked: f32) {
-    let held = world.remove_component::<ContactDamage>(geyser);
-    let Some(state) = world.get_mut::<Geyser>(geyser) else {
-        return;
-    };
-    state.phase = phase;
-    state.left = left;
-    state.choked = choked;
-    let touch = held.or_else(|| state.touch.take());
-    if phase == GeyserPhase::Erupt && choked <= 0.0 {
-        if let Some(touch) = touch {
-            world.insert(geyser, touch);
-        }
-    } else if let Some(state) = world.get_mut::<Geyser>(geyser) {
-        state.touch = touch;
-    }
+/// Sets `geyser` in `phase`, `elapsed` seconds into it, quietly: a fresh
+/// machine, whose first visit plays nothing, and its touch on only in an
+/// eruption. A cycle's start, and the tests' staging.
+pub fn set(world: &mut World, geyser: Entity, phase: GeyserPhase, elapsed: f32) {
+    world.insert(geyser, StateMachine::new(phase).starting_at(elapsed));
+    switch(world, geyser, phase == GeyserPhase::Erupt);
 }
 
 /// A cold ray crossed `geyser`'s vent this step: its chill runs; a choked
@@ -159,84 +243,31 @@ pub fn mouth(world: &World, geyser: Entity) -> Option<Vec2> {
         .map(|at| at.position + VENT_CENTRE)
 }
 
-/// What a geyser's step changed: a sputter or an eruption begun, an
-/// eruption ended, or a choke set.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Change {
-    Sputtered,
-    Erupted,
-    Ended,
-    Choked,
-}
-
-/// `geyser_tick`, in the tick phase before the overlap phase's contact
-/// damage: a geyser spawned since begins its cycle ([`start`]); each choke
-/// runs down, and at its end the geyser idles [`IDLE_SECS`]; else its chill
-/// runs while sprayed and drains else, and chokes it at [`CRUST_COLD`] for
-/// [`CRUST_SECS`]; else its phase runs down into the next. An eruption's
-/// start puts its touch on with a burst and a roar, its end takes it off;
-/// a sputter's start plays its gurgle; a choke ends an eruption at once in
-/// steam.
+/// `geyser_tick`, in the tick phase before the intent phase's cycle
+/// ([`machine`]) and the overlap phase's contact damage: a geyser spawned
+/// since begins its cycle ([`start`]); a choked one holds as it is; else
+/// its chill runs while sprayed and drains else, and at [`CRUST_COLD`] asks
+/// its machine for the choke, its chill spent, which the step's cycle
+/// enters: an eruption cut short at once, in steam.
 pub fn tick(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     if dt <= 0.0 {
         return;
     }
     start(world);
-    let mut changes = Vec::new();
-    for (geyser, state) in world.query_mut::<(Entity, &mut Geyser)>() {
+    for (state, machine) in world.query_mut::<(&mut Geyser, &mut StateMachine<GeyserPhase>)>() {
         let sprayed = std::mem::take(&mut state.sprayed);
-        if state.choked > 0.0 {
-            state.choked -= dt;
-            if state.choked <= 1e-5 {
-                state.choked = 0.0;
-                state.phase = GeyserPhase::Idle;
-                state.left = IDLE_SECS;
-            }
+        if machine.state() == GeyserPhase::Choked {
             continue;
         }
         if sprayed {
             state.cold += dt;
             if state.cold >= CRUST_COLD - 1e-4 {
-                changes.push((geyser, Change::Choked));
-                continue;
+                state.cold = 0.0;
+                machine.go(GeyserPhase::Choked);
             }
         } else {
             state.cold = (state.cold - dt).max(0.0);
-        }
-        state.left -= dt;
-        if state.left <= 1e-5 {
-            let (next, secs, change) = match state.phase {
-                GeyserPhase::Idle => (GeyserPhase::Sputter, SPUTTER_SECS, Change::Sputtered),
-                GeyserPhase::Sputter => (GeyserPhase::Erupt, ERUPT_SECS, Change::Erupted),
-                GeyserPhase::Erupt => (GeyserPhase::Idle, IDLE_SECS, Change::Ended),
-            };
-            state.phase = next;
-            state.left += secs;
-            changes.push((geyser, change));
-        }
-    }
-    for (geyser, change) in changes {
-        let Some(at) = mouth(world, geyser) else {
-            continue;
-        };
-        let left = world.get::<Geyser>(geyser).map_or(0.0, |state| state.left);
-        match change {
-            Change::Sputtered => audio::play(world, Sound::GeyserSputter, at),
-            Change::Erupted => {
-                set(world, geyser, GeyserPhase::Erupt, left, 0.0);
-                spawn_key_burst(world, "ex10_geyser_burst", at);
-                audio::play(world, Sound::GeyserErupt, at);
-            }
-            Change::Ended => set(world, geyser, GeyserPhase::Idle, left, 0.0),
-            Change::Choked => {
-                set(world, geyser, GeyserPhase::Idle, IDLE_SECS, CRUST_SECS);
-                if let Some(state) = world.get_mut::<Geyser>(geyser) {
-                    state.cold = 0.0;
-                }
-                spawn_burst(world, "ex10_steam_burst", at);
-                audio::play(world, Sound::Steamed, at);
-            }
         }
     }
 }
@@ -289,17 +320,16 @@ fn spawn_look(world: &mut World, geyser: Entity) {
     );
 }
 
-/// The plume's sprite and its frame's height for a geyser's phase and its
-/// seconds left: the sputter's frames or the eruption's by the phase's
-/// time, none at idle or choked.
-fn plume(phase: GeyserPhase, left: f32, choked: bool) -> Option<(String, f32)> {
+/// The plume's sprite and its frame's height for a geyser's phase and the
+/// seconds spent in it: the sputter's frames or the eruption's by the
+/// phase's time, none at idle or choked.
+fn plume(phase: GeyserPhase, elapsed: f32) -> Option<(String, f32)> {
     let frame = |secs: f32, frames: usize| {
-        let since = (secs - left).clamp(0.0, secs);
+        let since = elapsed.clamp(0.0, secs);
         ((since / secs * frames as f32) as usize).min(frames - 1)
     };
     match phase {
-        _ if choked => None,
-        GeyserPhase::Idle => None,
+        GeyserPhase::Idle | GeyserPhase::Choked => None,
         GeyserPhase::Sputter => Some((
             format!(
                 "ex10_geyser_sputter_{}",
@@ -314,35 +344,28 @@ fn plume(phase: GeyserPhase, left: f32, choked: bool) -> Option<(String, f32)> {
     }
 }
 
-/// `geyser_look`, after the physics sync and before the frame's particles:
-/// each geyser's vent, choked or not; its plume's frame, its bottom on the
-/// floor, or hidden; its embers emitting while it sputters or erupts and
-/// drained else.
+/// `geyser_look`, after the physics sync and before the frame's transform
+/// propagation and its particles: each geyser's vent, choked or not; its
+/// plume's frame and its offset from the vent, by which the propagation
+/// stands its bottom on the floor in the same frame, or hidden; its embers
+/// emitting while it sputters or erupts and drained else.
 pub fn look(world: &mut World) {
-    let geysers: Vec<(Entity, GeyserPhase, f32, bool, Vec<Entity>)> = world
+    let geysers: Vec<(Entity, GeyserPhase, f32, Vec<Entity>)> = world
         .query::<(Entity, &Geyser, Option<&Children>)>()
-        .map(|(entity, state, children)| {
+        .filter_map(|(entity, _, children)| {
+            let machine = world.get::<StateMachine<GeyserPhase>>(entity)?;
             let children = children.map(|c| c.iter().collect()).unwrap_or_default();
-            (
-                entity,
-                state.phase,
-                state.left,
-                state.choked > 0.0,
-                children,
-            )
+            Some((entity, machine.state(), machine.elapsed(), children))
         })
         .collect();
-    for (geyser, phase, left, choked, children) in geysers {
-        let at = world
-            .get::<Transform>(geyser)
-            .map_or(Vec2::ZERO, |t| t.position);
-        let vent = if choked {
+    for (geyser, phase, elapsed, children) in geysers {
+        let vent = if phase == GeyserPhase::Choked {
             "ex10_geyser_vent_choked"
         } else {
             "ex10_geyser_vent"
         };
         show(world, geyser, vent);
-        let shown = plume(phase, left, choked);
+        let shown = plume(phase, elapsed);
         for child in children {
             if let Some(state) = world.get_mut::<ParticleEmitterState>(child) {
                 state.drained = shown.is_none();
@@ -356,13 +379,9 @@ pub fn look(world: &mut World) {
             }
             if let Some((name, height)) = &shown {
                 show(world, child, name);
-                // Its place too, since the frame's propagation may have run.
-                let offset = Vec2::new(0.0, VENT_HEIGHT - height);
+                // Its place is the hierarchy's, from this offset.
                 if let Some(local) = world.get_mut::<LocalOffset>(child) {
-                    local.0 = offset;
-                }
-                if let Some(transform) = world.get_mut::<Transform>(child) {
-                    transform.position = at + offset;
+                    local.0 = Vec2::new(0.0, VENT_HEIGHT - height);
                 }
             }
         }

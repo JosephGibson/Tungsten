@@ -8,13 +8,28 @@
       "kind": "troll",
       "variant": "armoured"
     },
+    "brain": {},
+    "sight": {},
+    "enemy_state": {
+      "state": "patrol",
+      "elapsed": 0,
+      "entered": false,
+      "held": false
+    },
+    "shown": {},
+    "previous_velocity": {},
+    "facing": {
+      "from": "intent",
+      "snap": "horizontal"
+    },
     "tags": [
       "team.enemy",
       "flesh",
       "freezable",
       "troll",
       "living",
-      "armoured"
+      "armoured",
+      "level.saved"
     ],
     "rigid_body": {
       "kind": "kinematic",
@@ -32,17 +47,25 @@
     },
     "platformer_controller": {
       "run_speed": 91,
-      "jump_speed": 600
+      "jump_speed": 600,
+      "shove_mass": 600,
+      "shove_share": 0.0133333337,
+      "step_height": 32,
+      "without": [
+        4
+      ]
     },
     "health": {
       "max": 600,
       "invulnerability": 0,
-      "despawn_on_death": 0
+      "despawn_on_death": 0,
+      "disarm": true
     },
     "stats": {
       "max_health": 600,
       "damage": 40,
-      "move_speed": 91
+      "move_speed": 91,
+      "status_threshold": 40
     },
     "hurtbox": {
       "shape": {
@@ -62,9 +85,6 @@
       "damage.cold": 0.75,
       "damage.shock": 0.75,
       "damage.poison": 0.75
-    },
-    "ailment_threshold": {
-      "flat": 40
     },
     "knockback": {
       "seconds": 0.2,
@@ -104,9 +124,308 @@
           "shake": 0.15
         },
         {
-          "roll": "troll_drops"
+          "roll": {
+            "table": "troll_drops",
+            "centred": true,
+            "at": "centre"
+          }
         }
       ]
+    },
+    "impact_damage": {
+      "kind": "damage.physical",
+      "speed": 400,
+      "per_mass": 0.002,
+      "most": 120,
+      "floor": 2,
+      "mass": 600,
+      "prepare": "armour",
+      "scale": 0
+    },
+    "character_animator": {
+      "idle": {
+        "right": "ex10_troll_armoured_idle",
+        "left": "ex10_troll_armoured_idle_left"
+      },
+      "move": {
+        "right": "ex10_troll_armoured_walk",
+        "left": "ex10_troll_armoured_walk_left"
+      },
+      "min_speed": 1,
+      "rules": [
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.attack",
+              "strike.swipe"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_swipe",
+            "left": "ex10_troll_stripped_swipe_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.attack",
+              "strike.throw"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_throw",
+            "left": "ex10_troll_stripped_throw_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_slam",
+            "left": "ex10_troll_stripped_slam_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "troll.holding"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_pickup",
+            "left": "ex10_troll_stripped_pickup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.windup",
+              "strike.swipe"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_swipe_windup",
+            "left": "ex10_troll_stripped_swipe_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded",
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_windup",
+            "left": "ex10_troll_stripped_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded"
+            ],
+            "any": [
+              "state.alert",
+              "state.recover"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_idle",
+            "left": "ex10_troll_stripped_idle_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded"
+            ]
+          },
+          "motion": "move",
+          "clip": {
+            "right": "ex10_troll_stripped_walk",
+            "left": "ex10_troll_stripped_walk_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "status.corroded"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_stripped_idle",
+            "left": "ex10_troll_stripped_idle_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack",
+              "strike.swipe"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_swipe",
+            "left": "ex10_troll_armoured_swipe_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack",
+              "strike.throw"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_throw",
+            "left": "ex10_troll_armoured_throw_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.attack"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_slam",
+            "left": "ex10_troll_armoured_slam_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "troll.holding"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_pickup",
+            "left": "ex10_troll_armoured_pickup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup",
+              "strike.swipe"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_swipe_windup",
+            "left": "ex10_troll_armoured_swipe_windup_left"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              "state.windup"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_windup",
+            "left": "ex10_troll_armoured_windup_left"
+          }
+        },
+        {
+          "when": {
+            "any": [
+              "state.alert",
+              "state.recover"
+            ]
+          },
+          "clip": {
+            "right": "ex10_troll_armoured_idle",
+            "left": "ex10_troll_armoured_idle_left"
+          }
+        }
+      ],
+      "hold": {
+        "all": [
+          "state.held"
+        ]
+      }
+    },
+    "health_bar": {
+      "offset": [
+        10,
+        0
+      ],
+      "back": [
+        0.0941,
+        0.0706,
+        0.0863,
+        0.8627
+      ],
+      "fill": [
+        0.7686,
+        0.1882,
+        0.1569,
+        1
+      ]
+    },
+    "cooldown": {
+      "seconds": 2,
+      "count": 0
+    },
+    "looks": [
+      {
+        "when": {
+          "all": [
+            "mark.alert"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "sprite": "ex10_mark_alert",
+            "offset": [
+              10,
+              -90
+            ],
+            "flip": false,
+            "bob": {
+              "height": 2,
+              "seconds": 0.5
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "all": [
+            "mark.search"
+          ],
+          "none": [
+            "mark.alert"
+          ]
+        },
+        "look": {
+          "overlay": {
+            "sprite": "ex10_mark_search",
+            "offset": [
+              10,
+              -90
+            ],
+            "flip": false
+          }
+        }
+      }
+    ],
+    "cap": {
+      "group": "summon.foes",
+      "max": 10,
+      "count_dead": false
+    },
+    "despawn_outside": {
+      "world": 0
     }
   }
 }

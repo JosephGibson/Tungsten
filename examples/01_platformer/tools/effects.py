@@ -10,8 +10,8 @@ import math
 
 from PIL import Image
 
-from art import EFFECT_SIZES, ELEMENT_SIZES, ICON_SIZES, PALETTE, STATUS_CLASSES, canvas
-from pixels import BAYER, NEIGHBOURS, Part, compose, dither, fbm, outline, point, shade, smoothstep, to_image, unit
+from art import EFFECT_SIZES, ELEMENT_SIZES, ICON_SIZES, PALETTE, STATUS_CLASSES, canvas, clip
+from pixels import BAYER, NEIGHBOURS, Part, compose, dither, fbm, outline, point, ramp, shade, smoothstep, to_image, unit
 
 HALO_STEPS = '!@#$%^&*'  # white at alpha 1, 2, 3, 5, 8, 12, 17, 24
 FLAME_STEPS = 'ejklpqux'  # white at alpha 4, 8, 16, 28, 44, 68, 104, 160
@@ -22,20 +22,15 @@ WHITE_LEVELS = sorted({PALETTE[s][3]: s for s in HALO_STEPS + FLAME_STEPS + 'Ψ'
 
 def radial_glow(steps, falloff):
     """Alpha falls off as (1 - r) ** falloff; neighbouring steps are dithered."""
-    levels = [0] + [PALETTE[s][3] for s in steps]
-    peak = levels[-1]
+    levels = [(PALETTE[s][3], s) for s in steps]
+    peak = levels[-1][0]
     colors = {}
     for y in range(64):
         for x in range(64):
             r = math.hypot(x - 31.5, y - 31.5) / 31.5
-            target = peak * max(0.0, 1 - r) ** falloff
-            for i in range(len(levels) - 1):
-                low, high = levels[i], levels[i + 1]
-                if low <= target <= high:
-                    pick = i + 1 if dither(x, y, (target - low) / max(high - low, 1)) else i
-                    if pick:
-                        colors[(x, y)] = steps[pick - 1]
-                    break
+            symbol = white_alpha(x, y, peak * max(0.0, 1 - r) ** falloff, levels)
+            if symbol:
+                colors[(x, y)] = symbol
     return to_image(colors)
 
 
@@ -97,10 +92,12 @@ def spark_and_cursor(images):
         images[name] = im
 
 
-def white_alpha(x, y, alpha):
-    """Dithered white palette symbol for `alpha` (0..255), or None when clear."""
+def white_alpha(x, y, alpha, levels=WHITE_LEVELS):
+    """The symbol for `alpha` (0..255) dithered between the two of `levels`,
+    `(alpha, symbol)` pairs faint to strong (the palette's white steps by
+    default), it falls between; None when clear, the last past them."""
     low_alpha, low = 0, None
-    for high_alpha, high in WHITE_LEVELS:
+    for high_alpha, high in levels:
         if alpha <= high_alpha:
             return high if dither(x, y, (alpha - low_alpha) / (high_alpha - low_alpha)) else low
         low_alpha, low = high_alpha, high
@@ -264,8 +261,7 @@ def icon_tile(name, subject):
         for x in range(2, ICON_TILE - 2):
             r = math.hypot(x - c, y - c) / (ICON_TILE / 2)
             v = 0.1 + 0.3 * max(0.0, 1 - r) + 0.58 * near_subject.get((x, y), 0.0) ** 1.5
-            v += (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.28
-            canvas[(x, y)] = back[min(len(back) - 1, max(0, int(v * len(back))))]
+            canvas[(x, y)] = ramp(v, back, x, y, 0.28)
     # The subject, outlined where it meets the glow.
     for p, s in outline(dict(lit), 'o', (ICON_TILE, ICON_TILE)).items():
         canvas[p] = s
@@ -312,7 +308,7 @@ def icon_disc(center, radius, symbols, light=(-0.55, -0.65)):
             if d2 > 1:
                 continue
             lit = max(0.0, -(dx * light[0] + dy * light[1]) * 0.8 + math.sqrt(1 - d2) * 0.6)
-            out[(x, y)] = symbols[min(len(symbols) - 1, int(lit * len(symbols)))]
+            out[(x, y)] = ramp(lit, symbols)
     return out
 
 
@@ -329,7 +325,7 @@ def icon_cone(x0, x1, half0, half1, seed, layers):
             if off > edge:
                 continue
             heat = 1 - off / max(edge, 1e-3) * 0.85 - u * 0.35
-            out[(x, y)] = layers[min(len(layers) - 1, max(0, int(heat * len(layers))))]
+            out[(x, y)] = ramp(heat, layers)
     return out
 
 
@@ -430,7 +426,7 @@ def icon_bowling_ball():
             if d2 > 1:
                 continue
             lit = max(0.0, (-dx * 0.5 - dy * 0.7) * 0.7 + math.sqrt(1 - d2) * 0.5)
-            pixels[(x, y)] = 'γβαδ'[min(3, int(lit * 4))]
+            pixels[(x, y)] = ramp(lit, 'γβαδ')
             if lit > 0.82:
                 pixels[(x, y)] = 'ψ' if lit < 0.9 else 'χ'
     for hx, hy, hr in [(-0.25, -0.3, 0.13), (0.08, -0.38, 0.13), (-0.05, 0.02, 0.15)]:
@@ -585,26 +581,21 @@ def icon_dummy():
     """The training dummy, the summon slot's first type, at half size on a
     summoning ring (recoloured to mana's blue on its tile)."""
     from actors import dummy_canvas
+    return icon_of(dummy_canvas(), 2, 2)
+
+
+def summoning_ring():
+    """A summon icon's ring, mana's blue on its tile, under its subject."""
     ring, inner = Part((ICON, ICON)), Part((ICON, ICON))
     ring.ellipse((16, 28), 13, 3)
     inner.ellipse((16, 28), 10, 2)
-    pixels = {p: 'Ξ' if p[1] <= 27 else 'Π' for p in ring.pixels() - inner.pixels()}
-    dummy = dummy_canvas()
-    for y in range(ICON):
-        for x in range(ICON):
-            symbol = dummy.get((2 * x + 1, 2 * y + 1))
-            if symbol and y >= 2:
-                pixels[(x, y - 2)] = symbol
-    return pixels
+    return {p: 'Ξ' if p[1] <= 27 else 'Π' for p in ring.pixels() - inner.pixels()}
 
 
 def icon_of(canvas, step, lift):
     """A summon type's icon: its frame's canvas at 1/`step` size, raised
     `lift` pixels, standing on a summoning ring (mana's blue on its tile)."""
-    ring, inner = Part((ICON, ICON)), Part((ICON, ICON))
-    ring.ellipse((16, 28), 13, 3)
-    inner.ellipse((16, 28), 10, 2)
-    pixels = {p: 'Ξ' if p[1] <= 27 else 'Π' for p in ring.pixels() - inner.pixels()}
+    pixels = summoning_ring()
     half = step // 2
     for y in range(ICON + lift):
         for x in range(ICON):
@@ -658,10 +649,7 @@ def icon_prop(canvas, scale, lift=3):
     """A prop's summon icon: its frame's canvas at 1/`scale`, its foot
     `lift` pixels over the summoning ring's centre."""
     from actors import SOLE
-    ring, inner = Part((ICON, ICON)), Part((ICON, ICON))
-    ring.ellipse((16, 28), 13, 3)
-    inner.ellipse((16, 28), 10, 2)
-    pixels = {p: 'Ξ' if p[1] <= 27 else 'Π' for p in ring.pixels() - inner.pixels()}
+    pixels = summoning_ring()
     for y in range(ICON):
         for x in range(ICON):
             symbol = canvas.get((round(32 + (x - 15.5) * scale), round(SOLE - (28 - lift - y) * scale)))
@@ -1342,11 +1330,13 @@ def ordered(x, y):
     return BAYER[y % 4][x % 4] / 16 - 0.5
 
 
-def fire_symbol(heat, x, y, spread=0.08):
+def fire_symbol(heat, x, y, spread=0.08, cutoff=0.1, limits=(0.24, 0.40, 0.56, 0.72, 0.86)):
+    """`heat` dithered by `spread` onto the fire ramp: `M L K J Y` under each
+    of `limits`, `Z` past them; None under `cutoff` (never, when None)."""
     h = heat + ordered(x, y) * spread
-    if h < 0.1:
+    if cutoff is not None and h < cutoff:
         return None
-    for limit, s in ((0.24, 'M'), (0.40, 'L'), (0.56, 'K'), (0.72, 'J'), (0.86, 'Y')):
+    for limit, s in zip(limits, 'MLKJY'):
         if h < limit:
             return s
     return 'Z'
@@ -1792,11 +1782,10 @@ def build_frost_art(images):
             images[f'frost_{name}_{stage}'] = frost(size, status_box(size), ('frost', name), stage)
 
 
-def build_spray_art(images):
-    """Every frame of the sprays' clips, unlit: `<clip>_<n>`."""
-    for clip, (_, frames, _, _) in SPRAY_CLIPS.items():
-        for f in range(frames):
-            images[f'{clip}_{f}'] = SPRAY_DRAW[clip](f, frames)
+def build_spray_art(images, animations):
+    """The sprays' clips, every frame unlit: `<clip>_<n>`."""
+    for name, (_, frames, ms, looping) in SPRAY_CLIPS.items():
+        clip(images, animations, name, [SPRAY_DRAW[name](f, frames) for f in range(frames)], ms, looping)
 
 
 # The force push's wave (01 (j)): a front of bent air flying from the wizard
@@ -1906,7 +1895,7 @@ def push_dust(f, n):
             if t > 0.45 and unit('dust-thin', x, y, f) < (t - 0.45) * 1.6:
                 continue
             if v > 0.08:
-                px[(x, y)] = PUSH_DUST[min(len(PUSH_DUST) - 1, int(v * len(PUSH_DUST)))]
+                px[(x, y)] = ramp(v, PUSH_DUST)
     # Grit flung ahead of the cloud.
     for k in range(5):
         if f >= 5:
@@ -1921,11 +1910,10 @@ def push_dust(f, n):
 PUSH_DRAW = {'push_wave': push_wave, 'push_dust': push_dust}
 
 
-def build_push_art(images):
-    """Every frame of the force push's clips, unlit: `<clip>_<n>`."""
-    for clip, (_, frames, _, _) in PUSH_CLIPS.items():
-        for f in range(frames):
-            images[f'{clip}_{f}'] = PUSH_DRAW[clip](f, frames)
+def build_push_art(images, animations):
+    """The force push's clips, every frame unlit: `<clip>_<n>`."""
+    for name, (_, frames, ms, looping) in PUSH_CLIPS.items():
+        clip(images, animations, name, [PUSH_DRAW[name](f, frames) for f in range(frames)], ms, looping)
 
 
 # The HUD's art (01 (h)): the bars' liquids, palette strips tileable
@@ -1945,7 +1933,7 @@ def hud_liquid(kind):
     bottom, crossed by three slow currents, with bubbles wrapping across
     the seam."""
     w, h = ELEMENT_SIZES[f'hud_liquid_{kind}']
-    ramp = LIQUID_RAMPS[kind]
+    symbols = LIQUID_RAMPS[kind]
     px = {}
     for y in range(h):
         for x in range(w):
@@ -1957,8 +1945,7 @@ def hud_liquid(kind):
             value = depth + flow
             if y == 1:
                 value += 0.12  # the surface's sheen
-            value += (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.16
-            px[(x, y)] = ramp[min(len(ramp) - 1, max(0, int(value * len(ramp))))]
+            px[(x, y)] = ramp(value, symbols, x, y, 0.16)
     for i in range(7):
         bx = int(unit('bubble', kind, i) * w)
         by = 2 + int(unit('bubble-y', kind, i) * (h - 5))
@@ -1967,7 +1954,7 @@ def hud_liquid(kind):
             for dy in range(-r, r + 1):
                 d = math.hypot(dx, dy)
                 if r - 0.6 <= d <= r + 0.4:
-                    px[((bx + dx) % w, by + dy)] = ramp[-2]
+                    px[((bx + dx) % w, by + dy)] = symbols[-2]
         px[((bx - (r > 1)) % w, by - r + 1)] = LIQUID_GLINT
     return to_image(px, (w, h))
 
@@ -2368,13 +2355,7 @@ def haze(kind, x, y, alpha):
     steps = TAKE_HAZE[kind]
     if steps is None:
         return white_alpha(x, y, alpha)
-    levels = [(PALETTE[s][3], s) for s in steps]
-    low_alpha, low = 0, None
-    for high_alpha, high in levels:
-        if alpha <= high_alpha:
-            return high if dither(x, y, (alpha - low_alpha) / (high_alpha - low_alpha)) else low
-        low_alpha, low = high_alpha, high
-    return levels[-1][1]
+    return white_alpha(x, y, alpha, [(PALETTE[s][3], s) for s in steps])
 
 
 def lum(symbol):
@@ -2520,19 +2501,17 @@ TOME_CLIPS = {
 }
 
 
-def build_tome_art(images, lit):
-    """Every book's idle frames, lit, its take's frames and the bound's
-    ring's, unlit: `tome_<kind>_idle_<f>`, `tome_<kind>_take_<f>` and
+def build_tome_art(images, lit, animations):
+    """`TOME_CLIPS`: every book's idle clip, its frames lit, its take and the
+    bound's ring, unlit: `tome_<kind>_idle_<f>`, `tome_<kind>_take_<f>` and
     `bound_ring_<f>`."""
+    def table(name, frames, lit=None):
+        _, _, ms, looping = TOME_CLIPS[name]
+        clip(images, animations, name, frames, ms, looping, lit=lit)
     for kind, draw in TOME_DRAW.items():
-        for f in range(TOME_FRAMES):
-            name = f'tome_{kind}_idle_{f}'
-            images[name] = to_image(draw(f), TOME_SIZE)
-            lit.add(name)
-        for f in range(TAKE_FRAMES):
-            images[f'tome_{kind}_take_{f}'] = tome_take(kind, f)
-    for f in range(BOUND_FRAMES):
-        images[f'bound_ring_{f}'] = bound_ring(f)
+        table(f'tome_{kind}_idle', [to_image(draw(f), TOME_SIZE) for f in range(TOME_FRAMES)], lit)
+        table(f'tome_{kind}_take', [tome_take(kind, f) for f in range(TAKE_FRAMES)])
+    table('bound_ring', [bound_ring(f) for f in range(BOUND_FRAMES)])
 
 
 # e01foes' effects: the crawler's snowball turning and its burst, and the
@@ -2568,7 +2547,7 @@ def snowball(f):
                 continue
             nz = math.sqrt(max(0.0, 1 - (r / edge) ** 2))
             lit = (-0.55 * dx / edge - 0.65 * dy / edge + 0.55 * nz) * 0.75 + 0.3
-            px[(x, y)] = SNOW_RAMP[min(len(SNOW_RAMP) - 1, max(0, int(lit * len(SNOW_RAMP) + ordered(x, y) * 0.5)))]
+            px[(x, y)] = ramp(lit, SNOW_RAMP, x, y, 0.1)
     for k in range(6):  # grains and pits on its surface, turning with it
         a = unit('snowball-grain', k) * math.pi + spin + (math.pi if k % 2 else 0)
         rr = 1.2 + 2.6 * unit('snowball-grain-r', k)
@@ -2659,11 +2638,11 @@ def charge_streak(f):
     return to_image(px, (w, h))
 
 
-def build_foe_art(images):
-    """The foes' effects' frames, unlit: `<clip>_<f>`."""
+def build_foe_art(images, animations):
+    """The foes' effects' clips, every frame unlit: `<clip>_<f>`."""
     for name, draw in (('snowball', snowball), ('snowball_burst', snowball_burst), ('charge_streak', charge_streak)):
-        for f in range(FOE_CLIPS[name][1]):
-            images[f'{name}_{f}'] = draw(f)
+        _, frames, ms, looping = FOE_CLIPS[name]
+        clip(images, animations, name, [draw(f) for f in range(frames)], ms, looping)
 
 
 # e01flask's effects: the toxic flask tumbling through its flight and its
@@ -2989,7 +2968,7 @@ def corrode_reaction(name, f):
         else:
             flow = fbm(x / 2.5, y / 9 - f * 0.7, ('melt-flow', name))
             v = 0.62 + 0.9 * (flow - 0.5) - 0.4 * (y - top) / tall
-            s = ('դ', 'ե', 'զ', 'է')[max(0, min(3, int(v * 4)))]
+            s = ramp(v, ('դ', 'ե', 'զ', 'է'))
         px[(x, y)] = s
     if bright:
         for x, y in sheet:
@@ -3098,15 +3077,15 @@ def corrode_reaction(name, f):
     return to_image({q: s for q, s in px.items() if 0 <= q[0] < size[0] and 0 <= q[1] < size[1]}, size)
 
 
-def build_flask_art(images):
-    """The flask's frames and its burst's, unlit; Corrosive's reaction's."""
-    for f in range(FLASK_CLIPS['toxic_flask'][1]):
-        images[f'toxic_flask_{f}'] = toxic_flask(f)
-    for f in range(FLASK_CLIPS['toxic_flask_burst'][1]):
-        images[f'toxic_flask_burst_{f}'] = toxic_flask_burst(f)
-    for name in ('medium', 'large'):
-        for f in range(CORRODE_CLIPS[f'corrode_reaction_{name}'][1]):
-            images[f'corrode_reaction_{name}_{f}'] = corrode_reaction(name, f)
+def build_flask_art(images, animations):
+    """The flask's clip and its burst's, unlit; Corrosive's reaction's."""
+    for name, draw in (('toxic_flask', toxic_flask), ('toxic_flask_burst', toxic_flask_burst)):
+        _, frames, ms, looping = FLASK_CLIPS[name]
+        clip(images, animations, name, [draw(f) for f in range(frames)], ms, looping)
+    for size in ('medium', 'large'):
+        _, frames, ms, looping = CORRODE_CLIPS[f'corrode_reaction_{size}']
+        clip(images, animations, f'corrode_reaction_{size}', [corrode_reaction(size, f) for f in range(frames)],
+             ms, looping)
 
 
 # e01sfx (V27): the ground strike's scorch, its bottom row's middle on the
@@ -3200,14 +3179,7 @@ def hurt_edge():
             eu, ev = smoothstep(u) ** 3, smoothstep(v) ** 3
             alpha = edge_peak * (1 - (1 - eu) * (1 - ev)) + (corner_peak - edge_peak) * eu * ev
             alpha *= 1 + (unit('edge-grain', x, y) - 0.5) * 0.3
-            low_alpha, low = 0, None
-            for high_alpha, high in steps:
-                if alpha <= high_alpha:
-                    pick = high if dither(x, y, (alpha - low_alpha) / (high_alpha - low_alpha)) else low
-                    break
-                low_alpha, low = high_alpha, high
-            else:
-                pick = steps[-1][1]
+            pick = white_alpha(x, y, alpha, steps)
             if pick:
                 c[(x, y)] = pick
     return to_image(c, EDGE_SIZE)
@@ -3221,7 +3193,7 @@ def build_sfx_art(images, lit):
     images['hurt_edge'] = hurt_edge()
 
 
-def build_effects(images):
+def build_effects(images, animations):
     images['halo'] = radial_glow(HALO_STEPS, 1.8)
     images['flame_glow'] = radial_glow(FLAME_STEPS, 2.2)
     images['dust'] = puff()
@@ -3233,7 +3205,7 @@ def build_effects(images):
     build_element_art(images)
     build_hud_art(images)
     build_frost_art(images)
-    build_spray_art(images)
-    build_push_art(images)
-    build_foe_art(images)
-    build_flask_art(images)
+    build_spray_art(images, animations)
+    build_push_art(images, animations)
+    build_foe_art(images, animations)
+    build_flask_art(images, animations)

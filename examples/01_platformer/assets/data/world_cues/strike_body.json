@@ -1,0 +1,19 @@
+[
+  {
+    "burst": "ex10_strike_sparks"
+  },
+  {
+    "sound": {
+      "id": "ex10_thunder_snap_sfx"
+    }
+  },
+  {
+    "sound": {
+      "id": "ex10_thunder_sfx",
+      "min_interval": 0.1
+    }
+  },
+  {
+    "shake": 0.5
+  }
+]

@@ -180,3 +180,51 @@ fn a_bar_warns_once_without_engine_white() {
     frame(&mut world, &mut schedule);
     assert_eq!(world.query::<&Sprite>().count(), 2, "the brutes alone");
 }
+
+#[test]
+fn a_health_bar_takes_a_mirrored_offset() {
+    let (mut world, mut schedule) = rig(true);
+    let brute = brute(
+        &mut world,
+        Vec2::new(100.0, 100.0),
+        HealthBar::new().with_offset(Vec2::new(10.0, -4.0)),
+    );
+    let back = |world: &World| parts(world)[0].0.position;
+    // Centre (116, 116) plus (10, -4): its top at 96, the back 6 px over it.
+    frame(&mut world, &mut schedule);
+    assert_eq!(back(&world), Vec2::new(94.0, 84.0));
+    let fill = parts(&world)[1].0;
+    assert_eq!(
+        (fill.position, fill.scale),
+        (Vec2::new(95.0, 85.0), Vec2::new(62.0, 4.0))
+    );
+    // Its x mirrored by the drawn flip.
+    world.insert(brute, tungsten_core::components::SpriteFlip(true));
+    frame(&mut world, &mut schedule);
+    assert_eq!(back(&world), Vec2::new(74.0, 84.0));
+    // Drawn unflipped, by the side of a facing that neither turns nor
+    // flips it, its last side kept while it points straight down.
+    world.insert(brute, tungsten_core::components::SpriteFlip(false));
+    world.insert(brute, crate::Facing::new());
+    for (direction, x) in [
+        (Vec2::NEG_X, 74.0),
+        (Vec2::Y, 74.0),
+        (Vec2::X, 94.0),
+        (Vec2::NEG_Y, 94.0),
+    ] {
+        world
+            .get_mut::<crate::Facing>(brute)
+            .unwrap()
+            .face(direction);
+        frame(&mut world, &mut schedule);
+        assert_eq!(back(&world), Vec2::new(x, 84.0), "{direction}");
+    }
+    // The scene form.
+    let def: HealthBarDef =
+        serde_json::from_value(serde_json::json!({ "offset": [10, 0] })).unwrap();
+    assert_eq!(
+        HealthBar::from(def),
+        HealthBar::new().with_offset(Vec2::new(10.0, 0.0))
+    );
+    assert!(serde_json::from_value::<HealthBarDef>(serde_json::json!({ "offset": [10] })).is_err());
+}

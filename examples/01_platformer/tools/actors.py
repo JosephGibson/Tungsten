@@ -17,7 +17,8 @@ from functools import partial
 
 from PIL import Image
 
-from art import PALETTE
+from art import PALETTE, clip
+from effects import fire_symbol
 from pixels import (
     BAYER, NEIGHBOURS, Part, add, compose, despeckle, fbm, grade, outline, point, ramp, shade, smoothstep,
     to_image, unit,
@@ -981,28 +982,26 @@ def posed(poses_for):
 def build_player(images, lit, animations):
     """The wizard's clips, every frame lit; returns each right-facing
     frame's staff light anchor, the orb's centre, by sprite name."""
-    clips = [(clip, posed(poses_for), looping) for clip, (poses_for, looping) in POSED_CLIPS.items()]
-    clips += [(clip, frames_for(), looping) for clip, (frames_for, looping) in DRAWN_CLIPS.items()]
+    clips = [(name, posed(poses_for), looping) for name, (poses_for, looping) in POSED_CLIPS.items()]
+    clips += [(name, frames_for(), looping) for name, (frames_for, looping) in DRAWN_CLIPS.items()]
     anchors = {}
-    for clip, (rendered, durations), looping in clips:
-        frames = []
-        for i, ((im, anchor), duration) in enumerate(zip(rendered, durations, strict=True)):
-            name = frame_name(clip, i)
-            check_frame(name, im, anchor)
-            images[name] = im
-            lit.add(name)
-            anchors[name] = list(anchor)
-            frames.append({'sprite': 'ex10_' + name, 'duration_ms': duration})
-        animations[clip] = {'looping': looping, 'frames': frames}
+    for name, (rendered, durations), looping in clips:
+        names = [frame_name(name, i) for i in range(len(rendered))]
+        for frame, (im, anchor) in zip(names, rendered):
+            check_frame(frame, im, anchor)
+            anchors[frame] = list(anchor)
+        clip(images, animations, name, [im for im, _ in rendered], durations, looping, names, lit)
     return anchors
 
 
-def fireball_frame(index):
-    """Ball of flame for a right-moving hazard; tongues stream up and behind."""
-    t = index / FIREBALL_FRAMES
-    cx, cy, radius = 32.0, 35.0, 14.0
-    trail = math.atan2(-0.86, -0.5)
-    canvas = {}
+def flame_ball(t, centre, radius, reach, trail, bend, side, swirls):
+    """A ball of flame's heat by pixel on a 64 px frame at time `t` of its
+    loop, its dither left to `fire_symbol`: tongues up to `reach` long
+    streaming toward `trail` (`bend` the power of their bulge), a `side`
+    ripple ahead, and within `radius` the plasma's `swirls`, `(amplitude,
+    lobes, twist, turns)` bands about the core."""
+    cx, cy = centre
+    heat = {}
     for y in range(SIZE):
         for x in range(SIZE):
             dx, dy = x + 0.5 - cx, y + 0.5 - cy
@@ -1013,22 +1012,28 @@ def fireball_frame(index):
             wave_a = 0.5 + 0.5 * math.sin(5 * theta - math.tau * 2 * t)
             wave_b = 0.5 + 0.5 * math.sin(8 * theta + math.tau * 3 * t + 1.3)
             tongues = 0.75 * wave_a ** 5 + 0.25 * wave_b ** 6
-            envelope = (radius + 1.0 + behind ** 1.3 * (2 + 17 * tongues)
-                        + (1 - behind) * 0.9 * wave_b)
+            envelope = radius + 1.0 + behind ** bend * (2 + reach * tongues) + (1 - behind) * side * wave_b
             if r > envelope:
                 continue
-            heat = 1 - r / envelope
+            h = 1 - r / envelope
             if r < radius:
-                # Plasma bands swirl around the core.
-                heat += 0.07 * math.sin(3 * theta + 0.4 * r - math.tau * t)
-                heat += 0.04 * math.sin(5 * theta - 0.3 * r + math.tau * 2 * t)
-            heat += (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.05
-            for limit, symbol in ((0.08, 'M'), (0.2, 'L'), (0.37, 'K'), (0.54, 'J'), (0.7, 'Y')):
-                if heat < limit:
-                    canvas[(x, y)] = symbol
-                    break
-            else:
-                canvas[(x, y)] = 'Z'
+                for amplitude, lobes, twist, turns in swirls:
+                    h += amplitude * math.sin(lobes * theta + twist * r + turns * math.tau * t)
+            heat[(x, y)] = h
+    return heat
+
+
+# A flame ball's fire ramp: `M L K J Y` under each limit, `Z` past them.
+FLAME_BALL = (0.08, 0.2, 0.37, 0.54, 0.7)
+
+
+def fireball_frame(index):
+    """Ball of flame for a right-moving hazard; tongues stream up and behind."""
+    t = index / FIREBALL_FRAMES
+    cx, cy, radius = 32.0, 35.0, 14.0
+    trail = math.atan2(-0.86, -0.5)
+    heat = flame_ball(t, (cx, cy), radius, 17, trail, 1.3, 0.9, ((0.07, 3, 0.4, -1), (0.04, 5, -0.3, 2)))
+    canvas = {(x, y): fire_symbol(h, x, y, 0.05, None, FLAME_BALL) for (x, y), h in heat.items()}
     # Loose embers peel off the trailing side and cool as they climb.
     for k in range(5):
         age = (t + k * 0.21) % 1
@@ -1042,12 +1047,7 @@ def fireball_frame(index):
 
 def build_fireball(images, animations):
     # Self-lit: drawn unlit at its authored colours, so no normal/emissive maps.
-    frames = []
-    for i in range(FIREBALL_FRAMES):
-        name = f'fireball_{i}'
-        images[name] = fireball_frame(i)
-        frames.append({'sprite': 'ex10_' + name, 'duration_ms': 60})
-    animations['fireball'] = {'looping': True, 'frames': frames}
+    clip(images, animations, 'fireball', [fireball_frame(i) for i in range(FIREBALL_FRAMES)], 60)
 
 
 # The fire missile (01 (h)): a rocket of fire facing +x, its own clip apart
@@ -1111,13 +1111,7 @@ def missile_symbol(heat, x, y):
         return None
     if isinstance(heat, str):
         return heat
-    heat = heat[1] + (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.12
-    if heat < 0.06:
-        return None
-    for limit, s in ((0.18, 'M'), (0.34, 'L'), (0.52, 'K'), (0.7, 'J'), (0.86, 'Y')):
-        if heat < limit:
-            return s
-    return 'Z'
+    return fire_symbol(heat[1], x, y, 0.12, 0.06, (0.18, 0.34, 0.52, 0.7, 0.86))
 
 
 def missile_frame(index):
@@ -1142,12 +1136,7 @@ def missile_frame(index):
 
 def build_fire_missile(images, animations):
     # Self-lit, as the fireball is: no normal or emissive maps.
-    frames = []
-    for i in range(MISSILE_FRAMES):
-        name = f'fire_missile_{i}'
-        images[name] = missile_frame(i)
-        frames.append({'sprite': 'ex10_' + name, 'duration_ms': 60})
-    animations['fire_missile'] = {'looping': True, 'frames': frames}
+    clip(images, animations, 'fire_missile', [missile_frame(i) for i in range(MISSILE_FRAMES)], 60)
 
 
 BALL_FRAMES = 6
@@ -1256,15 +1245,11 @@ def bowling_ball(frame):
 
 
 def build_balls(images, lit, animations):
-    for clip, first, draw, duration in (('ball_spin', 'ball', rune_orb, 90),
+    for name, first, draw, duration in (('ball_spin', 'ball', rune_orb, 90),
                                         ('ball_small_spin', 'ball_small', glass_marble, 65),
                                         ('bowling_roll', 'bowling_ball', bowling_ball, 80)):
-        names = [first if i == 0 else f'{first}_{i}' for i in range(BALL_FRAMES)]
-        for i, name in enumerate(names):
-            images[name] = draw(i)
-            lit.add(name)
-        animations[clip] = {'looping': True, 'frames': [
-            {'sprite': 'ex10_' + name, 'duration_ms': duration} for name in names]}
+        clip(images, animations, name, [draw(i) for i in range(BALL_FRAMES)], duration,
+             names=[first if i == 0 else f'{first}_{i}' for i in range(BALL_FRAMES)], lit=lit)
 
 
 # The training dummy stands on the courier's baseline: its base's lowest
@@ -1389,28 +1374,8 @@ def wisp_canvas(t=0.0, flare=False, bob=0.0):
     radius = 15.0 if flare else 12.0
     reach = 15.0 if flare else 8.0
     trail = math.atan2(-0.95, -0.3)
-    canvas = {}
-    for y in range(SIZE):
-        for x in range(SIZE):
-            dx, dy = x + 0.5 - cx, y + 0.5 - cy
-            r = math.hypot(dx, dy)
-            theta = math.atan2(dy, dx)
-            behind = max(0.0, math.cos(theta - trail))
-            wave_a = 0.5 + 0.5 * math.sin(5 * theta - math.tau * 2 * t)
-            wave_b = 0.5 + 0.5 * math.sin(8 * theta + math.tau * 3 * t + 1.3)
-            tongues = 0.75 * wave_a ** 5 + 0.25 * wave_b ** 6
-            envelope = radius + 1.0 + behind ** 1.2 * (2 + reach * tongues) + (1 - behind) * 0.6 * wave_b
-            if r > envelope:
-                continue
-            heat = 1 - r / envelope + (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.05
-            if r < radius:  # plasma swirling about the core
-                heat += 0.05 * math.sin(3 * theta + 0.4 * r - math.tau * t)
-            for limit, symbol in ((0.08, 'M'), (0.2, 'L'), (0.37, 'K'), (0.54, 'J'), (0.7, 'Y')):
-                if heat < limit:
-                    canvas[(x, y)] = symbol
-                    break
-            else:
-                canvas[(x, y)] = 'Z'
+    heat = flame_ball(t, (cx, cy), radius, reach, trail, 1.2, 0.6, ((0.05, 3, 0.4, -1),))
+    canvas = {(x, y): fire_symbol(h, x, y, 0.05, None, FLAME_BALL) for (x, y), h in heat.items()}
     top = round(cy) - 3 - (1 if flare else 0)
     for ex in (37, 44):  # dark eyes with a hot glint; wider in a flare
         for y in range(top, round(cy) + 2):
@@ -3405,7 +3370,7 @@ def goblin_bomb(frame):
     c = {}
     for (x, y) in part.pixels():
         lit = max(0.0, -((x + 0.5 - 8) * -0.55 + (y + 0.5 - 8) * -0.65) / 4.6 * 0.8 + 0.35)
-        c[(x, y)] = 'θbBΩχ'[min(4, int(lit * 5))]
+        c[(x, y)] = ramp(lit, 'θbBΩχ')
     c[(6, 6)] = 'φ'
     for x in (7, 8, 9):
         c[(x, 3)] = 'a'
@@ -3485,16 +3450,11 @@ def build_enemies(images, animations, enemy=None):
     """The six enemies' clips, and the goblin's rock and bomb, unlit: no
     normal or emissive map; or only `enemy`'s, its clips those its name
     prefixes."""
-    for clip, (frames_for, looping) in ENEMY_CLIPS.items():
-        if enemy and clip.split('_')[0] != enemy:
+    for name, (frames_for, looping) in ENEMY_CLIPS.items():
+        if enemy and name.split('_')[0] != enemy:
             continue
         rendered, durations = frames_for()
-        frames = []
-        for i, (im, duration) in enumerate(zip(rendered, durations, strict=True)):
-            name = f'{clip}_{i}'
-            images[name] = im
-            frames.append({'sprite': 'ex10_' + name, 'duration_ms': duration})
-        animations[clip] = {'looping': looping, 'frames': frames}
+        clip(images, animations, name, rendered, durations, looping)
     for i in range(2 if enemy in (None, 'goblin') else 0):
         images[f'goblin_rock_{i}'] = goblin_rock(i)
         images[f'goblin_bomb_{i}'] = goblin_bomb(i)

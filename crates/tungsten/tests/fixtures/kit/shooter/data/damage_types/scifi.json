@@ -19,30 +19,7 @@
         0,
         1
       ]
-    },
-    "ailments": [
-      {
-        "effect": "eaten",
-        "needs": 0.5,
-        "blocked_by": [
-          "status.eaten"
-        ],
-        "window": 2
-      },
-      {
-        "effect": {
-          "duration": 2,
-          "grant": [
-            "status.dissolved"
-          ]
-        },
-        "needs": 1,
-        "requires": [
-          "status.eaten"
-        ],
-        "window": 2
-      }
-    ]
+    }
   },
   "biological.pathogen": {},
   "biological.toxin": {},
@@ -57,15 +34,7 @@
       ]
     }
   },
-  "digital.corruption": {
-    "ailments": [
-      {
-        "effect": "corrupted",
-        "needs": 1,
-        "window": 3
-      }
-    ]
-  },
+  "digital.corruption": {},
   "digital.exploit": {
     "label_style": {
       "font": "sans",

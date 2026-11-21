@@ -8,7 +8,7 @@ use tungsten::core::{AssetRegistry, SpriteAsset, World};
 use tungsten::render::{SpriteBatch, SpriteInstance};
 
 use super::components::{Arc, Bolt};
-use super::{ARC_JITTER, ARC_SECS, EXITS, SEGMENT};
+use super::{ARC_JITTER, ARC_SECS, EXITS};
 use crate::features::level::draw::{instance, push_quad, view};
 
 /// The bolt's segments, by piece.
@@ -73,10 +73,18 @@ fn stack(batches: &mut Vec<SpriteBatch>, assets: &AssetRegistry, bolt: &Bolt, to
     if reach <= 0.0 || bolt.pieces.is_empty() {
         return;
     }
-    let scale = (reach / (bolt.pieces.len() as f32 * SEGMENT.y))
+    // Each piece's art is its first's size.
+    let Some((width, height)) = assets
+        .sprite_id(BOLT_PIECES[0])
+        .and_then(|id| assets.sprite_size(id))
+    else {
+        return;
+    };
+    let segment = Vec2::new(width as f32, height as f32);
+    let scale = (reach / (bolt.pieces.len() as f32 * segment.y))
         .ceil()
         .max(1.0);
-    let size = SEGMENT * scale;
+    let size = segment * scale;
     let mut bottom = bolt.landing;
     for &piece in bolt.pieces.iter().rev() {
         let piece = piece % BOLT_PIECES.len();
@@ -145,10 +153,7 @@ fn filled(asset: &SpriteAsset, corner: Vec2, size: Vec2, color: [u8; 4]) -> Spri
     quad
 }
 
-/// A number in `[0, 1)` from `seed` and `k`.
+/// A number in `[0, 1)` from the arc's `seed` and its corner `k`.
 fn unit(seed: u64, k: usize) -> f32 {
-    let mut x =
-        seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ (k as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    x ^= x >> 31;
-    (x % 1000) as f32 / 1000.0
+    crate::shared::unit(tungsten::core::splitmix64(seed) ^ k as u64)
 }

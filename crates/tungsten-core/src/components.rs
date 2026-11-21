@@ -10,7 +10,11 @@ use crate::physics::Position;
 use crate::rng::Pcg32;
 use crate::tween::Easing;
 
-/// Visual transform; rotation is radians CCW around quad center.
+/// Visual transform; rotation is radians CCW around the quad's center, or
+/// its sprite's anchor when it has one. An entity with a `Position` (a body,
+/// or what a kit item moves) has its `position` written from it each frame
+/// (`physics_sync`); a prefab or map object with neither has no `Position`,
+/// so its point is this `position`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Transform {
     pub position: Vec2,

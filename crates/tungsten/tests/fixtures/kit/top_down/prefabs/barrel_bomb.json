@@ -1,0 +1,11 @@
+{
+  "tag": "barrel_bomb",
+  "components": {
+    "health": {
+      "max": 30
+    },
+    "effects": [
+      "short_fuse"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "stimulus": "cold",
+  "on": {
+    "all": [
+      "status.burning"
+    ]
+  },
+  "outputs": [
+    {
+      "handler": "steam"
+    }
+  ]
+}

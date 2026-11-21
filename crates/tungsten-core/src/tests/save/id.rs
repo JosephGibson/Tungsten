@@ -162,3 +162,32 @@ fn naming_an_entity_picks_its_variant_again() {
     name(&mut world, plain, Some("cave"), "lamp_1").unwrap();
     assert_eq!(world.get::<Sprite>(plain).unwrap().asset_id, lamp);
 }
+
+#[test]
+fn a_kept_identity_orders_by_its_id_and_gives_a_world_no_save_state() {
+    let mut world = World::new();
+    let plain = world.spawn();
+    let kept = world.spawn_with((Saved::kept(SaveId(5)),));
+    let saved = world.get::<Saved>(kept).unwrap();
+    assert_eq!(
+        (saved.id(), saved.area(), saved.prefab()),
+        (SaveId(5), None, None)
+    );
+    assert!(!saving(&world), "a kept identity names nothing");
+    assert_eq!(take_id(&mut world), None, "no counter without save state");
+    assert_eq!(order_key(&world, kept), (false, 5));
+    assert_eq!(order_key(&world, plain), (true, u64::from(plain.id())));
+    assert_eq!(
+        name(&mut world, kept, None, "pet"),
+        Err(NameError::AlreadySaved {
+            name: "pet".into(),
+            id: SaveId(5)
+        })
+    );
+
+    let player = world.spawn();
+    name(&mut world, player, None, "player").unwrap();
+    assert_eq!(take_id(&mut world), Some(SaveId(0)));
+    assert_eq!(take_id(&mut world), Some(SaveId(1)));
+    assert_eq!(world.resource::<SaveState>().next_id(), 2);
+}

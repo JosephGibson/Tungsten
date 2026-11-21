@@ -1,5 +1,6 @@
 //! The carry (redo 7.10g, S-37): a body held at its carrier's point plus
-//! an offset, its own `RigidBody` a sensor until a release lets it go.
+//! an offset, or centre over centre (7.13c), its own `RigidBody` a sensor
+//! until a release lets it go.
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,7 @@ use tungsten_core::{Entity, World};
 use crate::foundation::saved::saving;
 use crate::foundation::tags::{TagFilter, Tags};
 use crate::foundation::vec2;
-use crate::motion::drive::point_of;
+use crate::motion::drive::{centre_of, point_of};
 use crate::motion::platformer::PlatformerController;
 use crate::overlap::grid::takes_part;
 use crate::present::facing::Facing;
@@ -19,8 +20,9 @@ use crate::present::facing::Facing;
 pub(crate) const CARRIED: &str = "carried";
 
 /// How a carrier holds a body ([`carry`]): an offset from the carrier's
-/// point, written for a carrier facing right, and the carrier's tags that
-/// let go.
+/// point, or from its centre to the body's ([`centred`](Self::centred)),
+/// written for a carrier facing right, and the carrier's and the held
+/// body's tags that let go.
 ///
 /// # Examples
 ///
@@ -36,7 +38,9 @@ pub(crate) const CARRIED: &str = "carried";
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Hold {
     offset: Vec2,
+    centred: bool,
     drop: Option<TagFilter>,
+    held_drop: Option<TagFilter>,
 }
 
 impl Hold {
@@ -53,7 +57,42 @@ impl Hold {
             offset.is_finite(),
             "Hold::new: offset must be finite (got {offset})"
         );
-        Self { offset, drop: None }
+        Self {
+            offset,
+            ..Self::default()
+        }
+    }
+
+    /// The hold, its offset run from the carrier's centre to the held
+    /// body's, each [`centre_of`](crate::centre_of)'s (a collider's centre,
+    /// else the drawn centre, else the point), its x still mirrored while the
+    /// carrier faces left: a load over a carrier's middle stays over it
+    /// facing either way, where an offset from a frame's corner mirrors about
+    /// that corner.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use glam::Vec2;
+    /// use tungsten_core::physics::{Collider, Position, RigidBodyBundle};
+    /// use tungsten_core::World;
+    /// use tungsten_kit::{Hold, carry, centre_of};
+    ///
+    /// let mut world = World::new();
+    /// // A troll whose body's centre is 40 px right of its corner.
+    /// let body = Collider::aabb(Vec2::new(30.0, 40.0)).with_offset(Vec2::new(40.0, 40.0));
+    /// let troll = world.spawn_with((Position(Vec2::new(100.0, 0.0)), body));
+    /// let iron = world.spawn_with(RigidBodyBundle::dynamic(
+    ///     Position(Vec2::ZERO),
+    ///     Collider::aabb(Vec2::splat(8.0)).with_offset(Vec2::splat(8.0)),
+    /// ));
+    /// assert!(carry(&mut world, troll, iron, Hold::new(Vec2::new(0.0, -48.0)).centred()));
+    /// assert_eq!(centre_of(&world, iron), Some(Vec2::new(140.0, -8.0)));
+    /// ```
+    #[must_use]
+    pub fn centred(mut self) -> Self {
+        self.centred = true;
+        self
     }
 
     /// The hold, let go at rest once the carrier's [`Tags`] pass `filter`:
@@ -65,10 +104,26 @@ impl Hold {
         self
     }
 
-    /// Its offset from the carrier's point, for a carrier facing right.
+    /// The hold, let go at rest once the held body's [`Tags`] pass
+    /// `filter`, checked beside the carrier's [`with_drop`](Self::with_drop)
+    /// before each placement: a held foe that thaws slips out.
+    #[must_use]
+    pub fn with_held_drop(mut self, filter: TagFilter) -> Self {
+        self.held_drop = Some(filter);
+        self
+    }
+
+    /// Its offset from the carrier's point, or from its centre to the held
+    /// body's when [`centred`](Self::centred), for a carrier facing right.
     #[must_use]
     pub fn offset(&self) -> Vec2 {
         self.offset
+    }
+
+    /// Whether its offset runs centre to centre.
+    #[must_use]
+    pub fn is_centred(&self) -> bool {
+        self.centred
     }
 
     /// The offset for a carrier facing `facing`: its x negated while the
@@ -80,11 +135,15 @@ impl Hold {
         }
     }
 
-    /// Whether `carrier` lets go by its tags.
-    fn drops(&self, world: &World, carrier: Entity) -> bool {
-        self.drop
-            .as_ref()
-            .is_some_and(|filter| filter.matches(world.get::<Tags>(carrier)))
+    /// Whether `carrier` lets go of `body` by the carrier's tags or the
+    /// held body's.
+    fn drops(&self, world: &World, carrier: Entity, body: Entity) -> bool {
+        let passes = |filter: &Option<TagFilter>, entity: Entity| {
+            filter
+                .as_ref()
+                .is_some_and(|filter| filter.matches(world.get::<Tags>(entity)))
+        };
+        passes(&self.drop, carrier) || passes(&self.held_drop, body)
     }
 }
 
@@ -107,8 +166,12 @@ pub(crate) struct Carried {
 struct CarriedSave {
     #[serde(default, skip_serializing_if = "is_zero", with = "vec2")]
     offset: Vec2,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    centred: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     drop: Option<TagFilter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    held_drop: Option<TagFilter>,
 }
 
 // The reference is serde's `skip_serializing_if` signature.
@@ -121,7 +184,9 @@ impl From<&Carried> for CarriedSave {
     fn from(carried: &Carried) -> Self {
         Self {
             offset: carried.hold.offset,
+            centred: carried.hold.centred,
             drop: carried.hold.drop.clone(),
+            held_drop: carried.hold.held_drop.clone(),
         }
     }
 }
@@ -133,7 +198,9 @@ impl From<CarriedSave> for Carried {
             body: None,
             hold: Hold {
                 offset: save.offset,
+                centred: save.centred,
                 drop: save.drop,
+                held_drop: save.held_drop,
             },
         }
     }
@@ -164,12 +231,14 @@ pub(crate) struct Carrying;
 
 /// Holds `body` at `carrier`: its own `RigidBody` a sensor until a
 /// [`release`], placed at once at the carrier's point (its `Position`,
-/// else its `Transform.position`) plus the hold's offset, mirrored while
-/// the carrier's [`Facing`] points left, at the carrier's velocity. Each
-/// step [`FollowPlugin`](crate::FollowPlugin)'s system, after its follows,
+/// else its `Transform.position`) plus the hold's offset, or with its
+/// centre at the carrier's centre plus the offset for a
+/// [`centred`](Hold::centred) hold, mirrored while the carrier's [`Facing`]
+/// points left, at the carrier's velocity. Each step
+/// [`FollowPlugin`](crate::FollowPlugin)'s system, after its follows,
 /// places it again, or lets it go at rest when its carrier is gone,
-/// despawning, dead by its [`Health`](crate::Health) or past the hold's
-/// drop filter, and after a load whose carrier did not come back.
+/// despawning, dead by its [`Health`](crate::Health) or past either of the
+/// hold's drop filters, and after a load whose carrier did not come back.
 ///
 /// Whether it held: it refuses the carrier itself, a carrier without a
 /// point, a body without a `RigidBody` and a `Position`, a body already
@@ -217,7 +286,7 @@ pub fn carry(world: &mut World, carrier: Entity, body: Entity, hold: Hold) -> bo
     if let Some(rigid) = world.get_mut::<RigidBody>(body) {
         *rigid = RigidBody::sensor();
     }
-    let (at, velocity) = placement(world, carrier, &hold);
+    let (at, velocity) = placement(world, carrier, body, &hold);
     world.insert(
         body,
         Carried {
@@ -245,6 +314,28 @@ pub fn carried_by(world: &World, carrier: Entity) -> Option<Entity> {
         .map(|(body, _)| body)
 }
 
+/// The carrier holding `body`, if any: [`carried_by`]'s reverse.
+///
+/// # Examples
+///
+/// ```
+/// use glam::Vec2;
+/// use tungsten_core::physics::{Collider, Position, RigidBodyBundle};
+/// use tungsten_core::World;
+/// use tungsten_kit::{Hold, carrier_of, carry};
+///
+/// let mut world = World::new();
+/// let troll = world.spawn_with((Position(Vec2::ZERO),));
+/// let keg = world.spawn_with(RigidBodyBundle::dynamic(Position(Vec2::ZERO), Collider::circle(6.0)));
+/// assert_eq!(carrier_of(&world, keg), None);
+/// assert!(carry(&mut world, troll, keg, Hold::new(Vec2::new(0.0, -30.0))));
+/// assert_eq!(carrier_of(&world, keg), Some(troll));
+/// ```
+#[must_use]
+pub fn carrier_of(world: &World, body: Entity) -> Option<Entity> {
+    world.get::<Carried>(body).and_then(|carried| carried.by)
+}
+
 /// Lets go of the body `carrier` holds at `velocity`, a zero velocity a
 /// drop: its own `RigidBody` back, its `Velocity` set, a held
 /// [`PlatformerController`] launched with it and a dynamic body woken.
@@ -264,11 +355,21 @@ pub fn release(world: &mut World, carrier: Entity, velocity: Vec2) -> Option<Ent
     Some(body)
 }
 
-/// Where a body `hold` holds sits by `carrier`, and the carrier's
-/// velocity, zero without one.
-fn placement(world: &World, carrier: Entity, hold: &Hold) -> (Vec2, Vec2) {
-    let at =
-        point_of(world, carrier).unwrap_or_default() + hold.faced(world.get::<Facing>(carrier));
+/// Where `hold` puts `body`'s point by `carrier`, and the carrier's
+/// velocity, zero without one: the carrier's point plus the faced offset,
+/// or, centred, the carrier's centre plus it less the body's own centre's
+/// offset from its point.
+fn placement(world: &World, carrier: Entity, body: Entity, hold: &Hold) -> (Vec2, Vec2) {
+    let faced = hold.faced(world.get::<Facing>(carrier));
+    let at = if hold.centred {
+        let point = world
+            .get::<Position>(body)
+            .map_or(Vec2::ZERO, |position| position.0);
+        let own = centre_of(world, body).map_or(Vec2::ZERO, |centre| centre - point);
+        centre_of(world, carrier).unwrap_or_default() + faced - own
+    } else {
+        point_of(world, carrier).unwrap_or_default() + faced
+    };
     let velocity = world
         .get::<Velocity>(carrier)
         .map_or(Vec2::ZERO, |velocity| velocity.0);
@@ -329,10 +430,10 @@ pub(crate) fn hold_bodies(world: &mut World, held: &mut Vec<Entity>) {
                 .filter(|&carrier| {
                     takes_part(world, carrier)
                         && point_of(world, carrier).is_some()
-                        && !carried.hold.drops(world, carrier)
+                        && !carried.hold.drops(world, carrier, body)
                 })
                 .map(|carrier| {
-                    let (at, velocity) = placement(world, carrier, &carried.hold);
+                    let (at, velocity) = placement(world, carrier, body, &carried.hold);
                     (at, velocity, carried.body.is_none())
                 })
         };

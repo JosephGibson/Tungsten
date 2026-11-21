@@ -828,7 +828,70 @@ fn register_sprites_gives_each_sprite_and_frame_its_size() {
 }
 
 #[test]
-fn load_manifest_still_registers_no_sprite() {
+fn note_sprite_sizes_gives_each_sprite_its_size_and_draws_nothing() {
+    let dir = std::env::temp_dir().join(format!("tungsten_note_sizes_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    image::RgbaImage::new(12, 20)
+        .save(dir.join("hero.png"))
+        .unwrap();
+    image::RgbaImage::new(64, 16)
+        .save(dir.join("walk.png"))
+        .unwrap();
+    std::fs::write(
+        dir.join("manifest.json"),
+        r#"{"sprites": {"hero": {"path": "hero.png", "anchor": [6, 19]}},
+            "sheets": {"walk": {"path": "walk.png", "frame": [32, 16], "count": 2,
+                                "anchor": [16, 15]}}}"#,
+    )
+    .unwrap();
+    let mut harness = Harness::new(app());
+    harness.load_manifest(dir.join("manifest.json")).unwrap();
+    let next = harness.next_texture_handle;
+    harness
+        .note_sprite_sizes(dir.join("manifest.json"))
+        .unwrap();
+    assert_eq!(harness.next_texture_handle, next, "no texture handle taken");
+    let sprites = harness.app.world().resource::<AssetRegistry>();
+    let id = |name: &str| sprites.sprite_id(name).expect(name);
+    assert_eq!(sprites.sprite_size(id("hero")), Some((12, 20)));
+    assert_eq!(sprites.sprite_anchor(id("hero")), Some([6.0, 19.0]));
+    for name in ["walk_0", "walk_1"] {
+        assert_eq!(sprites.sprite_size(id(name)), Some((32, 16)), "{name}");
+        assert_eq!(
+            sprites.sprite_anchor(id(name)),
+            Some([16.0, 15.0]),
+            "{name}"
+        );
+    }
+    assert_eq!(sprites.sprite_names().count(), 0, "no sprite registered");
+    assert!(
+        sprites
+            .get_sprite(crate::asset_loader::ENGINE_WHITE)
+            .is_none()
+    );
+    // Names take IDs in sorted order, as a window's load interns them.
+    assert!(id("hero").index() < id("walk_0").index());
+    // A noted sprite draws no batch where a registered one would.
+    let hero = id("hero");
+    harness.world_mut().spawn_with((
+        Transform::from_position(Vec2::new(5.0, 7.0)),
+        Sprite::new(hero),
+        Visibility::default(),
+    ));
+    harness.step(1);
+    assert!(harness.draw().unwrap().sprites.is_empty(), "nothing drawn");
+    // Registered after, it draws at its registered size.
+    harness.register_sprites(dir.join("manifest.json")).unwrap();
+    harness.step(1);
+    let draw = harness.draw().unwrap();
+    assert_eq!(draw.sprites.len(), 1, "drawn once registered");
+    assert_eq!(draw.sprites[0].instances[0].size, [12.0, 20.0]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn load_manifest_interns_its_sprite_names_and_registers_no_sprite() {
     let dir = std::env::temp_dir().join(format!("tungsten_load_no_sprites_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -844,7 +907,43 @@ fn load_manifest_still_registers_no_sprite() {
     let mut harness = Harness::new(app());
     harness.load_manifest(dir.join("manifest.json")).unwrap();
     let sprites = harness.app.world().resource::<AssetRegistry>();
-    assert_eq!(sprites.sprite_names().count(), 0);
+    // The hero and the sheet's four frames, in sorted order, as a window's
+    // load interns them.
+    let names = ["hero", "walk_0", "walk_1", "walk_2", "walk_3"];
+    let ids: Vec<u32> = names
+        .iter()
+        .map(|name| sprites.sprite_id(name).expect(name).index())
+        .collect();
+    assert!(ids.windows(2).all(|pair| pair[0] < pair[1]), "{ids:?}");
+    assert!(names.iter().all(|name| sprites.get_sprite(name).is_none()));
+    assert_eq!(sprites.sprite_names().count(), 0, "no sprite registered");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn load_manifest_interns_engine_white_so_a_prefab_may_name_it() {
+    let dir = std::env::temp_dir().join(format!("tungsten_load_white_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("flash.json"),
+        r#"{"sprite": {"asset_id": "engine_white"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("manifest.json"),
+        r#"{"prefabs": {"flash": {"path": "flash.json"}}}"#,
+    )
+    .unwrap();
+    let mut harness = Harness::new(app());
+    // As a window's load gives it: the prefab's sprite check passes.
+    harness.load_manifest(dir.join("manifest.json")).unwrap();
+    let sprites = harness.app.world().resource::<AssetRegistry>();
+    assert!(
+        sprites
+            .sprite_id(crate::asset_loader::ENGINE_WHITE)
+            .is_some()
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1007,4 +1106,28 @@ fn a_counting_harness_logs_no_audio() {
     assert!(harness.audio_log().is_empty(), "{:?}", harness.audio_log());
     harness.step(1);
     assert!(harness.audio_log().is_empty(), "frame 5 plays nothing");
+}
+
+/// What a room spawn's `with` gives.
+#[derive(Debug, Clone, Copy)]
+struct InRoom;
+
+#[test]
+fn load_manifest_registers_the_manifests_rooms_so_a_test_spawns_one() {
+    use tungsten_core::assets::{RoomRegistry, TilemapRegistry};
+    let fixture =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rooms/manifest.json");
+    let mut harness = Harness::new(app());
+    harness.load_manifest(fixture).unwrap();
+    let world = harness.world_mut();
+    let rooms = world.resource::<RoomRegistry>();
+    assert_eq!(rooms.ids().collect::<Vec<_>>(), ["cave", "hall"]);
+    assert_eq!(rooms.tileset_ids().collect::<Vec<_>>(), ["cave"]);
+    // The physics names load first: `terrain` is layer 1.
+    let map = world.resource::<TilemapRegistry>().get("cave").unwrap();
+    assert_eq!(map.layer_physics(1).layers, 1 << 1);
+    let spawned = world.spawn_room("cave", [0.0, 0.0], &(InRoom,)).unwrap();
+    let objects: Vec<Entity> = spawned.objects().map(|(_, entity)| entity).collect();
+    assert_eq!(objects.len(), 4);
+    assert!(objects.iter().all(|&entity| world.has::<InRoom>(entity)));
 }

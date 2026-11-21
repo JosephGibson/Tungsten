@@ -1,0 +1,17 @@
+{
+  "stimulus": "elemental.fire",
+  "on": {
+    "all": [
+      "susceptible"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "burn_build",
+        "per": "status_threshold",
+        "scale": 1
+      }
+    }
+  ]
+}

@@ -16,8 +16,15 @@
       "spawn": {
         "prefab": "fire_missile",
         "speed": 900,
-        "offset": 24
+        "offset": 24,
+        "centred": true
       }
     }
-  ]
+  ],
+  "icon": "ex10_icon_fire_missile",
+  "clip": {
+    "right": "ex10_player_bolt",
+    "left": "ex10_player_bolt_left",
+    "side": "aim"
+  }
 }

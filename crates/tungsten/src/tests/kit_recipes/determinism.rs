@@ -13,8 +13,8 @@ use tungsten_core::{AnimationState, Entity, Inspectable, Sprite, Transform, Worl
 
 use super::{DTS, GENRES, recipe, spawn, tagged};
 use crate::kit::{
-    Abilities, AilmentBuckets, Counters, DamagePart, DamageRequest, Effects, Flags, Health,
-    KitPlugins, Level, Modifier, Resist, Shield, Stats, Tags, damage, knock_back,
+    Abilities, Counters, DamagePart, DamageRequest, Effects, Flags, Health, KitPlugins, Level,
+    Modifier, Resist, Shield, Stats, Tags, damage, knock_back,
 };
 use crate::testing::Harness;
 
@@ -35,8 +35,10 @@ use crate::testing::Harness;
 /// fills the golem's bucket instead of chilling it again, then by 7.10c,
 /// whose genres are five, the two moved folders' worlds hashing as before
 /// under their new names, `rpg` and `shooter`, in their new order, and whose
-/// `arpg` script presses `attack` for §9.1's volley on a brute.
-const KIT_RECIPES_HASH: u64 = 0xa2de_8a8e_2368_07d3;
+/// `arpg` script presses `attack` for §9.1's volley on a brute, then by
+/// 7.13a, whose fixtures' ladders are builds with `per` and bands, the
+/// buckets' rows gone, the golem's cold a freeze build while chilled.
+const KIT_RECIPES_HASH: u64 = 0x2a03_0b63_e428_7e20;
 
 const FRAMES: u32 = 300;
 
@@ -50,8 +52,8 @@ fn fnv1a(hash: &mut u64, bytes: &[u8]) {
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 
 /// An entity's index, point, health, then its tags, counters, flags, stat
-/// values, rotation, depth, clip, shield, resistances, effects, buckets,
-/// level and abilities as text.
+/// values, rotation, depth, clip, shield, resistances, effects, level and
+/// abilities as text.
 type Row = (u32, [f32; 2], Option<(f32, f32)>, String);
 
 /// `counters` as text: `name=value` by name.
@@ -130,11 +132,6 @@ fn hash_world(hash: &mut u64, world: &World) {
                             instance.left().unwrap_or(-1.0).to_bits(),
                             instance.serial()
                         );
-                    }
-                }
-                if let Some(buckets) = world.get::<AilmentBuckets>(entity) {
-                    for (name, fill) in buckets.iter() {
-                        let _ = write!(text, "|b:{name}={:08x}", fill.to_bits());
                     }
                 }
                 if let Some(level) = world.get::<Level>(entity) {
@@ -289,7 +286,7 @@ fn typed_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
 }
 
 /// The script's typed hits: at `frame`, `amount` of `kind` on each entity
-/// tagged `tag`, feeding its ladder.
+/// tagged `tag`, building its status.
 fn typed_hits(genre: &str) -> &'static [(u32, &'static str, &'static str, f32)] {
     match genre {
         "top_down" => &[(160, "golem", "elemental.cold", 5.0)],
@@ -440,11 +437,12 @@ fn script(genre: &str, harness: &mut Harness) {
 /// game's counters counted the kills; and M65's items landed: the coin, the
 /// orb and the gold collected, the ranger's kill counted on it, the lasers'
 /// kill scored; and M66's typed parts met their kind filters; and M67's
-/// ladders applied (the golem chilled, the mainframe corrupted) and the
-/// adventurer's gold reached its level. Since M74 the golem's chilled rung
-/// skips a chilled golem (`blocked_by`), so the script's cold hit, landing
-/// while the spellblade's chill holds, stays in the golem's bucket instead
-/// of chilling it again: a bucket still holding it shows the chill held.
+/// ailments applied (the golem chilled, the mainframe corrupted) and the
+/// adventurer's gold reached its level. Since M74 the golem's chill skips a
+/// chilled golem, so the script's cold hit, landing while the spellblade's
+/// chill holds, builds the golem's freeze (7.13a: its builds, the ladder's
+/// buckets before) instead of chilling it again: a cold build still
+/// holding it shows the chill held.
 fn reacted(genre: &str, harness: &Harness) -> bool {
     let game = harness.world().resource::<Counters>();
     let counted = |tag: &str, name: &str| -> i64 {
@@ -479,8 +477,12 @@ fn reacted(genre: &str, harness: &Harness) -> bool {
                 && tagged(harness, "golem").iter().any(|&golem| {
                     harness
                         .world()
-                        .get::<AilmentBuckets>(golem)
-                        .is_some_and(|buckets| buckets.fill("elemental.cold") > 0.0)
+                        .get::<Effects>(golem)
+                        .is_some_and(|effects| {
+                            ["freeze_build", "chill_build"]
+                                .iter()
+                                .any(|id| effects.intensity(id).is_some_and(|built| built > 0.0))
+                        })
                 })
         }
         "rpg" => {

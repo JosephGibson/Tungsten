@@ -3,25 +3,24 @@
 //! a run, inside the invulnerability window too, a blow's tint and hurt
 //! clip, and each cast's gesture with the staff's flare.
 
-use example_01_platformer::features::level::{self, KILL_Y, MAP, TILE, WORLD_MAX, WORLD_MIN};
+use example_01_platformer::features::level::{self, MAP, TILE};
 use example_01_platformer::features::player::components::Moves;
-use example_01_platformer::features::player::systems::{
-    AIR_JUMP_BURST, DEATH_CLIP, HURT_CLIP, escaped,
-};
+use example_01_platformer::features::player::systems::{DEATH_CLIP, HURT_CLIP};
 use example_01_platformer::features::run::DEATH_SECS;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::shared::Burst;
 use example_01_platformer::shell::game_over::GAME_OVER;
 use glam::Vec2;
 use tungsten::core::{
-    AnimationState, Collider, Entity, ParticleConfigRegistry, ParticleEmitter, Position,
-    TilemapRegistry, Time, Transform, Velocity,
+    AnimationState, AudioCommand, Entity, ParticleConfigRegistry, ParticleEmitter, PhysicsConfig,
+    Position, SoundRegistry, TilemapRegistry, Time, Transform, Velocity,
 };
-use tungsten::kit::{Health, PlatformerController, damage};
+use tungsten::kit::{Health, PlatformerController, WorldBounds, damage};
 use tungsten::testing::UiHarness;
 
 use example_01_platformer::game::GAMEPLAY;
 
+use super::prefab_box;
 use super::{ball, body, calm, centre, fall_dead, ground, run, settle, stand, teleport, top};
 use super::{body_offset, player_half};
 
@@ -60,6 +59,21 @@ fn bursts(harness: &UiHarness, name: &str) -> Vec<Entity> {
         .filter(|(_, _, emitter)| emitter.config == config)
         .map(|(entity, ..)| entity)
         .collect()
+}
+
+/// Plays of the manifest sound `id` in the last frame, by the audio log:
+/// how a test hears a sound a cue plays with no `Sounded` of 01's.
+pub(super) fn plays(harness: &UiHarness, id: &str) -> usize {
+    let sound = harness.world().resource::<SoundRegistry>().get_by_id(id);
+    assert!(sound.is_some(), "`{id}` is no manifest sound");
+    harness
+        .harness()
+        .audio()
+        .iter()
+        .filter(
+            |command| matches!(command, AudioCommand::Play { handle, .. } if Some(*handle) == sound),
+        )
+        .count()
 }
 
 /// A fresh press: up, then down again, read by the next frame.
@@ -114,7 +128,8 @@ fn despawn_out_of_bounds_kills_escaped_player_whose_body_drops() {
     let (mut harness, player) = run();
     harness.step(5);
     // Past the box's right side at a height the kill row leaves alone.
-    let out = Vec2::new(WORLD_MAX.x + player_half().x + 50.0, 20.0 * TILE);
+    let right = harness.world().resource::<WorldBounds>().max().x;
+    let out = Vec2::new(right + player_half().x + 50.0, 20.0 * TILE);
     teleport(&mut harness, player, out);
     harness.step(1);
     assert!(health(&harness, player).is_dead());
@@ -176,20 +191,17 @@ fn the_dead_fall_for_two_seconds_before_game_over() {
 fn despawn_out_of_bounds_keeps_player_while_collider_overlaps_bounds() {
     let (mut harness, player) = run();
     harness.step(5);
-    let collider = *harness.world().get::<Collider>(player).unwrap();
-    let start = Vec2::new(WORLD_MIN.x - player_half().x + 1.0, 30.0 * TILE);
-    assert!(
-        !escaped(start - body_offset(), Some(&collider)),
-        "a pixel inside"
-    );
-    assert!(escaped(
-        start - body_offset() - Vec2::X * 2.0,
-        Some(&collider)
-    ));
+    // A pixel of its body inside the box's left side.
+    let left = harness.world().resource::<WorldBounds>().min().x;
+    let start = Vec2::new(left - player_half().x + 1.0, 30.0 * TILE);
     teleport(&mut harness, player, start);
     harness.step(1);
-    let health = health(&harness, player);
-    assert_eq!(health.current(), health.max(), "an overlapping body lives");
+    let alive = health(&harness, player);
+    assert_eq!(alive.current(), alive.max(), "an overlapping body lives");
+    // Two pixels farther its whole body is past the side.
+    teleport(&mut harness, player, start - Vec2::X * 2.0);
+    harness.step(1);
+    assert!(health(&harness, player).is_dead(), "wholly past the side");
 }
 
 #[test]
@@ -215,9 +227,6 @@ fn a_wizard_ten_tiles_over_the_maps_top_falls_back_alive() {
 #[test]
 fn despawn_out_of_bounds_is_noop_for_in_bounds_player() {
     let (mut harness, player) = run();
-    let collider = *harness.world().get::<Collider>(player).unwrap();
-    let middle = (WORLD_MIN + WORLD_MAX) * 0.5;
-    assert!(!escaped(middle, Some(&collider)));
     harness.step(60);
     let health = health(&harness, player);
     assert_eq!(health.current(), health.max());
@@ -235,14 +244,16 @@ fn real_map_dimensions_spawn_and_fall_death() {
     );
     let text = std::fs::read_to_string("tools/level.json").unwrap();
     let source: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(source["kill_row"].as_f64().unwrap() as f32 * TILE, KILL_Y);
+    // The kill row, the map's `kill` place, as `level.json` has it.
+    let kill = level::marker(world, level::KILL_MARKER).unwrap().y;
+    assert_eq!(source["kill_row"].as_f64().unwrap() as f32 * TILE, kill);
     let feet = level::marker(world, level::SPAWN_MARKER).unwrap();
     harness.step(60);
     assert!(controller(&harness, player).grounded());
     let stood = centre(&harness, player) + Vec2::new(0.0, player_half().y);
     assert!((stood - feet).length() < 1.0, "{stood} on {feet}");
     // Past the kill row with a landing pending.
-    teleport(&mut harness, player, Vec2::new(feet.x, KILL_Y + 1.0));
+    teleport(&mut harness, player, Vec2::new(feet.x, kill + 1.0));
     harness
         .world_mut()
         .get_mut::<Moves>(player)
@@ -287,9 +298,10 @@ fn double_jump_needs_a_fresh_press_emits_once_and_refills_on_landing() {
     assert_eq!(controller(&harness, player).air_jumps_left(), 0);
     // The step's mean: the jump's speed, less half a step of gravity.
     let rise = harness.world().get::<Velocity>(player).unwrap().0.y;
-    let expected = -1280.0 + level::GRAVITY * DT * 0.5;
+    let gravity = harness.world().resource::<PhysicsConfig>().gravity.y;
+    let expected = -1280.0 + gravity * DT * 0.5;
     assert!((rise - expected).abs() < 1e-2, "{rise} vs {expected}");
-    let burst = bursts(&harness, AIR_JUMP_BURST);
+    let burst = bursts(&harness, "ex10_double_jump");
     assert_eq!(burst.len(), 1);
     let at = harness.world().get::<Transform>(burst[0]).unwrap().position;
     assert!((at - takeoff).length() < 1e-3, "{at} vs {takeoff}");
@@ -297,7 +309,7 @@ fn double_jump_needs_a_fresh_press_emits_once_and_refills_on_landing() {
     press_again(&mut harness, "jump");
     harness.step(1);
     assert!(!controller(&harness, player).jumped());
-    assert_eq!(bursts(&harness, AIR_JUMP_BURST).len(), 1);
+    assert_eq!(bursts(&harness, "ex10_double_jump").len(), 1);
     harness.harness_mut().release_action("jump");
     harness.step(150);
     assert!(controller(&harness, player).grounded());
@@ -347,7 +359,10 @@ fn a_fall_is_fatal_during_immunity_and_the_screen_advances_while_game_time_is_pa
     damage(harness.world_mut(), player, 10.0);
     assert!(health(&harness, player).is_invulnerable());
     let at = centre(&harness, player);
-    teleport(&mut harness, player, Vec2::new(at.x, KILL_Y + 1.0));
+    let kill = level::marker(harness.world(), level::KILL_MARKER)
+        .unwrap()
+        .y;
+    teleport(&mut harness, player, Vec2::new(at.x, kill + 1.0));
     harness.step(1);
     assert!(
         health(&harness, player).is_dead(),
@@ -355,7 +370,7 @@ fn a_fall_is_fatal_during_immunity_and_the_screen_advances_while_game_time_is_pa
     );
     fall_dead(&mut harness);
     assert_eq!(top(&harness), Some(GAME_OVER));
-    assert!(harness.world().resource::<Time>().is_paused());
+    assert!(harness.world().resource::<Time>().is_held());
     harness.step(60);
     assert_eq!(top(&harness), Some(GAME_OVER));
     assert!(health(&harness, player).is_dead());
@@ -479,9 +494,8 @@ fn a_blow_tints_the_courier_red_for_a_moment() {
 
 /// The player's hurt edge, the share `Moves` holds and the alpha its quad
 /// over the view draws at, the edge's art mocked as texture 970; and the
-/// frame's ticks and hurts.
+/// frame's ticks and hurts, the plays of their cue rules' sounds.
 fn edge(harness: &UiHarness, player: Entity) -> (f32, Option<u8>, usize, usize) {
-    use example_01_platformer::features::audio::components::{Sound, Sounded};
     use example_01_platformer::features::combat::draw;
     use example_01_platformer::features::level::draw::view;
     let world = harness.world();
@@ -494,18 +508,20 @@ fn edge(harness: &UiHarness, player: Entity) -> (f32, Option<u8>, usize, usize) 
         .map(|quad| quad.color[3])
         .collect();
     assert!(drawn.len() <= 1, "{drawn:?}");
-    let count = |sound: Sound| {
+    let count = |id: &str| {
+        let sound = world.resource::<SoundRegistry>().get_by_id(id);
         harness
             .harness()
-            .events::<Sounded>()
-            .filter(|sounded| sounded.sound == sound)
+            .audio()
+            .iter()
+            .filter(|command| matches!(command, AudioCommand::Play { handle, .. } if Some(*handle) == sound))
             .count()
     };
     (
         world.get::<Moves>(player).unwrap().edge,
         drawn.first().copied(),
-        count(Sound::PlayerTicked),
-        count(Sound::PlayerHurt),
+        count("ex10_player_tick_sfx"),
+        count("ex10_player_hit_sfx"),
     )
 }
 
@@ -638,6 +654,177 @@ fn each_gesture_shows_its_clip_and_the_staff_flares() {
     );
 }
 
+/// The wizard standing on the sky's ground at 60 Hz, mana to spare, the
+/// camera pinned: the gesture tests' stage.
+fn caster() -> (UiHarness, Entity) {
+    use tungsten::kit::Stats;
+    const TOP: f32 = 1000.0;
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    ground(&mut harness, TOP);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.harness_mut().set_dt(DT);
+    harness.step(10);
+    super::pin_camera(&mut harness, Vec2::new(0.0, 500.0));
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.set_base("max_mana", 1000.0);
+    stats.set_base("mana", 1000.0);
+    (harness, player)
+}
+
+/// The name of the sprite `player` shows.
+fn sprite_shown(harness: &UiHarness, player: Entity) -> String {
+    use tungsten::core::{AssetRegistry, Sprite};
+    let world = harness.world();
+    let id = world.get::<Sprite>(player).unwrap().asset_id;
+    let assets = world.resource::<AssetRegistry>();
+    assets.sprite_name(id).unwrap().to_owned()
+}
+
+/// Casts the fire missile at `at`: pressed for a frame, then let go.
+fn bolt_at(harness: &mut UiHarness, at: Vec2) {
+    super::choose(harness, Spell::FireMissile);
+    super::aim_at(harness, at);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+}
+
+#[test]
+fn a_gesture_faces_the_aim_it_was_cast_at() {
+    use example_01_platformer::features::level::components::Glow;
+    use example_01_platformer::features::player::components::StaffGlow;
+    use tungsten::kit::Facing;
+    let (mut harness, player) = caster();
+    let facing = harness.world().get::<Facing>(player).unwrap().direction();
+    assert!(facing.x > 0.0, "the wizard faces right: {facing}");
+    let base = harness.world().get::<StaffGlow>(player).unwrap().0;
+    let behind = centre(&harness, player) + Vec2::new(-240.0, -60.0);
+    let ahead = centre(&harness, player) + Vec2::new(240.0, -60.0);
+    bolt_at(&mut harness, behind);
+    assert_eq!(clip(&harness, player), "ex10_player_bolt_left");
+    let glow = harness.world().get::<Glow>(player).unwrap().radius;
+    assert!(glow > base.radius, "the staff flares");
+    // The cursor crosses right within its 0.3 s: the bolt keeps its side
+    // for its 300 ms, 18 frames, then the idle clip, facing right.
+    super::aim_at(&mut harness, ahead);
+    for frame in 1..18 {
+        harness.step(1);
+        assert_eq!(
+            clip(&harness, player),
+            "ex10_player_bolt_left",
+            "frame {frame}"
+        );
+    }
+    harness.step(1);
+    assert_eq!(clip(&harness, player), "ex10_player_idle", "ended");
+}
+
+#[test]
+fn a_shot_or_a_pour_cuts_a_gesture_short() {
+    use example_01_platformer::features::gun;
+    let (mut harness, player) = caster();
+    let ahead = centre(&harness, player) + Vec2::new(240.0, -120.0);
+    // A bolt, then the gun fired 5 frames on: the pistol's pose at once.
+    bolt_at(&mut harness, ahead);
+    assert_eq!(clip(&harness, player), "ex10_player_bolt");
+    harness.step(5);
+    harness.harness_mut().press_action(gun::SHOOT);
+    harness.step(1);
+    harness.harness_mut().release_action(gun::SHOOT);
+    let shown = sprite_shown(&harness, player);
+    assert!(shown.starts_with("ex10_player_aim_"), "{shown}");
+    harness.step(30);
+    // A bolt, then the flamethrower held 5 frames on: the staff's pose.
+    bolt_at(&mut harness, ahead);
+    assert_eq!(clip(&harness, player), "ex10_player_bolt");
+    harness.step(4);
+    super::choose(&mut harness, Spell::Flamethrower);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    let shown = sprite_shown(&harness, player);
+    harness.harness_mut().release_action("cast");
+    assert!(shown.starts_with("ex10_player_staff_"), "{shown}");
+}
+
+#[test]
+fn a_pose_follows_the_aim_and_its_side() {
+    use example_01_platformer::features::gun;
+    use example_01_platformer::features::player::{AIMING, POURING};
+    use tungsten::core::components::SpriteFlip;
+    use tungsten::kit::Tags;
+    let (mut harness, player) = caster();
+    let from = |h: &UiHarness, x: f32, y: f32| centre(h, player) + Vec2::new(x, y);
+    let posed = |h: &UiHarness| {
+        let tags = h.world().get::<Tags>(player).unwrap();
+        (tags.has(POURING), tags.has(AIMING))
+    };
+    // Standing, a pour up, level and down: the staff strip's frames 0, 2
+    // and 4; level to the left, its twin's, no flip written.
+    super::choose(&mut harness, Spell::Flamethrower);
+    for ((x, y), want) in [
+        ((10.0, -300.0), "ex10_player_staff_0"),
+        ((300.0, 0.0), "ex10_player_staff_2"),
+        ((10.0, 300.0), "ex10_player_staff_4"),
+        ((-300.0, 0.0), "ex10_player_staff_2_left"),
+    ] {
+        let at = from(&harness, x, y);
+        super::aim_at(&mut harness, at);
+        harness.harness_mut().press_action("cast");
+        harness.step(1);
+        harness.harness_mut().release_action("cast");
+        assert_eq!(sprite_shown(&harness, player), want, "({x}, {y})");
+        assert_eq!(posed(&harness), (true, false), "({x}, {y})");
+        harness.step(20);
+    }
+    assert!(harness.world().get::<SpriteFlip>(player).is_none());
+    // A shot level: the pistol strip's frame 2. The cursor raised 6 frames
+    // on, its live aim: straight up, frame 0.
+    let level = from(&harness, 300.0, 0.0);
+    super::aim_at(&mut harness, level);
+    harness.harness_mut().press_action(gun::SHOOT);
+    harness.step(1);
+    harness.harness_mut().release_action(gun::SHOOT);
+    assert_eq!(sprite_shown(&harness, player), "ex10_player_aim_2");
+    harness.step(5);
+    let up = from(&harness, 10.0, -300.0);
+    super::aim_at(&mut harness, up);
+    harness.step(1);
+    assert_eq!(sprite_shown(&harness, player), "ex10_player_aim_0");
+    harness.step(20);
+    // A shot right after a pour, with no wait: the pistol's pose the frame
+    // after its press, the pour's tag gone.
+    super::aim_at(&mut harness, level);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    assert_eq!(sprite_shown(&harness, player), "ex10_player_staff_2");
+    harness.harness_mut().press_action(gun::SHOOT);
+    harness.step(1);
+    harness.harness_mut().release_action(gun::SHOOT);
+    assert_eq!(sprite_shown(&harness, player), "ex10_player_aim_2");
+    assert_eq!(posed(&harness), (false, true));
+    harness.step(20);
+    // Walking, no pose.
+    harness.harness_mut().press_action("move_right");
+    harness.step(3);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    let walking = sprite_shown(&harness, player);
+    harness.harness_mut().release_action("cast");
+    harness.harness_mut().release_action("move_right");
+    assert!(walking.starts_with("ex10_player_walk"), "{walking}");
+    // Standing again, a pour, then 0.3 s on: the idle clip, no pose tag.
+    harness.step(40);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    assert!(sprite_shown(&harness, player).starts_with("ex10_player_staff_"));
+    harness.step(20);
+    assert_eq!(clip(&harness, player), "ex10_player_idle");
+    assert_eq!(posed(&harness), (false, false));
+}
+
 #[test]
 fn an_air_jump_and_a_spell_switch_each_sound_once() {
     use example_01_platformer::features::audio::components::{Sound, Sounded};
@@ -666,11 +853,11 @@ fn an_air_jump_and_a_spell_switch_each_sound_once() {
         let mut sounds = 0;
         for _ in 0..frames {
             h.step(1);
-            sounds += heard(h, Sound::AirJumped);
+            sounds += plays(h, "ex10_air_jump_sfx");
         }
         h.harness_mut().release_action("jump");
         h.step(1);
-        sounds + heard(h, Sound::AirJumped)
+        sounds + plays(h, "ex10_air_jump_sfx")
     };
     assert_eq!(jump(&mut harness, 3), 0, "a ground jump is silent");
     harness.step(4);
@@ -681,6 +868,170 @@ fn an_air_jump_and_a_spell_switch_each_sound_once() {
     assert_eq!(heard(&harness, Sound::Switched), 1);
     super::choose(&mut harness, Spell::Lightning);
     assert_eq!(heard(&harness, Sound::Switched), 0);
+}
+
+/// S-48: the jumps', the bound's, its refusal's and the landing's bursts
+/// and sounds play from the controller's cue events, the player's prefab
+/// `cues` and the two `air_jumped` rules, with the bound's ring 01's own
+/// one-shot; a foe's controller, naming none of them, lands in silence.
+#[test]
+fn the_jumps_bound_refusal_and_landing_play_from_the_players_cues() {
+    use example_01_platformer::features::enemies;
+    use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
+    use example_01_platformer::features::tomes::{BOUND_CENTRE, TomeKind};
+    use example_01_platformer::shared::Saved;
+    use tungsten::kit::{StateMachine, Stats, Tags};
+
+    const TOP: f32 = 900.0;
+    const DUST: &str = "ex10_landing_dust";
+    let (mut harness, player) = run();
+    // The geysers' bursts and the foes aside.
+    calm(&mut harness);
+    // A fresh run's spawn, half a pixel over the turf, lands nowhere.
+    for frame in 0..30 {
+        harness.step(1);
+        assert!(bursts(&harness, DUST).is_empty(), "frame {frame}");
+    }
+    assert!(controller(&harness, player).grounded());
+    // The sky's floor, indexed a step before the player is set on it, so
+    // he stands from his first step there.
+    ground(&mut harness, TOP);
+    harness.step(1);
+    stand(&mut harness, player, 400.0, TOP);
+    harness.step(2);
+    super::tomes::take(&mut harness, player, TomeKind::Bounding);
+    // The mana's regeneration held, so its mana is the jumps' alone.
+    let world = harness.world_mut();
+    world.get_mut::<Tags>(player).unwrap().insert("casting");
+    let set_mana = |harness: &mut UiHarness, mana: f32| {
+        let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+        stats.set_base("mana", mana);
+    };
+    let feet = |harness: &UiHarness| centre(harness, player) + Vec2::Y * player_half().y;
+    let at = |harness: &UiHarness, entity: Entity| {
+        harness.world().get::<Transform>(entity).unwrap().position
+    };
+    let one_shots = |harness: &UiHarness| {
+        harness
+            .harness()
+            .audio()
+            .iter()
+            .filter(|command| matches!(command, AudioCommand::Play { looping: false, .. }))
+            .count()
+    };
+    let rings = |harness: &UiHarness| -> Vec<Entity> {
+        harness
+            .world()
+            .query::<(Entity, &AnimationState)>()
+            .filter(|(_, state)| state.animation_id == "ex10_bound_ring")
+            .map(|(entity, _)| entity)
+            .collect()
+    };
+    harness.step(20);
+    assert!(bursts(&harness, DUST).is_empty(), "set down, not landed");
+
+    // A ground jump: its puff at the feet it left, and no sound.
+    let takeoff = feet(&harness);
+    harness.harness_mut().press_action("jump");
+    harness.step(1);
+    assert!(controller(&harness, player).jumped());
+    let puff = bursts(&harness, "ex10_jump_puff");
+    assert_eq!(puff.len(), 1);
+    let off = at(&harness, puff[0]) - takeoff;
+    assert!(off.length() < 1e-3, "the puff, {off} off the takeoff");
+    assert_eq!(one_shots(&harness), 0, "a ground jump is silent");
+    assert!(bursts(&harness, "ex10_double_jump").is_empty());
+
+    // The free air jump: its burst there, and its whoosh.
+    harness.step(4);
+    press_again(&mut harness, "jump");
+    let takeoff = feet(&harness);
+    harness.step(1);
+    let step = controller(&harness, player);
+    assert!(step.air_jumped() && !step.paid_air_jumped());
+    let doubled = bursts(&harness, "ex10_double_jump");
+    assert_eq!(doubled.len(), 1);
+    let off = at(&harness, doubled[0]) - takeoff;
+    assert!(off.length() < 1e-3, "the burst, {off} off the takeoff");
+    assert_eq!(plays(&harness, "ex10_air_jump_sfx"), 1);
+    assert_eq!(one_shots(&harness), 1, "the whoosh alone");
+    assert_eq!(bursts(&harness, "ex10_jump_puff"), puff, "no second puff");
+    assert!(rings(&harness).is_empty());
+
+    // A bound, the third jump, at exactly its 25 mana: the ring at once,
+    // unsaved, its sparks and trail, and its sound in the whoosh's place.
+    set_mana(&mut harness, 25.0);
+    harness.step(4);
+    press_again(&mut harness, "jump");
+    let takeoff = feet(&harness);
+    harness.step(1);
+    assert!(controller(&harness, player).paid_air_jumped());
+    let ring = rings(&harness);
+    assert_eq!(ring.len(), 1, "its ring, in the bound's own step");
+    let off = at(&harness, ring[0]) - (takeoff - BOUND_CENTRE);
+    assert!(off.length() < 1e-3, "the ring's corner, {off} off");
+    assert!(!harness.world().has::<Saved>(ring[0]), "a look, not saved");
+    assert_eq!(bursts(&harness, "ex10_bound_sparks").len(), 1);
+    assert_eq!(bursts(&harness, "ex10_bound_trail").len(), 1);
+    for burst in ["ex10_bound_sparks", "ex10_bound_trail"] {
+        let off = at(&harness, bursts(&harness, burst)[0]) - takeoff;
+        assert!(off.length() < 1e-3, "{burst}, {off} off the takeoff");
+    }
+    assert_eq!(plays(&harness, "ex10_bound_sfx"), 1);
+    assert_eq!(plays(&harness, "ex10_air_jump_sfx"), 0);
+    assert_eq!(one_shots(&harness), 1, "the bound's sound alone");
+    assert_eq!(bursts(&harness, "ex10_double_jump"), doubled);
+    assert_eq!(super::mana(&harness), 0.0);
+
+    // At 24 mana the next is refused: its sound once a press, and no ring.
+    set_mana(&mut harness, 24.0);
+    harness.step(4);
+    press_again(&mut harness, "jump");
+    let mut refusals = 0;
+    for _ in 0..4 {
+        harness.step(1);
+        assert!(!controller(&harness, player).jumped());
+        refusals += plays(&harness, "ex10_no_mana_sfx");
+        assert_eq!(one_shots(&harness), plays(&harness, "ex10_no_mana_sfx"));
+    }
+    assert_eq!(refusals, 1, "one refusal a press");
+    assert_eq!(rings(&harness), ring, "no second ring");
+    assert_eq!(bursts(&harness, "ex10_bound_sparks").len(), 1);
+    assert_eq!(super::mana(&harness), 24.0);
+
+    // The landing: one dust, at the feet that landed.
+    harness.harness_mut().release_action("jump");
+    let mut dusts = std::collections::HashSet::new();
+    for _ in 0..200 {
+        harness.step(1);
+        for dust in bursts(&harness, DUST) {
+            if dusts.insert(dust) {
+                assert!(controller(&harness, player).landed());
+                let off = at(&harness, dust) - feet(&harness);
+                assert!(off.length() < 1e-3, "the dust, {off} off the feet");
+            }
+        }
+    }
+    assert!(controller(&harness, player).grounded());
+    assert_eq!(dusts.len(), 1, "one landing's dust");
+    assert!(bursts(&harness, DUST).is_empty(), "gone with its particles");
+
+    // A crawler dropped beside the player lands with no dust: the cues
+    // are the player's, and a foe's controller names none.
+    let body = super::kind_body(EnemyKind::Crawler);
+    let beside = centre(&harness, player) + Vec2::new(64.0, -64.0);
+    let world = harness.world_mut();
+    let crawler =
+        enemies::spawn(world, EnemyKind::Crawler, beside - body.centre).expect("its prefab");
+    // Its mind away, so it only falls.
+    world.remove_component::<StateMachine<EnemyState>>(crawler);
+    let mut landed = false;
+    for _ in 0..60 {
+        harness.step(1);
+        landed |= controller(&harness, crawler).landed();
+        assert!(bursts(&harness, DUST).is_empty(), "a foe's landing");
+    }
+    assert!(landed && controller(&harness, crawler).grounded());
 }
 
 /// The wizard at x 600 on the sky's ground, walking right for `frames`
@@ -712,8 +1063,8 @@ fn walk_into(
 
 #[test]
 fn the_wizard_walks_small_bodies_aside() {
-    use example_01_platformer::features::props::{self, CRATE_HALF, components::PropKind};
-    use example_01_platformer::features::toys::{self, IRON_HALF};
+    use example_01_platformer::features::props::{self, components::PropKind};
+    use example_01_platformer::features::toys;
     const FLOOR: f32 = 1000.0;
     // A small ball ahead rolls off before him.
     let (xs, start, end) = walk_into(|h| ball(h, Vec2::new(680.0, FLOOR - 7.5), true), 30);
@@ -723,7 +1074,7 @@ fn the_wizard_walks_small_bodies_aside() {
     );
     assert!(xs[29] > 700.0, "he walked on: {}", xs[29]);
     // A crate ahead moves with him, at his run less its 12 of 60.
-    let crate_at = Vec2::new(700.0, FLOOR - CRATE_HALF.y - 0.5);
+    let crate_at = Vec2::new(700.0, FLOOR - prefab_box("crate").0.y - 0.5);
     let (xs, start, end) = walk_into(
         |h| props::spawn(h.world_mut(), PropKind::Crate, crate_at),
         50,
@@ -738,12 +1089,15 @@ fn the_wizard_walks_small_bodies_aside() {
         "the crate went with him: {start} {end}"
     );
     assert!(
-        xs[49] + player_half().x <= end.x - CRATE_HALF.x + 0.5,
+        xs[49] + player_half().x <= end.x - prefab_box("crate").0.x + 0.5,
         "behind it: {} {end}",
         xs[49]
     );
     // Iron, 400, stops him.
-    let iron_at = Vec2::new(700.0 + IRON_HALF.x, FLOOR - IRON_HALF.y);
+    let iron_at = Vec2::new(
+        700.0 + prefab_box("iron_block").0.x,
+        FLOOR - prefab_box("iron_block").0.y,
+    );
     let (xs, start, end) = walk_into(|h| toys::place_iron(h.world_mut(), iron_at), 40);
     assert!(start.distance(end) < 1.0, "the iron held: {start} {end}");
     assert!(

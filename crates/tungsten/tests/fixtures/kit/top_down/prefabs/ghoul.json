@@ -2,7 +2,8 @@
   "tag": "ghoul",
   "components": {
     "tags": [
-      "team.enemy"
+      "team.enemy",
+      "susceptible"
     ],
     "health": {
       "max": 2,
@@ -39,8 +40,8 @@
         }
       ]
     },
-    "ailment_threshold": {
-      "of_max_health": 1
+    "stats": {
+      "status_threshold": 2
     }
   }
 }

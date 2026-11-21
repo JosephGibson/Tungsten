@@ -1,0 +1,20 @@
+{
+  "stimulus": "damage.physical",
+  "on": {
+    "all": [
+      "flesh"
+    ],
+    "none": [
+      "status.frozen"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "bleed_build",
+        "scale": 1,
+        "per": "status_threshold"
+      }
+    }
+  ]
+}

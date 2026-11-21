@@ -21,37 +21,7 @@
         0.578,
         1
       ]
-    },
-    "ailments": [
-      {
-        "effect": "bleeding",
-        "needs": 0.4,
-        "window": 3,
-        "requires": [
-          "flesh"
-        ],
-        "blocked_by": [
-          "status.frozen"
-        ]
-      },
-      {
-        "effect": "shattered",
-        "needs": 0.8,
-        "window": 3,
-        "requires": [
-          "status.frozen"
-        ]
-      },
-      {
-        "effect": "shattered",
-        "needs": 0.04,
-        "window": 3,
-        "requires": [
-          "brittle",
-          "status.frozen"
-        ]
-      }
-    ]
+    }
   },
   "damage.physical.bleed": {
     "label_style": {
@@ -75,18 +45,7 @@
         0.021,
         1
       ]
-    },
-    "ailments": [
-      {
-        "effect": "burning",
-        "needs": 0.25,
-        "window": 3,
-        "blocked_by": [
-          "status.frozen",
-          "status.doused"
-        ]
-      }
-    ]
+    }
   },
   "damage.cold": {
     "label_style": {
@@ -98,49 +57,7 @@
         0.905,
         1
       ]
-    },
-    "ailments": [
-      {
-        "effect": "chilled",
-        "needs": 0.15,
-        "window": 6,
-        "blocked_by": [
-          "status.chilled",
-          "status.burning"
-        ]
-      },
-      {
-        "effect": "frozen",
-        "needs": 0.5,
-        "window": 6,
-        "requires": [
-          "freezable",
-          "status.chilled"
-        ],
-        "blocked_by": [
-          "status.burning",
-          "troll"
-        ]
-      },
-      {
-        "effect": {
-          "duration": 3,
-          "grant": [
-            "status.frozen"
-          ]
-        },
-        "needs": 0.5,
-        "window": 6,
-        "requires": [
-          "troll",
-          "freezable",
-          "status.chilled"
-        ],
-        "blocked_by": [
-          "status.burning"
-        ]
-      }
-    ]
+    }
   },
   "damage.shock": {
     "label_style": {
@@ -152,37 +69,7 @@
         1.0,
         1
       ]
-    },
-    "ailments": [
-      {
-        "effect": "shocked",
-        "needs": 0.3,
-        "window": 3,
-        "blocked_by": [
-          "status.shocked"
-        ]
-      },
-      {
-        "effect": "stunned",
-        "needs": 1,
-        "window": 3,
-        "requires": [
-          "status.shocked"
-        ],
-        "blocked_by": [
-          "troll"
-        ]
-      },
-      {
-        "effect": "stunned",
-        "needs": 3,
-        "window": 3,
-        "requires": [
-          "troll",
-          "status.shocked"
-        ]
-      }
-    ]
+    }
   },
   "damage.poison": {
     "label_style": {
@@ -194,19 +81,6 @@
         0.051,
         1
       ]
-    },
-    "ailments": [
-      {
-        "effect": "poisoned",
-        "needs": 0.1,
-        "window": 3,
-        "requires": [
-          "living"
-        ],
-        "blocked_by": [
-          "status.frozen"
-        ]
-      }
-    ]
+    }
   }
 }

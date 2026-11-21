@@ -307,6 +307,58 @@ fn asked(world: &mut World, heard: &Heard, countdown: Option<f32>) {
 }
 
 #[test]
+fn an_answer_without_a_callback_closes_the_dialog() {
+    let (mut harness, heard) = harness();
+    opened(&mut harness, Menu::new("menu", PLAIN, &heard));
+    let yes = heard.clone();
+    let confirm = Confirm::new("Quit?", "Quit", "Stay")
+        .on_yes(move |_| yes.borrow_mut().push("yes".to_owned()));
+    assert!(ask(harness.world_mut(), confirm));
+    harness.step(12);
+    tap(&mut harness, KeyCode::Escape);
+    harness.step(12);
+    assert_eq!(stack(&harness).active_id(), Some("menu"), "Stay closed it");
+    assert!(heard.borrow().is_empty());
+    let no = heard.clone();
+    let confirm = Confirm::new("Keep?", "Keep", "Revert")
+        .on_no(move |_| no.borrow_mut().push("no".to_owned()));
+    assert!(ask(harness.world_mut(), confirm));
+    harness.step(12);
+    let keep = harness.find("Keep").unwrap();
+    harness.click(keep);
+    harness.step(12);
+    assert_eq!(stack(&harness).active_id(), Some("menu"), "Keep closed it");
+    assert!(
+        heard.borrow().is_empty(),
+        "the other answer's callback dropped"
+    );
+}
+
+#[test]
+fn a_countdown_names_the_answer_it_takes() {
+    let (mut harness, heard) = harness();
+    opened(&mut harness, Menu::new("menu", PLAIN, &heard));
+    let confirm = Confirm::new("Keep these display settings?", "Keep", "Revert").countdown(10.0);
+    assert!(ask(harness.world_mut(), confirm));
+    harness.step(1);
+    assert_eq!(stack(&harness).active_id(), Some(CONFIRM));
+    // The dialog's texts, its root's subtree in tree order.
+    let texts = |harness: &UiHarness| {
+        let tree = harness.tree();
+        let (mut nodes, mut texts) = (vec![harness.front_modal().unwrap()], Vec::new());
+        while let Some(id) = nodes.pop() {
+            texts.push(tree.plain_text(id));
+            nodes.extend(tree.children(id).iter().rev());
+        }
+        texts
+    };
+    let line = |harness: &UiHarness, text: &str| texts(harness).iter().any(|each| each == text);
+    assert!(line(&harness, "Revert in 10 s"), "{:?}", texts(&harness));
+    harness.step(90);
+    assert!(line(&harness, "Revert in 9 s"), "{:?}", texts(&harness));
+}
+
+#[test]
 fn confirm_takes_the_safe_answer_on_cancel_countdown_and_exit() {
     let (mut harness, heard) = harness();
     opened(&mut harness, Menu::new("menu", PLAIN, &heard));

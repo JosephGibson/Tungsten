@@ -3,9 +3,9 @@
 //! view, raiders from a wave on a path, and a walker on a floor under the
 //! same actions; M64's fighter, drifter, asteroid, mine and gun; M65's
 //! interceptor, lasers, carrier and bulwark; M66's sci-fi damage types: a
-//! hacker, its payloads and a mainframe; M67's corruption ladder, the
+//! hacker, its payloads and a mainframe; M67's corruption build, the
 //! ship's cannon and the turret's pulse; M74's acid named after a load, the
-//! acid ladder's held rung and a game's own damage numbers; M75's drone
+//! acid's held build and a game's own damage numbers; M75's drone
 //! saved mid-volley; 7.10c's breacher, Static Front's: its SMG held, its
 //! dodge along the move stick and its reload's sweep; a lobber's grenade
 //! and its blast where it lands; a cryo trooper's cone; an escort carrier's
@@ -13,7 +13,8 @@
 //! at their cap with a blip; 7.10g's missile, turning back right side up,
 //! a stray drone killed past the world's bounds, a sentry whose patrol
 //! waits at each end, two turrets cycling half a second apart, a charger
-//! whose ring grows over its tell, and a frigate's health bar.
+//! whose ring grows over its tell, and a frigate's health bar; 7.13c's
+//! frag grenade, sparing its thrower, about half its damage at its edge.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -599,13 +600,15 @@ fn a_corrupted_mainframe_takes_more_digital_damage_until_its_wither_expires() {
         let mut harness = recipe(GENRE, KitPlugins::set(), dt);
         let mainframe = spawn(&mut harness, "mainframe", [640.0, 300.0]);
         harness.step(1);
-        // The threshold is 20 plus a tenth of 100; a corruption hit of 60
-        // lands 30 at the half resistance: a full bucket corrupts.
+        // The mainframe's `status_threshold` is 30, 20 plus a tenth of its
+        // 100; a corruption hit of 60 lands 30 at the half resistance: a full
+        // build corrupts, its band's effect at chemistry's run after the
+        // hit's.
         assert_eq!(
             digital(mainframe, "digital.corruption", 60.0).apply(harness.world_mut()),
             Hit::Hurt
         );
-        harness.step(1);
+        harness.step(frames_for(2.0 / 60.0, dt));
         let world = harness.world();
         assert!(
             world.get::<Effects>(mainframe).unwrap().has("corrupted"),
@@ -1947,6 +1950,52 @@ fn the_pointmans_camera_leads_its_aim_by_96_px() {
         assert!(
             (led - Vec2::new(0.0, -96.0)).length() < 1.0,
             "dt {dt}: up at the turret: {led}"
+        );
+    }
+}
+
+// 7.13c, Step 1: a frag grenade's blast, about half its damage at its edge
+// and its thrower spared.
+
+#[test]
+fn a_frag_grenade_spares_its_thrower_and_keeps_half_at_its_edge() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // The floor's top at y 8; the grenade dropped onto it, thrown by a
+        // sandbag beside where it lands.
+        spawn(&mut harness, "floor", [300.0, 16.0]);
+        let thrower = spawn(&mut harness, "sandbag", [320.0, 0.0]);
+        let near = spawn(&mut harness, "sandbag", [340.0, 0.0]);
+        let edge = spawn(&mut harness, "sandbag", [362.0, 8.0]);
+        let grenade = spawn(&mut harness, "frag_grenade", [300.0, -40.0]);
+        harness.world_mut().insert(grenade, Source::new(thrower));
+        let mut landed = None;
+        for _ in 0..frames_for(1.5, dt) {
+            harness.step(1);
+            if let Some(expired) = harness.events::<ProjectileExpired>().next().copied() {
+                landed = Some(expired.position);
+                break;
+            }
+        }
+        let at = landed.unwrap_or_else(|| panic!("dt {dt}: the grenade lands"));
+        assert!((at.y - 8.0).abs() < 1e-3, "dt {dt}: on the floor: {at}");
+        // Its blast in the step it landed: 20 by 1 - 0.5 d / 64, and no
+        // more two steps on.
+        harness.step(2);
+        let world = harness.world();
+        let lost = |entity| 40.0 - world.get::<Health>(entity).unwrap().current();
+        let share = |x: f32, y: f32| 1.0 - 0.5 * (Vec2::new(x, y) - at).length() / 64.0;
+        assert_eq!(lost(thrower), 0.0, "dt {dt}: its thrower spared");
+        for (entity, x, y) in [(near, 340.0, 0.0), (edge, 362.0, 8.0)] {
+            assert!(
+                (lost(entity) - 20.0 * share(x, y)).abs() < 1e-3,
+                "dt {dt}: at {x}: {}",
+                lost(entity)
+            );
+        }
+        assert!(
+            (0.5..0.52).contains(&share(362.0, 8.0)),
+            "dt {dt}: about half at its edge"
         );
     }
 }

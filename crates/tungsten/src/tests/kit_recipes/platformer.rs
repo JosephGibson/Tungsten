@@ -27,7 +27,9 @@
 //! rider, sounding as it leaves and reaches each end; two porters
 //! carrying crates over their heads, which drop them at rest when killed
 //! or frozen; and a brute with a health bar, and a mark while alerted, as
-//! 01's troll.
+//! 01's troll; 7.13c's boulder rolled into a goblin, credited to its
+//! roller, and a nugget that falls to the ground for the climber; 7.13c's
+//! foes and cues' crate, whose hard landing sparks under a rule's amount.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -2602,5 +2604,116 @@ fn a_caves_zone_bounds_the_view_and_its_bounds_ride_the_blend() {
             "dt {dt}"
         );
         assert!((now.corner.y - 40.0).abs() < 1e-3, "dt {dt}: {now:?}");
+    }
+}
+
+// 7.13c, Step 2: a boulder rolled into a goblin, credited to its roller.
+
+#[test]
+fn a_rolled_boulder_hurts_a_goblin_credited_to_its_roller() {
+    use crate::kit::{Damaged, ImpactDamage};
+
+    for (speed, want) in [(600.0, Some(20.0)), (200.0, None)] {
+        for dt in DTS {
+            let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+            let roller = harness.world_mut().spawn();
+            let goblin = spawn(&mut harness, "goblin", [160.0, 100.0]);
+            let boulder = spawn(&mut harness, "boulder", [100.0, 100.0]);
+            let world = harness.world_mut();
+            world.get_mut::<Velocity>(boulder).unwrap().0 = Vec2::new(speed, 0.0);
+            world
+                .get_mut::<ImpactDamage>(boulder)
+                .unwrap()
+                .set_credit(Some(roller));
+            let mut hits = Vec::new();
+            for _ in 0..frames_for(0.5, dt) {
+                harness.step(1);
+                hits.extend(
+                    harness
+                        .events::<Damaged>()
+                        .filter(|hit| hit.entity == goblin)
+                        .map(|hit| (hit.amount, hit.source)),
+                );
+            }
+            match want {
+                // From 300 px/s, a unit of mass a px/s past it, at most 20.
+                Some(want) => assert_eq!(hits, [(want, Some(roller))], "dt {dt}"),
+                None => assert!(hits.is_empty(), "dt {dt}: too slow: {hits:?}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn a_nugget_dropped_in_the_air_falls_to_the_ground_and_a_climber_takes_it() {
+    for dt in DTS {
+        // Dropped 136 px over the ground, whose top is at y 290, at 120 px/s
+        // it rests the skin above it.
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let nugget = spawn(&mut harness, "nugget", [100.0, 150.0]);
+        harness.step(frames_for(2.0, dt));
+        let y = body_at(&harness, nugget).y;
+        assert!(
+            (y - (290.0 - 4.0 - 0.01)).abs() < 1e-3,
+            "dt {dt}: on the ground at {y}"
+        );
+        let climber = spawn(&mut harness, "climber", [100.0, 270.0]);
+        harness.step(frames_for(0.25, dt));
+        assert!(!harness.world().is_alive(nugget), "dt {dt}: taken");
+        assert_eq!(
+            harness
+                .world()
+                .get::<Counters>(climber)
+                .unwrap()
+                .get("coins"),
+            1,
+            "dt {dt}"
+        );
+    }
+}
+
+// 7.13c's foes and cues, Step 4: a crate's hard landing sparks.
+
+/// 7.13c's foes and cues: a crate on its controller dropped 150 px lands at
+/// about 775 px/s, and the `landings` rule, from 500, bursts `fuse_sparks`
+/// at its feet; dropped 10 px, it lands too softly to spark.
+#[test]
+fn a_crates_hard_landing_sparks_and_a_soft_one_does_not() {
+    use crate::kit::ParticleBurst;
+    for dt in DTS {
+        for (drop, sparks) in [(150.0, true), (10.0, false)] {
+            let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+            spawn(&mut harness, "ground", [0.0, 300.0]);
+            let crate_ = spawn(&mut harness, "sparking_crate", [0.0, 282.0 - drop]);
+            let mut landed = None;
+            for _ in 0..frames_for(1.0, dt) {
+                harness.step(1);
+                let world = harness.world();
+                if world
+                    .get::<crate::kit::PlatformerController>(crate_)
+                    .is_some_and(crate::kit::PlatformerController::grounded)
+                {
+                    landed = Some(body_at(&harness, crate_));
+                    break;
+                }
+            }
+            let at = landed.unwrap_or_else(|| panic!("dt {dt}, {drop}: it lands"));
+            let bursts: Vec<Vec2> = harness
+                .world()
+                .query::<(&ParticleBurst, &Transform)>()
+                .map(|(_, transform)| transform.position)
+                .collect();
+            if sparks {
+                assert_eq!(bursts.len(), 1, "dt {dt}: {bursts:?}");
+                assert!(
+                    (bursts[0] - (at + Vec2::new(0.0, 8.0))).length() < 1.0,
+                    "dt {dt}: at its feet: {} for {at}",
+                    bursts[0]
+                );
+            } else {
+                assert!(bursts.is_empty(), "dt {dt}: a soft landing: {bursts:?}");
+            }
+        }
     }
 }

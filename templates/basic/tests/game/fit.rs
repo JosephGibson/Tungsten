@@ -10,7 +10,6 @@ use tungsten::core::ui::{Visibility, WidgetId};
 use tungsten::core::{ScaleFactor, Settings, UserFolder};
 use tungsten::kit::damage;
 use tungsten::testing::UiHarness;
-use tungsten_template_basic::shell::theme;
 
 use super::{harness, harness_with, player_entity, press, settle, start, tap, user_folder};
 
@@ -24,7 +23,7 @@ fn assert_fits(harness: &mut UiHarness, size: [u32; 2], what: &str) {
         width: size[0],
         height: size[1],
     });
-    for ui in [1.0, theme::UI_SCALE] {
+    for ui in [1.0, super::shipped_ui_scale()] {
         let world = harness.world_mut();
         world.resource_mut::<ScaleFactor>().set_ui_scale(ui);
         harness.layout();

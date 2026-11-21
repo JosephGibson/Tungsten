@@ -6,19 +6,16 @@
 //! each burning ball within [`HEAL_REACH`].
 
 use glam::Vec2;
-use tungsten::SceneEntity;
-use tungsten::core::{
-    Entity, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position, World,
-};
-use tungsten::kit::{HealRequest, Health, StateMachine, TopDownMover, spawn_child};
+use tungsten::core::{Entity, Position, World};
+use tungsten::kit::{HealRequest, Health, StateMachine, Tags};
 
-use super::components::{Enemy, EnemyKind, EnemyState, Shown};
-use super::systems::{elapsed, face, go, player, rest, sees};
-use super::{ARRIVED, centre};
+use super::centre;
+use super::components::{Enemy, EnemyKind, EnemyState};
+use super::systems::{elapsed, fly, go, player, sees};
 use crate::features::audio::{self, components::Sound};
-use crate::features::elements::components::BallBurn;
+use crate::features::combat::BURNING;
+use crate::features::elements::components::Flame;
 use crate::features::toys::components::{Ball, SmallBall};
-use crate::game::GAMEPLAY;
 
 /// How far from its home it roams on patrol.
 pub const ROAM: f32 = 160.0;
@@ -34,29 +31,6 @@ pub const HEAL_MOST: f32 = 12.0;
 /// save can move an older wisp's to it.
 pub const MAX_HEALTH: f32 = 30.0;
 
-/// Sets `wisp`'s flight toward `point` at `pace` of its speed, easing in
-/// over its last 20 px; at rest with no point. Whether it is there.
-fn fly(world: &mut World, wisp: Entity, point: Option<Vec2>, pace: f32) -> bool {
-    let (Some(at), Some(point)) = (centre(world, wisp), point) else {
-        rest(world, wisp);
-        return true;
-    };
-    let delta = point - at;
-    let distance = delta.length();
-    let direction = if distance > 1.0 {
-        delta / distance * pace * (distance / 20.0).min(1.0)
-    } else {
-        Vec2::ZERO
-    };
-    if let Some(mover) = world.get_mut::<TopDownMover>(wisp) {
-        mover.set_direction(direction);
-    }
-    if direction.x.abs() > 0.05 {
-        face(world, wisp, point.x);
-    }
-    distance <= ARRIVED
-}
-
 /// The nearest burning ball within [`FIRE_REACH`] of `at`.
 fn nearest_fire(world: &World, at: Vec2) -> Option<Vec2> {
     burning(world)
@@ -64,18 +38,20 @@ fn nearest_fire(world: &World, at: Vec2) -> Option<Vec2> {
         .min_by(|a, b| a.distance(at).total_cmp(&b.distance(at)))
 }
 
-/// The burning balls' centres.
+/// The burning balls' centres, each its corner and its prefab's offset.
 fn burning(world: &World) -> impl Iterator<Item = Vec2> + '_ {
+    use crate::features::toys::{BOWLING_BALL, SMALL_BALL};
+    let offset = |prefab| crate::shared::prefab_box(world, prefab).1;
+    let (small_centre, centre) = (offset(SMALL_BALL), offset(BOWLING_BALL));
     world
-        .query::<(&Ball, &BallBurn, &Position, Option<&SmallBall>)>()
-        .filter(|(_, burn, ..)| burn.remaining > 0.0)
-        .map(|(_, _, at, small)| {
-            let centre = if small.is_some() {
-                crate::features::toys::SMALL_BALL_CENTRE
+        .query::<(&Ball, &Flame, &Tags, &Position, Option<&SmallBall>)>()
+        .filter(|(_, _, tags, ..)| tags.has(BURNING))
+        .map(move |(_, _, _, at, small)| {
+            at.0 + if small.is_some() {
+                small_centre
             } else {
-                crate::features::toys::BALL_CENTRE
-            };
-            at.0 + centre
+                centre
+            }
         })
 }
 
@@ -149,64 +125,6 @@ pub fn fire(world: &mut World) {
         let rate = (HEAL_EACH * near as f32).min(HEAL_MOST);
         if rate > 0.0 {
             HealRequest::new(wisp, rate * dt).queue(world);
-        }
-    }
-}
-
-/// Its clip for `state`: the flare while alerted, else afloat.
-#[must_use]
-pub fn clip(state: EnemyState) -> &'static str {
-    if state == EnemyState::Alert {
-        "wisp_flare"
-    } else {
-        "wisp_float"
-    }
-}
-
-/// A wisp's flare lights a second ember emitter at its centre, which goes
-/// when the flare ends: more embers while it flares. Presentation.
-pub fn flare_embers(world: &mut World, wisp: Entity) {
-    let flaring = world
-        .get::<Enemy>(wisp)
-        .is_some_and(|enemy| enemy.kind == EnemyKind::Wisp)
-        && world
-            .get::<StateMachine<EnemyState>>(wisp)
-            .is_some_and(|machine| machine.state() == EnemyState::Alert && !machine.is_held())
-        && world
-            .get::<Health>(wisp)
-            .is_some_and(|health| !health.is_dead());
-    let current = world.get::<Shown>(wisp).and_then(|shown| shown.flare);
-    match (flaring, current) {
-        (true, None) => {
-            let Some(config) = world
-                .get_resource::<ParticleConfigRegistry>()
-                .and_then(|registry| registry.id_for_name("ex10_wisp_embers"))
-            else {
-                return;
-            };
-            let seed = 0x3a_0000 + u64::from(wisp.id());
-            // A child, so it follows the wisp and goes with it.
-            let centre = super::body(world, EnemyKind::Wisp).centre;
-            let emitter = spawn_child(
-                world,
-                wisp,
-                centre,
-                (
-                    ParticleEmitter::with_seed(config, seed),
-                    ParticleEmitterState::default(),
-                    SceneEntity { state_id: GAMEPLAY },
-                ),
-            );
-            if let Some(shown) = world.get_mut::<Shown>(wisp) {
-                shown.flare = Some(emitter);
-            }
-        }
-        (true, Some(_)) | (false, None) => {}
-        (false, Some(emitter)) => {
-            world.despawn(emitter);
-            if let Some(shown) = world.get_mut::<Shown>(wisp) {
-                shown.flare = None;
-            }
         }
     }
 }

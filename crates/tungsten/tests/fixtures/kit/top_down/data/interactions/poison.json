@@ -1,0 +1,15 @@
+{
+  "stimulus": "toxic",
+  "on": {
+    "all": [
+      "susceptible"
+    ]
+  },
+  "outputs": [
+    {
+      "apply": {
+        "status": "poisoned"
+      }
+    }
+  ]
+}

@@ -14,16 +14,16 @@ pub mod systems;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
-    ACTION_INPUT, CHARACTER_ANIMATOR, CUES, Modifier, Phase, PlatformerController, Stats,
-    TagFilter, ensure_phases,
+    ACTION_INPUT, CHARACTER_ANIMATOR, CUES, CharacterAnimator, DespawnOutside, Modifier, Phase,
+    Stats, TagFilter, Tags, WorldBounds, ensure_phases,
 };
 use tungsten::{Plugin, SceneEntity};
 
 use crate::features::combat::{BLAST, CRIT_CHANCE, CRIT_FACTOR, PLAYER_BLAST_SHARE};
-use crate::features::level::GLOWS;
 use crate::features::level::components::Glow;
+use crate::features::level::{self, GLOWS};
 use crate::game::GAMEPLAY;
-use crate::shared::{self, BODIES, Body, Bursts, SaveId};
+use crate::shared::{self, BODIES, Body, Bursts, SaveId, Saved};
 use components::{Lantern, LanternAnchors, Moves, StaffGlow};
 
 /// The player's prefab, by its manifest ID.
@@ -36,9 +36,14 @@ pub const SAVE_NAME: &str = "player";
 pub const OVERLAY_SIDE: f32 = 64.0;
 /// Game seconds a landing holds the land clip.
 pub const LAND_SECS: f32 = 0.18;
-/// Game seconds a cast's gesture holds, its one-shot clip or its pose, and
-/// the staff flares.
+/// Game seconds a cast's pose holds and the staff flares; a pressed
+/// spell's clip, its ability's, lasts its own length.
 pub const CAST_SECS: f32 = 0.3;
+/// The pose tags, held while a pour's or a shot's [`CAST_SECS`] run, whose
+/// rules in the player's prefab show the staff's and the pistol's strips
+/// on the kit's animator, standing.
+pub const POURING: &str = "state.pouring";
+pub const AIMING: &str = "state.aiming";
 /// The staff's flare over a cast: the staff light's halo radius, its hot
 /// core and its light, each times the prefab's; its reach stays the
 /// prefab's, which the crawlers' edge reads.
@@ -69,13 +74,6 @@ pub const SHOVE_SIDE: f32 = 16.0;
 pub const SHOVE_OVER: f32 = 1600.0;
 pub const SHOVE_BESIDE: f32 = 600.0;
 pub const STUCK_BY: f32 = 2.0;
-/// The mass the wizard walks bodies aside as, by the kit's shove (N6), and
-/// the share of it a body he moves may weigh: up to 30, so a ball, a
-/// bowling ball, a rock, a bomb, a crate, a keg and a scrap, each slowing
-/// him by its mass over 60 (a crate 20 %, a keg 27 %); the dummy and iron
-/// stop him.
-pub const PLAYER_SHOVE_MASS: f32 = 60.0;
-pub const PLAYER_SHOVE_SHARE: f32 = 0.5;
 
 /// How far the player draws a pickup in, its prefab's `pickup_radius`
 /// stat: restated so a save can move an older player's reach to it.
@@ -101,6 +99,7 @@ impl Plugin for PlayerPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<components::Player>("player");
+        world.register_saved::<components::Lantern>("lantern");
         world.register_data_kind::<LanternAnchors>("lantern_anchors");
         world.register_data_kind::<Body>(BODIES);
         ensure_phases(schedule);
@@ -119,7 +118,6 @@ impl Plugin for PlayerPlugin {
             (Phase::Intent, system("player_actions", systems::actions)),
             (Phase::Intent, staff),
             (Phase::Intent, unstick),
-            (Phase::Overlap, system("player_bounds", systems::bounds)),
             (Phase::React, hurt),
             (Phase::React, system("player_moves", systems::moves)),
         ];
@@ -136,18 +134,15 @@ impl Plugin for PlayerPlugin {
     }
 }
 
-/// What a cast shows the wizard doing, by its spell or the gun: a one-shot
-/// clip facing its aim, or, standing, a pose along it, for [`CAST_SECS`].
+/// What a cast shows the wizard doing, by its spell or the gun, for
+/// [`CAST_SECS`]: a pressed spell's flare, its clip its ability's, or,
+/// standing, a pose along the aim.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gesture {
-    /// The bowling ball: the free hand throws it.
-    Toss,
-    /// The fire missile and lightning: the staff thrust at the aim.
-    Bolt,
-    /// The force push and the black hole: the free hand shoves out.
-    Push,
-    /// Iron and the summons: the staff raised high and struck down.
-    Conjure,
+    /// A pressed spell: the staff flares, and its ability's clip, a twin
+    /// set by the aim, plays on the kit's animator (a toss, a bolt, a push
+    /// or a conjuring strike).
+    Cast,
     /// The held sprays and the small balls: the staff levelled along the
     /// aim, a pose.
     Pour,
@@ -155,25 +150,51 @@ pub enum Gesture {
     Shoot,
 }
 
+/// The rule that kills a player who falls past the map's kill row or
+/// leaves the level's box by a side: the kit's `despawn_outside` over a
+/// region, killing, built from the map's [`level::KILL_MARKER`] place and
+/// the run's `WorldBounds`. The kit tests the entity's point, its
+/// `Position`, so the region is where that point may be: past the kill row
+/// by the body's centre, past a side by its whole box, and never over the
+/// top, where a bound may carry the wizard and gravity brings him back.
+/// None before the level has spawned.
+fn fall_rule(world: &World) -> Option<DespawnOutside> {
+    let bounds = world.get_resource::<WorldBounds>()?;
+    let kill = level::marker(world, level::KILL_MARKER)?;
+    let (centre, half) = (body(world).centre, body(world).half);
+    let min = Vec2::new(bounds.min().x - centre.x - half.x, f32::MIN);
+    let max = Vec2::new(bounds.max().x - centre.x + half.x, kill.y - centre.y);
+    Some(DespawnOutside::region(min, max).killing())
+}
+
 /// Spawns the player with its body's centre at `centre`, owned by gameplay,
 /// at its prefab's health, with the save ID of [`SAVE_NAME`], its body
 /// from its data ([`shared::fit_body`]), its staff light off, and its
 /// prefab's glow at its staff's orb ([`systems::anchor`]), kept for the
-/// staff's flare. Its prefab's crit and blast share are the values 01's
-/// code names, which a debug build checks ([`holds_combat_values`]).
+/// staff's flare, and the rule a fall kills it by ([`fall_rule`]). Its
+/// prefab's crit and blast share are the values 01's code names, which a
+/// debug build checks ([`holds_combat_values`]).
 pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
     let at = centre - body(world).centre;
     let id = SaveId::authored(SAVE_NAME);
-    let player = world
+    let falls = fall_rule(world);
+    if falls.is_none() {
+        log::warn!("the player spawns before its level: no fall kills it");
+    }
+    let prepared = world
         .prepare_prefab(PLAYER_PREFAB, at.to_array())
         .expect("the manifest's prefabs load with it")
         .with((
             SceneEntity { state_id: GAMEPLAY },
-            id,
+            Saved::kept(id),
             Lantern::default(),
             Moves::default(),
-        ))
-        .spawn(world);
+        ));
+    let player = match falls {
+        Some(rule) => prepared.with((rule,)),
+        None => prepared,
+    }
+    .spawn(world);
     shared::fit_body(world, player, PLAYER_PREFAB);
     debug_assert!(
         holds_combat_values(world, player),
@@ -185,7 +206,6 @@ pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
         let glow = *glow;
         world.insert(player, StaffGlow(glow));
     }
-    shove_bodies(world, player);
     world.insert_resource(Bursts::default());
     player
 }
@@ -208,26 +228,44 @@ pub fn holds_combat_values(world: &World, player: Entity) -> bool {
         })
 }
 
-/// Gives `player`'s controller its shove ([`PLAYER_SHOVE_MASS`]): at a
-/// spawn, and after a load, whose saved controller may be from before it.
-pub fn shove_bodies(world: &mut World, player: Entity) {
-    if let Some(controller) = world.get_mut::<PlatformerController>(player) {
-        *controller = controller
-            .clone()
-            .with_shove(PLAYER_SHOVE_MASS, PLAYER_SHOVE_SHARE);
+/// Shows a cast by `player` with `gesture`, for [`CAST_SECS`]:
+/// a spell's flares the staff; a shot, the gun's, leaves it be. A pour or a
+/// shot cuts a pressed spell's clip short and takes its pose's tag at once,
+/// the other's going, so a switch shows its pose on its first frame.
+pub fn cast(world: &mut World, player: Entity, gesture: Gesture) {
+    if matches!(gesture, Gesture::Pour | Gesture::Shoot)
+        && let Some(animator) = world.get_mut::<CharacterAnimator>(player)
+    {
+        animator.stop();
     }
-}
-
-/// Shows a cast by `player` along `aim` with `gesture`, for [`CAST_SECS`]:
-/// a spell's flares the staff; a shot, the gun's, leaves it be.
-pub fn cast(world: &mut World, player: Entity, aim: Vec2, gesture: Gesture) {
+    pose_tags(world, player, Some(gesture));
     if let Some(moves) = world.get_mut::<Moves>(player) {
         if gesture != Gesture::Shoot {
             moves.glow = CAST_SECS;
         }
-        moves.aim = aim;
         moves.gesture = Some(gesture);
         moves.cast = CAST_SECS;
+    }
+}
+
+/// Gives `player` the pose tag of `gesture`, [`POURING`] for a pour and
+/// [`AIMING`] for a shot, and takes the other's: neither for a pressed
+/// spell's cast or none. Only a changed tag is inserted or removed.
+pub fn pose_tags(world: &mut World, player: Entity, gesture: Option<Gesture>) {
+    let Some(tags) = world.get_mut::<Tags>(player) else {
+        return;
+    };
+    for (tag, wanted) in [
+        (POURING, gesture == Some(Gesture::Pour)),
+        (AIMING, gesture == Some(Gesture::Shoot)),
+    ] {
+        if wanted != tags.has(tag) {
+            if wanted {
+                tags.insert(tag);
+            } else {
+                tags.remove(tag);
+            }
+        }
     }
 }
 

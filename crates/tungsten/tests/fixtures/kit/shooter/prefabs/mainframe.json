@@ -2,7 +2,8 @@
   "tag": "mainframe",
   "components": {
     "tags": [
-      "team.enemy"
+      "team.enemy",
+      "susceptible"
     ],
     "health": {
       "max": 100
@@ -29,9 +30,8 @@
         }
       ]
     },
-    "ailment_threshold": {
-      "flat": 20,
-      "of_max_health": 0.1
+    "stats": {
+      "status_threshold": 30
     }
   }
 }

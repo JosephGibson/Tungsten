@@ -1,0 +1,17 @@
+{
+  "stimulus": "damage.cold",
+  "on": {
+    "none": [
+      "status.burning"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "chill_build",
+        "scale": 1,
+        "per": "status_threshold"
+      }
+    }
+  ]
+}

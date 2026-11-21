@@ -18,13 +18,12 @@ use tungsten::core::save::SaveError;
 use tungsten::core::text::{TextAlign, TextWrap};
 use tungsten::core::ui::{Align, Direction, Justify, Sizing, UiKey, UiTree, WidgetId, widgets};
 use tungsten::core::{SaveSlots, World};
+use tungsten::screens::{self, Confirm, ModalScreen, toast};
 use tungsten::{GameState, StateContext, StateId};
 
-use super::confirm::{self, ConfirmState};
 use super::options::GameOptions;
 use super::{
-    AUTOSAVES, BACK, SLOTS, Shell, SlotState, activated, cancelled, enter, idle, load, pop,
-    read_slots, save_to, toast, version_note,
+    AUTOSAVES, SLOTS, Shell, SlotState, activated, load, read_slots, save_to, version_note,
 };
 use crate::save;
 
@@ -49,17 +48,20 @@ pub struct SavesState {
     /// for a hidden row.
     rows: Vec<Option<(&'static str, SlotState)>>,
     opened: Option<WidgetId>,
+    /// The modal screen, which closes on a cancel or Back.
+    screen: Option<ModalScreen>,
 }
 
 impl SavesState {
     #[must_use]
     pub fn new(mode: Mode) -> Self {
-        let (ui, rows, opened) = (None, Vec::new(), None);
+        let (ui, rows, opened, screen) = (None, Vec::new(), None, None);
         Self {
             mode,
             ui,
             rows,
             opened,
+            screen,
         }
     }
 
@@ -159,8 +161,8 @@ impl SavesState {
                 self.refresh(world);
             }
             (SlotState::Ready(..), Mode::Save) => {
-                let ask = ConfirmState::new(&format!("Overwrite {name}?"), "Overwrite", "Cancel");
-                confirm::ask(world, ask.on_yes(move |world| saved(world, slot)));
+                let ask = Confirm::new(&format!("Overwrite {name}?"), "Overwrite", "Cancel");
+                screens::ask(world, ask.on_yes(move |world| saved(world, slot)));
             }
             (SlotState::Ready(save, _), Mode::Load) => load(world, slot, save.as_ref().clone()),
             _ => {}
@@ -227,7 +229,7 @@ fn saved(world: &mut World, slot: &'static str) {
         true => format!("Saved to {name}"),
         false => format!("{name} could not be saved"),
     };
-    toast::toast(world, text);
+    toast(world, text);
 }
 
 /// Deletes `slot`'s file, so it can be written again; a file that stays
@@ -240,7 +242,7 @@ fn delete(world: &mut World, slot: &'static str) {
         }
         Err(error) => {
             log::warn!("Save slot '{slot}' not deleted: {error}");
-            toast::toast(world, format!("{} could not be deleted", slot_name(slot)));
+            toast(world, format!("{} could not be deleted", slot_name(slot)));
         }
     }
 }
@@ -304,7 +306,7 @@ impl GameState for SavesState {
         rows.extend((AUTOSAVES.len()..SLOTS.len()).map(|_| save_row(tree, card)));
         let back = widgets::button(tree, card, "Back");
         tree.set_key(back, "back");
-        enter(ctx.world, root);
+        self.screen = Some(ModalScreen::adopt(ctx.world, root, card));
         self.ui = Some((root, rows, note, back));
         self.refresh(ctx.world);
         self.quiet_deletes(ctx.world);
@@ -318,19 +320,18 @@ impl GameState for SavesState {
 
     fn update(&mut self, world: &mut World) {
         self.quiet_deletes(world);
-        let Some(root) = self.ui.as_ref().map(|ui| ui.0).filter(|_| idle(world)) else {
+        // A cancel or Back closes the screen there.
+        let Some(screen) = self.screen.as_mut() else {
             return;
         };
+        let root = screen.root;
+        if screen.update(world).is_none() {
+            return;
+        }
         let Some((button, key)) = activated(world, root) else {
-            if cancelled(world, root) {
-                pop(world);
-            }
             return;
         };
         self.opened = Some(button);
-        if key == BACK {
-            return pop(world);
-        }
         // A row's button takes its slot's key, its Delete the delete key.
         let shown = self.rows.iter().enumerate();
         let shown = shown.filter_map(|(at, row)| Some((at, row.as_ref()?.0)));
@@ -344,7 +345,7 @@ impl GameState for SavesState {
             return self.use_row(world, at);
         }
         let question = format!("Delete {}?", slot_name(slot));
-        let ask = ConfirmState::new(&question, "Delete", "Cancel");
-        confirm::ask(world, ask.on_yes(move |world| delete(world, slot)));
+        let ask = Confirm::new(&question, "Delete", "Cancel");
+        screens::ask(world, ask.on_yes(move |world| delete(world, slot)));
     }
 }

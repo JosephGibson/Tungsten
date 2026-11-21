@@ -70,14 +70,8 @@
         "kind": "aabb"
       }
     },
-    "spawn_children": [
-      {
-        "offset": [
-          0,
-          0
-        ],
-        "prefab": "ex10_lava_frost_1"
-      }
+    "tags": [
+      "level.saved"
     ]
   }
 }

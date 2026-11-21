@@ -5,7 +5,7 @@
 //! and drops, orbs and a knight; M66's fantasy damage types: a spellblade
 //! and a golem, a pyromancer, its firebolts and a ward; M67's burning
 //! slimes, the hero's wand and dash, the ranger's volley, ammo, levels and
-//! offers, the golem's cold ladder and the ghouls' poison; M74's burn named
+//! offers, the golem's cold builds and the ghouls' poison; M74's burn named
 //! after a load, the golem's frost stream and a game's own damage numbers;
 //! M75's guard saved mid-swing; M76's arrow through hedges, saved
 //! mid-flight; 7.10a's veteran with its scoped lines, a focused effect and
@@ -29,7 +29,12 @@
 //! mirrored as it turns; a watchman facing the point it heard, hit shapes
 //! drawn on a key, a ghoul guard its death policy disarms, a nest that
 //! keeps one slime, across a save and a load, and a brazier whose phases a
-//! timed state machine cycles.
+//! timed state machine cycles; 7.13c's barrel bomb, whose blast hurts it
+//! too, at its centre and as it goes off, a crate knocked into a ranger,
+//! credited to its brawler, a stone bolt ending at a rolling ball, and a
+//! crystal on a dynamic body drawn in by the ranger's magnet; 7.13c's foes
+//! and cues' ogre, whose kill's key burst takes a full budget's oldest
+//! cosmetic slot.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -1530,21 +1535,24 @@ fn cold_hits_chill_then_freeze_the_golem_and_a_thawed_golem_resists_the_next_fre
         let golem = spawn(&mut harness, "golem", [0.0, 0.0]);
         let mage = harness.world_mut().spawn();
         harness.step(1);
-        // The threshold is 4 at the golem's 1.5 multiplier; a hit of 8 lands
-        // 6.4 after its resistance: a full bucket chills, the next freezes,
-        // and three such hits leave the golem of 20 alive.
+        // The golem's `status_threshold` is 6; a hit of 8 lands 6.4 after its
+        // resistance: a full chill build chills, its band's effect at
+        // chemistry's run after the hit's, the next hit's freeze build
+        // freezes, and three such hits leave the golem of 20 alive.
+        let two_steps = frames_for(2.0 / 60.0, dt);
         cold(golem, 8.0)
             .with_source(mage)
             .apply(harness.world_mut());
-        harness.step(1);
+        harness.step(two_steps);
         assert!(has_effect(&harness, golem, "chilled") && !has_effect(&harness, golem, "frozen"));
         cold(golem, 8.0)
             .with_source(mage)
             .apply(harness.world_mut());
-        harness.step(1);
+        harness.step(two_steps);
         assert!(has_effect(&harness, golem, "frozen"), "dt {dt}");
         // Up to the step the freeze expires on; that step, the rival, of a
-        // lower index than the mage, lands another full bucket.
+        // lower index than the mage, lands another full build, whose
+        // freeze its band applies the step after, under the thaw.
         loop {
             let left = harness
                 .world()
@@ -1565,7 +1573,7 @@ fn cold_hits_chill_then_freeze_the_golem_and_a_thawed_golem_resists_the_next_fre
                 .with_source(rival)
                 .queue(harness.world_mut())
         );
-        harness.step(1);
+        harness.step(two_steps);
         let world = harness.world();
         let effects = world.get::<Effects>(golem).unwrap();
         assert!(effects.has("thawed") && !effects.has("frozen"), "dt {dt}");
@@ -1591,7 +1599,9 @@ fn cold_hits_chill_then_freeze_the_golem_and_a_thawed_golem_resists_the_next_fre
 }
 
 #[test]
-fn a_toxic_hit_poisons_by_chance_under_a_seed() {
+fn a_toxic_hit_poisons_a_susceptible_ghoul_whatever_the_seed() {
+    // 7.13a: the ladder's chance went with it; the rule applies its poison
+    // on each hit, so a seed changes nothing.
     for dt in DTS {
         let run = |seed: u64| -> Vec<bool> {
             let mut harness = recipe(GENRE, KitPlugins::set(), dt);
@@ -1614,12 +1624,8 @@ fn a_toxic_hit_poisons_by_chance_under_a_seed() {
                 .collect()
         };
         let a = run(21);
-        assert_eq!(a, run(21), "dt {dt}: one seed, one outcome");
-        assert_ne!(a, run(22), "dt {dt}");
-        assert!(
-            a.iter().any(|&p| p) && a.iter().any(|&p| !p),
-            "dt {dt}: {a:?}"
-        );
+        assert_eq!(a, run(22), "dt {dt}: no draw");
+        assert!(a.iter().all(|&p| p), "dt {dt}: {a:?}");
     }
 }
 
@@ -3413,5 +3419,202 @@ fn an_alerted_ghoul_wears_its_mark() {
             .remove("state.alerted");
         harness.step(1);
         assert!(marks(&harness).is_empty(), "dt {dt}: gone with the tag");
+    }
+}
+
+// 7.13c, Step 1: a barrel bomb's blast, which hurts the barrel too, lands
+// at its centre and resolves as it goes off.
+
+#[test]
+fn a_barrel_bombs_blast_hurts_it_lands_at_its_centre_and_at_once() {
+    use crate::kit::EffectExpired;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // Its fuse runs 0.5 s; its end blasts 12 within 64 px, pushing 300,
+        // the barrel itself among its targets at distance 0.
+        let barrel = spawn(&mut harness, "barrel_bomb", [300.0, 300.0]);
+        let target = spawn(&mut harness, "blast_dummy", [300.0, 252.0]);
+        let mut ended = None;
+        let mut hurt = None;
+        for frame in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            if harness
+                .events::<EffectExpired>()
+                .any(|expired| expired.entity == barrel)
+            {
+                ended.get_or_insert(frame);
+            }
+            if let Some(hit) = harness.events::<Damaged>().find(|hit| hit.entity == target) {
+                hurt.get_or_insert((frame, hit.position));
+            }
+        }
+        let (frame, position) = hurt.unwrap_or_else(|| panic!("dt {dt}: the target hurt"));
+        assert_eq!(Some(frame), ended, "dt {dt}: in the frame its fuse ends");
+        assert_eq!(
+            position,
+            Some(Vec2::new(300.0, 300.0)),
+            "dt {dt}: at its centre"
+        );
+        let world = harness.world();
+        let health = |entity| world.get::<Health>(entity).unwrap().current();
+        assert!(
+            (health(target) - (50.0 - 3.0)).abs() < 1e-3,
+            "dt {dt}: {}",
+            health(target)
+        );
+        assert!(
+            (health(barrel) - (30.0 - 12.0)).abs() < 1e-3,
+            "dt {dt}: the barrel its own 12: {}",
+            health(barrel)
+        );
+    }
+}
+
+// 7.13c, Step 2: a crate knocked into a ranger, credited to its brawler,
+// and a stone bolt ending at a rolling ball.
+
+#[test]
+fn a_knocked_crate_hurts_a_ranger_credited_to_its_brawler() {
+    use crate::kit::ImpactDamage;
+    use tungsten_core::physics::Velocity;
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let brawler = harness.world_mut().spawn();
+        let ranger = spawn(&mut harness, "ranger", [300.0, 100.0]);
+        let crate_ = spawn(&mut harness, "hurled_crate", [250.0, 100.0]);
+        let world = harness.world_mut();
+        world.get_mut::<Velocity>(crate_).unwrap().0 = Vec2::new(900.0, 0.0);
+        world
+            .get_mut::<ImpactDamage>(crate_)
+            .unwrap()
+            .set_credit(Some(brawler));
+        let mut hits = Vec::new();
+        for _ in 0..frames_for(0.3, dt) {
+            harness.step(1);
+            hits.extend(
+                harness
+                    .events::<Damaged>()
+                    .filter(|hit| hit.entity == ranger)
+                    .map(|hit| (hit.amount, hit.source)),
+            );
+        }
+        // 0.002 a unit of its mass of 4 a px/s past 400.
+        assert_eq!(hits.len(), 1, "dt {dt}: {hits:?}");
+        assert!((hits[0].0 - 4.0).abs() < 1e-3, "dt {dt}: {hits:?}");
+        assert_eq!(hits[0].1, Some(brawler), "dt {dt}");
+    }
+}
+
+#[test]
+fn a_stone_bolt_ends_at_a_rolling_ball() {
+    use tungsten_core::physics::{RigidBody, Velocity};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // A ball in layer 0 the bolt passes, then one in its body walls
+        // rolling at it.
+        let bystander = spawn(&mut harness, "rolling_ball", [160.0, 100.0]);
+        harness
+            .world_mut()
+            .get_mut::<RigidBody>(bystander)
+            .unwrap()
+            .layers = 1;
+        let ball = spawn(&mut harness, "rolling_ball", [300.0, 100.0]);
+        harness.world_mut().get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(-200.0, 0.0);
+        let bolt = spawn(&mut harness, "stone_bolt", [100.0, 100.0]);
+        let mut ended = None;
+        for _ in 0..frames_for(0.5, dt) {
+            harness.step(1);
+            if let Some(expired) = harness
+                .events::<ProjectileExpired>()
+                .find(|expired| expired.entity == bolt)
+                .copied()
+            {
+                ended = Some(expired);
+                break;
+            }
+        }
+        let ended = ended.unwrap_or_else(|| panic!("dt {dt}: the bolt ends"));
+        assert_eq!(
+            ended.wall.and_then(|wall| wall.entity),
+            Some(ball),
+            "dt {dt}: at the rolling ball, past the other"
+        );
+    }
+}
+
+#[test]
+fn a_crystal_on_a_dynamic_body_is_drawn_to_the_ranger() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let ranger = spawn(&mut harness, "ranger", [0.0, 0.0]);
+        let crystal = spawn(&mut harness, "crystal", [80.0, 0.0]);
+        harness.step(2);
+        let x = body_at(&harness, crystal).x;
+        assert!(x < 80.0 && x > 0.0, "dt {dt}: drawn in: {x}");
+        harness.step(frames_for(0.5, dt));
+        assert!(!harness.world().is_alive(crystal), "dt {dt}: collected");
+        assert_eq!(
+            harness.world().get::<Counters>(ranger).unwrap().get("xp"),
+            1,
+            "dt {dt}"
+        );
+    }
+}
+
+// 7.13c's foes and cues, Step 4: a key burst past a full budget.
+
+/// 7.13c's foes and cues: with the budget's two slots taken by cosmetic
+/// bursts, the brawler kills an ogre whose `killed` cue bursts `kill_flash`
+/// as a key burst: it takes the oldest cosmetic burst's slot, which drains,
+/// counts no more and goes with its last particle.
+#[test]
+fn a_kill_past_a_full_budget_takes_the_oldest_cosmetic_slot() {
+    use crate::kit::{BurstBudget, ParticleBurst, burst};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness
+            .world_mut()
+            .insert_resource(BurstBudget::new().with_cap(2));
+        let brawler = spawn(&mut harness, "brawler", [100.0, 100.0]);
+        let ogre = spawn(&mut harness, "flashing_ogre", [140.0, 100.0]);
+        let world = harness.world_mut();
+        let oldest = burst(world, "kill_flash", Vec2::new(0.0, 0.0), false).unwrap();
+        let newer = burst(world, "kill_flash", Vec2::new(10.0, 0.0), false).unwrap();
+        assert!(
+            burst(world, "kill_flash", Vec2::ZERO, false).is_none(),
+            "dt {dt}: full"
+        );
+        crate::kit::DamageRequest::new(ogre, 1.0)
+            .with_source(brawler)
+            .apply(world);
+        harness.step(1);
+        let world = harness.world();
+        let key: Vec<Entity> = world
+            .query::<(Entity, &ParticleBurst)>()
+            .filter(|(_, burst)| burst.key)
+            .map(|(entity, _)| entity)
+            .collect();
+        assert_eq!(key.len(), 1, "dt {dt}: the kill's flash");
+        // The oldest, drained, counts no more, gone with its last particle.
+        let slot = |entity| {
+            world
+                .get::<ParticleBurst>(entity)
+                .map(|burst| burst.counted)
+        };
+        assert_ne!(
+            slot(oldest),
+            Some(true),
+            "dt {dt}: the oldest gave its slot"
+        );
+        assert_eq!(slot(newer), Some(true), "dt {dt}");
+        assert_eq!(slot(key[0]), Some(true), "dt {dt}");
+        let counted = world
+            .query::<&ParticleBurst>()
+            .filter(|burst| burst.counted)
+            .count();
+        assert_eq!(counted, 2, "dt {dt}: the budget's two");
     }
 }

@@ -1,0 +1,15 @@
+[
+  {
+    "sound": {
+      "id": "ex10_iron_thud_sfx",
+      "min_interval": 0.1
+    }
+  },
+  {
+    "shake": {
+      "trauma": 0.136,
+      "near": 512,
+      "far": 3072
+    }
+  }
+]

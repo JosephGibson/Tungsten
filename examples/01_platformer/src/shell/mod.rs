@@ -1,7 +1,7 @@
 //! The shell: the screens every game keeps, copied unchanged into a new
 //! game. A title, pause, game over, save and load, tabbed settings,
-//! keybindings, a confirm dialog and toasts, around a run the game's
-//! gameplay state plays. It calls the game through seven names in
+//! keybindings, with `tungsten::screens`' confirm and toasts, around a run
+//! the game's gameplay state plays. It calls the game through six names in
 //! `game.rs` and `save.rs` (the seam) and nothing else outside this folder.
 //!
 //! A run starts with [`start_run`] and ends at the title. Saves go to
@@ -10,12 +10,12 @@
 //! or exits, and once a run's first frame or the game's [`request_autosave`]
 //! has a save to capture, and ten the player saves to. A slot that fails to
 //! load (a newer build's, or a damaged file) is never loaded or overwritten
-//! for the rest of the run of the program. One screen change runs at a time, and screens act only when
-//! none runs: a push acts at once, a pop after its screen fades out, and a
-//! change of run, through [`goto`] or [`start_run`], behind a curtain.
+//! for the rest of the run of the program. One screen change runs at a time,
+//! and screens act only when none runs (`tungsten::screens`): a push acts at
+//! once, a pop after its screen fades out, and a change of run, through
+//! [`goto`] or [`start_run`], behind a fade.
 
 pub mod boot;
-pub mod confirm;
 pub mod game_over;
 pub mod keybindings;
 pub mod options;
@@ -24,22 +24,22 @@ pub mod saves;
 pub mod settings;
 pub mod theme;
 pub mod title;
-pub mod toast;
 
 use serde::{Deserialize, Serialize};
-use tungsten::core::post::{PostPass, PostStack};
+use tungsten::core::post::PostTail;
 use tungsten::core::save::SaveError;
 use tungsten::core::ui::{
-    LayoutStyle, Sizing, UiBindings, UiEvent, UiKey, UiLayer, UiRouter, UiTrack, UiTree,
-    Visibility, WidgetId, screen_build, widgets,
+    UiBindings, UiEvent, UiKey, UiRouter, UiTree, WidgetId, screen_build, widgets,
 };
 use tungsten::core::{
-    ActionMap, DisplayMode, DisplayState, EventQueue, InputState, RoutedInput, SaveSlots,
-    ScaleFactor, Schedule, Settings, Stage, Time, Voice, World, system,
+    ActionMap, EventQueue, InputState, RoutedInput, SaveSlots, Schedule, Stage, Time, Voice, World,
+    system,
 };
+use tungsten::screens::{self, Confirm, ModalScreen, ScreensPlugin};
+use tungsten::transition::TransitionPhase;
 use tungsten::{
-    DebugHud, Exiting, GameState, HudCorner, Plugin, RootCover, StateId, StateStack,
-    plugins::STATE_DISPATCHER, request_exit,
+    DebugHud, Exiting, GameState, Plugin, StateId, StateStack, plugins::STATE_DISPATCHER,
+    request_exit,
 };
 
 use crate::game;
@@ -172,35 +172,10 @@ pub enum SlotState {
     Damaged,
 }
 
-/// A change of run [`goto`] asked for, which `shell_flow` applies under
-/// the curtain: the replace, and the incoming run's state, staged until
-/// `shell_save` has run before the replace, so a save holds one run whole.
-struct Flow {
-    replace: Box<dyn FnOnce(&mut StateStack)>,
-    run: Option<RunState>,
-}
-
-/// The screen change under way; one runs at a time.
-enum Change {
-    /// A push or pop asked for at this frame, which the dispatcher applies
-    /// at the next.
-    Queued(u64),
-    /// The top screen fading out, popped once its seconds run out.
-    Closing(f32),
-    /// A change of run: the curtain, its seconds so far and the flow, which
-    /// applies once the curtain is opaque.
-    Curtain(WidgetId, f32, Option<Flow>),
-    /// Game over's entrance: its seconds so far and its root, whose buttons
-    /// show once it ends.
-    Entrance(f32, WidgetId),
-}
-
 /// The shell's own state: a `World` resource.
 #[derive(Default)]
 pub(crate) struct Shell {
     unfocused: bool,
-    /// The window lost focus with "Mute when unfocused" on.
-    focus_muted: bool,
     /// The window lost focus with "Pause when unfocused" on: pause opens
     /// once gameplay is on top with no screen change running.
     pause_due: bool,
@@ -208,36 +183,24 @@ pub(crate) struct Shell {
     /// The Settings screen is on the stack, so the exit saves its changes.
     pub(crate) settings_open: bool,
     pub(crate) warned: bool,
-    change: Option<Change>,
-    /// The run a change of run swapped in, live after the next `shell_save`.
-    incoming: Option<RunState>,
+    /// Game over's entrance, a screen change: its real seconds so far and
+    /// its root, whose buttons show once it ends.
+    entrance: Option<(f32, WidgetId)>,
     /// Slots that failed to load: never loaded or written this run.
     pub(crate) read_only: Vec<&'static str>,
     /// The slots this program wrote, the first written first: of two saves
     /// of one time, the first written is the older.
     written: Vec<&'static str>,
-    post: Post,
     /// Real seconds since game over came on, while it is on the stack: the
     /// clock of its post passes.
     died: Option<f32>,
 }
 
-/// The shell's edits of `PostStack`, which [`post`] makes.
-#[derive(Default)]
-struct Post {
-    /// The game's Bloom passes taken out while the option is off, each with
-    /// its index in the game's stack.
-    kept: Vec<(usize, PostPass)>,
-    /// The passes the shell appended last frame.
-    tail: Vec<PostPass>,
-    /// The stack as the shell left it last frame.
-    left: Vec<PostPass>,
-}
-
-/// The shell as a plugin: the title first, the run's systems, the options
-/// store, the engine's HUD at the top right, hidden until F4 shows it, and
-/// the UI sized from the window's height under a floor (`D-184`), at
-/// [`theme::UI_SCALE`] while the player has set no UI scale.
+/// The shell as a plugin: `tungsten::screens`, the title first, the run's
+/// systems, the options and the engine's HUD hidden until F4 shows it.
+/// `tungsten.json`'s
+/// `ui` names the theme, the UI's reference height, floor and default scale
+/// (`D-184`) and the HUD's corner.
 pub struct ShellPlugin {
     info: GameInfo,
 }
@@ -253,7 +216,7 @@ impl Plugin for ShellPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.insert_resource(self.info.clone());
         world.insert_resource(Shell::default());
-        world.insert_resource(toast::Toasts::default());
+        ScreensPlugin.build(schedule, world);
         options::load(world);
         // The screen files' names (`assets/ui/screens/`).
         let saving_off = |world: &World| !saving_on(world);
@@ -263,17 +226,8 @@ impl Plugin for ShellPlugin {
             .visible("saving_off", saving_off);
         settings::bind(bindings);
         title::bind(bindings);
-        let unset = world.resource::<Settings>().ui_scale().is_none();
-        if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
-            scale.set_reference_height(Some(theme::REFERENCE_HEIGHT));
-            scale.set_min_viewport(Some(theme::MIN_VIEWPORT.into()));
-            if unset {
-                scale.set_ui_scale(theme::UI_SCALE);
-            }
-        }
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
             hud.enabled = false;
-            hud.corner = HudCorner::TopRight;
         }
         world.add_script_action_typed(
             "start_run",
@@ -289,8 +243,13 @@ impl Plugin for ShellPlugin {
         let save = system("shell_save", save_due).before(STATE_DISPATCHER);
         schedule.add(Stage::PreUpdate, save);
         schedule.add(Stage::Update, system("shell_frame", frame));
-        schedule.add(Stage::Update, system("shell_flow", flow));
-        schedule.add(Stage::FixedUpdate, system("shell_checkpoint", checkpoint));
+        // After the kit's trace, so a game system joining a kit phase before
+        // React leaves it last; one in React may follow it, which changes
+        // nothing, since it only marks that a step ran. The shell's games
+        // build the kit, so the trace is always there.
+        let checkpoint =
+            system("shell_checkpoint", checkpoint).after(tungsten::kit::KIT_TRACE_STEP);
+        schedule.add(Stage::FixedUpdate, checkpoint);
     }
 }
 
@@ -336,10 +295,14 @@ pub fn run_meta(world: &World) -> Option<RunMeta> {
     })
 }
 
-/// Starts a run behind the curtain: the game's gameplay state replaces the
-/// whole stack, and its run state the old one, both at the swap. `from`
-/// names the slot the save came from, which Retry then loads.
+/// Starts a run behind the fade: the game's gameplay state replaces the
+/// whole stack and its run state the old one at the swap, after the frame's
+/// `shell_save` has saved the old run whole. `from` names the slot the save
+/// came from, which Retry then loads. Nothing while another change runs.
 pub fn start_run(world: &mut World, start: RunStart, from: Option<&'static str>) {
+    if transitioning(world) {
+        return;
+    }
     let playtime_secs = start
         .save
         .as_ref()
@@ -352,7 +315,9 @@ pub fn start_run(world: &mut World, start: RunStart, from: Option<&'static str>)
         autosave_due: true,
         last_autosave: None,
     };
-    set_flow(world, game::gameplay(start), Some(run));
+    screens::reset(world, game::gameplay(start), move |world| {
+        world.insert_resource(run);
+    });
 }
 
 /// Asks for an autosave at the start of the next frame whose `capture`
@@ -366,122 +331,44 @@ pub fn request_autosave(world: &mut World) {
     }
 }
 
-/// Replaces the whole stack with `state` behind the curtain: a screen's
-/// `update` runs off the stack, so it cannot count the states itself.
+/// Replaces the whole stack with `state` behind the fade
+/// (`tungsten::screens::reset`): a screen's `update` runs off the stack, so
+/// it cannot count the states itself. Nothing while another change runs.
 pub fn goto(world: &mut World, state: impl GameState) {
-    set_flow(world, state, None);
-}
-
-fn set_flow(world: &mut World, state: impl GameState, run: Option<RunState>) {
-    if transitioning(world) {
-        return;
+    if !transitioning(world) {
+        screens::reset(world, state, |_| {});
     }
-    let replace = Box::new(move |stack: &mut StateStack| stack.request_replace(state));
-    let tree = world.resource_mut::<UiTree>();
-    let curtain = curtain_root(tree);
-    tree.animate(curtain, UiTrack::opacity(0.0, 1.0, theme::CURTAIN_IN_SECS));
-    let flow = Some(Flow { replace, run });
-    world.resource_mut::<Shell>().change = Some(Change::Curtain(curtain, 0.0, flow));
 }
 
-/// The run change's curtain: a modal root over every screen in the theme's
-/// background, which the shell fades in and out.
-fn curtain_root(tree: &mut UiTree) -> WidgetId {
-    let full = Sizing::Percent(100.0);
-    let style = LayoutStyle::column().with_size(full, full);
-    let root = tree.add_root(UiLayer::GamePopup, style);
-    tree.set_modal(root, true);
-    let background = tree.theme().tokens.colors.background;
-    widgets::fill(tree, root, background);
-    root
-}
-
-/// Whether a [`goto`] waits for the curtain, or its run for the replace.
+/// Whether a change of run was asked and has not swapped yet: its fade
+/// waits or still covers the old run.
 #[must_use]
 pub fn flow_pending(world: &World) -> bool {
-    let shell = world.resource::<Shell>();
-    matches!(shell.change, Some(Change::Curtain(_, _, Some(_)))) || shell.incoming.is_some()
-}
-
-/// `shell_flow`: the closing screen's pop, the curtain's swap and the end of
-/// game over's entrance once their time comes, then the toasts, which stay
-/// above the curtain.
-fn flow(world: &mut World) {
-    let time = world.resource::<Time>();
-    let (dt, frame) = (time.real_delta(), time.frame());
-    let shell = world.resource_mut::<Shell>();
-    match shell.change.take() {
-        Some(Change::Closing(secs)) if secs > dt => shell.change = Some(Change::Closing(secs - dt)),
-        Some(Change::Closing(_)) => {
-            shell.change = Some(Change::Queued(frame));
-            stack(world).request_pop();
-        }
-        Some(Change::Curtain(root, secs, flow)) => curtain(world, root, secs + dt, flow),
-        Some(Change::Entrance(secs, root)) if secs + dt < theme::DIED_SECS => {
-            shell.change = Some(Change::Entrance(secs + dt, root));
-        }
-        Some(Change::Entrance(_, root)) => game_over::reveal(world, root),
-        change => shell.change = change,
-    }
-    toast::tick(world);
-}
-
-/// The curtain at `secs`: once opaque, a plain pop for each state above the
-/// bottom one, a replace of the bottom one (so loading from [gameplay,
-/// pause, saves] leaves one gameplay) and the staged run; gone once faded.
-fn curtain(world: &mut World, root: WidgetId, secs: f32, mut flow: Option<Flow>) {
-    let tree = world.resource_mut::<UiTree>();
-    if secs >= theme::CURTAIN_IN_SECS + theme::CURTAIN_OUT_SECS {
-        return tree.remove(root);
-    }
-    tree.raise(root);
-    if secs >= theme::CURTAIN_IN_SECS
-        && let Some(Flow { replace, run }) = flow.take()
-    {
-        tree.animate(root, UiTrack::opacity(1.0, 0.0, theme::CURTAIN_OUT_SECS));
-        // The game's stack back as it built it, before its run leaves.
-        post(world, Vec::new(), true);
-        let stack = stack(world);
-        for _ in 1..stack.depth() {
-            stack.request_pop();
-        }
-        replace(stack);
-        world.resource_mut::<Shell>().incoming = run;
-    }
-    world.resource_mut::<Shell>().change = Some(Change::Curtain(root, secs, flow));
+    let stack = world.resource::<StateStack>();
+    let phase = stack.transition_state().map(|state| state.phase);
+    stack.is_transitioning() && phase != Some(TransitionPhase::In)
 }
 
 /// Pushes `state` over the screen on top, which stays drawn under its
 /// scrim; nothing while another change runs.
 pub fn push(world: &mut World, state: impl GameState) {
     if !transitioning(world) {
-        let frame = world.resource::<Time>().frame();
-        world.resource_mut::<Shell>().change = Some(Change::Queued(frame));
-        stack(world).request_push(state);
+        screens::push(world, state);
     }
 }
 
-/// Closes the screen on top: it fades and slides out, then pops; nothing
-/// while another change runs.
+/// Closes the screen on top: it fades and slides out, then its own
+/// `ModalScreen::update` pops it; nothing while another change runs.
 pub fn pop(world: &mut World) {
-    if transitioning(world) {
-        return;
+    if !transitioning(world) {
+        screens::pop(world);
     }
-    let tree = world.resource_mut::<UiTree>();
-    let shown = |root: &&WidgetId| {
-        tree.modal(**root) && tree.visibility(**root) == Some(Visibility::Visible)
-    };
-    if let Some(&top) = tree.roots().iter().rev().find(shown) {
-        theme::slide_out(tree, top);
-    }
-    world.resource_mut::<Shell>().change = Some(Change::Closing(theme::POP_SECS));
 }
 
 /// Gives a screen's `root` to the state entering, drawn and frozen under
 /// the screens above it, and slides it in.
 pub fn enter(world: &mut World, root: WidgetId) {
-    theme::slide_in(world.resource_mut::<UiTree>(), root);
-    stack(world).own_root(root, RootCover::Show);
+    ModalScreen::adopt(world, root, root);
 }
 
 /// Opens the game-over screen over gameplay: the game's gameplay state
@@ -490,26 +377,6 @@ pub fn enter(world: &mut World, root: WidgetId) {
 pub fn game_over(world: &mut World) {
     if !transitioning(world) && matches!(top(world), None | Some(game::GAMEPLAY)) {
         push(world, game_over::GameOverState::default());
-    }
-}
-
-/// Applies `Settings` through the engine, keeping the focus mute: while it
-/// holds, the engine sees a copy at volume 0, so no other master volume is
-/// queued. An unset UI scale applies as [`theme::UI_SCALE`].
-pub fn apply_settings(world: &mut World) {
-    let saved = world.resource::<Settings>().clone();
-    let unset = saved.ui_scale().is_none();
-    if world.resource::<Shell>().focus_muted {
-        let mut quiet = saved.clone();
-        quiet.set_master_volume(Some(0.0));
-        world.insert_resource(quiet);
-        tungsten::apply_settings(world);
-        world.insert_resource(saved);
-    } else {
-        tungsten::apply_settings(world);
-    }
-    if let (true, Some(scale)) = (unset, world.get_resource_mut::<ScaleFactor>()) {
-        scale.set_ui_scale(theme::UI_SCALE);
     }
 }
 
@@ -627,8 +494,8 @@ pub fn load(world: &mut World, slot: &'static str, save: SaveGame) {
     if lose {
         question.push_str(" Progress since your last save will be lost.");
     }
-    let ask = confirm::ConfirmState::new(&question, "Load", "Cancel");
-    confirm::ask(
+    let ask = Confirm::new(&question, "Load", "Cancel");
+    screens::ask(
         world,
         ask.on_yes(move |world| start_run(world, start, Some(slot))),
     );
@@ -746,8 +613,8 @@ pub fn quit_game(world: &mut World) {
 fn quit(world: &mut World, question: &str, then: impl FnOnce(&mut World) + 'static) {
     let lost = save::capture(world).is_some() && !autosave(world);
     let lost = ["", " Progress since your last save will be lost."][usize::from(lost)];
-    let ask = confirm::ConfirmState::new(&format!("{question}{lost}"), "Quit", "Stay");
-    confirm::ask(world, ask.on_yes(then));
+    let ask = Confirm::new(&format!("{question}{lost}"), "Quit", "Stay");
+    screens::ask(world, ask.on_yes(then));
 }
 
 /// A menu screen a state owns, built from its screen file in
@@ -759,13 +626,18 @@ pub struct Menu {
     revision: u32,
     /// The button that opened the screen above, which takes focus back.
     opened: Option<WidgetId>,
+    /// The modal screen [`Menu::new`] adopted it as (`D-236`), which pops it
+    /// on a cancel or Back and once its slide out ends.
+    screen: Option<ModalScreen>,
 }
 
 impl Menu {
-    /// The screen file `id` built, sliding in, its first button focused.
+    /// The screen file `id` built and adopted as a modal screen, sliding
+    /// in, its first button focused.
     pub fn new(world: &mut World, id: &str) -> Self {
-        let menu = Self::build(world, id);
-        enter(world, menu.root);
+        let mut menu = Self::build(world, id);
+        let card = screen_build::node(world, menu.root, "card").unwrap_or(menu.root);
+        menu.screen = Some(ModalScreen::adopt(world, menu.root, card));
         menu.focus(world);
         menu
     }
@@ -775,11 +647,12 @@ impl Menu {
         let built = screen_build::build(world, id).map(|built| built.root);
         let tree = world.resource_mut::<UiTree>();
         let root = built.unwrap_or_else(|| widgets::screen(tree, 0.0).0);
-        let (revision, opened) = (0, None);
+        let (revision, opened, screen) = (0, None, None);
         Self {
             root,
             revision,
             opened,
+            screen,
         }
     }
 
@@ -792,6 +665,9 @@ impl Menu {
     /// Focuses the button that opened the screen above, else the first that
     /// can take focus, depth first.
     pub fn focus(&self, world: &mut World) {
+        if let Some(screen) = &self.screen {
+            return screen.resume(world);
+        }
         let tree = world.resource_mut::<UiTree>();
         let (mut stack, mut nodes) = (vec![self.root], Vec::new());
         while let Some(id) = stack.pop() {
@@ -802,8 +678,13 @@ impl Menu {
     }
 
     /// The key of the button activated on the menu at this routing, which
-    /// then takes focus back when the screen above closes.
-    pub fn chosen(&mut self, world: &World) -> Option<UiKey> {
+    /// then takes focus back when the screen above closes; for an adopted
+    /// menu, its `ModalScreen::update`, which closes it on a cancel and pops
+    /// it once its slide out ends, `None` while it is not idle.
+    pub fn chosen(&mut self, world: &mut World) -> Option<UiKey> {
+        if let Some(screen) = self.screen.as_mut() {
+            return screen.update(world);
+        }
         let (button, key) = activated(world, self.root)?;
         self.opened = Some(button);
         Some(key)
@@ -813,7 +694,8 @@ impl Menu {
 /// `shell_save`, before the dispatcher, so a capture reads the world as the
 /// last frame's command flush left it: the run's due autosave once
 /// `capture` returns a save, even if the write then fails, or its exit
-/// save; then a staged run goes live for its replace.
+/// save. A change of run's swap follows it in the dispatcher, so the save
+/// holds the old run whole.
 fn save_due(world: &mut World) {
     let due = world
         .get_resource::<RunState>()
@@ -830,57 +712,23 @@ fn save_due(world: &mut World) {
         world.resource_mut::<RunState>().autosave_due = false;
         write_autosave(world, &save);
     }
-    if let Some(run) = world.resource_mut::<Shell>().incoming.take() {
-        world.insert_resource(run);
-    }
 }
 
-/// The shell's one edit of `PostStack` a frame. A stack as the shell left it
-/// loses the passes the shell appended; one the game rebuilt drops the
-/// Bloom the shell took, and those passes only if it still ends with them.
-/// While the Bloom option is off the game's Bloom passes are taken out,
-/// each with its index, and put back at it when the option comes on;
-/// then `tail` goes at the end. At a change of run (`swap`) the stack goes
-/// back to the game's own, as it built it.
-fn post(world: &mut World, tail: Vec<PostPass>, swap: bool) {
-    let bloom = swap || world.resource::<options::GameOptions>().bloom;
-    let mut post = std::mem::take(&mut world.resource_mut::<Shell>().post);
-    let stack = &mut world.resource_mut::<PostStack>().0;
-    if *stack != post.left {
-        post.kept.clear();
-    }
-    if stack.ends_with(&post.tail) {
-        stack.truncate(stack.len() - post.tail.len());
-    }
-    if bloom {
-        for (at, pass) in std::mem::take(&mut post.kept) {
-            stack.insert(at.min(stack.len()), pass);
-        }
-    } else {
-        for (at, pass) in std::mem::take(stack).into_iter().enumerate() {
-            match pass {
-                PostPass::Bloom(_) => post.kept.push((at, pass)),
-                pass => stack.push(pass),
-            }
-        }
-    }
-    stack.extend(tail.iter().copied());
-    (post.tail, post.left) = (tail, stack.clone());
-    world.resource_mut::<Shell>().post = post;
-}
-
-/// `shell_frame`: the F11 and F9 keys, the run's playtime, the exit's save
+/// `shell_frame`: game over's passes, the run's playtime, the exit's save
 /// of the Settings screen's changes while it is open, after a confirm's
-/// safe answer, the menu sounds, the pause key, focus loss and the post
-/// stack.
+/// safe answer, the pause key, focus loss and the end of game over's
+/// entrance.
 fn frame(world: &mut World) {
-    display_keys(world);
     let real = world.resource::<Time>().real_delta();
     let died = world.resource_mut::<Shell>().died.as_mut().map(|secs| {
         *secs += real;
         *secs
     });
-    post(world, died.map_or_else(Vec::new, game_over::passes), false);
+    // Game over's passes, which draw after the game's stack while it shows.
+    if let (Some(secs), Some(tail)) = (died, world.get_resource_mut::<PostTail>()) {
+        tail.0.clear();
+        tail.0.extend(game_over::passes(secs));
+    }
     let delta = f64::from(world.resource::<Time>().delta());
     if let Some(run) = world.get_resource_mut::<RunState>() {
         run.playtime_secs += delta;
@@ -890,38 +738,19 @@ fn frame(world: &mut World) {
     if exit && world.resource::<Shell>().settings_open {
         settings::save(world);
     }
-    menu_sounds(world);
     let open = idle(world) && top(world) == Some(game::GAMEPLAY);
     if open && pressed(world, "state_pause", true) {
         push(world, pause::PauseState::default());
     }
     focus(world, open);
-}
-
-/// F11 and F9, the engine's fullscreen and vsync keys, kept in `Settings`
-/// and saved as the engine toggles them, so the Display rows show them and
-/// the next apply, or start, keeps them.
-fn display_keys(world: &mut World) {
-    let keys = ["engine_toggle_fullscreen", "engine_toggle_vsync"];
-    let [full, vsync] = keys.map(|key| pressed(world, key, false));
-    if !full && !vsync {
-        return;
-    }
-    // The engine toggles the live display; its request lands next frame.
-    let live = *world.resource::<DisplayState>();
-    let settings = world.resource_mut::<Settings>();
-    let modes = [DisplayMode::Windowed, DisplayMode::BorderlessFullscreen];
-    if full {
-        settings.set_display_mode(Some(modes[usize::from(live.display_mode == modes[0])]));
-    }
-    if vsync {
-        settings.set_vsync(Some(!live.vsync));
-    }
-    // Applied again, since an apply earlier this frame, a slider's, replaces
-    // the engine's request; the Settings screen saves when it closes.
-    apply_settings(world);
-    if !world.resource::<Shell>().settings_open {
-        settings::save(world);
+    // Game over's entrance: its buttons show once its seconds run out.
+    let shell = world.resource_mut::<Shell>();
+    match shell.entrance.take() {
+        Some((secs, root)) if secs + real < theme::DIED_SECS => {
+            shell.entrance = Some((secs + real, root));
+        }
+        Some((_, root)) => game_over::reveal(world, root),
+        None => {}
     }
 }
 
@@ -931,48 +760,16 @@ pub fn play(world: &mut World, id: &str, fade: f32) -> Option<Voice> {
     tungsten::core::audio::play(world, id, fade)
 }
 
-/// The menu sounds for this frame's routing: a move when a navigation
-/// press moved focus, a select on an activation, a back on a cancel or a
-/// Back button.
-fn menu_sounds(world: &mut World) {
-    let navigation = [
-        "ui_up", "ui_down", "ui_left", "ui_right", "ui_next", "ui_prev",
-    ];
-    let navigated = navigation
-        .iter()
-        .any(|action| pressed(world, action, false));
-    let mut heard = [false; 3];
-    for event in events(world) {
-        match event {
-            UiEvent::FocusGained { .. } => heard[0] |= navigated,
-            UiEvent::Activated {
-                key: Some(BACK), ..
-            } => heard[2] = true,
-            UiEvent::Activated { .. } => heard[1] = true,
-            UiEvent::Cancel { .. } => heard[2] = true,
-            _ => {}
-        }
-    }
-    for (sound, heard) in theme::MENU_SOUNDS.into_iter().zip(heard) {
-        if heard {
-            play(world, sound, 0.0);
-        }
-    }
-}
-
-/// Focus loss: mutes when the options say so, and pauses gameplay once
-/// `open` (gameplay on top, no screen change), so a loss during a change
-/// pauses after it; focus back unmutes and drops a pause still due.
+/// Focus loss: pauses gameplay when the options say so, once `open`
+/// (gameplay on top, no screen change), so a loss during a change pauses
+/// after it; focus back drops a pause still due. The mute while unfocused
+/// is the engine's (`Settings::mute_unfocused`).
 fn focus(world: &mut World, open: bool) {
     let unfocused = !world.resource::<InputState>().focused();
-    let options = *world.resource::<options::GameOptions>();
+    let pause = world.resource::<options::GameOptions>().pause_unfocused;
     let shell = world.resource_mut::<Shell>();
     if std::mem::replace(&mut shell.unfocused, unfocused) != unfocused {
-        shell.pause_due = unfocused && options.pause_unfocused;
-        let muted = unfocused && options.mute_unfocused;
-        if std::mem::replace(&mut shell.focus_muted, muted) != muted {
-            apply_settings(world);
-        }
+        shell.pause_due = unfocused && pause;
     }
     if open && std::mem::take(&mut world.resource_mut::<Shell>().pause_due) {
         push(world, pause::PauseState::default());
@@ -998,16 +795,12 @@ pub fn top(world: &World) -> Option<StateId> {
     world.resource::<StateStack>().active_id()
 }
 
-/// Whether a screen change waits or runs: an engine transition, a push or
-/// pop the dispatcher has not applied, a closing screen or the curtain.
+/// Whether a screen change waits or runs: a push, pop or change of run
+/// the stack has not finished (`tungsten::screens`), a closing screen, or
+/// game over's entrance.
 #[must_use]
 pub fn transitioning(world: &World) -> bool {
-    let frame = world.resource::<Time>().frame();
-    let waiting = match &world.resource::<Shell>().change {
-        Some(Change::Queued(at)) => *at == frame,
-        change => change.is_some(),
-    };
-    waiting || world.resource::<StateStack>().is_transitioning()
+    screens::transitioning(world) || world.resource::<Shell>().entrance.is_some()
 }
 
 /// Whether a widget is capturing the next press for a rebind.
@@ -1029,7 +822,8 @@ pub fn events(world: &World) -> Vec<UiEvent> {
     events.iter_current().copied().collect()
 }
 
-/// The key every screen's Back button takes, which plays the back sound.
+/// The key every screen's Back button takes, the engine's back role: it
+/// backs out of its screen and plays the theme's back sound.
 pub const BACK: UiKey = UiKey::new("back");
 
 /// The keyed control on `root` activated at this routing, with its key.

@@ -2,22 +2,21 @@
 //! the particle caps, the drawing order, the lit frames' feet, the props'
 //! animations in step, the staff light's glow and light, the wizard's
 //! overlays on his body, midnight's post stack and moon, the glows'
-//! material batches, an enemy's alert and search marks with the alert's
+//! material batches and their parts as their owners' children, an enemy's
+//! alert and search marks with the alert's
 //! one sting, F1's hit boxes beside the colliders while they land, the
 //! theme's own colours' contrast, and the title's starry night, whose stars
-//! leave with it.
+//! leave with it and whose shooting star the kit flies and ends.
 
 use std::path::PathBuf;
 
 use example_01_platformer::features::combat::draw::overlays;
-use example_01_platformer::features::level::components::{AmbientEmitter, Glow, GlowParts};
+use example_01_platformer::features::level::components::{Glow, GlowParts};
 use example_01_platformer::features::level::draw;
 use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
-use example_01_platformer::features::player::systems::{JUMP_PUFF, LANDING_DUST};
 use example_01_platformer::game::GAMEPLAY;
-use example_01_platformer::shared::{BURST_CAP, Burst, spawn_burst};
-use example_01_platformer::shell::options::GameOptions;
+use example_01_platformer::shared::{BURST_CAP, Burst, Saved, despawn_tree, spawn_burst};
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, ResolvedManifest, TilemapData, TilemapLayer};
 use tungsten::core::post::{PostPass, PostStack};
@@ -25,10 +24,10 @@ use tungsten::core::ui::contrast_ratio;
 use tungsten::core::{
     AnimationRegistry, AnimationState, AssetRegistry, CameraState, DataRegistry, Entity,
     InputState, Light, MaterialRegistry, Particle, ParticleBudget, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Sprite, TilemapInstance,
-    TilemapRegistry, Transform, Visibility,
+    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Settings, Sprite,
+    TilemapInstance, TilemapRegistry, Transform, Visibility,
 };
-use tungsten::kit::{Facing, PlatformerController, damage};
+use tungsten::kit::{Children, Facing, Parent, PlatformerController, Tags, damage};
 use tungsten::testing::UiHarness;
 use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap_layers};
 
@@ -38,17 +37,14 @@ use example_01_platformer::features::enemies::beetle::{self, PLOUGH_HALF};
 use example_01_platformer::features::enemies::components::{
     Brain, Enemy, EnemyKind, EnemyState, Strike,
 };
-use example_01_platformer::features::enemies::draw::{
-    HIT_COLOR, HIT_THICKNESS, MARK_ALERT, MARK_SEARCH, mark,
-};
+use example_01_platformer::features::enemies::draw::{HIT_COLOR, HIT_THICKNESS};
+use example_01_platformer::features::enemies::drops::{Orb, PlacedOrbs};
 use example_01_platformer::features::enemies::goblin::{self, STAB_HALF};
 use example_01_platformer::features::enemies::troll::{self, SLAM_REACH, SWIPE_HALF};
-use example_01_platformer::features::level::components::SceneTime;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{OpeningOf, Ring, ShockRing};
 use example_01_platformer::features::toys::{self, components::BlackHole};
 use example_01_platformer::save::{self, SaveGame};
-use example_01_platformer::shared::{SaveId, SaveIds};
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
 use tungsten::PhysicsDebugOverlay;
 use tungsten::core::Shape;
@@ -91,6 +87,15 @@ fn burst_particles(harness: &UiHarness) -> usize {
                 .is_some_and(|emitter| world.has::<Burst>(emitter))
         })
         .count()
+}
+
+/// `tungsten.json`'s `particles.budget`, the emitters' shared budget, which
+/// the engine puts into the World's `ParticleBudget`.
+fn configured_budget() -> u32 {
+    let text = std::fs::read_to_string("tungsten.json").expect("tungsten.json reads");
+    let config: serde_json::Value = serde_json::from_str(&text).expect("tungsten.json parses");
+    let budget = config["particles"]["budget"].as_u64();
+    u32::try_from(budget.expect("particles.budget")).expect("a u32")
 }
 
 #[test]
@@ -149,7 +154,7 @@ fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
     let puff = puff[0];
     let config = world
         .resource::<ParticleConfigRegistry>()
-        .id_for_name(JUMP_PUFF);
+        .id_for_name("ex10_jump_puff");
     assert_eq!(
         Some(world.get::<ParticleEmitter>(puff).unwrap().config),
         config
@@ -180,7 +185,7 @@ fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
     let dust = harness
         .world()
         .resource::<ParticleConfigRegistry>()
-        .id_for_name(LANDING_DUST);
+        .id_for_name("ex10_landing_dust");
     assert!(dust.is_some());
     assert!(
         bursts(&harness).is_empty(),
@@ -196,7 +201,8 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
     calm(&mut harness);
     let world = harness.world();
     let registry = world.resource::<ParticleConfigRegistry>();
-    // The map's emitters: each object at its place, with its config and seed.
+    // The map's emitters, classed by their prefab's tag: each object at its
+    // place, with its config and seed.
     let map = world
         .resource::<TilemapRegistry>()
         .get("ex10_level")
@@ -208,7 +214,8 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
         .flat_map(|layer| &layer.objects)
         .collect();
     let spawned: Vec<(Vec2, ParticleEmitter)> = world
-        .query::<(&AmbientEmitter, &Transform, &ParticleEmitter)>()
+        .query::<(&Tags, &Transform, &ParticleEmitter)>()
+        .filter(|(tags, _, _)| tags.has("level.ambient"))
         .map(|(_, at, emitter)| (at.position, *emitter))
         .collect();
     assert_eq!(spawned.len(), objects.len());
@@ -234,7 +241,7 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
     }
     let world = harness.world_mut();
     for _ in 0..30 {
-        spawn_burst(world, LANDING_DUST, Vec2::new(500.0, 500.0));
+        spawn_burst(world, "ex10_landing_dust", Vec2::new(500.0, 500.0));
     }
     assert_eq!(world.query::<&Burst>().count(), BURST_CAP);
     let hole = world
@@ -250,7 +257,7 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
         ));
     }
     let cap = world.resource::<ParticleBudget>().global_cap as usize;
-    assert_eq!(cap, 2048);
+    assert_eq!(cap, configured_budget() as usize);
     for _ in 0..240 {
         harness.step(1);
         assert!(harness.world().query::<&Particle>().count() <= cap);
@@ -667,7 +674,8 @@ fn bloom_and_vignette_survive_game_over_and_retry() {
     assert!(pair, "{night:?}");
     damage(harness.world_mut(), player, 1000.0);
     fall_dead(&mut harness);
-    let dead = stack(&harness);
+    // Game over's two passes draw after the night's, which the stack keeps.
+    let dead = harness.harness().draw().expect("a frame").post.clone();
     assert_eq!(dead[..2], night[..], "under game over's passes: {dead:?}");
     press(&mut harness, "Retry");
     assert_eq!(stack(&harness), night, "after Retry");
@@ -677,9 +685,11 @@ fn bloom_and_vignette_survive_game_over_and_retry() {
 fn the_bloom_option_keeps_the_vignette() {
     let (mut harness, _) = run();
     let set = |harness: &mut UiHarness, on: bool| {
-        harness.world_mut().resource_mut::<GameOptions>().bloom = on;
+        let settings = harness.world_mut().resource_mut::<Settings>();
+        settings.set_bloom(Some(on));
         harness.step(1);
-        harness.world().resource::<PostStack>().0.clone()
+        let draw = harness.harness().draw().expect("a frame drew");
+        draw.post.clone()
     };
     let off = set(&mut harness, false);
     assert!(matches!(off.as_slice(), [PostPass::Vignette(_)]), "{off:?}");
@@ -699,7 +709,8 @@ fn the_bloom_option_hides_the_halos_and_the_moons_glow() {
     mock_sprite(assets, "ex10_halo", 702, false);
     mock_sprite(assets, "ex10_flame_glow", 703, false);
     let shown = |harness: &mut UiHarness, on: bool| {
-        harness.world_mut().resource_mut::<GameOptions>().bloom = on;
+        let settings = harness.world_mut().resource_mut::<Settings>();
+        settings.set_bloom(Some(on));
         harness.step(1);
         let world = harness.world();
         let parts = *world.get::<GlowParts>(player).unwrap();
@@ -750,9 +761,8 @@ fn glows_draw_through_soft_materials_without_absorbing_other_sprites() {
     let (mut harness, _) = run();
     // Only this test's lamps glow.
     let world = harness.world_mut();
-    let owners: Vec<Entity> = world.query::<(Entity, &Glow)>().map(|(e, _)| e).collect();
-    for owner in owners {
-        world.remove_component::<Glow>(owner);
+    for glow in world.query_mut::<&mut Glow>() {
+        glow.hidden = true;
     }
     let halo = world.resource::<MaterialRegistry>().get(HALO_MATERIAL);
     assert!(halo.is_some(), "the manifest's soft halo");
@@ -801,6 +811,65 @@ fn glows_draw_through_soft_materials_without_absorbing_other_sprites() {
 }
 
 #[test]
+fn a_glows_parts_are_its_children_and_leave_with_it() {
+    let (mut harness, player) = run();
+    harness.step(1);
+    let world = harness.world();
+    let placed = &world.resource::<PlacedOrbs>().0;
+    let orb = world
+        .query::<(Entity, &Orb, &Saved)>()
+        .find(|(_, _, id)| placed.contains(&id.id().0))
+        .map(|(entity, ..)| entity)
+        .expect("a placed orb");
+    let wisp = world
+        .query::<(Entity, &Enemy)>()
+        .find(|(_, enemy)| enemy.kind == EnemyKind::Wisp)
+        .map(|(entity, _)| entity)
+        .expect("the map's wisps");
+    // Each part names its owner as its parent and is among its children.
+    let parts_of = |harness: &UiHarness, owner: Entity| -> Vec<Entity> {
+        let world = harness.world();
+        let parts = world.get::<GlowParts>(owner).expect("its glow's parts");
+        let parts: Vec<Entity> = [parts.halo, parts.core, parts.light]
+            .into_iter()
+            .flatten()
+            .collect();
+        assert!(!parts.is_empty(), "a glow draws with a part");
+        let children = world.get::<Children>(owner).expect("its children");
+        for &part in &parts {
+            let parent = world.get::<Parent>(part).map(|parent| parent.entity());
+            assert_eq!(parent, Some(owner), "a part's parent");
+            assert!(children.iter().any(|child| child == part), "listed");
+        }
+        parts
+    };
+    let wisps = parts_of(&harness, wisp);
+    let orbs = parts_of(&harness, orb);
+    // A tree despawn takes the wisp's parts in its own call, before any step.
+    despawn_tree(harness.world_mut(), wisp);
+    let world = harness.world();
+    assert!(
+        wisps.iter().all(|&part| !world.is_alive(part)),
+        "the wisp's parts go with it"
+    );
+    // The orb taken: its parts are gone when the frame it goes in ends.
+    let at = world.get::<Position>(orb).unwrap().0 + Vec2::splat(12.0);
+    teleport(&mut harness, player, at);
+    for _ in 0..30 {
+        harness.step(1);
+        if !harness.world().is_alive(orb) {
+            break;
+        }
+    }
+    let world = harness.world();
+    assert!(!world.is_alive(orb), "taken");
+    assert!(
+        orbs.iter().all(|&part| !world.is_alive(part)),
+        "the orb's parts go in its frame"
+    );
+}
+
+#[test]
 fn cloud_parallax_and_vortex_instances_animate_without_world_mutation() {
     let (mut harness, _) = run();
     let world = harness.world_mut();
@@ -818,11 +887,13 @@ fn cloud_parallax_and_vortex_instances_animate_without_world_mutation() {
     }
     let centre = world.resource::<CameraState>().position + Vec2::new(300.0, 200.0);
     let hole = toys::place_black_hole(world, centre);
-    world.get_mut::<BlackHole>(hole).unwrap().left = 2.0;
-    world.insert_resource(SceneTime(0.0));
+    world
+        .get_mut::<tungsten::kit::Cooldown>(hole)
+        .unwrap()
+        .set_left(2.0);
     let first = draw::backdrop(world);
     let still = toys::draw::vortices(world);
-    world.insert_resource(SceneTime(0.25));
+    world.resource_mut::<Time>().advance_frame(0.25);
     let second = draw::backdrop(world);
     let turned = toys::draw::vortices(world);
     assert_ne!(
@@ -1004,9 +1075,7 @@ fn crawler(harness: &mut UiHarness, x: f32) -> Entity {
     let kind = EnemyKind::Crawler;
     let centre = Vec2::new(x, SKY_TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
-    let crawler =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let crawler = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, crawler, Difficulty::Normal);
     crawler
 }
@@ -1040,6 +1109,61 @@ fn machine_state(harness: &UiHarness, enemy: Entity) -> EnemyState {
         .state()
 }
 
+/// The marks' sprites, which the foes' prefabs' looks show.
+const MARK_ALERT: &str = "ex10_mark_alert";
+const MARK_SEARCH: &str = "ex10_mark_search";
+
+/// The offset from its drawn centre at which `foe`'s prefab's look shows
+/// the mark `sprite`.
+fn mark_offset(world: &tungsten::core::World, foe: Entity, sprite: &str) -> Option<Vec2> {
+    let mine = world.get::<example_01_platformer::features::enemies::components::Enemy>(foe)?;
+    let prefab = enemies::prefab(mine.kind, mine.variant);
+    let looks = world
+        .resource::<tungsten::core::PrefabRegistry>()
+        .get(prefab)?
+        .components
+        .get("looks")?
+        .as_array()?;
+    let overlay = looks
+        .iter()
+        .map(|entry| &entry["look"]["overlay"])
+        .find(|overlay| overlay["sprite"] == sprite)?;
+    let offset = overlay["offset"].as_array()?;
+    Some(Vec2::new(
+        offset[0].as_f64()? as f32,
+        offset[1].as_f64()? as f32,
+    ))
+}
+
+/// The mark `foe`'s looks show, read from the look parts: a part drawing
+/// the mark's sprite at its look's offset from the foe's drawn centre,
+/// mirrored as the foe faces, within its "!"'s 2 px bob. Headless, a frame
+/// has no size, so the drawn centre is its point.
+fn mark(world: &tungsten::core::World, foe: Entity) -> Option<&'static str> {
+    let at = world.get::<Transform>(foe)?.position;
+    let left = enemies::heading_of(world, foe) == Some(-1.0);
+    let assets = world.resource::<AssetRegistry>();
+    [MARK_ALERT, MARK_SEARCH].into_iter().find(|name| {
+        let Some(offset) = mark_offset(world, foe, name) else {
+            return false;
+        };
+        let point = at
+            + if left {
+                Vec2::new(-offset.x, offset.y)
+            } else {
+                offset
+            };
+        let sprite = assets.sprite_id(name);
+        world
+            .query::<(Entity, &Transform, &Sprite)>()
+            .any(|(part, transform, shown)| {
+                part != foe
+                    && Some(shown.asset_id) == sprite
+                    && transform.position.distance(point) <= 2.5
+            })
+    })
+}
+
 /// The sky's ground the enemies' tests stand on.
 const SKY_TOP: f32 = 1000.0;
 
@@ -1048,9 +1172,7 @@ const SKY_TOP: f32 = 1000.0;
 fn standing(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
     let centre = Vec2::new(x, SKY_TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
-    let id = world.resource_mut::<SaveIds>().take();
-    let enemy =
-        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
+    let enemy = enemies::spawn(world, kind, centre - kind_body(kind).centre).expect("its prefab");
     enemies::scale(world, enemy, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(enemy);
     enemy
@@ -1190,7 +1312,7 @@ fn f1_outlines_a_charging_beetles_plough_box() {
     };
     assert_eq!(plough_quad(&harness), None, "it stands: no plough");
     let world = harness.world_mut();
-    world.get_mut::<Enemy>(beetle).unwrap().heading = 1.0;
+    enemies::turn(world, beetle, 1.0);
     world.insert(beetle, StateMachine::new(EnemyState::Attack));
     harness.step(2);
     assert_eq!(
@@ -1259,8 +1381,10 @@ fn an_alert_shows_its_mark_and_stings_once() {
     fresh.world_mut().resource_mut::<Time>().resume();
     let restored = fresh
         .world()
-        .query::<(Entity, &SaveId)>()
-        .find(|(_, id)| Some(**id) == harness.world().get::<SaveId>(spotter).copied())
+        .query::<(Entity, &Saved)>()
+        .find(|(_, id)| {
+            Some(id.id()) == example_01_platformer::shared::save_id(harness.world(), spotter)
+        })
         .map(|(entity, _)| entity)
         .expect("the spotter loaded");
     let mut more: u32 = 0;
@@ -1421,13 +1545,156 @@ fn the_title_draws_its_sky_and_its_twinkles_leave_with_it() {
         }
     }
     assert!(twinkling, "the stars twinkle");
-    // A New Game through the curtain: no star stays, and a run's sky draws.
+    // A New Game through the fade: no star of the title's stays, and a
+    // run's sky draws. The run's own motes draw the star's sprite too, from
+    // emitters that live.
+    let lingering = |h: &UiHarness| {
+        let world = h.world();
+        world
+            .query::<&Particle>()
+            .filter(|particle| particle.config.sprite == TITLE_STAR)
+            .filter(|particle| {
+                !particle
+                    .emitter
+                    .is_some_and(|emitter| world.is_alive(emitter))
+            })
+            .count()
+    };
     super::start(&mut harness);
     harness.step(1);
     assert!(twinkles(&harness).is_empty(), "the twinkles left");
-    assert_eq!(stars(&harness), 0, "no star lingers");
+    assert_eq!(lingering(&harness), 0, "no star lingers");
     let run = drawn(&harness);
     assert!(run.contains(&960), "the run's sky: {run:?}");
+}
+
+/// The title's shooting star in flight, and where it is drawn.
+fn shooting_star(harness: &UiHarness) -> Option<Vec2> {
+    use example_01_platformer::features::level::title::METEOR;
+    let world = harness.world();
+    let config = world
+        .resource::<ParticleConfigRegistry>()
+        .id_for_name(METEOR)
+        .expect("the star's config");
+    world
+        .query::<(&ParticleEmitter, &Transform)>()
+        .find(|(emitter, _)| emitter.config == config)
+        .map(|(_, at)| at.position)
+}
+
+/// Steps the title until a star is out, then through its flight, calling
+/// `during` with the frames it has been seen for before each of them: the
+/// frames stepped before it came, and its drawn point after each frame it
+/// was alive in, `longest` frames at most.
+fn star_flight(
+    harness: &mut UiHarness,
+    longest: usize,
+    mut during: impl FnMut(&mut UiHarness, usize),
+) -> (u32, Vec<Vec2>) {
+    let mut waited = 0;
+    while shooting_star(harness).is_none() {
+        assert!(waited < 600, "no star came");
+        harness.step(1);
+        waited += 1;
+    }
+    let mut track = Vec::new();
+    while let Some(at) = shooting_star(harness) {
+        track.push(at);
+        assert!(track.len() <= longest, "the star outlives its flight");
+        during(harness, track.len());
+        harness.step(1);
+    }
+    (waited, track)
+}
+
+#[test]
+fn the_titles_stars_keep_their_pace_after_a_cover() {
+    use example_01_platformer::features::level::title::{METEOR_EVERY, METEOR_SECS};
+    use example_01_platformer::shell::settings::SETTINGS;
+    use example_01_platformer::shell::title::TITLE;
+    let dt = 1.0 / 60.0;
+    let longest = (METEOR_SECS / dt).round() as usize + 3;
+    let mut harness = super::harness();
+    harness.harness_mut().set_dt(dt);
+    // The first star, then Settings over the title for three stars' time.
+    star_flight(&mut harness, longest, |_, _| {});
+    press(&mut harness, "Settings");
+    assert_eq!(super::top(&harness), Some(SETTINGS));
+    for frame in 0..(3.0 * METEOR_EVERY / dt) as u32 {
+        harness.step(1);
+        assert!(
+            shooting_star(&harness).is_none(),
+            "a star under the cover, frame {frame}"
+        );
+    }
+    super::tap(&mut harness, "ui_cancel");
+    assert_eq!(super::top(&harness), Some(TITLE));
+    // Back on top, the next comes within a star's time and the one after
+    // a star's time later: none is owed for the cover.
+    let (waited, track) = star_flight(&mut harness, longest, |_, _| {});
+    let next = waited as f32 * dt;
+    assert!(next <= METEOR_EVERY + 2.0 * dt, "the next after {next} s");
+    let (waited, _) = star_flight(&mut harness, longest, |_, _| {});
+    let apart = (track.len() as u32 + waited) as f32 * dt;
+    assert!(
+        apart >= METEOR_EVERY - 2.0 * dt,
+        "the one after {apart} s on"
+    );
+}
+
+#[test]
+fn the_titles_shooting_star_crosses_on_the_kit_and_goes() {
+    use example_01_platformer::features::level::title::{
+        METEOR_EVERY, METEOR_HEADING, METEOR_SECS, METEOR_SPEED,
+    };
+    use example_01_platformer::shell::settings::SETTINGS;
+    let dt = 1.0 / 60.0;
+    let longest = (METEOR_SECS / dt).round() as usize + 3;
+    let mut harness = super::harness();
+    harness.harness_mut().set_dt(dt);
+    // The harness stepped the title's first frame.
+    let (waited, track) = star_flight(&mut harness, longest, |_, _| {});
+    let mut frames = 1 + waited;
+    let came = frames as f32 * dt;
+    assert!(came >= METEOR_EVERY, "a star after {came} s");
+    assert!(came <= METEOR_EVERY + 2.0 * dt, "the first after {came} s");
+    // Spawned after its frame's steps and drawn between its last two, it
+    // rests two frames, then crosses on its line at its speed.
+    let stride = METEOR_HEADING.normalize() * METEOR_SPEED * dt;
+    for pair in track[1..].windows(2) {
+        let moved = pair[1] - pair[0];
+        assert!((moved - stride).length() < 1.0, "{moved} a frame");
+    }
+    let flown = track[track.len() - 1].distance(track[0]);
+    assert!(flown >= 900.0, "gone {flown} px out");
+    frames += track.len() as u32;
+    // The second, with Settings pushed over the title five frames into its
+    // flight: it still ends on time.
+    let (waited, track) = star_flight(&mut harness, longest, |harness, seen| {
+        if seen == 5 {
+            let settings = harness.find("Settings").expect("the title's Settings");
+            assert!(harness.focus(settings));
+            harness.harness_mut().press_action("ui_accept");
+        } else if seen == 6 {
+            harness.harness_mut().release_action("ui_accept");
+        }
+    });
+    let came = (frames + waited) as f32 * dt;
+    assert!(
+        came <= 2.0 * METEOR_EVERY + 2.0 * dt,
+        "the second: {came} s"
+    );
+    assert_eq!(super::top(&harness), Some(SETTINGS));
+    let flown = track[track.len() - 1].distance(track[0]);
+    assert!(flown >= 900.0, "gone {flown} px out under Settings");
+    // At 15 fps the engine runs two steps a frame and drops the rest, so
+    // the kit's star, moved and aged by them, takes twice the real time.
+    let mut harness = super::harness();
+    harness.harness_mut().set_dt(1.0 / 15.0);
+    let (_, track) = star_flight(&mut harness, 22, |_, _| {});
+    assert!(track.len() >= 20, "{} frames at 15 fps", track.len());
+    let flown = track[track.len() - 1].distance(track[0]);
+    assert!(flown >= 900.0, "gone {flown} px out at 15 fps");
 }
 
 #[test]
@@ -1473,7 +1740,9 @@ fn a_hole_opens_over_three_tenths_of_a_second() {
     assert_eq!(rushes, 1, "the rush's emitter names the hole");
     // The vortex at its age 0 and at 0.3 s, at the same drawn time.
     let sizes = |world: &mut tungsten::core::World, age: f32| {
-        world.get_mut::<BlackHole>(hole).unwrap().left = toys::HOLE_SECS - age;
+        let life = world.get_mut::<tungsten::kit::Cooldown>(hole).unwrap();
+        let seconds = life.seconds();
+        life.set_left(seconds - age);
         toys::draw::vortices(world)
             .iter()
             .flat_map(|batch| &batch.instances)
@@ -1488,4 +1757,192 @@ fn a_hole_opens_over_three_tenths_of_a_second() {
             "{small} of {full}: not 0.08"
         );
     }
+}
+
+#[test]
+fn a_marks_glyph_is_never_mirrored() {
+    let mut harness = super::harness();
+    super::start(&mut harness);
+    let player = super::player_entity(&harness);
+    super::calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    super::ground(&mut harness, SKY_TOP);
+    hold_step(&mut harness, player, 300.0);
+    // A crawler and a goblin searching, out of sight and awake, facing
+    // left: the goblin's mark sits 2 px right of its frame's centre facing
+    // right, so mirrored 2 px left of it.
+    let crawler = crawler(&mut harness, 900.0);
+    let kind = EnemyKind::Goblin;
+    let centre = Vec2::new(1100.0, SKY_TOP - kind_body(kind).half.y - 0.5);
+    let goblin = enemies::spawn(harness.world_mut(), kind, centre - kind_body(kind).centre)
+        .expect("its prefab");
+    for foe in [crawler, goblin] {
+        let world = harness.world_mut();
+        world.insert(foe, StateMachine::new(EnemyState::Search));
+        enemies::turn(world, foe, -1.0);
+    }
+    // Past its search's first 0.4 s.
+    for _ in 0..30 {
+        hold_step(&mut harness, player, 300.0);
+    }
+    let world = harness.world();
+    let search = world.resource::<AssetRegistry>().sprite_id(MARK_SEARCH);
+    for (foe, mirrored) in [
+        (crawler, Vec2::new(0.0, -46.0)),
+        (goblin, Vec2::new(-2.0, -46.0)),
+    ] {
+        assert_eq!(machine_state(&harness, foe), EnemyState::Search);
+        assert_eq!(enemies::heading_of(world, foe), Some(-1.0), "facing left");
+        assert_eq!(mark(world, foe), Some(MARK_SEARCH), "its ?");
+        let at = world.get::<Transform>(foe).unwrap().position + mirrored;
+        let parts: Vec<(Vec2, bool)> = world
+            .query::<(&Transform, &Sprite, &tungsten::core::components::SpriteFlip)>()
+            .filter(|(_, shown, _)| Some(shown.asset_id) == search)
+            .map(|(transform, _, flip)| (transform.position, flip.0))
+            .filter(|(point, _)| point.distance(at) < 0.01)
+            .collect();
+        assert_eq!(parts, [(at, false)], "at its mirrored offset, unflipped");
+    }
+}
+
+#[test]
+fn the_rings_draw_their_curves_as_tweens() {
+    use example_01_platformer::features::level::systems::CORE_MATERIAL;
+    use example_01_platformer::features::toys::components::RingLook;
+    use example_01_platformer::features::toys::draw::effects;
+    use example_01_platformer::features::toys::systems::ring;
+    use example_01_platformer::features::toys::{
+        COLLAPSE_RING, HOLE_OPEN_SECS, OPEN_RING, PUSH_RADIUS, RING_SECS,
+    };
+    use tungsten::core::Visibility;
+    let (mut harness, _) = run();
+    harness
+        .harness_mut()
+        .register_sprites(example_01_platformer::game::MANIFEST)
+        .expect("the sprites register");
+    let (ball, collapse) = (Vec2::new(500.0, 500.0), Vec2::new(900.0, 500.0));
+    let (fireball, opening) = (Vec2::new(1300.0, 500.0), Vec2::new(1700.0, 500.0));
+    let fire = 2.0 * PUSH_RADIUS;
+    let world = harness.world_mut();
+    ring(world, ball, 140.0, Ring::Ball);
+    ring(world, collapse, COLLAPSE_RING, Ring::Collapse);
+    ring(world, fireball, fire, Ring::Fireball);
+    ring(world, opening, OPEN_RING, Ring::Open);
+    // Each look at `age` by the hand draw's formulas, in its draw order:
+    // its centre, its size across and its colour.
+    let today = |age: f32| -> Vec<(Vec2, f32, [u8; 4])> {
+        let p = (age / RING_SECS).clamp(0.0, 1.0);
+        let fade = ((1.0 - p) * 220.0) as u8;
+        let spread = 1.0 - (1.0 - p).powi(3);
+        let blast = 32.0 + spread * (fire - 32.0);
+        let front = ((1.0 - p).powi(2) * 240.0) as u8;
+        let mut looks = vec![
+            (ball, 32.0 + p * (140.0 - 32.0), [255, 210, 140, fade]),
+            (
+                collapse,
+                32.0 + p * (COLLAPSE_RING - 32.0),
+                [244, 166, 250, fade],
+            ),
+            (fireball, blast, [255, 210, 140, fade]),
+            (fireball, blast * 0.72, [255, 95, 28, front]),
+        ];
+        let left = (1.0 - age / 0.18).max(0.0);
+        if left > 0.0 {
+            let flash = [255, 245, 200, (left * 255.0) as u8];
+            looks.push((fireball, 100.0 + 180.0 * (1.0 - left), flash));
+        }
+        let open = (age / HOLE_OPEN_SECS).clamp(0.0, 1.0);
+        let shown = ((open / 0.25).min(1.0) * (1.0 - open) * 255.0) as u8;
+        let across = 24.0 + (OPEN_RING - 24.0) * (1.0 - open).powf(1.6);
+        looks.push((opening, across, [236, 180, 255, shown]));
+        looks
+    };
+    let flash_material = draw::material(harness.world(), CORE_MATERIAL);
+    let mut frames = 0;
+    for (age, steps) in [(0.05, 3), (0.15, 6), (0.25, 6), (0.4, 9)] {
+        harness.step(steps);
+        frames += steps;
+        assert!((frames as f32 / 60.0 - age).abs() < 1e-6);
+        let world = harness.world();
+        let batches = effects(world);
+        let drawn: Vec<(Vec2, f32, [u8; 4], bool)> = batches
+            .iter()
+            .flat_map(|batch| {
+                let flash = batch.material_id.is_some() && batch.material_id == flash_material;
+                batch.instances.iter().map(move |quad| {
+                    let size = Vec2::from(quad.size);
+                    let centre = Vec2::from(quad.position) + size * 0.5;
+                    assert!((size.x - size.y).abs() < 0.5, "{age}: square: {size}");
+                    (centre, size.x, quad.color, flash)
+                })
+            })
+            .collect();
+        let want = today(age);
+        assert_eq!(drawn.len(), want.len(), "{age}: {drawn:?}");
+        for (k, ((centre, across, color, flash), (at, size, rgba))) in
+            drawn.iter().zip(&want).enumerate()
+        {
+            assert!(
+                centre.distance(*at) < 0.5 && (across - size).abs() < 0.5,
+                "{age}, look {k}: {across} at {centre}, want {size} at {at}"
+            );
+            assert_eq!(color[..3], rgba[..3], "{age}, look {k}");
+            assert!(
+                color[3].abs_diff(rgba[3]) <= 1,
+                "{age}, look {k}: alpha {} for {}",
+                color[3],
+                rgba[3]
+            );
+            assert_eq!(
+                *flash,
+                k == 4 && age < 0.18,
+                "{age}, look {k}: its material"
+            );
+        }
+        // None is the sprite base's: no look holds a `Visibility`, and no
+        // base quad is one of them.
+        assert_eq!(world.query::<(&RingLook, &Visibility)>().count(), 0);
+        let base = extract_sprites_default(world);
+        assert!(
+            !base.iter().flat_map(|batch| &batch.instances).any(|quad| {
+                batches
+                    .iter()
+                    .flat_map(|batch| &batch.instances)
+                    .any(|look| look.position == quad.position && look.size == quad.size)
+            }),
+            "{age}: drawn by the sprite base"
+        );
+    }
+    assert_eq!(
+        harness.world().query::<&RingLook>().count(),
+        4,
+        "the flash gone"
+    );
+    // Past their 0.45 s, every ring and its front gone.
+    harness.step(4);
+    let world = harness.world();
+    assert_eq!(world.query::<&ShockRing>().count(), 0);
+    assert_eq!(world.query::<&RingLook>().count(), 0);
+    assert!(effects(world).is_empty());
+}
+
+#[test]
+fn a_creatures_own_tint_shows_alone_and_under_a_statuss_tint() {
+    use example_01_platformer::features::combat::systems::POISON_TINT;
+    use example_01_platformer::features::dummy;
+    let (mut harness, player) = run();
+    harness.step(10);
+    let at = centre(&harness, player) + Vec2::new(120.0, -140.0);
+    let target = dummy::spawn(harness.world_mut(), at);
+    let own = [200, 160, 120, 255];
+    harness.world_mut().get_mut::<Sprite>(target).unwrap().color = own;
+    harness.step(5);
+    let shown = |harness: &UiHarness| harness.world().get::<Sprite>(target).unwrap().color;
+    assert_eq!(shown(&harness), own, "its own, with no status");
+    super::combat::apply(&mut harness, target, "poisoned", None);
+    harness.step(5);
+    let tinted: [u8; 4] = std::array::from_fn(|i| {
+        (f32::from(own[i]) * f32::from(POISON_TINT[i]) / 255.0).round() as u8
+    });
+    assert_eq!(shown(&harness), tinted, "the status's tint times its own");
 }

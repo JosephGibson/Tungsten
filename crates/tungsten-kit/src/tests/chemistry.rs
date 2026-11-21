@@ -14,7 +14,6 @@ use tungsten_core::{
 
 use super::tiles::Cell;
 use super::*;
-use crate::HealthPlugin;
 use crate::damage::defense::Resist;
 use crate::damage::effects::{Effect, EffectRequest, Effects, EffectsPlugin, end_effect};
 use crate::damage::kinds::DamageTypes;
@@ -23,6 +22,7 @@ use crate::foundation::curve::Curve;
 use crate::foundation::stats::{Stats, StatsPlugin};
 use crate::foundation::tags::TagsPlugin;
 use crate::foundation::trace::KitTrace;
+use crate::{Blast, HealthPlugin, blast};
 
 const STEP: f32 = 1.0 / 60.0;
 
@@ -238,7 +238,6 @@ fn the_plugin_registers_its_kind_queue_and_system() {
     let names: Vec<&str> = schedule.names(Stage::FixedUpdate).collect();
     let at = |name: &str| names.iter().position(|n| *n == name).unwrap();
     assert!(at(DAMAGE_RESOLVE) < at(CHEMISTRY));
-    assert!(at(AILMENT_FEED) < at(CHEMISTRY));
     assert!(at(CHEMISTRY) < at(crate::EFFECT_RESOLVE));
     // The kit declares its stimuli, so a rule names them anywhere.
     for name in [
@@ -2651,4 +2650,773 @@ fn a_capped_spawn_output_culls_the_oldest() {
             .all(|&salt| world.get::<crate::Source>(salt).is_none()),
         "the cells' spawns"
     );
+}
+
+#[test]
+fn a_build_is_relative_to_its_receivers_per_stat() {
+    let (mut world, mut schedule) = rig();
+    rule(
+        &mut world,
+        "burns",
+        json!({
+            "stimulus": "elemental.fire",
+            "outputs": [{ "build": { "status": "burning", "amount": 4, "per": "toughness" } }]
+        }),
+    );
+    let tough = world.spawn_with((Health::new(1000.0), Stats::new().with("toughness", 40.0)));
+    let plain = receiver(&mut world, &[]);
+    let broken = world.spawn_with((Health::new(1000.0), Stats::new().with("toughness", 0.0)));
+    for entity in [tough, plain, broken] {
+        hit(&mut world, entity, "elemental.fire", 1.0);
+    }
+    step(&mut world, &mut schedule);
+    assert_eq!(intensity(&world, tough, "burning"), Some(0.1), "a fortieth");
+    assert_eq!(
+        intensity(&world, plain, "burning"),
+        Some(4.0),
+        "whole without the stat"
+    );
+    assert_eq!(intensity(&world, broken, "burning"), None, "refused at 0");
+    assert!(skips(&world, broken).contains(&("build", outputs::BAD_PER)));
+    // The load refuses a name that is not a stat's.
+    let bad = json!({
+        "stimulus": "elemental.fire",
+        "outputs": [{ "build": { "status": "burning", "per": "Tough ness" } }]
+    });
+    assert!(serde_json::from_value::<Interaction>(bad).is_err());
+}
+
+/// What a handler saw of each reaction: its receiver, stimulus, amount,
+/// credit and depth.
+type Stimuli = Rc<RefCell<Vec<(Entity, String, f32, Option<Entity>, u8)>>>;
+
+#[test]
+fn a_games_stimulus_reaches_its_rule_as_a_part_does() {
+    let stimuli = Stimuli::default();
+    let saw = Rc::clone(&stimuli);
+    let (mut world, mut schedule) = rig_with(&ChemistryPlugin::new().with_handler(
+        "seen",
+        move |_, reaction: &Reaction| {
+            saw.borrow_mut().push((
+                reaction.receiver().unwrap_or(Entity::PLACEHOLDER),
+                reaction.stimulus().to_owned(),
+                reaction.amount(),
+                reaction.credit(),
+                reaction.depth(),
+            ));
+        },
+    ));
+    let seen = json!([{ "handler": "seen" }]);
+    rule(
+        &mut world,
+        "warms",
+        json!({ "stimulus": "heat", "outputs": seen }),
+    );
+    rule(
+        &mut world,
+        "burns",
+        json!({ "stimulus": "elemental.fire", "outputs": seen }),
+    );
+    // A body without health, credited, at depth 0.
+    let wizard = world.spawn();
+    let stone = world.spawn_with((Tags::new(["material.stone"]),));
+    assert!(stimulate(&mut world, stone, "heat", 2.0, Some(wizard)));
+    step(&mut world, &mut schedule);
+    assert_eq!(
+        stimuli.borrow().as_slice(),
+        [(stone, "heat".to_owned(), 2.0, Some(wizard), 0)]
+    );
+    // A damage type merges with a landed part of it on the same receiver:
+    // one entry, the amounts summed, the first credit kept.
+    stimuli.borrow_mut().clear();
+    let ran = chemistry(&world).ran();
+    let target = receiver(&mut world, &[]);
+    assert!(stimulate(
+        &mut world,
+        target,
+        "elemental.fire",
+        1.5,
+        Some(wizard)
+    ));
+    hit(&mut world, target, "elemental.fire", 3.0);
+    step(&mut world, &mut schedule);
+    assert_eq!(chemistry(&world).ran() - ran, 1, "one entry");
+    assert_eq!(
+        stimuli.borrow().as_slice(),
+        [(target, "elemental.fire".to_owned(), 4.5, Some(wizard), 0)]
+    );
+    // Refused: an undeclared stimulus, an amount below 0 or not finite, a
+    // gone receiver, and a World without chemistry; one no rule answers is
+    // not queued.
+    assert!(!stimulate(&mut world, stone, "frost", 1.0, None));
+    assert!(world.resource::<Chemistry>().refused_now, "warned once");
+    assert!(!stimulate(&mut world, stone, "heat", -1.0, None));
+    assert!(!stimulate(&mut world, stone, "heat", f32::NAN, None));
+    let gone = world.spawn();
+    world.despawn(gone);
+    assert!(!stimulate(&mut world, gone, "heat", 1.0, None));
+    assert!(!stimulate(&mut World::new(), stone, "heat", 1.0, None));
+    assert!(
+        !stimulate(&mut world, stone, "ping", 1.0, None),
+        "unanswered"
+    );
+    assert_eq!(chemistry(&world).pending(), 0);
+    step(&mut world, &mut schedule);
+    assert!(
+        !world.resource::<Chemistry>().refused_now,
+        "cleared by the run"
+    );
+}
+
+#[test]
+fn a_build_crossing_two_bands_in_one_run_enters_both() {
+    let calls = Rc::new(Calls::default());
+    let (mut world, mut schedule) =
+        rig_with(&ChemistryPlugin::new().with_handler("entered", counting(&calls, "entered")));
+    let ladder: Effect = serde_json::from_value(json!({
+        "intensity": { "max": 5, "decay": 0 },
+        "bands": [
+            { "at": 1, "enter": [{ "handler": "entered" }] },
+            { "at": 2, "enter": [{ "handler": "entered" }] }
+        ]
+    }))
+    .unwrap();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("ladder", ladder);
+    rule(
+        &mut world,
+        "climbs",
+        json!({ "stimulus": "heat", "outputs": [{ "build": { "status": "ladder", "amount": 3 } }] }),
+    );
+    let stone = world.spawn();
+    assert!(stimulate(&mut world, stone, "heat", 1.0, None));
+    step(&mut world, &mut schedule);
+    assert_eq!(intensity(&world, stone, "ladder"), Some(3.0));
+    step(&mut world, &mut schedule);
+    assert_eq!(
+        calls.0.borrow().as_slice(),
+        ["entered:ladder#enter.0", "entered:ladder#enter.1"]
+    );
+}
+
+/// The queue's pending entries and the entries the runs took.
+fn queue_counts(world: &World) -> (usize, u64) {
+    let chemistry = chemistry(world);
+    (chemistry.pending(), chemistry.ran())
+}
+
+/// The rule that sets a receiver burning, at a cap of 1, with `names`
+/// named in order.
+fn burning_rig<const N: usize>(names: [&str; N]) -> (World, Schedule, [Entity; N]) {
+    let wood = json!({ "stimulus": "elemental.fire", "outputs": [{ "build": { "status": "burning", "amount": 1 } }] });
+    let (mut world, schedule) = rig_with(&ChemistryPlugin::new().with_cap(1));
+    rule(&mut world, "wood", wood);
+    let named = names.map(|name| {
+        let entity = receiver(&mut world, &[]);
+        tungsten_core::save::name(&mut world, entity, None, name).unwrap();
+        entity
+    });
+    (world, schedule, named)
+}
+
+/// A queue that holds an entry on a receiver despawned before the capture,
+/// ahead of a younger one on `live`: two hits at depth 0 and one at depth 1
+/// on `doomed`, unnamed, a run each; then a hit on `live`, whose run takes
+/// the second of depth 0; then `doomed` despawned.
+fn dead_ahead() -> (World, Schedule, Entity) {
+    let (mut world, mut schedule, [a, b, live]) = burning_rig(["a", "b", "live"]);
+    let doomed = receiver(&mut world, &[]);
+    for (target, depth) in [(a, 0), (b, 0), (doomed, 1)] {
+        DamageRequest::from_parts(
+            target,
+            [DamagePart::new(1.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .with_depth(depth)
+        .apply(&mut world);
+    }
+    step(&mut world, &mut schedule);
+    hit(&mut world, live, "elemental.fire", 1.0);
+    step(&mut world, &mut schedule);
+    assert_eq!(queue_counts(&world), (2, 2), "doomed's, then live's");
+    world.despawn(doomed);
+    (world, schedule, live)
+}
+
+#[test]
+fn a_dead_receivers_entry_keeps_its_place_under_the_cap_through_a_load() {
+    let (mut a, mut schedule_a, live_a) = dead_ahead();
+    let saved = capture_world(&a).unwrap();
+    let text = serde_json::to_value(&saved).unwrap();
+    let entries = &text["resources"]["chemistry_queue"]["entries"];
+    assert_eq!(entries[0]["dead"], json!(true), "{entries}");
+    assert_eq!(entries[1].get("dead"), None, "{entries}");
+
+    let (mut b, mut schedule_b, [_, _, live_b]) = burning_rig(["a", "b", "live"]);
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert_eq!(queue_counts(&b), queue_counts(&a), "the dead entry kept");
+    assert_eq!(
+        serde_json::to_value(capture_world(&b).unwrap()).unwrap(),
+        text,
+        "a load saves what it loaded"
+    );
+    for run in 0..3 {
+        step(&mut a, &mut schedule_a);
+        step(&mut b, &mut schedule_b);
+        assert_eq!(queue_counts(&b), queue_counts(&a), "run {run}");
+        assert_eq!(
+            has(&b, live_b, "burning"),
+            has(&a, live_a, "burning"),
+            "run {run}"
+        );
+    }
+    assert!(has(&b, live_b, "burning"), "after the dead entry's run");
+}
+
+/// Kept receivers: `x1` takes the first ID at a high index, `x2` the next
+/// at the index `x0` freed; each takes a hit behind one at depth 0.
+fn crossed(ids: Option<[tungsten_core::save::SaveId; 2]>) -> (World, [Entity; 2]) {
+    let (mut world, mut schedule, [anchor]) = burning_rig(["anchor"]);
+    let kept = |world: &mut World, id: Option<tungsten_core::save::SaveId>| {
+        let id = id.unwrap_or_else(|| tungsten_core::save::take_id(world).unwrap());
+        let entity = receiver(world, &[]);
+        world.insert(entity, tungsten_core::save::Saved::kept(id));
+        entity
+    };
+    let receivers = match ids {
+        None => {
+            let x0 = world.spawn();
+            let x1 = kept(&mut world, None);
+            world.despawn(x0);
+            let x2 = kept(&mut world, None);
+            assert!(x2.id() < x1.id(), "the later ID at the lower index");
+            [x1, x2]
+        }
+        Some([id1, id2]) => {
+            let x1 = kept(&mut world, Some(id1));
+            let x2 = kept(&mut world, Some(id2));
+            [x1, x2]
+        }
+    };
+    if ids.is_none() {
+        hit(&mut world, anchor, "elemental.fire", 1.0);
+        for (&target, amount) in receivers.iter().zip([1.0, 2.0]) {
+            DamageRequest::from_parts(
+                target,
+                [DamagePart::new(amount).with_tags(Tags::new(["elemental.fire"]))],
+            )
+            .with_depth(1)
+            .apply(&mut world);
+        }
+        step(&mut world, &mut schedule);
+        assert_eq!(queue_counts(&world), (2, 1));
+    }
+    (world, receivers)
+}
+
+#[test]
+fn a_saved_queue_orders_its_receivers_by_save_id_not_index() {
+    let (a, [x1, x2]) = crossed(None);
+    let id = |entity| a.get::<tungsten_core::save::Saved>(entity).unwrap().id();
+    let saved = capture_world(&a).unwrap();
+    let queue = |save: &tungsten_core::save::WorldSave| {
+        serde_json::to_value(save).unwrap()["resources"]["chemistry_queue"].clone()
+    };
+    let refs = |save: &tungsten_core::save::WorldSave| {
+        serde_json::to_value(save).unwrap()["resource_refs"]["chemistry_queue"].clone()
+    };
+    assert_eq!(
+        queue(&saved)["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["raw"].as_f64().unwrap())
+            .collect::<Vec<_>>(),
+        [1.0, 2.0],
+        "x1's first, by its ID"
+    );
+    assert_eq!(
+        refs(&saved),
+        json!({ "entries.0.receiver": [id(x1).0], "entries.1.receiver": [id(x2).0] })
+    );
+
+    let (mut b, _) = crossed(Some([id(x1), id(x2)]));
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    let again = capture_world(&b).unwrap();
+    assert_eq!(queue(&again), queue(&saved));
+    assert_eq!(refs(&again), refs(&saved));
+}
+
+#[test]
+fn a_loaded_queue_without_references_counts_its_dead_entries() {
+    // One entry, on a receiver despawned before the capture and with no
+    // credit, so the save writes no reference and its load no reference
+    // pass.
+    let (mut a, mut schedule_a, [first]) = burning_rig(["first"]);
+    let doomed = receiver(&mut a, &[]);
+    for (target, depth) in [(first, 0), (doomed, 1)] {
+        DamageRequest::from_parts(
+            target,
+            [DamagePart::new(1.0).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .with_depth(depth)
+        .apply(&mut a);
+    }
+    step(&mut a, &mut schedule_a);
+    a.despawn(doomed);
+    let saved = capture_world(&a).unwrap();
+    assert!(
+        serde_json::to_value(&saved).unwrap()["resource_refs"]
+            .get("chemistry_queue")
+            .is_none()
+    );
+    let (mut b, mut schedule_b, _) = burning_rig(["first"]);
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert_eq!(queue_counts(&b), queue_counts(&a));
+    assert_eq!(queue_counts(&b), (1, 1));
+    step(&mut a, &mut schedule_a);
+    step(&mut b, &mut schedule_b);
+    assert_eq!(queue_counts(&b), (0, 2), "taken, skipped and counted");
+    assert_eq!(queue_counts(&b), queue_counts(&a));
+}
+
+// 7.13c: a blast a game shapes and sets off.
+
+/// A bodiless target with health 1000 and a knockback at `at`.
+fn struck(world: &mut World, at: Vec2) -> Entity {
+    world.spawn_with((
+        Health::new(1000.0),
+        crate::Knockback::new(1.0),
+        Transform::from_position(at),
+    ))
+}
+
+/// The health `entity` has lost from 1000.
+fn lost(world: &World, entity: Entity) -> f32 {
+    1000.0 - world.get::<Health>(entity).unwrap().current()
+}
+
+/// The push `entity`'s knockback runs.
+fn pushed(world: &World, entity: Entity) -> Vec2 {
+    world.get::<crate::Knockback>(entity).unwrap().push()
+}
+
+#[test]
+fn a_blast_falls_off_to_its_far_share() {
+    let shares: [(f32, [f32; 3]); 3] = [
+        (0.0, [1.0, 0.5, 0.0]),
+        (0.5, [1.0, 0.75, 0.5]),
+        (1.0, [1.0, 1.0, 1.0]),
+    ];
+    let distances = [0.0_f32, 50.0, 100.0];
+    for (far, want) in shares {
+        let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());
+        // Bodiless targets 0, 50 and 100 px out; bodies of mass 1 whose
+        // surfaces lie as far, straight up.
+        let targets = distances.map(|d| struck(&mut world, Vec2::new(d, 0.0)));
+        let bodies = distances.map(|d| {
+            world.spawn_with(RigidBodyBundle::dynamic(
+                Position::new(0.0, -(d + 10.0)),
+                Collider::circle(10.0),
+            ))
+        });
+        step(&mut world, &mut schedule);
+        let bang = Blast::new(100.0)
+            .with_damage(100.0)
+            .with_far(far)
+            .with_push(600.0)
+            .with_impulse(300.0)
+            .landing_now();
+        blast(&mut world, Vec2::ZERO, &bang, None, None);
+        for ((target, body), (share, d)) in targets
+            .into_iter()
+            .zip(bodies)
+            .zip(want.into_iter().zip(distances))
+        {
+            let falloff = 1.0 - d / 100.0;
+            assert!(
+                (lost(&world, target) - 100.0 * share).abs() < 1e-3,
+                "far {far}, {d} px: {}",
+                lost(&world, target)
+            );
+            assert!(
+                (pushed(&world, target).length() - 600.0 * falloff).abs() < 1e-3,
+                "far {far}, {d} px: its push {}",
+                pushed(&world, target)
+            );
+            let velocity = world.get::<Velocity>(body).unwrap().0;
+            assert!(
+                (velocity - Vec2::new(0.0, -300.0 * falloff)).length() < 1e-3,
+                "far {far}, {d} px: its impulse {velocity}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_blast_spares_filters_and_hurts_its_receiver_when_asked() {
+    let (mut world, _) = rig();
+    let keg = struck(&mut world, Vec2::ZERO);
+    let thrower = struck(&mut world, Vec2::new(20.0, 0.0));
+    let beast = struck(&mut world, Vec2::new(-20.0, 0.0));
+    world.insert(beast, Tags::new(["creature"]));
+    let flat = || {
+        Blast::new(60.0)
+            .with_damage(10.0)
+            .with_far(1.0)
+            .landing_now()
+    };
+    let lost_by = |world: &World| [keg, thrower, beast].map(|entity| lost(world, entity));
+    blast(&mut world, Vec2::ZERO, &flat(), Some(thrower), Some(keg));
+    assert_eq!(lost_by(&world), [0.0, 10.0, 10.0], "its receiver spared");
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &flat().with_receiver(true),
+        Some(thrower),
+        Some(keg),
+    );
+    assert_eq!(
+        lost_by(&world),
+        [10.0, 20.0, 20.0],
+        "its receiver hurt, at distance 0"
+    );
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &flat().sparing_source(),
+        Some(thrower),
+        Some(keg),
+    );
+    assert_eq!(lost_by(&world), [10.0, 20.0, 30.0], "its credit spared");
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &flat().with_filter(crate::TagFilter::new().all(["creature"])),
+        Some(thrower),
+        Some(keg),
+    );
+    assert_eq!(lost_by(&world), [10.0, 20.0, 40.0], "the creature alone");
+    // A credit that is gone credits nobody, and spares nobody.
+    world.despawn(thrower);
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &flat().sparing_source(),
+        Some(thrower),
+        Some(keg),
+    );
+    let sources: Vec<Option<Entity>> = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .filter(|hit| hit.entity == beast)
+        .map(|hit| hit.source)
+        .collect();
+    assert_eq!(sources.last(), Some(&None));
+    assert_eq!(lost(&world, beast), 50.0);
+}
+
+/// The first seed whose first draws are `rolls`, each under 0.5 or not.
+fn seed_rolling(rolls: &[bool]) -> u64 {
+    (0..10_000)
+        .find(|&seed| {
+            let mut rng = crate::KitRng::seeded(seed);
+            rolls.iter().all(|&crit| (rng.unit() < 0.5) == crit)
+        })
+        .unwrap()
+}
+
+/// Three targets whose save order is not their index order: `x1` saved
+/// first at a higher index than `x2`, saved second, and `x3` unsaved;
+/// returned in save order, with a source that crits half its hits at 2.
+fn save_ordered(world: &mut World) -> ([Entity; 3], Entity) {
+    let kept = |world: &mut World, at: Vec2| {
+        let id = tungsten_core::save::take_id(world).unwrap();
+        let entity = struck(world, at);
+        world.insert(entity, tungsten_core::save::Saved::kept(id));
+        entity
+    };
+    let anchor = world.spawn();
+    tungsten_core::save::name(world, anchor, None, "anchor").unwrap();
+    let x0 = world.spawn();
+    let x1 = kept(world, Vec2::new(10.0, 0.0));
+    world.despawn(x0);
+    let x2 = kept(world, Vec2::new(-10.0, 0.0));
+    assert!(x2.id() < x1.id(), "the later ID at the lower index");
+    let x3 = struck(world, Vec2::new(0.0, 10.0));
+    let source = world.spawn_with((Stats::new()
+        .with(Stats::CRIT_CHANCE, 0.5)
+        .with(Stats::CRIT_MULTIPLIER, 2.0),));
+    ([x1, x2, x3], source)
+}
+
+#[test]
+fn a_blast_lands_now_in_save_id_order() {
+    let rolls = [true, false, true];
+    let (mut world, mut schedule) = rig();
+    let (targets, source) = save_ordered(&mut world);
+    world.insert_resource(crate::KitRng::seeded(seed_rolling(&rolls)));
+    let flat = Blast::new(60.0).with_damage(10.0).with_far(1.0);
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &flat.clone().landing_now(),
+        Some(source),
+        None,
+    );
+    assert_eq!(
+        targets.map(|target| lost(&world, target)),
+        [20.0, 10.0, 20.0],
+        "landed at its return, crits drawn in save order"
+    );
+    let order: Vec<(Entity, bool)> = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .map(|hit| (hit.entity, hit.crit))
+        .collect();
+    assert_eq!(
+        order,
+        [(targets[0], true), (targets[1], false), (targets[2], true)]
+    );
+    // Queued: the crits drawn as it goes off, the hits at the next resolve.
+    world.insert_resource(crate::KitRng::seeded(seed_rolling(&rolls)));
+    blast(&mut world, Vec2::ZERO, &flat, Some(source), None);
+    assert_eq!(world.resource::<crate::KitRng>().draws(), 3);
+    assert_eq!(
+        targets.map(|target| lost(&world, target)),
+        [20.0, 10.0, 20.0]
+    );
+    step(&mut world, &mut schedule);
+    assert_eq!(
+        targets.map(|target| lost(&world, target)),
+        [40.0, 20.0, 40.0],
+        "at the step's resolve, as drawn"
+    );
+}
+
+#[test]
+fn a_hurt_body_takes_a_blasts_push_once() {
+    let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());
+    // Two dynamic bodies of mass 1, their surfaces 50 px out: one with
+    // health and a knockback, one without.
+    let hurt = world.spawn_with(RigidBodyBundle::dynamic(
+        Position::new(60.0, 0.0),
+        Collider::circle(10.0),
+    ));
+    world.insert(hurt, Health::new(1000.0));
+    world.insert(hurt, crate::Knockback::new(1.0));
+    let bare = world.spawn_with(RigidBodyBundle::dynamic(
+        Position::new(-60.0, 0.0),
+        Collider::circle(10.0),
+    ));
+    step(&mut world, &mut schedule);
+    let velocity = |world: &World, entity| world.get::<Velocity>(entity).unwrap().0;
+    let bang = Blast::new(100.0)
+        .with_damage(10.0)
+        .with_push(600.0)
+        .with_impulse(300.0)
+        .landing_now();
+    blast(&mut world, Vec2::ZERO, &bang, None, None);
+    assert!(
+        (velocity(&world, hurt) - Vec2::new(300.0, 0.0)).length() < 1e-3,
+        "its knockback alone: {}",
+        velocity(&world, hurt)
+    );
+    assert!(
+        (velocity(&world, bare) - Vec2::new(-150.0, 0.0)).length() < 1e-3,
+        "the impulse: {}",
+        velocity(&world, bare)
+    );
+    // A blast that deals nothing hurts nobody: the impulse moves both.
+    world.get_mut::<Velocity>(hurt).unwrap().0 = Vec2::ZERO;
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &Blast::new(100.0).with_impulse(300.0),
+        None,
+        None,
+    );
+    assert!(
+        (velocity(&world, hurt) - Vec2::new(150.0, 0.0)).length() < 1e-3,
+        "{}",
+        velocity(&world, hurt)
+    );
+}
+
+#[test]
+fn a_blast_from_rust_is_its_data_form() {
+    let built = Blast::new(96.0)
+        .with_part("elemental.fire", 8.0)
+        .with_part("elemental.cold", 4.0)
+        .with_context(["team.enemy"])
+        .with_push(600.0)
+        .with_impulse(300.0)
+        .with_far(0.5)
+        .with_receiver(true)
+        .sparing_source()
+        .with_filter(crate::TagFilter::new().all(["creature"]))
+        .at_centre()
+        .landing_now()
+        .with_stimulus(false)
+        .with_prepare("armour");
+    let data = json!({
+        "radius": 96, "damage": { "elemental.cold": 4, "elemental.fire": 8 },
+        "context": ["team.enemy"], "push": 600, "impulse": 300, "far": 0.5,
+        "receiver": true, "spare": "source", "filter": { "all": ["creature"] },
+        "point": "centre", "land": "now", "stimulus": false, "prepare": "armour"
+    });
+    let read: Blast = serde_json::from_value(data).unwrap();
+    assert_eq!(built, read);
+    let again: Blast = serde_json::from_value(serde_json::to_value(&built).unwrap()).unwrap();
+    assert_eq!(again, built, "its saved form round-trips");
+    assert_eq!(
+        serde_json::from_value::<Blast>(json!({ "radius": 60 })).unwrap(),
+        Blast::new(60.0),
+        "the defaults"
+    );
+    assert_eq!(
+        Blast::new(10.0).with_damage(3.0),
+        serde_json::from_value::<Blast>(json!({ "radius": 10, "damage": 3 })).unwrap()
+    );
+    for (bad, why) in [
+        (json!({ "radius": 60, "far": 1.5 }), "far"),
+        (json!({ "radius": 60, "spare": "target" }), "spare"),
+        (json!({ "radius": 60, "land": "later" }), "land"),
+        (json!({ "radius": 60, "prepare": "Armour" }), "prepare"),
+    ] {
+        assert!(serde_json::from_value::<Blast>(bad).is_err(), "{why}");
+    }
+}
+
+/// A preparation that adds a whole physical penetration to a hit whose
+/// fields are set and whose crit is not decided yet.
+fn armour_prep(_: &World, hit: &mut DamageRequest) {
+    if hit.position().is_some() && hit.context().has("team.enemy") && !hit.is_crit() {
+        let taken = std::mem::replace(hit, DamageRequest::new(hit.target(), 0.0));
+        *hit = taken.with_penetration(crate::Penetration::new().with_points("elemental.fire", 1.0));
+    }
+}
+
+#[test]
+fn a_named_preparation_runs_on_each_blast_hit() {
+    let (mut world, mut schedule) = rig();
+    crate::add_hit_prep(&mut world, "armour", armour_prep);
+    let guarded = |world: &mut World, at: Vec2| {
+        let entity = struck(world, at);
+        world.insert(entity, Resist::new().with_factor("elemental.fire", 0.5));
+        entity
+    };
+    let near = guarded(&mut world, Vec2::new(10.0, 0.0));
+    let far = guarded(&mut world, Vec2::new(-30.0, 0.0));
+    let sure = world.spawn_with((Stats::new()
+        .with(Stats::CRIT_CHANCE, 1.0)
+        .with(Stats::CRIT_MULTIPLIER, 2.0),));
+    let fire = || {
+        Blast::new(60.0)
+            .with_part("elemental.fire", 10.0)
+            .with_far(1.0)
+            .with_context(["team.enemy"])
+            .at_centre()
+            .landing_now()
+    };
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &fire().with_prepare("armour"),
+        Some(sure),
+        None,
+    );
+    assert_eq!(
+        [near, far].map(|target| lost(&world, target)),
+        [20.0, 20.0],
+        "each hit: its fire whole, its crit's 2 after the preparation"
+    );
+    blast(&mut world, Vec2::ZERO, &fire(), Some(sure), None);
+    assert_eq!(
+        [near, far].map(|target| lost(&world, target)),
+        [30.0, 30.0],
+        "without one: halved"
+    );
+    // A Rust blast naming no registered preparation is refused.
+    blast(
+        &mut world,
+        Vec2::ZERO,
+        &fire().with_prepare("missing"),
+        Some(sure),
+        None,
+    );
+    assert_eq!([near, far].map(|target| lost(&world, target)), [30.0, 30.0]);
+    // The load refuses an unknown name, and takes a known one.
+    let named = |name: &str| -> Interaction {
+        serde_json::from_value(json!({
+            "stimulus": "heat",
+            "outputs": [{ "blast": { "radius": 60, "prepare": name } }]
+        }))
+        .unwrap()
+    };
+    let err = format!("{:?}", named("missing").check(&world).unwrap_err());
+    assert!(err.contains("missing") && err.contains("prepare"), "{err}");
+    assert!(named("armour").check(&world).is_ok());
+    let _ = &mut schedule;
+}
+
+// 7.13c's foes and cues, Step 1: a blast passes the dead.
+
+#[test]
+fn a_blast_passes_the_dead() {
+    let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());
+    // Three dynamic bodies with health and a knockback, their surfaces 50 px
+    // out: one dead, one being despawned, one alive; a credit that crits
+    // half its hits.
+    let body = |world: &mut World, at: Vec2| {
+        let entity = world.spawn_with(RigidBodyBundle::dynamic(
+            Position(at),
+            Collider::circle(10.0),
+        ));
+        world.insert(entity, Health::new(1000.0));
+        world.insert(entity, crate::Knockback::new(1.0));
+        entity
+    };
+    let dead = body(&mut world, Vec2::new(60.0, 0.0));
+    let going = body(&mut world, Vec2::new(0.0, 60.0));
+    let live = body(&mut world, Vec2::new(-60.0, 0.0));
+    let lucky = world.spawn_with((Stats::new()
+        .with(Stats::CRIT_CHANCE, 0.5)
+        .with(Stats::CRIT_MULTIPLIER, 2.0),));
+    step(&mut world, &mut schedule);
+    crate::kill(&mut world, dead);
+    assert!(world.get::<Health>(dead).unwrap().is_dead());
+    world.insert(going, crate::lifecycle::ended::Despawning);
+    world.insert_resource(crate::KitRng::seeded(7));
+    let hits_before = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .count();
+    let bang = Blast::new(100.0)
+        .with_damage(10.0)
+        .with_push(600.0)
+        .with_impulse(300.0)
+        .landing_now();
+    blast(&mut world, Vec2::ZERO, &bang, Some(lucky), None);
+    let hit: Vec<Entity> = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .skip(hits_before)
+        .map(|hit| hit.entity)
+        .collect();
+    assert_eq!(hit, [live], "a request for the living alone");
+    assert_eq!(
+        world.resource::<crate::KitRng>().draws(),
+        1,
+        "the living one's crit drawn alone"
+    );
+    let velocity = |world: &World, entity| world.get::<Velocity>(entity).unwrap().0;
+    assert_eq!(velocity(&world, dead), Vec2::ZERO, "the dead unpushed");
+    assert_eq!(
+        velocity(&world, going),
+        Vec2::ZERO,
+        "the despawning unpushed"
+    );
+    assert!(velocity(&world, live).x < 0.0, "{}", velocity(&world, live));
+    assert_eq!(lost(&world, going), 0.0);
 }

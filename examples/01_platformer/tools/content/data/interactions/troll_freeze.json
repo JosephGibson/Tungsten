@@ -1,0 +1,22 @@
+{
+  "stimulus": "damage.cold",
+  "on": {
+    "all": [
+      "troll",
+      "freezable",
+      "status.chilled"
+    ],
+    "none": [
+      "status.burning"
+    ]
+  },
+  "outputs": [
+    {
+      "build": {
+        "status": "troll_freeze_build",
+        "scale": 1,
+        "per": "status_threshold"
+      }
+    }
+  ]
+}

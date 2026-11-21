@@ -96,8 +96,9 @@ pub fn app(user_folder: UserFolder) -> App {
     app
 }
 
-/// The game with its manifest's headless sections loaded and one frame
-/// stepped: the title on top.
+/// The game with its manifest's headless sections loaded, its sprites'
+/// sizes noted (none registered, so none draws) and one frame stepped: the
+/// title on top.
 pub fn harness() -> UiHarness {
     harness_with(UserFolder::Off)
 }
@@ -108,6 +109,10 @@ pub fn harness_with(user_folder: UserFolder) -> UiHarness {
         .harness_mut()
         .load_manifest(game::MANIFEST)
         .expect("the manifest loads");
+    harness
+        .harness_mut()
+        .note_sprite_sizes(game::MANIFEST)
+        .expect("the sprites' sizes read");
     harness.step(1);
     harness
 }
@@ -237,9 +242,57 @@ pub fn actor_body(actor: &str) -> Body {
     serde_json::from_str(&text).unwrap_or_else(|error| panic!("{path}: {error}"))
 }
 
+/// The file under `assets/` at `path`, as JSON.
+pub fn json(path: &str) -> serde_json::Value {
+    let text = std::fs::read_to_string(format!("assets/{path}"))
+        .unwrap_or_else(|error| panic!("{path}: {error}"));
+    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{path}: {error}"))
+}
+
+/// The number at `pointer` in `value`.
+pub fn number(value: &serde_json::Value, pointer: &str) -> f32 {
+    value
+        .pointer(pointer)
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or_else(|| panic!("no number at {pointer}")) as f32
+}
+
+/// The pair at `pointer` in `value`.
+pub fn pair(value: &serde_json::Value, pointer: &str) -> Vec2 {
+    Vec2::new(
+        number(value, &format!("{pointer}/0")),
+        number(value, &format!("{pointer}/1")),
+    )
+}
+
+/// A prefab's body as its file sets it, which the game loads: its half
+/// size, or its radius as a square's, and its offset.
+pub fn prefab_box(prefab: &str) -> (Vec2, Vec2) {
+    let value = json(&format!("prefabs/{prefab}.json"));
+    let shape = "/components/rigid_body/shape";
+    let half = match value.pointer(&format!("{shape}/radius")) {
+        Some(_) => Vec2::splat(number(&value, &format!("{shape}/radius"))),
+        None => pair(&value, &format!("{shape}/half_extents")),
+    };
+    (half, pair(&value, "/components/rigid_body/offset"))
+}
+
+/// The number at `pointer` in a prefab's file, which the game loads.
+pub fn prefab_number(prefab: &str, pointer: &str) -> f32 {
+    number(&json(&format!("prefabs/{prefab}.json")), pointer)
+}
+
 /// `kind`'s body ([`actor_body`]).
 pub fn kind_body(kind: EnemyKind) -> Body {
-    actor_body(kind.info().prefab)
+    actor_body(kind.name())
+}
+
+/// `kind`'s entry in the foes' kinds as its data file holds it, which the
+/// game loads ([`KindInfo`](example_01_platformer::features::enemies::KindInfo)).
+pub fn kind_info(kind: EnemyKind) -> example_01_platformer::features::enemies::KindInfo {
+    let path = format!("assets/data/enemy_kinds/{}.json", kind.name());
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
+    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{path}: {error}"))
 }
 
 /// The player's body's half size, and its centre from its sprite's corner.
@@ -277,12 +330,6 @@ pub fn contact(harness: &mut UiHarness, a: Entity, b: Option<Entity>, normal: Ve
     let world = harness.world_mut();
     let queue = world.resource_mut::<EventQueue<CollisionEvent>>();
     queue.send(CollisionEvent::new(a, b, normal, 0.1));
-}
-
-/// Runs the cascades waiting now, as the next step's overlap phase would:
-/// a test's direct blast or crush ends its frozen things at once.
-pub fn cascades(harness: &mut UiHarness) {
-    example_01_platformer::features::elements::cascade::run(harness.world_mut());
 }
 
 /// The bursts of the particle config `name`.

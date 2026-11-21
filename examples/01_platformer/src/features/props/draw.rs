@@ -8,12 +8,13 @@ use glam::Vec2;
 use tungsten::core::{AssetRegistry, Transform, World};
 use tungsten::render::SpriteBatch;
 
-use super::components::{Crate, Fuel, Keg, Plank};
-use super::{BURN_SECS, PLANK_CENTRE};
-use crate::features::elements::components::Frozen;
+use super::components::{Crate, Keg, Plank, PropKind};
+use super::{FUEL, whole_fuel};
+use crate::features::combat::{BURNING, FROZEN};
 use crate::features::elements::draw::FLAME_FRAMES;
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{HALO, HALO_MATERIAL, drawn_time};
+use tungsten::kit::{Stats, Tags};
 
 /// A prop's frame: its art's side.
 const FRAME: f32 = 64.0;
@@ -54,21 +55,33 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
         (origin + Vec2::splat(FRAME + reach)).cmpge(min).all()
             && (origin - Vec2::splat(reach)).cmple(max).all()
     };
-    let crates: Vec<(Vec2, Fuel)> = world
-        .query::<(&Crate, &Fuel, &Transform)>()
-        .filter(|(_, _, at)| shown(at.position, FRAME))
-        .map(|(_, fuel, at)| (at.position, *fuel))
+    // Each crate in view: its corner, its fire's fuel left and whether it
+    // burns, of its prefab's whole.
+    let whole = whole_fuel(world, PropKind::Crate);
+    let crates: Vec<(Vec2, f32, bool)> = world
+        .query::<(&Crate, &Stats, Option<&Tags>, &Transform)>()
+        .filter(|(.., at)| shown(at.position, FRAME))
+        .map(|(_, stats, tags, at)| {
+            let left = stats.base(FUEL).unwrap_or(whole);
+            (
+                at.position,
+                left,
+                tags.is_some_and(|tags| tags.has(BURNING)),
+            )
+        })
         .collect();
+    // Each burning plank in view: its body's centre, its prefab's offset.
+    let plank = super::centre(world, PropKind::Plank);
     let planks: Vec<Vec2> = world
-        .query::<(&Plank, &Fuel, &Transform)>()
-        .filter(|(_, fuel, at)| fuel.lit && shown(at.position, PLANK_GLOW))
-        .map(|(_, _, at)| at.position + PLANK_CENTRE)
+        .query::<(&Plank, &Tags, &Transform)>()
+        .filter(|(_, tags, at)| tags.has(BURNING) && shown(at.position, PLANK_GLOW))
+        .map(|(_, _, at)| at.position + plank)
         .collect();
     let mut batches = Vec::new();
     if let Some(halo) = assets.get_sprite(HALO) {
         let glow = material(world, HALO_MATERIAL);
         let side = FRAME * GLOW_SIDE;
-        for &(origin, _) in crates.iter().filter(|(_, fuel)| fuel.lit) {
+        for &(origin, ..) in crates.iter().filter(|(.., lit)| *lit) {
             let centre = origin + Vec2::splat(FRAME * 0.5);
             let quad = instance(
                 halo,
@@ -84,8 +97,8 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
             push_quad(&mut batches, halo, quad, glow);
         }
     }
-    for &(origin, fuel) in &crates {
-        let burnt = 1.0 - fuel.left / BURN_SECS;
+    for &(origin, left, _) in &crates {
+        let burnt = 1.0 - left / whole;
         if burnt <= 0.0 {
             continue;
         }
@@ -96,8 +109,8 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
         }
     }
     let time = drawn_time(world);
-    for &(origin, fuel) in crates.iter().filter(|(_, fuel)| fuel.lit) {
-        let burnt = (1.0 - fuel.left / BURN_SECS).clamp(0.0, 1.0);
+    for &(origin, left, _) in crates.iter().filter(|(.., lit)| *lit) {
+        let burnt = (1.0 - left / whole).clamp(0.0, 1.0);
         let count = 3 + usize::from(burnt > 1.0 / 3.0) + usize::from(burnt > 2.0 / 3.0);
         let side = FRAME * (FLAME_SIDE + FLAME_GROWTH * (burnt * 2.0).min(1.0));
         for (i, spot) in FLAME_SPOTS.into_iter().take(count).enumerate() {
@@ -117,11 +130,13 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
         }
     }
     let cubes = world
-        .query::<(&Crate, &Frozen, &Transform)>()
+        .query::<(&Crate, &Tags, &Transform)>()
+        .filter(|(_, tags, _)| tags.has(FROZEN))
         .map(|(_, _, at)| (CRATE_ICE, at.position))
         .chain(
             world
-                .query::<(&Keg, &Frozen, &Transform)>()
+                .query::<(&Keg, &Tags, &Transform)>()
+                .filter(|(_, tags, _)| tags.has(FROZEN))
                 .map(|(_, _, at)| (KEG_ICE, at.position)),
         )
         .filter(|&(_, origin)| shown(origin, 0.0));

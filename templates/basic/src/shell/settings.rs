@@ -1,35 +1,37 @@
 //! Tabbed settings: Display, Audio, Interface, Controls and Gameplay. Every
-//! change applies at once through `shell::apply_settings` and is written
-//! when the screen closes (Back or `ui_cancel` save `Settings` and the
-//! gameplay options) or the game exits with it open; a tab's Reset returns
-//! its values to unset or default.
+//! change applies at once through `tungsten::apply_settings`, a scale slider's
+//! at its release, and is written when the screen closes (Back or
+//! `ui_cancel`, which save `Settings` with the gameplay options at its exit)
+//! or the game exits with it open; a tab's Reset returns its values to
+//! unset or default.
 //! The window mode and size are picked first and sent by Apply, so a player
 //! cycles sizes freely; Apply then asks to keep them, reverting after 10 s.
 //! The tabs sit in a rail beside the rows; `ui_next` and `ui_prev` step
 //! through them. Every slider shows its value in a mono readout. The
-//! Display rows show the set value, else the live one, and the shell keeps
-//! the F11 and F9 keys' changes set; the volumes show the set value, else
-//! the one `tungsten.json` ships.
+//! Display rows show the display `Settings` ask for
+//! (`tungsten::requested_display`), which the engine's F11 and F9 keys
+//! write; the volumes show the set value, else the one `tungsten.json`
+//! ships.
 //! The rows, their kinds, ranges and keys are `assets/ui/screens/settings.json`;
 //! their values are the bindings [`bind`] registers over a [`SettingsView`],
 //! and each control is handled by its key.
 
 use std::num::NonZeroU32;
 
-use tungsten::core::settings::SettingsError;
-use tungsten::core::ui::{UiBindings, UiEvent, UiKey, UiTree, UiValue, WidgetId, screen_build};
-use tungsten::core::{
-    AudioBus, DisplayMode, DisplayState, FrameRateCap, MonitorInfo, Resolution, Settings, World,
+use tungsten::core::ui::{
+    UiBindings, UiEvent, UiKey, UiRouter, UiTree, UiValue, WidgetId, screen_build,
 };
-use tungsten::{GameState, StateContext, StateId, shipped_volume};
+use tungsten::core::{
+    AudioBus, DisplayMode, FrameRateCap, MonitorInfo, Resolution, ScaleFactor, Settings, World,
+};
+use tungsten::screens::{self, Confirm, toast};
+use tungsten::{
+    GameState, StateContext, StateId, apply_settings, requested_display, shipped_volume,
+};
 
-use super::confirm::{self, ConfirmState};
 use super::keybindings::{self, KeybindingsState};
 use super::options::{self, GameOptions};
-use super::{
-    BACK, Difficulty, Menu, RunState, Shell, apply_settings, enter, events, idle, pop, pressed,
-    push, stack, theme, toast,
-};
+use super::{Difficulty, Menu, RunState, Shell, events, idle, pressed, push, stack};
 
 pub const SETTINGS: StateId = "settings";
 /// The tabs, in order, and their keys.
@@ -50,28 +52,20 @@ pub const FPS_REST: u32 = 60;
 pub const UI_SCALES: std::ops::RangeInclusive<f32> = 0.5..=2.0;
 
 /// What the screen shows beyond `Settings` and the options: the open tab,
-/// the window mode and size picked and not yet applied, where the frame
-/// cap's slider rests while Uncapped is on, and the scale slider the
-/// pointer holds with its value, applied at the release so the UI is not
-/// rescaled under the pointer. A resource [`SettingsState`] owns; absent,
-/// the Display tab with nothing pending.
+/// the window mode and size picked and not yet applied, and where the frame
+/// cap's slider rests while Uncapped is on. A resource [`SettingsState`]
+/// owns; absent, the Display tab with nothing pending.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SettingsView {
     tab: usize,
     pending: (Option<DisplayMode>, Option<Resolution>),
     rest: f32,
-    held: Option<(WidgetId, f32)>,
 }
 
 impl Default for SettingsView {
     fn default() -> Self {
-        let (tab, pending, rest, held) = (0, (None, None), FPS_REST as f32, None);
-        Self {
-            tab,
-            pending,
-            rest,
-            held,
-        }
+        let (tab, pending, rest) = (0, (None, None), FPS_REST as f32);
+        Self { tab, pending, rest }
     }
 }
 
@@ -121,8 +115,8 @@ fn change_display(world: &mut World, edit: impl FnOnce(&mut Settings)) {
     let before = world.resource::<Settings>().clone();
     change(world, edit);
     let (mode, size) = (before.display_mode(), before.resolution());
-    let keep = ConfirmState::new("Keep these display settings?", "Keep", "Revert");
-    confirm::ask(
+    let keep = Confirm::new("Keep these display settings?", "Keep", "Revert");
+    screens::ask(
         world,
         keep.countdown(10.0).on_no(move |world| {
             change(world, |settings| {
@@ -131,24 +125,6 @@ fn change_display(world: &mut World, edit: impl FnOnce(&mut Settings)) {
             });
         }),
     );
-}
-
-/// The display as set, else as it runs.
-fn display(world: &World) -> DisplayState {
-    let settings = world.resource::<Settings>();
-    let mut live = world
-        .get_resource::<DisplayState>()
-        .copied()
-        .unwrap_or_default();
-    live.display_mode = settings.display_mode().unwrap_or(live.display_mode);
-    live.resolution = settings.resolution().unwrap_or(live.resolution);
-    live.vsync = settings.vsync().unwrap_or(live.vsync);
-    live.frame_rate_cap = match settings.frame_rate_cap() {
-        Some(FrameRateCap::Fps(fps)) => Some(fps.get()),
-        Some(FrameRateCap::Uncapped) => None,
-        None => live.frame_rate_cap,
-    };
-    live
 }
 
 /// The window sizes offered, smallest first: the monitor's modes from the
@@ -204,7 +180,7 @@ fn next<T: PartialEq + Copy>(values: &[T], value: T) -> T {
 /// Whether the window is fullscreen as picked, else as set or running.
 fn fullscreen(world: &World) -> bool {
     let mode = view(world).pending.0;
-    mode.unwrap_or(display(world).display_mode) != DisplayMode::Windowed
+    mode.unwrap_or(requested_display(world).display_mode) != DisplayMode::Windowed
 }
 
 /// The master volume (`bus` `None`) or a bus's, in percent: as set, else
@@ -215,23 +191,29 @@ fn volume(world: &World, bus: Option<AudioBus>) -> f32 {
     set.unwrap_or_else(|| shipped_volume(world, bus)) * 100.0
 }
 
-/// A scale as set, else its default, or the held slider's value while the
-/// pointer holds the slider keyed `key`.
+/// A scale as set, else as it applies (`tungsten.json`'s `ui.scale` for
+/// the UI's), or the slider keyed `key`'s own value while the pointer drags
+/// it: the value applies at its release, so the UI does not rescale under
+/// the pointer.
 fn scale(world: &World, key: &str) -> f32 {
-    let held = view(world)
-        .held
-        .filter(|(slider, _)| world.resource::<UiTree>().key_name(*slider) == Some(key));
+    let tree = world.resource::<UiTree>();
+    let dragged = world
+        .resource::<UiRouter>()
+        .captured()
+        .filter(|slider| tree.key_name(*slider) == Some(key))
+        .and_then(|slider| tree.slider_value(slider));
     let settings = world.resource::<Settings>();
+    let applied = world.resource::<ScaleFactor>().ui_scale();
     let set = match key {
-        "ui_scale" => settings.ui_scale().unwrap_or(theme::UI_SCALE),
+        "ui_scale" => settings.ui_scale().unwrap_or(applied),
         _ => settings.text_scale().unwrap_or(1.0),
     };
-    held.map_or(set, |(_, value)| value)
+    dragged.unwrap_or(set)
 }
 
 /// The frame cap's slider: the cap as set or running, else where it rests.
 fn cap(world: &World) -> f32 {
-    display(world)
+    requested_display(world)
         .frame_rate_cap
         .map_or(view(world).rest, |fps| fps as f32)
 }
@@ -257,21 +239,27 @@ pub(super) fn bind(bindings: &mut UiBindings) {
             ["Windowed", "Fullscreen"][usize::from(fullscreen(w))].to_owned()
         })
         .text("window_size", |w| {
-            let size = view(w).pending.1.unwrap_or(display(w).resolution);
+            let size = view(w).pending.1.unwrap_or(requested_display(w).resolution);
             let (width, height) = (size.width, size.height);
             format!("{width}×{height} ({})", aspect(width, height))
         })
         .enabled("windowed", |w| !fullscreen(w))
-        .value("vsync", |w| on(display(w).vsync))
+        .value("vsync", |w| on(requested_display(w).vsync))
         .value("frame_rate_limit", |w| number(cap(w)))
         .text("frame_rate_text", |w| {
             let floor = |fps: u32| (fps as f32).max(FPS[0]);
-            let fps = display(w).frame_rate_cap.map_or(view(w).rest, floor);
+            let fps = requested_display(w)
+                .frame_rate_cap
+                .map_or(view(w).rest, floor);
             format!("{fps:.0} fps")
         })
-        .enabled("capped", |w| display(w).frame_rate_cap.is_some())
-        .value("uncapped", |w| on(display(w).frame_rate_cap.is_none()))
-        .value("bloom", |w| on(options(w).bloom))
+        .enabled("capped", |w| requested_display(w).frame_rate_cap.is_some())
+        .value("uncapped", |w| {
+            on(requested_display(w).frame_rate_cap.is_none())
+        })
+        .value("bloom", |w| {
+            on(w.resource::<Settings>().bloom() != Some(false))
+        })
         .enabled("pending", |w| view(w).pending != (None, None))
         .value("master", |w| number(volume(w, None)))
         .value("music", |w| number(volume(w, Some(AudioBus::Music))))
@@ -283,13 +271,12 @@ pub(super) fn bind(bindings: &mut UiBindings) {
         .text("effects_text", |w| {
             format!("{:.0}%", volume(w, Some(AudioBus::Effects)))
         })
-        .value("mute_unfocused", |w| on(options(w).mute_unfocused))
+        .value("mute_unfocused", |w| {
+            on(w.resource::<Settings>().mute_unfocused() == Some(true))
+        })
         .value("ui_scale", |w| {
-            number(
-                w.resource::<Settings>()
-                    .ui_scale()
-                    .unwrap_or(theme::UI_SCALE),
-            )
+            let applied = w.resource::<ScaleFactor>().ui_scale();
+            number(w.resource::<Settings>().ui_scale().unwrap_or(applied))
         })
         .value("text_scale", |w| {
             number(w.resource::<Settings>().text_scale().unwrap_or(1.0))
@@ -326,18 +313,23 @@ pub(super) fn bind(bindings: &mut UiBindings) {
 /// The settings screen, open on one tab.
 pub struct SettingsState {
     tab: usize,
-    root: Option<WidgetId>,
+    menu: Option<Menu>,
 }
 
 impl SettingsState {
     #[must_use]
     pub fn new(tab: usize) -> Self {
-        Self { tab, root: None }
+        Self { tab, menu: None }
+    }
+
+    /// The screen's root, once entered.
+    fn root(&self) -> Option<WidgetId> {
+        self.menu.as_ref().map(|menu| menu.root)
     }
 
     /// Shows `tab` and focuses its button.
     fn select(&self, world: &mut World, tab: usize) {
-        let Some(root) = self.root else {
+        let Some(root) = self.root() else {
             return;
         };
         view_mut(world).tab = tab;
@@ -351,7 +343,7 @@ impl SettingsState {
     /// are picked, the value as it runs dropping the pick, and Apply sends
     /// the picks.
     fn activate(&self, world: &mut World, key: &str) {
-        let (display, (mode, size)) = (display(world), view(world).pending);
+        let (display, (mode, size)) = (requested_display(world), view(world).pending);
         match key {
             "window_mode" => {
                 let picked = match mode.unwrap_or(display.display_mode) {
@@ -367,7 +359,7 @@ impl SettingsState {
             "apply" => {
                 let (mode, size) = std::mem::take(&mut view_mut(world).pending);
                 let first = self
-                    .root
+                    .root()
                     .and_then(|root| screen_build::node(world, root, "window_mode"));
                 if let Some(first) = first {
                     world.resource_mut::<UiTree>().focus(first);
@@ -389,7 +381,7 @@ impl SettingsState {
             "keybindings" => push(world, KeybindingsState::default()),
             "reset_bindings" => {
                 keybindings::reset(world, None);
-                toast::toast(world, "Bindings reset");
+                toast(world, "Bindings reset");
             }
             _ => {}
         }
@@ -408,7 +400,7 @@ impl SettingsState {
             }
             "uncapped" => {
                 let slider = self
-                    .root
+                    .root()
                     .and_then(|root| screen_build::node(world, root, "frame_rate_limit"));
                 let value = slider.and_then(|id| world.resource::<UiTree>().slider_value(id));
                 let cap = if on {
@@ -423,15 +415,14 @@ impl SettingsState {
             "music" => set_volume(world, Some(AudioBus::Music), number),
             "effects" => set_volume(world, Some(AudioBus::Effects), number),
             "ui_scale" | "text_scale" => set_scale(world, key == "text_scale", number),
-            "mute_unfocused" | "damage_numbers" | "pause_unfocused" | "autosave" | "bloom"
-            | "screen_shake" => {
+            "bloom" => change(world, |settings| settings.set_bloom(Some(on))),
+            "mute_unfocused" => change(world, |settings| settings.set_mute_unfocused(Some(on))),
+            "damage_numbers" | "pause_unfocused" | "autosave" | "screen_shake" => {
                 let options = world.resource_mut::<GameOptions>();
                 match key {
-                    "mute_unfocused" => options.mute_unfocused = on,
                     "damage_numbers" => options.damage_numbers = on,
                     "pause_unfocused" => options.pause_unfocused = on,
                     "autosave" => options.autosave = on,
-                    "bloom" => options.bloom = on,
                     _ => options.set_screen_shake(number / 100.0),
                 }
                 options::apply(world);
@@ -447,19 +438,22 @@ impl SettingsState {
         if tab == 0 {
             view_mut(world).pending = (None, None);
         }
-        let defaults = GameOptions::default();
+        // Each tab's own values only: Display's with Bloom, Audio's with the
+        // mute, and Gameplay's options.
         change(world, |settings| match tab {
             0 => {
                 settings.set_display_mode(None);
                 settings.set_resolution(None);
                 settings.set_vsync(None);
                 settings.set_frame_rate_cap(None);
+                settings.set_bloom(None);
             }
             1 => {
                 settings.set_master_volume(None);
                 AudioBus::ALL
                     .iter()
                     .for_each(|bus| settings.set_bus_volume(*bus, None));
+                settings.set_mute_unfocused(None);
             }
             2 => {
                 settings.set_ui_scale(None);
@@ -467,38 +461,21 @@ impl SettingsState {
             }
             _ => {}
         });
-        // Each tab's own options only: Display's Bloom, Audio's mute, and
-        // Gameplay's rest.
-        let options = world.resource_mut::<GameOptions>();
-        let (mute_unfocused, bloom) = (options.mute_unfocused, options.bloom);
         match tab {
-            0 => options.bloom = defaults.bloom,
-            1 => options.mute_unfocused = defaults.mute_unfocused,
             3 => keybindings::reset(world, None),
             GAMEPLAY_TAB => {
-                *options = defaults;
-                (options.mute_unfocused, options.bloom) = (mute_unfocused, bloom);
+                *world.resource_mut::<GameOptions>() = GameOptions::default();
                 options::apply(world);
             }
             _ => {}
         }
     }
-
-    /// Writes `Settings` and the options, then closes.
-    fn leave(world: &mut World) {
-        save(world);
-        pop(world);
-    }
 }
 
-/// Writes `Settings` and the gameplay options; a failure logs, and no user
-/// folder saves nothing. The exit's last frame calls it while the screen is
-/// open, and the F11 and F9 keys while it is not.
-pub(crate) fn save(world: &World) {
-    match world.resource::<Settings>().save() {
-        Ok(()) | Err(SettingsError::NoFolder) => {}
-        Err(error) => log::warn!("Settings not saved: {error}"),
-    }
+/// Writes `Settings`, the gameplay options in their game section; a failure
+/// logs, and no user folder saves nothing. The exit's last frame calls it
+/// while the screen is open.
+pub(crate) fn save(world: &mut World) {
     options::save(world);
 }
 
@@ -515,37 +492,40 @@ impl GameState for SettingsState {
             ..SettingsView::default()
         });
         stack(world).own_resource::<SettingsView>();
-        let root = Menu::build(world, "settings").root;
-        self.root = Some(root);
+        self.menu = Some(Menu::new(world, "settings"));
         self.select(world, tab);
-        enter(world, root);
         world.resource_mut::<Shell>().settings_open = true;
     }
 
+    /// Writes `Settings` and the options as the screen closes.
     fn on_exit(&mut self, ctx: &mut StateContext) {
+        save(ctx.world);
         ctx.world.resource_mut::<Shell>().settings_open = false;
     }
 
     fn on_resume(&mut self, ctx: &mut StateContext) {
-        if let Some(root) = self.root {
+        if let Some(root) = self.root() {
             screen_build::refresh(ctx.world, root);
         }
     }
 
     fn update(&mut self, world: &mut World) {
-        let Some(root) = self.root else {
+        // A cancel or Back closes the screen there.
+        let Some(menu) = self.menu.as_mut() else {
             return;
         };
-        if idle(world) && self.routed(world, root) {
-            return;
+        let root = menu.root;
+        menu.chosen(world);
+        if idle(world) {
+            self.routed(world);
         }
         screen_build::refresh(world, root);
     }
 }
 
 impl SettingsState {
-    /// This routing's events and tab keys; `true` when the screen closed.
-    fn routed(&mut self, world: &mut World, root: WidgetId) -> bool {
+    /// This routing's events and tab keys.
+    fn routed(&mut self, world: &mut World) {
         let step = match ["ui_next", "ui_prev"].map(|key| pressed(world, key, false)) {
             [true, false] => 1,
             [false, true] => TABS.len() - 1,
@@ -564,16 +544,6 @@ impl SettingsState {
         for event in events(world) {
             match event {
                 UiEvent::Activated {
-                    key: Some(BACK), ..
-                } => {
-                    Self::leave(world);
-                    return true;
-                }
-                UiEvent::Cancel { scope, .. } if scope == root => {
-                    Self::leave(world);
-                    return true;
-                }
-                UiEvent::Activated {
                     key: Some(RESET_TAB),
                     ..
                 } => self.reset(world),
@@ -583,32 +553,16 @@ impl SettingsState {
                     Some(tab) => self.select(world, tab),
                     None => self.activate(world, &key(world, widget)),
                 },
-                UiEvent::Pressed { widget, .. } if scale(&key(world, widget)) => {
-                    let value = world.resource::<UiTree>().slider_value(widget);
-                    view_mut(world).held = Some((widget, value.unwrap_or(1.0)));
+                // A scale applies at its commit, a slider's release or a
+                // step, the rest as they change.
+                UiEvent::ValueCommitted { widget, value, .. } if scale(&key(world, widget)) => {
+                    self.set(world, &key(world, widget), value);
                 }
-                UiEvent::Released { widget, .. } | UiEvent::PressCancelled { widget, .. }
-                    if view(world).held.is_some_and(|(held, _)| held == widget) =>
-                {
-                    view_mut(world).held = None;
-                    let value = world.resource::<UiTree>().slider_value(widget);
-                    let number = UiValue::Number(value.unwrap_or(1.0));
-                    self.set(world, &key(world, widget), number);
-                }
-                UiEvent::ValueChanged { widget, value, .. } => {
-                    // A held scale slider shows its value now and applies
-                    // it at the release.
-                    match view(world).held {
-                        Some((slider, draft)) if slider == widget => {
-                            let draft = value.as_number().unwrap_or(draft);
-                            view_mut(world).held = Some((slider, draft));
-                        }
-                        _ => self.set(world, &key(world, widget), value),
-                    }
+                UiEvent::ValueChanged { widget, value, .. } if !scale(&key(world, widget)) => {
+                    self.set(world, &key(world, widget), value);
                 }
                 _ => {}
             }
         }
-        false
     }
 }

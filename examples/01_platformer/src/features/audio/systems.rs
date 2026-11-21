@@ -10,11 +10,11 @@ use super::{
     MUSIC_EXPLORE, PAUSE_FADE, WISP_HUM,
 };
 use crate::features::combat::BURNING;
-use crate::features::elements::components::BallBurn;
+use crate::features::elements::components::Flame;
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, EnemyState, Sight};
 use crate::features::level::systems::current_area;
-use crate::features::props::components::Fuel;
+use crate::features::props;
 use crate::features::toys;
 use crate::game::GAMEPLAY;
 use crate::shared::body_centre;
@@ -67,18 +67,6 @@ pub fn duck(world: &mut World) {
         ducked: on,
         ..music
     });
-}
-
-/// `audio_listen`, in the react phase before the kit's cues: the listener
-/// follows the live player's centre, so the step's sounds are placed by
-/// it; a dead player's stays where it fell.
-pub fn listen(world: &mut World) {
-    let Some((_, at)) = enemies::systems::player(world) else {
-        return;
-    };
-    if let Some(listener) = world.get_resource_mut::<CueListener>() {
-        listener.set_position(at);
-    }
 }
 
 /// The listener's gain at the nearest of `sources`, the one it hears
@@ -154,18 +142,15 @@ pub fn holes(world: &mut World) {
     });
 }
 
-/// Every burning thing's centre: lit fuel (the crates), the small balls
-/// with fire left, and the live targets tagged burning (the player, the
-/// dummy and the enemies).
+/// Every burning thing's centre: the crates and planks alight, the small
+/// balls with fire left, and the live targets tagged burning (the player,
+/// the dummy and the enemies).
 fn fires(world: &World) -> impl Iterator<Item = Vec2> + '_ {
-    let fuel = world
-        .query::<(Entity, &Fuel)>()
-        .filter(|(_, fuel)| fuel.lit)
-        .map(|(entity, _)| entity);
+    let fuel = props::fires(world);
     let balls = world
-        .query::<(Entity, &BallBurn)>()
-        .filter(|(_, burn)| burn.remaining > 0.0)
-        .map(|(entity, _)| entity);
+        .query::<(Entity, &Flame, &Tags)>()
+        .filter(|(_, _, tags)| tags.has(BURNING))
+        .map(|(entity, ..)| entity);
     let targets = world
         .query::<(Entity, &Health, &Tags)>()
         .filter(|(_, health, tags)| !health.is_dead() && tags.has(BURNING))

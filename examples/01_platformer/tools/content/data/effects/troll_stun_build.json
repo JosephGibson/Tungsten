@@ -1,0 +1,21 @@
+{
+  "intensity": {
+    "max": 3,
+    "decay": 0.3333333333
+  },
+  "bands": [
+    {
+      "at": 3,
+      "enter": [
+        {
+          "apply": {
+            "status": "stunned"
+          }
+        },
+        {
+          "remove": "troll_stun_build"
+        }
+      ]
+    }
+  ]
+}

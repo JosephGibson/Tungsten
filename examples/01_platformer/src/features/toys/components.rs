@@ -8,14 +8,10 @@ use tungsten::core::{Entity, Voice};
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 pub struct Ball;
 
-/// A small glass marble, which burns, bursts on a hard impact and takes a
+/// A small glass marble, which burns, sparks on a hard impact and takes a
 /// rainbow hue. Its prefab names it `small_ball`.
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
-pub struct SmallBall {
-    /// Game seconds until its next impact burst may show.
-    #[serde(skip)]
-    pub impact_cooldown: f32,
-}
+pub struct SmallBall {}
 
 /// The heavy bowling ball: tossed, it lands low and rolls; a fireball
 /// bursts it. Its prefab names it `bowling_ball`.
@@ -33,8 +29,8 @@ impl BallHue {
     /// A hue and a speed from `seed`, the ball's place in its spawn order.
     #[must_use]
     pub fn from_seed(seed: u32) -> Self {
-        let a = hash_unit(seed);
-        let b = hash_unit(seed ^ 0xa511_e9b3);
+        let a = crate::shared::unit(u64::from(seed));
+        let b = crate::shared::unit(u64::from(seed) ^ (1 << 56));
         let direction = if seed & 1 == 0 { 1.0 } else { -1.0 };
         Self {
             hue: a,
@@ -43,20 +39,10 @@ impl BallHue {
     }
 }
 
-/// A well-mixed value in `[0, 1]` from `x`.
-#[must_use]
-pub fn hash_unit(mut x: u32) -> f32 {
-    x ^= x >> 16;
-    x = x.wrapping_mul(0x7feb_352d);
-    x ^= x >> 15;
-    x = x.wrapping_mul(0x846c_a68b);
-    x ^= x >> 16;
-    (x as f32) / (u32::MAX as f32)
-}
-
 /// An iron block: a heavy box that shoves balls aside, crushes what it
 /// drives into fast and freezes under the cold spray. Its prefab names it
-/// `iron_block`; its art is four quarters and their frost, its children.
+/// `iron_block`; its art is its brick and the brick's frost, its two
+/// children in that order.
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 pub struct IronBlock;
 
@@ -67,31 +53,12 @@ pub struct IronScrap {
     pub variant: usize,
 }
 
-/// A scrap's tumble as it flies off, on the level's clock: presentation.
-#[derive(Debug, Clone, Copy)]
-pub struct ScrapTumble {
-    pub born_at: f32,
-    pub initial_angle: f32,
-    pub total_turn: f32,
-}
-
-impl ScrapTumble {
-    /// Its turn at level time `time`.
-    #[must_use]
-    pub fn rotation(self, time: f32) -> f32 {
-        let age = (time - self.born_at).max(0.0);
-        self.initial_angle + self.total_turn * (1.0 - (-4.0 * age).exp())
-    }
-}
-
 /// A black hole: it pulls bodies in reach, bends missiles and puts out
-/// burning balls, for `left` game seconds. Its prefab names it
-/// `black_hole`.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// burning balls until its prefab's kit `cooldown`, its life, elapses. Its
+/// prefab names it `black_hole`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct BlackHole {
-    pub left: f32,
-}
+pub struct BlackHole {}
 
 /// The fire missile, slot 1's spawn: the kit's projectile on its linear
 /// motion, which 01 bends by the black holes and blasts on what it meets.
@@ -107,12 +74,31 @@ pub struct ToxicFlask;
 
 /// A blast's shock ring growing to `size` pixels across over its life: a
 /// fireball's, hot, a burst ball's, a force push's in the gravity purple,
-/// or a black hole's collapse, a small pale one that pushes nothing.
+/// or a black hole's collapse, a small pale one that pushes nothing; each
+/// a tweened sprite its tween ends ([`RingLook`]). A hole's opening, its
+/// photon ring closing on it, is drawn by hand from its [`OpenRing`].
 #[derive(Debug, Clone, Copy)]
 pub struct ShockRing {
-    pub age: f32,
     pub size: f32,
     pub kind: Ring,
+}
+
+/// A ring's look, which toys' contribution draws from its tweened state:
+/// its sprite's size times its `Transform`'s scale at its top-left, its
+/// tint and material. With no `Visibility`, the sprite base leaves it. A
+/// shock ring's own names its fireball's front and flash, two more looks
+/// with no [`ShockRing`], drawn after it in its place.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RingLook {
+    pub front: Option<Entity>,
+    pub flash: Option<Entity>,
+}
+
+/// A hole's opening ring's age, seconds: `toys_tick` ages it by the step
+/// and ends it at [`RING_SECS`](super::RING_SECS).
+#[derive(Debug, Clone, Copy)]
+pub struct OpenRing {
+    pub age: f32,
 }
 
 /// What a shock ring belongs to.
@@ -133,7 +119,7 @@ pub struct OpeningOf(pub Entity);
 /// which `toys_release` gives back once the movers have moved. One step's,
 /// never saved.
 #[derive(Debug, Default)]
-pub struct HoleHold(pub Vec<(Entity, Vec2)>);
+pub struct HoleHold(pub Vec<(Entity, Vec2, bool)>);
 
 /// A light left where a missile ended, fading out over `secs`: a blast's
 /// flares and fades more slowly.
@@ -161,9 +147,73 @@ pub struct Wave {
 }
 
 /// A body's velocity before this step's physics, which impacts read: by
-/// then the solver has stopped it on what it met.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+/// then the solver has stopped it on what it met. A foe's prefab names it
+/// (`previous_velocity: {}`, a fresh one).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
+#[serde(from = "Fresh")]
 pub struct PreviousVelocity(pub Vec2);
+
+/// A rebuilt component's prefab form, `{}`: a fresh one, its state the
+/// game's to write.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fresh {}
+
+impl From<Fresh> for PreviousVelocity {
+    fn from(_: Fresh) -> Self {
+        Self::default()
+    }
+}
+
+/// How much of a black hole's pull a body takes, its prefab's `pull`
+/// (`{ "share": 0.2 }`): a share of a ball's, and, when it differs, a frozen
+/// one's (`frozen`), so a dummy is pulled only while frozen; a body without
+/// one takes its inverse mass. Rebuilt by its prefab.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(try_from = "PullForm")]
+pub struct Pull {
+    pub share: f32,
+    pub frozen: Option<f32>,
+}
+
+impl Pull {
+    /// The share it takes, `frozen` or not.
+    #[must_use]
+    pub fn taken(&self, frozen: bool) -> f32 {
+        if frozen {
+            self.frozen.unwrap_or(self.share)
+        } else {
+            self.share
+        }
+    }
+}
+
+/// [`Pull`] as a prefab writes it, before its shares are checked.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PullForm {
+    share: f32,
+    #[serde(default)]
+    frozen: Option<f32>,
+}
+
+impl TryFrom<PullForm> for Pull {
+    type Error = String;
+
+    fn try_from(form: PullForm) -> Result<Self, Self::Error> {
+        for (field, share) in [("share", Some(form.share)), ("frozen", form.frozen)] {
+            if let Some(share) = share
+                && !(share.is_finite() && share >= 0.0)
+            {
+                return Err(format!("{field}: must be finite and >= 0 (got {share})"));
+            }
+        }
+        Ok(Self {
+            share: form.share,
+            frozen: form.frozen,
+        })
+    }
+}
 
 /// The small balls' placement: the part of a ball the last steps owed, the
 /// next ball's place on the golden-angle ring, the balls queued this frame,

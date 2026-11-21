@@ -96,9 +96,10 @@ api-check:
 udeps:
     cargo shear --locked
 
-# Platformer generator: `--check` and its unittests (examples/01_platformer/tools/README.md). They need Pillow, so not in CI or the standard-library-only recipes.
+# Platformer generator: `--check`, then `tungsten check` on the game, then its unittests (examples/01_platformer/tools/README.md). They need Pillow, so not in CI or the standard-library-only recipes.
 level-check:
     python3 -B examples/01_platformer/tools/generate.py --check
+    cd examples/01_platformer && cargo run --quiet --locked -p tungsten-cli -- check
     python3 -B -m unittest discover -s examples/01_platformer/tools -p 'test_*.py'
 
 # Agent instruction budgets, links, skill symlinks and repo-byte totals.

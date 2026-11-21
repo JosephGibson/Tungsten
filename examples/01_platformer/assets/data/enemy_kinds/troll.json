@@ -1,0 +1,11 @@
+{
+  "strike": 41,
+  "mass": 600,
+  "sight": 640,
+  "alert": 0.8,
+  "pull": 0.01,
+  "wave": 0.14,
+  "ice": "ex10_status_ice_troll",
+  "flyer": false,
+  "recover": 0.35
+}

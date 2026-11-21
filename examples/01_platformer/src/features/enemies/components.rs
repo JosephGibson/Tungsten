@@ -2,8 +2,9 @@
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
-use tungsten::core::{Entity, RigidBody};
-use tungsten::kit::{ContactDamage, TopDownMover};
+use tungsten::core::Entity;
+use tungsten::core::save::RefCodec;
+use tungsten::kit::TopDownMover;
 
 /// One of the six enemies, which its prefab names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -42,10 +43,6 @@ impl EnemyKind {
     }
 }
 
-fn right() -> f32 {
-    1.0
-}
-
 /// An enemy's variant of its kind (e01flask): the kind itself, or the
 /// armoured troll, the troll in iron plate, its own prefab, icon and clips
 /// on the troll's body, rules and ice.
@@ -66,12 +63,11 @@ impl Variant {
 }
 
 /// An enemy, which its prefab names `enemy` with its kind: where it patrols
-/// and returns to, its body's centre, which its spawn sets, its heading,
-/// 1 right or -1 left, which its hooks set and gameplay reads (the beetle's
-/// front), and how far from its home, across, a patrol may take it, which
-/// a map placement may set (the falls' crawler), and its variant, which its
-/// prefab sets. Saved; a schema 8 save's enemies have no leash, and an
-/// older save's no variant: plain.
+/// and returns to, its body's centre, which its spawn sets, how far from
+/// its home, across, a patrol may take it, which a map placement may set
+/// (the falls' crawler), and its variant, which its prefab sets; the way it
+/// faces is its prefab's `facing` (`enemies::heading_of`). Saved; a schema
+/// 8 save's enemies have no leash, and an older save's no variant: plain.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Enemy {
@@ -80,8 +76,6 @@ pub struct Enemy {
     pub variant: Variant,
     #[serde(default)]
     pub home: [f32; 2],
-    #[serde(default = "right")]
-    pub heading: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leash: Option<f32>,
 }
@@ -95,13 +89,11 @@ impl Enemy {
 }
 
 /// What an enemy knows: where it last saw the player, the point it
-/// searches, the point a neighbour's alert passed it, the attack its tell
-/// chose, so a load swings the same one and its clip comes from saved
-/// state, the seconds a fresh alert's "!" has left, which no state of its
-/// machine can hold (Alert ends sooner), the seconds before a troll may
-/// slam again, and the seconds before a crawler's snowball or a goblin's
-/// throw or dash-in may come again. Saved; an older save's brains chose
-/// none, show none and wait for nothing.
+/// searches, the point a neighbour's alert passed it, and the attack its
+/// tell chose, so a load swings the same one and its clip comes from saved
+/// state. A fresh alert's "!" is its `alert_mark` effect and a rest after
+/// an attack its kit `Cooldown` (schema 32). Saved; an older save's brains
+/// chose none.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Brain {
@@ -110,16 +102,6 @@ pub struct Brain {
     pub alert: Option<[f32; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strike: Option<Strike>,
-    #[serde(default, skip_serializing_if = "is_none_left")]
-    pub alerted: f32,
-    #[serde(default, skip_serializing_if = "is_none_left")]
-    pub slam_cooldown: f32,
-    #[serde(default, skip_serializing_if = "is_none_left")]
-    pub cooldown: f32,
-}
-
-fn is_none_left(left: &f32) -> bool {
-    *left <= 0.0
 }
 
 /// The attack an enemy's tell chose: a goblin's rock, bomb, stab or
@@ -137,10 +119,40 @@ pub enum Strike {
     Dash,
 }
 
+impl Strike {
+    /// Every strike.
+    pub const ALL: [Strike; 8] = [
+        Strike::Rock,
+        Strike::Bomb,
+        Strike::Slam,
+        Strike::Swipe,
+        Strike::Throw,
+        Strike::Stab,
+        Strike::Snowball,
+        Strike::Dash,
+    ];
+
+    /// The tag a live foe whose brain keeps it holds
+    /// ([`foe_tags`](super::systems::foe_tags)).
+    #[must_use]
+    pub const fn tag(self) -> &'static str {
+        match self {
+            Strike::Rock => "strike.rock",
+            Strike::Bomb => "strike.bomb",
+            Strike::Slam => "strike.slam",
+            Strike::Swipe => "strike.swipe",
+            Strike::Throw => "strike.throw",
+            Strike::Stab => "strike.stab",
+            Strike::Snowball => "strike.snowball",
+            Strike::Dash => "strike.dash",
+        }
+    }
+}
+
 /// An enemy's sight: the seconds to its next check and whether its last
 /// check saw the player. Saved, so a load checks when the run would have.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct Sight {
     pub next: f32,
     pub sees: bool,
@@ -172,25 +184,80 @@ pub enum EnemyState {
     Panic,
 }
 
+impl EnemyState {
+    /// Every state.
+    pub const ALL: [EnemyState; 9] = [
+        EnemyState::Patrol,
+        EnemyState::Alert,
+        EnemyState::Chase,
+        EnemyState::WindUp,
+        EnemyState::Attack,
+        EnemyState::Recover,
+        EnemyState::Search,
+        EnemyState::Return,
+        EnemyState::Panic,
+    ];
+
+    /// The tag a live foe in it holds
+    /// ([`foe_tags`](super::systems::foe_tags)), which its prefab's clip
+    /// rules and looks read.
+    #[must_use]
+    pub const fn tag(self) -> &'static str {
+        match self {
+            EnemyState::Patrol => "state.patrol",
+            EnemyState::Alert => "state.alert",
+            EnemyState::Chase => "state.chase",
+            EnemyState::WindUp => "state.windup",
+            EnemyState::Attack => "state.attack",
+            EnemyState::Recover => "state.recover",
+            EnemyState::Search => "state.search",
+            EnemyState::Return => "state.return",
+            EnemyState::Panic => "state.panic",
+        }
+    }
+}
+
 /// A frozen flyer's own mover, set aside while it falls on a borrowed
 /// controller and given back at the thaw. Saved.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Displaced(pub TopDownMover);
 
-/// A frozen enemy's touch, set aside so it hurts nothing by touch and given
-/// back at the thaw with its targets' times. The save holds those times; a
-/// load gives the touch back to the prefab's, and the next hold sets it
-/// aside again.
-#[derive(Debug, Clone, PartialEq)]
-pub struct HeldTouch(pub ContactDamage);
-
-/// What a troll holds over its head: the troll, and the object's own body,
-/// which it gets back at the throw or the drop; while held, its body is a
-/// sensor. Rebuilt at a load from the troll's save.
+/// The troll's side of a hold, the object it holds over its head on the
+/// kit's carry: on the troll from the lift to the throw or the drop, saved
+/// by reference, so a load lifts the object again, a kept ball's too, whose
+/// hold no save captures.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Held {
-    pub by: Entity,
-    pub body: RigidBody,
+pub struct Holding(pub Entity);
+
+/// [`Holding`]'s saved form: nothing but its reference.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HoldingForm {}
+
+impl From<&Holding> for HoldingForm {
+    fn from(_: &Holding) -> Self {
+        Self {}
+    }
+}
+
+impl From<HoldingForm> for Holding {
+    fn from(_: HoldingForm) -> Self {
+        Self(Entity::PLACEHOLDER)
+    }
+}
+
+/// [`Holding`]'s reference: the object, under `held`.
+#[must_use]
+pub fn holding_refs() -> RefCodec<Holding> {
+    RefCodec {
+        save: |holding, out| out.put("held", holding.0),
+        load: |holding, refs| {
+            if let Some(object) = refs.first("held") {
+                holding.0 = object;
+            }
+        },
+        keys: |_| vec!["held".to_owned()],
+    }
 }
 
 /// A thrown body whose impacts its thrower is credited with: the body, the
@@ -204,20 +271,92 @@ pub struct Throw {
     pub left: f32,
 }
 
-/// The throws in flight, in throw order: a World resource. Saved.
+/// The throws in flight, in throw order: a World resource. Saved, each
+/// body by reference ([`throws_refs`]).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Throws(pub Vec<Throw>);
 
-/// A crawler's snowball in flight (e01foes): its thrower's save ID, the
-/// thrower's damage factor at the throw, and the seconds before it bursts
-/// in the air. Inserted at the throw, so its prefab names no 01 component.
-/// Saved.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Snowball {
-    pub thrower: Option<u64>,
+/// A throw's saved form: all but its body, which its reference holds.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThrowForm {
+    pub thrower: u64,
     pub factor: f32,
     pub left: f32,
 }
+
+/// [`Throws`]' saved form, in throw order.
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ThrowsForm(pub Vec<ThrowForm>);
+
+impl From<&Throws> for ThrowsForm {
+    fn from(throws: &Throws) -> Self {
+        Self(
+            throws
+                .0
+                .iter()
+                .map(|throw| ThrowForm {
+                    thrower: throw.thrower,
+                    factor: throw.factor,
+                    left: throw.left,
+                })
+                .collect(),
+        )
+    }
+}
+
+impl From<ThrowsForm> for Throws {
+    fn from(form: ThrowsForm) -> Self {
+        Self(
+            form.0
+                .into_iter()
+                .map(|throw| Throw {
+                    body: Entity::PLACEHOLDER,
+                    thrower: throw.thrower,
+                    factor: throw.factor,
+                    left: throw.left,
+                })
+                .collect(),
+        )
+    }
+}
+
+/// [`Throws`]' references: each throw's body under its place in throw
+/// order; a throw whose body did not load goes.
+#[must_use]
+pub fn throws_refs() -> RefCodec<Throws> {
+    RefCodec {
+        save: |throws, out| {
+            for (i, throw) in throws.0.iter().enumerate() {
+                out.put(&i.to_string(), throw.body);
+            }
+        },
+        load: |throws, refs| {
+            let mut i = 0;
+            throws.0.retain_mut(|throw| {
+                let body = refs.first(&i.to_string());
+                i += 1;
+                match body {
+                    Some(body) => {
+                        throw.body = body;
+                        true
+                    }
+                    None => false,
+                }
+            });
+        },
+        keys: |throws| (0..throws.0.len()).map(|i| i.to_string()).collect(),
+    }
+}
+
+/// A crawler's snowball in flight (e01foes), a marker its prefab names
+/// (`snowball: {}`): its thrower is its kit `Source`, the thrower's damage
+/// factor at the throw its hitbox's cold, and its seconds left its kit
+/// projectile's. Rebuilt by its prefab, so a save holds the kit's forms.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Snowball {}
 
 impl Throws {
     /// `body`'s throw, while it flies.
@@ -242,19 +381,18 @@ pub struct Spotted {
     pub player: Entity,
 }
 
-/// A crawler's scare: the game time the staff light's edge last refused
-/// its walk, whose scared clip shows for `crawler::SCARED_HOLD` after (B4).
-/// Presentation, never saved.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Scared {
-    pub at: f64,
-}
-
-/// The clip an enemy shows and its frame at the last look, and the second
-/// ember emitter a wisp's flare lights. Presentation, never saved.
-#[derive(Debug, Clone, Default, PartialEq)]
+/// The clip the kit's animator showed an enemy and its frame at the last
+/// look, which a troll's steps sound by. Presentation, never saved; its
+/// prefab names it (`shown: {}`, a fresh one).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(from = "crate::features::toys::components::Fresh")]
 pub struct Shown {
     pub clip: String,
     pub frame: usize,
-    pub flare: Option<Entity>,
+}
+
+impl From<crate::features::toys::components::Fresh> for Shown {
+    fn from(_: crate::features::toys::components::Fresh) -> Self {
+        Self::default()
+    }
 }

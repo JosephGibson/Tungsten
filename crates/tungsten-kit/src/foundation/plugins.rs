@@ -32,10 +32,12 @@ use crate::motion::top_down::TopDownMoverPlugin;
 use crate::motion::wrap::WrapPlugin;
 use crate::overlap::contact::ContactDamagePlugin;
 use crate::overlap::hit::HitPlugin;
+use crate::overlap::impact::ImpactDamagePlugin;
 use crate::overlap::pickup::PickupPlugin;
 use crate::overlap::projectile::ProjectilePlugin;
 use crate::overlap::zone::ZonePlugin;
 use crate::present::animation::AnimationPlugin;
+use crate::present::burst::BurstPlugin;
 use crate::present::camera::{CameraRigPlugin, CameraTargetPlugin};
 use crate::present::character::CharacterAnimatorPlugin;
 use crate::present::depth::DepthSortPlugin;
@@ -84,9 +86,9 @@ impl KitPlugins {
     /// counters, cooldown, spawn children, cues, linear motion, the
     /// oscillator, steering, follow, orbit, knockback, the speed limit,
     /// wrap, stay in view, aim, facing, the character animator, depth sort,
-    /// the hit shapes, contact damage, projectiles, pickups, effects, looks
-    /// by tags, health bars, chemistry, abilities, levels, caps and the
-    /// debug drawing, in that order.
+    /// the hit shapes, contact damage, projectiles, pickups, impact damage,
+    /// effects, looks by tags, health bars, particle bursts, chemistry,
+    /// abilities, levels, caps and the debug drawing, in that order.
     #[must_use]
     pub fn set() -> PluginSet {
         PluginSet::new()
@@ -127,9 +129,11 @@ impl KitPlugins {
             .with(ContactDamagePlugin)
             .with(ProjectilePlugin)
             .with(PickupPlugin)
+            .with(ImpactDamagePlugin)
             .with(EffectsPlugin)
             .with(LooksPlugin)
             .with(HealthBarPlugin)
+            .with(BurstPlugin)
             .with(ChemistryPlugin::new())
             .with(AbilitiesPlugin)
             .with(LevelPlugin)

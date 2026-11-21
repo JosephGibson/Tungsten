@@ -1,15 +1,16 @@
 //! M24 tween tick. Slot: `particles → tweens → flush commands → flush events` (D-039, D-040).
 //! Writes `Transform`/`Sprite` in-place; completion + removal buffered so the archetype is
-//! never mutated mid-iteration.
+//! never mutated mid-iteration. Each channel eases by its own easing, else the tween's
+//! (7.13d's toys and data); a tween built `with_despawn_at_end` ends its entity at its end.
 //!
 //! M26 also dispatches `UniformVec4Lane`/`UniformScalar`/`UniformInt` into
 //! `UniformOverrideBlock`; missing-block channels log and are skipped so a
 //! tween authored for an absent component never panics. Redo 7.9 adds
 //! `LightIntensity`, written into the entity's `Light`.
 
-use tungsten_core::tween::UniformOverrideBlock;
+use tungsten_core::tween::{EasedChannel, UniformOverrideBlock};
 use tungsten_core::{
-    CommandBuffer, Entity, EventQueue, Light, Sprite, Time, Transform, Tween, TweenChannel,
+    CommandBuffer, Easing, Entity, EventQueue, Light, Sprite, Time, Transform, Tween, TweenChannel,
     TweenComplete, TweenDirection, TweenRepeat, World, lerp_f32, lerp_u8,
 };
 
@@ -20,9 +21,10 @@ pub fn tween_tick_system(world: &mut World) {
     }
 
     let mut completed: Vec<TweenComplete> = Vec::new();
-    let mut to_remove: Vec<Entity> = Vec::new();
+    // Each finished tween's entity, and whether it ends the entity.
+    let mut to_remove: Vec<(Entity, bool)> = Vec::new();
     // Channel writes touch other components; buffered so the Tween pass stays columnar.
-    let mut channel_work: Vec<(Entity, Vec<TweenChannel>, f32)> = Vec::new();
+    let mut channel_work: Vec<(Entity, Vec<EasedChannel>, Easing, f32)> = Vec::new();
 
     for (entity, t) in world.query_mut::<(Entity, &mut Tween)>() {
         // Waiting for command-buffer flush to drop the component.
@@ -44,9 +46,8 @@ pub fn tween_tick_system(world: &mut World) {
         let raw_elapsed = t.elapsed + signed_dt;
         let new_elapsed = raw_elapsed.clamp(0.0, t.duration);
         let u = (new_elapsed / t.duration).clamp(0.0, 1.0);
-        let k = t.easing.apply(u);
 
-        channel_work.push((entity, t.channels.clone(), k));
+        channel_work.push((entity, t.channels().to_vec(), t.easing, u));
 
         t.elapsed = new_elapsed;
 
@@ -75,7 +76,7 @@ pub fn tween_tick_system(world: &mut World) {
                     entity,
                     tag: t.on_complete_tag.clone(),
                 });
-                to_remove.push(entity);
+                to_remove.push((entity, t.despawn_at_end));
                 t.pending_remove = true;
             }
             TweenRepeat::Times(n) => {
@@ -85,7 +86,7 @@ pub fn tween_tick_system(world: &mut World) {
                         entity,
                         tag: t.on_complete_tag.clone(),
                     });
-                    to_remove.push(entity);
+                    to_remove.push((entity, t.despawn_at_end));
                     t.pending_remove = true;
                 } else {
                     t.completed_cycles = next_cycles;
@@ -111,8 +112,8 @@ pub fn tween_tick_system(world: &mut World) {
         }
     }
 
-    for (entity, channels, k) in channel_work {
-        apply_channels(world, entity, &channels, k);
+    for (entity, channels, easing, u) in channel_work {
+        apply_channels(world, entity, &channels, easing, u);
     }
 
     if !completed.is_empty()
@@ -126,8 +127,12 @@ pub fn tween_tick_system(world: &mut World) {
     if !to_remove.is_empty()
         && let Some(buf) = world.get_resource_mut::<CommandBuffer>()
     {
-        for entity in to_remove {
-            buf.call(entity, remove_finished_tween);
+        for (entity, despawn) in to_remove {
+            if despawn {
+                buf.call(entity, despawn_finished_tween);
+            } else {
+                buf.call(entity, remove_finished_tween);
+            }
         }
     }
 }
@@ -143,9 +148,30 @@ fn remove_finished_tween(world: &mut World, entity: Entity) {
     }
 }
 
-fn apply_channels(world: &mut World, entity: Entity, channels: &[TweenChannel], k: f32) {
-    for channel in channels {
-        match channel {
+/// Flush-time end of a completed tween built `with_despawn_at_end`: its
+/// entity goes, under [`remove_finished_tween`]'s guard, so a replacement
+/// inserted earlier in the flush keeps the entity.
+fn despawn_finished_tween(world: &mut World, entity: Entity) {
+    if world
+        .get::<Tween>(entity)
+        .is_some_and(|tween| tween.pending_remove)
+    {
+        world.despawn(entity);
+    }
+}
+
+/// Writes each channel at `u` of the tween's timing, eased by its own
+/// easing, else the tween's `easing`.
+fn apply_channels(
+    world: &mut World,
+    entity: Entity,
+    channels: &[EasedChannel],
+    easing: Easing,
+    u: f32,
+) {
+    for eased in channels {
+        let k = eased.easing_in(easing).apply(u);
+        match &eased.channel {
             TweenChannel::PositionX { from, to } => {
                 if let Some(t) = world.get_mut::<Transform>(entity) {
                     t.position.x = lerp_f32(*from, *to, k);

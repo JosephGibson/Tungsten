@@ -8,12 +8,10 @@
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::gun::components::Bullet;
-use example_01_platformer::features::gun::{
-    self, BALL_KICK, MAX_RICOCHETS, RELOAD, SHOOT, SHOT_DAMAGE,
-};
+use example_01_platformer::features::gun::{self, BALL_KICK, RELOAD, SHOOT, SHOT_DAMAGE};
 use example_01_platformer::features::spells::hud::Hud;
-use example_01_platformer::features::toys::{self, IRON_HALF};
-use example_01_platformer::shared::SaveId;
+use example_01_platformer::features::toys;
+use example_01_platformer::shared::{SaveId, Saved};
 use glam::Vec2;
 use tungsten::core::{Entity, EventQueue, RigidBody, Velocity};
 use tungsten::kit::{
@@ -22,7 +20,8 @@ use tungsten::kit::{
 use tungsten::testing::UiHarness;
 
 use super::combat::{CRIT_SEED, PLAIN_SEED, TOP, dummy_at, health};
-use example_01_platformer::features::level::TILE;
+use super::{prefab_box, prefab_number};
+use example_01_platformer::features::level;
 
 use super::{
     aim_at, ball, body, bursts, calm, floor, ground, kick, pin_camera, player_entity, run,
@@ -32,7 +31,9 @@ use super::{stand, steps_this_frame};
 /// A bullet's speed, as the gun's payload fires it.
 const SPEED: f32 = 2400.0;
 /// An iron block's centre on the sky's ground.
-const IRON_Y: f32 = TOP - IRON_HALF.y;
+fn iron_y() -> f32 {
+    TOP - prefab_box("iron_block").0.y
+}
 /// The camera's corner over the sky's ground.
 const CORNER: Vec2 = Vec2::new(0.0, 400.0);
 
@@ -61,8 +62,8 @@ fn shot(harness: &mut UiHarness, centre: Vec2, velocity: Vec2) -> SaveId {
 fn bullet(harness: &UiHarness, id: SaveId) -> Option<Entity> {
     harness
         .world()
-        .query::<(Entity, &Bullet, &SaveId)>()
-        .find(|&(_, _, own)| *own == id)
+        .query::<(Entity, &Bullet, &Saved)>()
+        .find(|&(_, _, own)| own.id() == id)
         .map(|(entity, ..)| entity)
 }
 
@@ -93,6 +94,16 @@ fn parts(harness: &UiHarness, target: Entity) -> Vec<(f32, bool)> {
         .filter(|part| part.kinds.has(world, "damage.physical"))
         .map(|part| (part.amount, part.crit))
         .collect()
+}
+/// The map's places a shot starts from (`tools/level.py`'s `places`
+/// layer): at the mine's cut's second floor's riser, its west face clad in
+/// iron, and over the rope bridge's west deck.
+const IRON_FACE: &str = "shot_iron_face";
+const BRIDGE_DECK: &str = "shot_bridge_deck";
+
+/// The map's place `name`, a point.
+fn place(harness: &UiHarness, name: &str) -> Vec2 {
+    level::marker(harness.world(), name).unwrap_or_else(|| panic!("the map has no `{name}` place"))
 }
 
 #[test]
@@ -196,9 +207,9 @@ fn a_shot_pushes_a_ball() {
 #[test]
 fn a_shot_bounces_off_iron() {
     let (mut harness, _) = sky();
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1000.0, IRON_Y));
+    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1000.0, iron_y()));
     harness.step(10);
-    let id = shot(&mut harness, Vec2::new(700.0, IRON_Y), Vec2::X * SPEED);
+    let id = shot(&mut harness, Vec2::new(700.0, iron_y()), Vec2::X * SPEED);
     let mut turned = None;
     for _ in 0..12 {
         harness.step(1);
@@ -226,10 +237,10 @@ fn a_shot_bounces_off_iron() {
     // Between two blocks it turns twice, then the third face ends it.
     let (mut harness, _) = sky();
     for x in [600.0, 1200.0] {
-        toys::place_iron(harness.world_mut(), Vec2::new(x, IRON_Y));
+        toys::place_iron(harness.world_mut(), Vec2::new(x, iron_y()));
     }
     harness.step(10);
-    let id = shot(&mut harness, Vec2::new(900.0, IRON_Y), Vec2::X * SPEED);
+    let id = shot(&mut harness, Vec2::new(900.0, iron_y()), Vec2::X * SPEED);
     let mut most = 0;
     for _ in 0..60 {
         harness.step(1);
@@ -238,7 +249,10 @@ fn a_shot_bounces_off_iron() {
         };
         most = most.max(harness.world().get::<Bullet>(entity).unwrap().ricochets);
     }
-    assert_eq!(most, MAX_RICOCHETS);
+    assert_eq!(
+        most as f32,
+        prefab_number("bullet", "/components/projectile/bounces")
+    );
     assert!(bullet(&harness, id).is_none(), "the third face ends it");
 }
 
@@ -251,10 +265,10 @@ fn a_ball_or_iron_behind_a_nearer_dummy_or_wall_is_untouched() {
     // A thin wall, then iron against it.
     floor(
         &mut harness,
-        Vec2::new(1500.0, IRON_Y),
+        Vec2::new(1500.0, iron_y()),
         Vec2::new(4.0, 60.0),
     );
-    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1565.0, IRON_Y));
+    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1565.0, iron_y()));
     harness.step(10);
     let id = shot(&mut harness, Vec2::new(880.0, TOP - 7.5), Vec2::X * SPEED);
     harness.step(1);
@@ -264,7 +278,7 @@ fn a_ball_or_iron_behind_a_nearer_dummy_or_wall_is_untouched() {
         velocity(&harness, behind).length() < 1.0,
         "the ball behind it did not"
     );
-    let id = shot(&mut harness, Vec2::new(1480.0, IRON_Y), Vec2::X * SPEED);
+    let id = shot(&mut harness, Vec2::new(1480.0, iron_y()), Vec2::X * SPEED);
     harness.step(1);
     assert!(bullet(&harness, id).is_none(), "the wall ends it");
     // Its end puffs dust and sparks; a turn would ring.
@@ -279,7 +293,7 @@ fn a_ball_or_iron_behind_a_nearer_dummy_or_wall_is_untouched() {
 #[test]
 fn iron_in_front_of_a_dummy_ends_the_shot_at_the_iron() {
     let (mut harness, _) = sky();
-    toys::place_iron(harness.world_mut(), Vec2::new(1000.0, IRON_Y));
+    toys::place_iron(harness.world_mut(), Vec2::new(1000.0, iron_y()));
     let dummy = dummy_at(&mut harness, 1090.0);
     harness.step(10);
     let y = body(&harness, dummy).y;
@@ -305,7 +319,7 @@ fn a_moving_ball_crossing_before_a_wall_stop_is_pushed_and_after_it_is_not() {
     // A thin wall whose face the shot's step meets at 0.6 of the step.
     floor(
         &mut harness,
-        Vec2::new(1500.0, IRON_Y),
+        Vec2::new(1500.0, iron_y()),
         Vec2::new(4.0, 60.0),
     );
     harness.step(1);
@@ -348,12 +362,12 @@ fn the_magazine_shows_its_rounds_and_reloading() {
     aim_at(&mut harness, Vec2::new(700.0, 500.0));
     harness.step(1);
     let hud = *harness.world().resource::<Hud>();
-    // The live cartridges: a round each.
+    // The live cartridges: a round each, the magazine's row's children.
     let live = |harness: &UiHarness| {
-        hud.magazine
-            .rounds
+        let tree = harness.tree();
+        tree.children(hud.magazine.row)
             .iter()
-            .filter(|&&round| harness.tree().image_sprite(round) == Some(hud.art.live))
+            .filter(|&&round| tree.image_sprite(round) == Some(hud.art.live))
             .count()
     };
     assert_eq!(harness.tree().plain_text(hud.magazine.text), "9 / 9");
@@ -424,7 +438,7 @@ fn a_shot_turns_off_the_mines_iron_and_passes_the_bridges_wood_to_end_at_stone()
     let (mut harness, _) = run();
     calm(&mut harness);
     // At the cut's second floor's riser, its west face clad in iron.
-    let face = Vec2::new(306.0 * TILE, 54.5 * TILE);
+    let face = place(&harness, IRON_FACE);
     let id = shot(&mut harness, face - Vec2::new(300.0, 0.0), Vec2::X * SPEED);
     let iron = bullet(&harness, id).expect("it flies");
     let met = wall_meetings(&mut harness, iron);
@@ -443,11 +457,8 @@ fn a_shot_turns_off_the_mines_iron_and_passes_the_bridges_wood_to_end_at_stone()
     );
     // Down through the rope bridge's west deck over the pit to the stone
     // shelf under it.
-    let id = shot(
-        &mut harness,
-        Vec2::new(56.0 * TILE, 34.0 * TILE),
-        Vec2::Y * SPEED,
-    );
+    let deck = place(&harness, BRIDGE_DECK);
+    let id = shot(&mut harness, deck, Vec2::Y * SPEED);
     let down = bullet(&harness, id).expect("it flies");
     let met = wall_meetings(&mut harness, down);
     assert_eq!(
@@ -518,4 +529,142 @@ fn r_tops_up_a_part_empty_magazine_and_an_empty_trigger_clicks() {
         );
     }
     assert_eq!(rounds(&harness).0, 0);
+}
+
+#[test]
+fn a_tracer_turns_with_its_shot() {
+    use tungsten::core::Transform;
+    // Each frame while `id` flies, its tracer lies along its flight, the
+    // frame of a turn included: how many times it turned back.
+    let follow = |harness: &mut UiHarness, id: SaveId| -> u32 {
+        let (mut turns, mut last) = (0, None::<Vec2>);
+        for _ in 0..60 {
+            harness.step(1);
+            let Some(entity) = bullet(harness, id) else {
+                break;
+            };
+            let world = harness.world();
+            let flight = world
+                .get::<LinearMotion>(entity)
+                .unwrap()
+                .velocity()
+                .normalize();
+            let lies = Vec2::from_angle(world.get::<Transform>(entity).unwrap().rotation);
+            assert!((lies - flight).length() < 1e-5, "{lies} along {flight}");
+            if last.is_some_and(|before| before.dot(flight) < 0.0) {
+                turns += 1;
+            }
+            last = Some(flight);
+        }
+        turns
+    };
+    // Off an iron block, 01's own turn.
+    let (mut harness, _) = sky();
+    toys::place_iron(harness.world_mut(), Vec2::new(1000.0, iron_y()));
+    harness.step(10);
+    let id = shot(&mut harness, Vec2::new(700.0, iron_y()), Vec2::X * SPEED);
+    assert!(follow(&mut harness, id) >= 1, "it turned off the block");
+    // Off the mine's iron riser, the kit's.
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    let face = place(&harness, IRON_FACE);
+    let id = shot(&mut harness, face - Vec2::new(300.0, 0.0), Vec2::X * SPEED);
+    assert!(
+        follow(&mut harness, id) >= 1,
+        "it turned off the mine's iron"
+    );
+}
+
+/// The walls' answers a frame made: each burst not in `seen` among the
+/// three answers' configs, by name in order, and each of their two sounds.
+fn answers(
+    harness: &UiHarness,
+    seen: &mut std::collections::HashSet<Entity>,
+) -> (Vec<String>, Vec<Sound>) {
+    use example_01_platformer::shared::Burst;
+    use tungsten::core::{ParticleConfigRegistry, ParticleEmitter};
+    let world = harness.world();
+    let configs = world.resource::<ParticleConfigRegistry>();
+    let mut bursts: Vec<String> = world
+        .query::<(Entity, &Burst, &ParticleEmitter)>()
+        .filter(|(entity, ..)| seen.insert(*entity))
+        .filter_map(|(_, _, emitter)| configs.name_for_id(emitter.config))
+        .filter(|name| ["ex10_ricochet", "ex10_poof", "ex10_landing_dust"].contains(name))
+        .map(str::to_owned)
+        .collect();
+    bursts.sort();
+    let sounds = harness
+        .harness()
+        .events::<Sounded>()
+        .map(|sounded| sounded.sound)
+        .filter(|sound| matches!(sound, Sound::Ricocheted | Sound::Splintered))
+        .collect();
+    (bursts, sounds)
+}
+
+#[test]
+fn a_shots_wall_answers_burst_and_sound_as_before() {
+    // On the map: the mine's iron riser turns a shot, the rope bridge's
+    // deck lets one through and the stone shelf under it ends it.
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    let mut seen = std::collections::HashSet::new();
+    let face = place(&harness, IRON_FACE);
+    let id = shot(&mut harness, face - Vec2::new(300.0, 0.0), Vec2::X * SPEED);
+    let _ = answers(&harness, &mut seen);
+    let riser = bullet(&harness, id).expect("it flies");
+    let mut turned = None;
+    for _ in 0..60 {
+        harness.step(1);
+        let bounced = harness
+            .harness()
+            .events::<ProjectileBounced>()
+            .any(|event| event.entity == riser);
+        let frame = answers(&harness, &mut seen);
+        if bounced {
+            turned = Some(frame);
+            break;
+        }
+    }
+    assert_eq!(
+        turned,
+        Some((vec!["ex10_ricochet".to_owned()], vec![Sound::Ricocheted])),
+        "sparks and the ricochet's sound off the iron"
+    );
+    let deck = place(&harness, BRIDGE_DECK);
+    let id = shot(&mut harness, deck, Vec2::Y * SPEED);
+    let _ = answers(&harness, &mut seen);
+    let down = bullet(&harness, id).expect("it flies");
+    let (mut passed, mut ended) = (None, None);
+    for _ in 0..60 {
+        harness.step(1);
+        let events = harness.harness();
+        let pass = events
+            .events::<ProjectilePassed>()
+            .any(|event| event.entity == down);
+        let end = events
+            .events::<ProjectileExpired>()
+            .any(|event| event.entity == down);
+        let frame = answers(&harness, &mut seen);
+        if pass {
+            passed = Some(frame.clone());
+        }
+        if end {
+            ended = Some(frame);
+            break;
+        }
+    }
+    assert_eq!(
+        passed,
+        Some((vec!["ex10_poof".to_owned()], vec![Sound::Splintered])),
+        "splinters and their sound through the deck"
+    );
+    assert_eq!(
+        ended,
+        Some((
+            vec!["ex10_landing_dust".to_owned(), "ex10_ricochet".to_owned()],
+            vec![]
+        )),
+        "dust at the stone, no sound"
+    );
 }

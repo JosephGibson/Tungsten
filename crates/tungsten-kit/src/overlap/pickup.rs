@@ -1,12 +1,14 @@
 //! Pickups: an entity collected once by the first entity whose hurtbox it
 //! meets and whose tags pass its filter, drawn toward the nearest collector
-//! by a magnet.
+//! by a magnet, or falling onto the ground.
 
 use std::collections::HashSet;
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
-use tungsten_core::physics::{Position, PrevPosition};
+use tungsten_core::physics::{
+    BodyKind, Position, PrevPosition, RigidBody, SpatialFilter, cast_shape_where,
+};
 use tungsten_core::{
     Entity, EventQueue, Inspectable, Plugin, Schedule, SpawnContext, World, system,
 };
@@ -16,6 +18,7 @@ use crate::foundation::describe::{
     round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
+use crate::foundation::layers::{LayerRef, check_layers, layer_bits, layer_list};
 use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::saved::order_of;
@@ -23,9 +26,9 @@ use crate::foundation::stats::Stats;
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags};
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::ended::{Despawning, end, ensure_kit_despawn};
-use crate::motion::drive::{Body, Write, body_of, point_of, step_position};
+use crate::motion::drive::{Body, Write, body_of, point_of, step_position, write_velocity};
 use crate::motion::oscillator::OSCILLATOR;
-use crate::motion::slide::step_dt;
+use crate::motion::slide::{SKIN, step_dt};
 use crate::motion::speed_limit::SPEED_LIMIT;
 use crate::overlap::grid::{HitGrid, first_contact, sweep_of, takes_part};
 use crate::overlap::hit::{
@@ -56,12 +59,26 @@ const PICKUP: &str = "pickup";
 /// speed and never past the collector; ties go to the lower entity index,
 /// and a collector that is dead or being despawned draws nothing. The
 /// magnet adds to a bodiless or static pickup's `Position` after the
-/// oscillator, so a bobbing gem drifts as it bobs; a moving body or a child
-/// is skipped, with one warning.
+/// oscillator, so a bobbing gem drifts as it bobs. A kinematic pickup it
+/// pulls is the magnet's alone that step: its `Velocity` is set to the
+/// pull, held to the distance over the step, replacing another driver's,
+/// so it never passes the collector. A dynamic pickup's `Velocity` is set
+/// so at each step it is pulled, and the physics carries it between;
+/// gravity acts within the step, so it passes the collector along the pull
+/// by at most `g · gravity_scale · dt²`. A child is skipped, with one
+/// warning.
+///
+/// With a [fall](Self::with_fall), a bodiless pickup no magnet pulls falls
+/// at that speed onto the first tile or static body under its shape in its
+/// [fall layers](Self::with_fall_layers), a cast that passes every other
+/// body, stopping the skin the controllers keep short of it, so its next
+/// cast starts clear: a coin dropped in the air lands on the floor.
 ///
 /// Scene name `pickup`:
-/// `{ "shape": { "circle": 6 }, "filter": { "all": ["team.player"] }, "magnet": 240 }`,
-/// `offset` `[0, 0]`, `filter` everything and `magnet` 0, none, by default;
+/// `{ "shape": { "circle": 6 }, "filter": { "all": ["team.player"] }, "magnet": 240, "fall": 60, "fall_layers": [0, "ground"] }`,
+/// `offset` `[0, 0]`, `filter` everything, `magnet` and `fall` 0, none, and
+/// `fall_layers` every layer by default, its entries layer numbers or the
+/// manifest's `physics_layers` names, checked at load;
 /// it spawns a `Position` and a `PrevPosition` at the spawn point, so a
 /// prefab without a `rigid_body` moves bodiless. It is data: a game's save
 /// can hold it.
@@ -86,6 +103,11 @@ pub struct Pickup {
     offset: Vec2,
     filter: TagFilter,
     magnet: f32,
+    /// World pixels per second it falls at while no magnet pulls it; 0
+    /// falls not at all.
+    fall: f32,
+    /// The physics layers it lands on, one bit per layer.
+    fall_layers: u32,
     collected: bool,
 }
 
@@ -100,25 +122,45 @@ struct PickupFields {
     filter: TagFilter,
     #[serde(default)]
     magnet: f32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    fall: f32,
+    #[serde(default = "every_layer", skip_serializing_if = "is_every_layer")]
+    fall_layers: u32,
     #[serde(default)]
     collected: bool,
+}
+
+// The references are serde's `skip_serializing_if` signature.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(value: &f32) -> bool {
+    *value == 0.0
+}
+
+fn every_layer() -> u32 {
+    RigidBody::ALL_LAYERS
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_every_layer(layers: &u32) -> bool {
+    *layers == RigidBody::ALL_LAYERS
 }
 
 impl TryFrom<PickupFields> for Pickup {
     type Error = String;
 
     fn try_from(fields: PickupFields) -> Result<Self, Self::Error> {
-        if !(fields.magnet.is_finite() && fields.magnet >= 0.0) {
-            return Err(format!(
-                "magnet: must be finite and >= 0 (got {})",
-                fields.magnet
-            ));
+        for (field, value) in [("magnet", fields.magnet), ("fall", fields.fall)] {
+            if !(value.is_finite() && value >= 0.0) {
+                return Err(format!("{field}: must be finite and >= 0 (got {value})"));
+            }
         }
         Ok(Self {
             shape: fields.shape,
             offset: fields.offset,
             filter: fields.filter,
             magnet: fields.magnet,
+            fall: fields.fall,
+            fall_layers: fields.fall_layers,
             collected: fields.collected,
         })
     }
@@ -131,6 +173,8 @@ impl From<Pickup> for PickupFields {
             offset: pickup.offset,
             filter: pickup.filter,
             magnet: pickup.magnet,
+            fall: pickup.fall,
+            fall_layers: pickup.fall_layers,
             collected: pickup.collected,
         }
     }
@@ -146,6 +190,8 @@ impl Pickup {
             offset: Vec2::ZERO,
             filter: TagFilter::new(),
             magnet: 0.0,
+            fall: 0.0,
+            fall_layers: RigidBody::ALL_LAYERS,
             collected: false,
         }
     }
@@ -189,6 +235,33 @@ impl Pickup {
         self
     }
 
+    /// The pickup, falling at `speed` world pixels per second, while no
+    /// magnet pulls it, onto the first tile or static body under it in its
+    /// [fall layers](Self::with_fall_layers): bodiless, it lands on the
+    /// ground. 0 falls not at all.
+    ///
+    /// # Panics
+    ///
+    /// When `speed` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_fall(mut self, speed: f32) -> Self {
+        assert!(
+            speed.is_finite() && speed >= 0.0,
+            "Pickup::with_fall: speed must be finite and >= 0 (got {speed})"
+        );
+        self.fall = speed;
+        self
+    }
+
+    /// The pickup, landing on the tiles and static bodies in the physics
+    /// layers `layers` holds, one bit per layer; every layer by default.
+    #[must_use]
+    pub fn with_fall_layers(mut self, layers: u32) -> Self {
+        self.fall_layers = layers;
+        self
+    }
+
     /// Its shape.
     #[must_use]
     pub fn shape(&self) -> HitShape {
@@ -211,6 +284,18 @@ impl Pickup {
     #[must_use]
     pub fn magnet(&self) -> f32 {
         self.magnet
+    }
+
+    /// The speed it falls at, in world pixels per second; 0 for none.
+    #[must_use]
+    pub fn fall(&self) -> f32 {
+        self.fall
+    }
+
+    /// The physics layers it lands on, one bit per layer.
+    #[must_use]
+    pub fn fall_layers(&self) -> u32 {
+        self.fall_layers
     }
 
     /// Whether a collector has taken it: it is collected no more, and the
@@ -258,15 +343,10 @@ struct PickupDef {
     filter: TagFilterDef,
     #[serde(default, deserialize_with = "non_negative")]
     magnet: f32,
-}
-
-impl From<PickupDef> for Pickup {
-    fn from(def: PickupDef) -> Self {
-        Pickup::new(def.shape)
-            .with_offset(def.offset)
-            .with_filter(def.filter.into())
-            .with_magnet(def.magnet)
-    }
+    #[serde(default, deserialize_with = "non_negative")]
+    fall: f32,
+    #[serde(default)]
+    fall_layers: Option<Vec<LayerRef>>,
 }
 
 /// Registers `EventQueue<PickedUp>`, the `pickup` scene component,
@@ -324,6 +404,25 @@ impl Plugin for PickupPlugin {
                 )
                 .default("0.0"),
             )
+            .field(
+                FieldDescription::new(
+                    "fall",
+                    FieldType::F32 {
+                        min: Bound::Inclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "world pixels per second a bodiless pickup falls at, while no magnet pulls it, onto the first tile or static body under it; 0 none",
+                )
+                .default("0.0"),
+            )
+            .field(
+                FieldDescription::new(
+                    "fall_layers",
+                    layer_list(),
+                    "the physics layers whose tiles and static bodies it lands on; every layer when left out",
+                )
+                .default("null"),
+            )
             .event("PickedUp")
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
@@ -334,10 +433,25 @@ impl Plugin for PickupPlugin {
         world.register_event::<PickedUp>();
         world.register_component_with_assets(
             PICKUP,
-            |def: &PickupDef, world: &World| check_names(world, None, &def.filter),
+            |def: &PickupDef, world: &World| {
+                check_names(world, None, &def.filter)?;
+                check_layers(
+                    "fall_layers",
+                    def.fall_layers.as_deref().unwrap_or_default(),
+                    world,
+                )
+            },
             |def: PickupDef, at: &SpawnContext<'_>| {
                 let spawn = at.transform().position;
-                (Pickup::from(def), Position(spawn), PrevPosition(spawn))
+                let mut pickup = Pickup::new(def.shape)
+                    .with_offset(def.offset)
+                    .with_filter(def.filter.into())
+                    .with_magnet(def.magnet)
+                    .with_fall(def.fall);
+                if let Some(layers) = &def.fall_layers {
+                    pickup = pickup.with_fall_layers(layer_bits(layers, at.world()));
+                }
+                (pickup, Position(spawn), PrevPosition(spawn))
             },
         );
         let mut magnet = Magnet::default();
@@ -447,6 +561,9 @@ struct Pull {
 struct Magnet {
     /// (pickup, its filter's index in `filters`).
     magnets: Vec<(Entity, usize)>,
+    /// The pickups that fall, and those the step's magnets pulled, sorted.
+    fallers: Vec<Entity>,
+    pulled: Vec<Entity>,
     collectors: Vec<Pull>,
     filters: Vec<TagFilter>,
     /// One filter's collectors, as (cell key, collector index), sorted.
@@ -472,26 +589,38 @@ fn bin_of(point: Vec2, width: f32) -> (i32, i32) {
 
 impl Magnet {
     /// Moves each uncollected pickup with a magnet toward its nearest
-    /// collector in reach, filter by filter.
+    /// collector in reach, filter by filter, then lets each one that falls
+    /// and that no magnet pulled fall.
     fn run(&mut self, world: &mut World) {
         let dt = step_dt(world);
         if dt <= 0.0 {
             return;
         }
         self.gather(world);
-        if self.magnets.is_empty() || self.collectors.is_empty() {
-            return;
-        }
-        for filter in 0..self.filters.len() {
-            let width = self.bin(world, filter);
-            if width <= 0.0 {
-                continue;
-            }
-            for i in 0..self.magnets.len() {
-                let (entity, of) = self.magnets[i];
-                if of == filter {
-                    self.pull(world, entity, width, dt);
+        self.pulled.clear();
+        if !(self.magnets.is_empty() || self.collectors.is_empty()) {
+            for filter in 0..self.filters.len() {
+                let width = self.bin(world, filter);
+                if width <= 0.0 {
+                    continue;
                 }
+                for i in 0..self.magnets.len() {
+                    let (entity, of) = self.magnets[i];
+                    if of == filter && self.pull(world, entity, width, dt) {
+                        self.pulled.push(entity);
+                    }
+                }
+            }
+        }
+        self.pulled.sort_unstable_by_key(|entity| entity.id());
+        for i in 0..self.fallers.len() {
+            let entity = self.fallers[i];
+            if self
+                .pulled
+                .binary_search_by_key(&entity.id(), |pulled| pulled.id())
+                .is_err()
+            {
+                fall(world, entity, dt);
             }
         }
     }
@@ -501,14 +630,23 @@ impl Magnet {
     fn gather(&mut self, world: &World) {
         self.magnets.clear();
         self.filters.clear();
-        let mut magnets: Vec<(Entity, &Pickup)> = world
-            .query::<(Entity, &Pickup)>()
-            .filter(|(entity, pickup)| {
-                !pickup.collected && pickup.magnet > 0.0 && !world.has::<Despawning>(*entity)
-            })
-            .collect();
+        self.fallers.clear();
+        // One pass finds the magnets and the pickups that fall.
+        let mut magnets: Vec<(Entity, &Pickup)> = Vec::new();
+        for (entity, pickup) in world.query::<(Entity, &Pickup)>() {
+            if pickup.collected || world.has::<Despawning>(entity) {
+                continue;
+            }
+            if pickup.magnet > 0.0 {
+                magnets.push((entity, pickup));
+            }
+            if pickup.fall > 0.0 {
+                self.fallers.push(entity);
+            }
+        }
         let order = order_of(world);
         magnets.sort_by_key(|&(entity, _)| order.key(entity));
+        self.fallers.sort_by_key(|&entity| order.key(entity));
         for (entity, pickup) in magnets {
             let known = self
                 .filters
@@ -568,12 +706,13 @@ impl Magnet {
     }
 
     /// Moves `entity` toward the nearest binned collector whose radius
-    /// reaches its centre, by its speed and never past it.
-    fn pull(&mut self, world: &mut World, entity: Entity, width: f32, dt: f32) {
+    /// reaches its centre, by its speed and never past it; whether it
+    /// pulled it.
+    fn pull(&mut self, world: &mut World, entity: Entity, width: f32, dt: f32) -> bool {
         let Some((point, offset, speed)) = world.get::<Pickup>(entity).and_then(|pickup| {
             point_of(world, entity).map(|point| (point, pickup.offset, pickup.magnet))
         }) else {
-            return;
+            return false;
         };
         let centre = point + offset;
         let (bx, by) = bin_of(centre, width);
@@ -597,23 +736,65 @@ impl Magnet {
             }
         }
         let Some((distance, index)) = nearest else {
-            return;
+            return false;
         };
         if distance <= 0.0 {
-            return;
+            return true;
         }
         let toward = (self.collectors[index as usize].at - centre) / distance;
         let delta = toward * (speed * dt).min(distance);
         match body_of(world, entity) {
             Body::Bodiless | Body::Static => step_position(world, entity, delta, dt, Write::Add),
+            // A moving body's pull is its velocity for the step, replacing
+            // its driver's: the physics moves it by it.
+            Body::Kinematic | Body::Dynamic => {
+                write_velocity(world, entity, delta / dt, Write::Set);
+            }
             skipped => {
                 if self.warned.insert(entity) {
                     log::warn!(
-                        "Pickup on {entity:?}: its magnet moves a bodiless or static root only, not {skipped:?}; skipped"
+                        "Pickup on {entity:?}: its magnet moves a root with a position only, not {skipped:?}; skipped"
                     );
                 }
+                return false;
             }
         }
+        true
+    }
+}
+
+/// Lets `entity`, a bodiless pickup, fall by its fall speed onto the first
+/// tile or static body under its shape in its fall layers, the skin short of
+/// it.
+fn fall(world: &mut World, entity: Entity, dt: f32) {
+    if body_of(world, entity) != Body::Bodiless {
+        return;
+    }
+    let (Some(pickup), Some(point)) = (world.get::<Pickup>(entity), point_of(world, entity)) else {
+        return;
+    };
+    let reach = pickup.fall * dt;
+    let filter = SpatialFilter::new()
+        .with_mask(pickup.fall_layers)
+        .excluding(entity);
+    let hit = cast_shape_where(
+        world,
+        pickup.shape.shape(),
+        point + pickup.offset,
+        Vec2::Y,
+        reach,
+        &filter,
+        |hit| {
+            hit.entity.is_none_or(|body| {
+                world
+                    .get::<RigidBody>(body)
+                    .is_none_or(|rigid| rigid.kind == BodyKind::Static)
+            })
+        },
+    );
+    let drop = hit.map_or(reach, |hit| (hit.distance - SKIN).max(0.0));
+    if drop > 0.0 {
+        step_position(world, entity, Vec2::new(0.0, drop), dt, Write::Add);
     }
 }
 
@@ -625,6 +806,7 @@ impl Inspectable for Pickup {
                 format!("{} at {}", self.shape.summary(), point(self.offset)),
             ),
             ("magnet", format!("{} px/s", self.magnet)),
+            ("fall", format!("{} px/s", self.fall)),
             ("collected", self.collected.to_string()),
         ]
     }

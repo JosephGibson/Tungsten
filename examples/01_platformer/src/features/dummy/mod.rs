@@ -4,30 +4,31 @@
 //! `conductive` by its Tiled properties). Its prefab holds its kit items:
 //! a dynamic body, health with no window, so every pulse lands, its death
 //! policy, a hurtbox, knockback, the hit flash it shows unlit, resistances,
-//! an ailment threshold and its regeneration, which burning holds. 01 adds
+//! its status threshold and its regeneration, which burning holds. 01 adds
 //! its friction and the black hole's pull (`toys`), its looks (`combat`)
 //! and its end: one burst by its state. A run keeps its placed dummies'
 //! save IDs, so a save names those no longer alive as gone. The summon
-//! slot places more, [`SUMMON_CAP`] at most, the oldest going.
+//! slot places more, eight living at most by the prefab's kit `cap`, the
+//! oldest going.
 
 pub mod components;
 pub mod systems;
 
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Shape, Stage, World, system};
-use tungsten::kit::{Health, Phase, ensure_phases};
+use tungsten::kit::{Admission, Health, Phase, admit_spawn, ensure_phases};
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Plugin, SceneEntity};
 
+use crate::features::level;
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
-use crate::shared::{self, BODIES, Body, SaveId, SaveIds, despawn_tree, spawn_key_burst};
+use crate::shared::{self, BODIES, Body, Saved, despawn_tree, spawn_key_burst};
 use components::{Dummy, PlacedDummies};
 
-/// The dummy's prefab, by its manifest ID.
+/// The dummy's prefab, by its manifest ID, whose `cap` holds eight
+/// summoned living at once (Q14, Q45).
 pub const DUMMY_PREFAB: &str = "dummy";
-/// The most summoned dummies live at once (Q14, Q45).
-pub const SUMMON_CAP: usize = 8;
 
 /// The dummy as a plugin: the `dummy` component its prefab names, and
 /// `dummy_deaths` in the react phase after combat's reactions.
@@ -48,22 +49,26 @@ impl Plugin for DummyPlugin {
     }
 }
 
-/// Spawns a dummy with its sprite's top-left at `at`, owned by gameplay,
-/// with the run's next save ID and its body from its data
-/// ([`shared::fit_body`]), at once: a summon's or a load's.
+/// Spawns a dummy with its sprite's top-left at `at`, owned by gameplay, as
+/// one of the run's records (`PreparedPrefab::saved`, the map's area), its
+/// body from its data ([`shared::fit_body`]), at once.
 pub fn spawn(world: &mut World, at: Vec2) -> Entity {
-    let id = world.resource_mut::<SaveIds>().take();
     let dummy = world
         .prepare_prefab(DUMMY_PREFAB, at.to_array())
         .expect("the manifest's prefabs load with it")
         .with((
-            id,
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
         ))
+        .saved(world, Some(level::MAP))
         .spawn(world);
     shared::fit_body(world, dummy, DUMMY_PREFAB);
     dummy
+}
+
+/// A restored dummy's body, which its spawn gives beyond its prefab.
+pub fn restored(world: &mut World, dummy: Entity) {
+    shared::fit_body(world, dummy, DUMMY_PREFAB);
 }
 
 /// The dummy's body, as its data holds it now: every dummy prefab's.
@@ -91,29 +96,25 @@ pub fn fits(world: &World, at: Vec2) -> bool {
 }
 
 /// Summons a dummy of `prefab` with its body's centre at `at`, with a
-/// poof; past [`SUMMON_CAP`] summoned live, the oldest goes, with its own.
+/// poof, admitted under its prefab's kit `cap`, the map's own aside: past
+/// it the oldest living summoned goes at once, with its own poof.
 pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
-    let id = world.resource_mut::<SaveIds>().take();
     let corner = at - body(world).centre;
-    let dummy = world
+    let prepared = world
         .prepare_prefab(prefab, corner.to_array())
         .ok()?
         .with((
-            id,
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
         ))
-        .spawn(world);
+        .saved(world, Some(level::MAP));
+    let Admission {
+        prepared, culled, ..
+    } = admit_spawn(world, prepared, None)?;
+    let dummy = prepared.spawn(world);
     shared::fit_body(world, dummy, DUMMY_PREFAB);
     spawn_key_burst(world, "ex10_poof", at);
-    let summoned: Vec<(u64, Entity)> = live(world)
-        .into_iter()
-        .filter(|&(id, _)| !placed(world, id))
-        .collect();
-    for &(_, oldest) in summoned
-        .iter()
-        .take(summoned.len().saturating_sub(SUMMON_CAP))
-    {
+    for oldest in culled {
         if let Some(centre) = world
             .get::<tungsten::core::Position>(oldest)
             .map(|at| at.0 + body(world).centre)
@@ -130,8 +131,8 @@ pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
 /// velocity before a step, which an impact reads.
 pub fn start(world: &mut World) {
     let placed: Vec<(Entity, u64)> = world
-        .query::<(Entity, &Dummy, &SaveId)>()
-        .map(|(entity, _, id)| (entity, id.0))
+        .query::<(Entity, &Dummy, &Saved)>()
+        .map(|(entity, _, id)| (entity, id.id().0))
         .collect();
     for &(entity, _) in &placed {
         shared::fit_body(world, entity, DUMMY_PREFAB);
@@ -147,9 +148,9 @@ pub fn start(world: &mut World) {
 #[must_use]
 pub fn live(world: &World) -> Vec<(u64, Entity)> {
     let mut live: Vec<(u64, Entity)> = world
-        .query::<(Entity, &Dummy, &SaveId, &Health)>()
+        .query::<(Entity, &Dummy, &Saved, &Health)>()
         .filter(|(.., health)| !health.is_dead())
-        .map(|(entity, _, id, _)| (id.0, entity))
+        .map(|(entity, _, id, _)| (id.id().0, entity))
         .collect();
     live.sort_unstable_by_key(|(id, _)| *id);
     live

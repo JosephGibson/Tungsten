@@ -194,3 +194,267 @@ fn the_magnet_takes_the_nearest_collector_in_reach_per_filter_as_a_full_scan_wou
         "some pulled and some left: {pulled}"
     );
 }
+
+/// A world with the physics, the oscillator and the pickups, its gravity
+/// `gravity` px/s² down, and a still collector at the origin whose hurtbox,
+/// a point, takes what reaches its centre, drawing within 300 px.
+fn pickup_rig(gravity: f32) -> (World, Schedule, Entity) {
+    use crate::{Hurtbox, Stats};
+    use tungsten_core::physics::PhysicsPlugin;
+
+    use tungsten_core::{PhysicsConfig, TilemapRegistry, Time, Transform};
+
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(TilemapRegistry::new());
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, gravity),
+        ..PhysicsConfig::default()
+    });
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    OscillatorPlugin.build(&mut schedule, &mut world);
+    PickupPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    let collector = world.spawn_with((
+        Transform::from_position(Vec2::ZERO),
+        Position(Vec2::ZERO),
+        Hurtbox::new(HitShape::circle(0.25)),
+        Stats::new().with(Stats::PICKUP_RADIUS, 300.0),
+    ));
+    (world, schedule, collector)
+}
+
+fn pickup_step(world: &mut World, schedule: &mut Schedule) {
+    world
+        .resource_mut::<tungsten_core::Time>()
+        .advance_frame(1.0 / 60.0);
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+}
+
+#[test]
+fn a_magnet_draws_a_pickup_with_a_body() {
+    use tungsten_core::Bundle;
+    use tungsten_core::physics::{Collider, RigidBodyBundle};
+
+    // Pickups 150 px above the collector drawn down at 300 px/s: a
+    // kinematic one, and one bobbing sideways on an oscillator too, never
+    // pass the collector along the pull; a dynamic one under gravity 2,000,
+    // pulling the same way, by at most g · dt² plus 1e-3 px. Each is
+    // collected.
+    let dt = 1.0 / 60.0;
+    for kind in ["kinematic", "bobbing", "dynamic"] {
+        let dynamic = kind == "dynamic";
+        let (mut world, mut schedule, _) = pickup_rig(if dynamic { 2_000.0 } else { 0.0 });
+        let at = Vec2::new(0.0, -150.0);
+        let pickup = Pickup::new(HitShape::circle(0.25)).with_magnet(300.0);
+        let gem = if dynamic {
+            world.spawn_with(
+                RigidBodyBundle::dynamic(Position(at), Collider::circle(0.25)).with((pickup,)),
+            )
+        } else {
+            let gem = world.spawn_with(
+                RigidBodyBundle::kinematic(Position(at), Collider::circle(0.25)).with((pickup,)),
+            );
+            if kind == "bobbing" {
+                world.insert(gem, crate::Oscillator::position(Vec2::new(12.0, 0.0), 0.5));
+                world.insert(gem, PrevPosition(at));
+            }
+            gem
+        };
+        let bound = if dynamic {
+            2_000.0 * dt * dt + 1e-3
+        } else {
+            1e-4
+        };
+        let mut farthest = f32::NEG_INFINITY;
+        let mut collected = false;
+        for _ in 0..120 {
+            pickup_step(&mut world, &mut schedule);
+            let Some(pickup) = world.get::<Pickup>(gem) else {
+                collected = true;
+                break;
+            };
+            if pickup.is_collected() {
+                collected = true;
+                break;
+            }
+            farthest = farthest.max(world.get::<Position>(gem).unwrap().0.y);
+        }
+        assert!(
+            farthest <= bound,
+            "{kind}: {farthest} px past the collector"
+        );
+        assert!(collected, "{kind}: collected");
+    }
+}
+
+#[test]
+fn a_pickup_falls_onto_the_ground() {
+    use tungsten_core::physics::{Collider, PhysicsLayers, RigidBody, RigidBodyBundle};
+    use tungsten_core::{LayerKind, TilemapData, TilemapInstance, TilemapRegistry};
+
+    // A tile floor whose top is at y 0 under x 0 to 160, a static slab whose
+    // top is at y −40 over x 200 to 240, and a dynamic and a kinematic body
+    // in the first pickup's way: pickups falling at 60 px/s rest the skin
+    // above the floor and the slab, passing the bodies.
+    let (mut world, mut schedule, _) = pickup_rig(0.0);
+    world.remove_resource::<PhysicsLayers>();
+    let mut map = TilemapData::new(16, 16, 10, 1);
+    let solid = map.add_tile("solid");
+    let layer = map.add_layer("solid", LayerKind::Collision);
+    map.fill(layer, solid);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("floor".into(), map);
+    let instance = world.spawn();
+    world.insert(instance, TilemapInstance::new("floor", Vec2::new(0.0, 0.0)));
+    world.spawn_with(RigidBodyBundle::r#static(
+        Position::new(220.0, -30.0),
+        Collider::aabb(Vec2::new(20.0, 10.0)),
+    ));
+    world.spawn_with(RigidBodyBundle::dynamic(
+        Position::new(80.0, -60.0),
+        Collider::aabb(Vec2::new(10.0, 5.0)),
+    ));
+    world.spawn_with(RigidBodyBundle::kinematic(
+        Position::new(80.0, -30.0),
+        Collider::aabb(Vec2::new(10.0, 5.0)),
+    ));
+    let falling = |world: &mut World, at: Vec2| {
+        let coin = Pickup::new(HitShape::circle(4.0))
+            .with_filter(TagFilter::new().all(["team.none"]))
+            .with_fall(60.0);
+        world.spawn_with((Position(at), PrevPosition(at), coin))
+    };
+    let over_floor = falling(&mut world, Vec2::new(80.0, -100.0));
+    let over_slab = falling(&mut world, Vec2::new(220.0, -100.0));
+    for _ in 0..180 {
+        pickup_step(&mut world, &mut schedule);
+    }
+    let y = |world: &World, entity| world.get::<Position>(entity).unwrap().0.y;
+    assert!(
+        (y(&world, over_floor) - (-4.0 - 0.01)).abs() < 1e-3,
+        "on the floor: {}",
+        y(&world, over_floor)
+    );
+    assert!(
+        (y(&world, over_slab) - (-44.0 - 0.01)).abs() < 1e-3,
+        "on the slab: {}",
+        y(&world, over_slab)
+    );
+    pickup_step(&mut world, &mut schedule);
+    assert!(
+        (y(&world, over_floor) - (-4.0 - 0.01)).abs() < 1e-3,
+        "at rest"
+    );
+
+    // Within a magnet's reach it is pulled instead of falling.
+    let (mut world, mut schedule, _) = pickup_rig(0.0);
+    let at = Vec2::new(-100.0, 0.0);
+    let pulled = world.spawn_with((
+        Position(at),
+        PrevPosition(at),
+        Pickup::new(HitShape::circle(0.25))
+            .with_magnet(60.0)
+            .with_fall(60.0),
+    ));
+    pickup_step(&mut world, &mut schedule);
+    let moved = world.get::<Position>(pulled).unwrap().0;
+    assert!(
+        moved.abs_diff_eq(Vec2::new(-99.0, 0.0), 1e-4),
+        "pulled, not falling: {moved}"
+    );
+
+    // Fall layers by number and by name: a coin landing on layer 1 passes a
+    // static slab in layer 0 and lands on one in layer 1.
+    let (mut world, mut schedule, _) = pickup_rig(0.0);
+    world.insert_resource(PhysicsLayers::new([("ground".to_owned(), 1)]));
+    world.spawn_with(
+        RigidBodyBundle::r#static(
+            Position::new(100.0, -30.0),
+            Collider::aabb(Vec2::new(40.0, 10.0)),
+        )
+        .with_body(RigidBody::r#static().with_layers(1 << 0)),
+    );
+    world.spawn_with(
+        RigidBodyBundle::r#static(
+            Position::new(100.0, 30.0),
+            Collider::aabb(Vec2::new(40.0, 10.0)),
+        )
+        .with_body(RigidBody::r#static().with_layers(1 << 1)),
+    );
+    let components = world.resource::<ComponentRegistry>();
+    for layers in [json!([1]), json!(["ground"])] {
+        components
+            .check_in(
+                PICKUP,
+                &json!({ "shape": { "circle": 4 }, "fall": 60, "fall_layers": layers }),
+                &world,
+            )
+            .unwrap();
+    }
+    let refused = components
+        .check_in(
+            PICKUP,
+            &json!({ "shape": { "circle": 4 }, "fall_layers": [0, "sky"] }),
+            &world,
+        )
+        .unwrap_err();
+    assert!(
+        matches!(
+            &refused,
+            tungsten_core::ComponentError::MissingAsset { field, kind: "physics layer", id, .. }
+                if field == "fall_layers[1]" && id == "sky"
+        ),
+        "{refused}"
+    );
+    let coin: PrefabData = serde_json::from_value(json!({ "components": { "pickup": {
+        "shape": { "circle": 4 }, "fall": 60, "fall_layers": ["ground"]
+    } } }))
+    .unwrap();
+    let mut prefabs = PrefabRegistry::new();
+    prefabs.insert("coin".to_string(), coin);
+    world.insert_resource(prefabs);
+    let coin = world.spawn_prefab("coin", [100.0, -100.0]).unwrap();
+    assert_eq!(world.get::<Pickup>(coin).unwrap().fall_layers(), 1 << 1);
+    for _ in 0..180 {
+        pickup_step(&mut world, &mut schedule);
+    }
+    let landed = world.get::<Position>(coin).unwrap().0.y;
+    assert!(
+        (landed - (20.0 - 4.0 - 0.01)).abs() < 1e-3,
+        "on layer 1's slab: {landed}"
+    );
+}
+
+#[test]
+fn a_pickups_fall_round_trips_its_data_and_save() {
+    let coin = Pickup::new(HitShape::circle(4.0))
+        .with_fall(60.0)
+        .with_fall_layers(0b110);
+    assert_eq!((coin.fall(), coin.fall_layers()), (60.0, 0b110));
+    let saved = serde_json::to_value(&coin).unwrap();
+    assert_eq!(
+        (saved["fall"].clone(), saved["fall_layers"].clone()),
+        (json!(60.0), json!(6))
+    );
+    assert_eq!(
+        serde_json::from_value::<Pickup>(saved.clone()).unwrap(),
+        coin
+    );
+    let plain = serde_json::to_value(Pickup::new(HitShape::circle(4.0))).unwrap();
+    assert!(plain.get("fall").is_none() && plain.get("fall_layers").is_none());
+    let mut old = saved;
+    let object = old.as_object_mut().unwrap();
+    object.remove("fall");
+    object.remove("fall_layers");
+    let loaded: Pickup = serde_json::from_value(old).unwrap();
+    assert_eq!(
+        (loaded.fall(), loaded.fall_layers()),
+        (0.0, tungsten_core::physics::RigidBody::ALL_LAYERS)
+    );
+    assert!(
+        serde_json::from_value::<Pickup>(json!({ "shape": { "circle": 4 }, "fall": -1 })).is_err()
+    );
+}

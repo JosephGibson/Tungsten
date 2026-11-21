@@ -376,11 +376,32 @@ pub enum TweenDirection {
     Backward,
 }
 
+/// One channel of a [`Tween`] with its own easing, or `None` to take the
+/// tween's; the tween's one timing drives it either way.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EasedChannel {
+    pub channel: TweenChannel,
+    pub easing: Option<Easing>,
+}
+
+impl EasedChannel {
+    /// The easing this channel moves by: its own, else `tween`'s.
+    #[must_use]
+    pub fn easing_in(&self, tween: Easing) -> Easing {
+        self.easing.unwrap_or(tween)
+    }
+}
+
 /// `pending_remove` latches the tick so a completed tween cannot re-fire before
 /// the command flush drops it.
+///
+/// Its channels, each with its optional easing, are written by the builders
+/// alone ([`Self::with_channel`], [`Self::with_channel_eased`]) and read by
+/// [`Self::channels`], so a channel and its easing never part. A tween
+/// built [`Self::with_despawn_at_end`] ends its entity when it ends.
 #[derive(Debug, Clone)]
 pub struct Tween {
-    pub channels: Vec<TweenChannel>,
+    pub(crate) channels: Vec<EasedChannel>,
     pub easing: Easing,
     pub duration: f32,
     pub elapsed: f32,
@@ -389,6 +410,9 @@ pub struct Tween {
     pub completed_cycles: u32,
     pub on_complete_tag: Option<String>,
     pub pending_remove: bool,
+    /// A `Once` or `Times` tween that ends despawns its entity at the flush
+    /// instead of removing itself ([`Self::with_despawn_at_end`]).
+    pub despawn_at_end: bool,
 }
 
 impl Tween {
@@ -414,12 +438,46 @@ impl Tween {
             completed_cycles: 0,
             on_complete_tag: None,
             pending_remove: false,
+            despawn_at_end: false,
         }
     }
 
+    /// Adds `channel`, eased by the tween's easing.
     #[must_use]
     pub fn with_channel(mut self, channel: TweenChannel) -> Self {
-        self.channels.push(channel);
+        self.channels.push(EasedChannel {
+            channel,
+            easing: None,
+        });
+        self
+    }
+
+    /// Adds `channel` eased by `easing` of its own over the tween's one
+    /// timing, in either direction and under each repeat as the tween's: a
+    /// ring that grows `CubicOut` while it fades `Linear`.
+    #[must_use]
+    pub fn with_channel_eased(mut self, channel: TweenChannel, easing: Easing) -> Self {
+        self.channels.push(EasedChannel {
+            channel,
+            easing: Some(easing),
+        });
+        self
+    }
+
+    /// Its channels in the order added, each with its own easing or `None`.
+    #[must_use]
+    pub fn channels(&self) -> &[EasedChannel] {
+        &self.channels
+    }
+
+    /// Makes a `Once` or `Times` tween despawn its entity at its end, as an
+    /// animation's `despawn_at_end` does: its `TweenComplete` is sent and
+    /// the entity goes at the flush, unless a replacement tween inserted
+    /// earlier in that flush took its place. A look then ends on its own
+    /// clock, the game's.
+    #[must_use]
+    pub fn with_despawn_at_end(mut self) -> Self {
+        self.despawn_at_end = true;
         self
     }
 

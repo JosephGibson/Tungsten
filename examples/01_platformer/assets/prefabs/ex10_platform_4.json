@@ -1,7 +1,47 @@
 {
   "components": {
-    "elevator": {
-      "rise": 1024,
+    "cues": {
+      "arrived": [
+        {
+          "sound": {
+            "id": "ex10_lift_stop_sfx",
+            "min_interval": 0.3
+          }
+        }
+      ],
+      "departed": [
+        {
+          "sound": {
+            "id": "ex10_lift_start_sfx",
+            "min_interval": 0.3
+          }
+        }
+      ]
+    },
+    "elevator": {},
+    "path_follower": {
+      "easing": "sine_in_out",
+      "mode": "ping_pong",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          -1024
+        ]
+      ],
+      "rider": {
+        "back": 4.0,
+        "board": 0.3,
+        "filter": {
+          "any": [
+            "team.player"
+          ]
+        },
+        "two_way": true
+      },
       "speed": 320
     },
     "rigid_body": {
@@ -17,7 +57,10 @@
         ],
         "kind": "aabb"
       }
-    }
+    },
+    "tags": [
+      "level.saved"
+    ]
   },
   "sprite": {
     "asset_id": "ex10_lift_deck_elevator",

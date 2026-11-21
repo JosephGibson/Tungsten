@@ -27,18 +27,18 @@ use tungsten::RootCover;
 use tungsten::core::text::{TextAlign, TextWrap};
 use tungsten::core::ui::{
     Align, Anchor, Edges, Justify, LayoutStyle, Sizing, SpacingTokens, StyleOverrides, UiLayer,
-    UiTree, UiVertex, Visibility, WidgetId, widgets,
+    UiTrack, UiTree, UiVertex, Visibility, WidgetId, widgets,
 };
 use tungsten::core::{
-    ActionMap, AssetRegistry, Binding, CameraState, DataRegistry, Entity, ScaleFactor,
-    SpriteAssetId, Time, World,
+    ActionMap, AssetRegistry, Binding, CameraState, DataRegistry, Entity, EventCursor, EventQueue,
+    ScaleFactor, SpriteAssetId, World,
 };
-use tungsten::kit::{Abilities, Ability, Health, Shield, Stats};
+use tungsten::kit::{Abilities, Ability, AbilityReady, Health, Shield, Stats};
 
 use super::components::{Spell, Spellbook};
 use super::{SLOT_ACTIONS, SLOT_COUNT, SLOTS, mana, slot_of, summon_type};
 use crate::features::gun::components::Reload;
-use crate::features::gun::{self, MAGAZINE, RELOAD_SECS};
+use crate::features::gun::{self, RELOAD_SECS};
 use crate::features::level::systems::drawn_time;
 use crate::features::run::Run;
 use crate::features::tomes::{self, BOOK_CENTRE, TomeKind};
@@ -73,8 +73,9 @@ pub struct Slot {
     pub flash: Option<WidgetId>,
     /// Its action's key, on a plate in the tile's top-left corner.
     pub key: WidgetId,
-    /// One pip a charge, for a spell with charges.
-    pub pips: Option<[WidgetId; PIPS]>,
+    /// The row of its pips, one a charge of its ability's most, for an
+    /// ability with charges: the row's children, in order.
+    pub pips: Option<WidgetId>,
 }
 
 /// The gun, set apart from the spells: its tile with the reload's sweep,
@@ -84,12 +85,11 @@ pub struct Magazine {
     pub tile: WidgetId,
     pub icon: WidgetId,
     pub sweep: WidgetId,
-    /// The cartridges' row.
+    /// The cartridges' row: a cartridge a round, live or spent, its
+    /// children, as many as the gun's most rounds have reached.
     pub row: WidgetId,
     /// "left / most", or "reloading" while a reload runs.
     pub text: WidgetId,
-    /// A cartridge a round, live or spent.
-    pub rounds: [WidgetId; ROUNDS],
 }
 
 /// The pact's shield on the health bar: a layer in its well from the left,
@@ -124,7 +124,7 @@ pub struct Panel {
 
 /// The HUD's sprites: the gun's icon, the bars' and the shield's liquids,
 /// the cartridges, live and spent, and the tomes' tiles in
-/// [`TomeKind::ALL`]'s order.
+/// [`TomeKind::ALL`]'s order; and their sizes.
 #[derive(Debug, Clone, Copy)]
 pub struct Art {
     pub gun: SpriteAssetId,
@@ -134,10 +134,30 @@ pub struct Art {
     pub live: SpriteAssetId,
     pub spent: SpriteAssetId,
     pub tomes: [SpriteAssetId; 3],
+    pub sizes: ArtSizes,
 }
 
-/// The HUD's widgets and what it shows over time: a `World` resource while
-/// gameplay runs.
+/// The HUD's art's sizes, in its pixels, read off its sprites at
+/// [`start`] (`shared::sprite_size`), so sizing it and scrolling its
+/// liquids read no registry: each slot's icon, an empty slot's the gun's;
+/// the gun's icon; the tomes' icons in [`TomeKind::ALL`]'s order; the
+/// bars' and the shield's liquids, a strip's tile and its scroll's period;
+/// and the cartridges, live and spent.
+#[derive(Debug, Clone, Copy)]
+pub struct ArtSizes {
+    pub slots: [Vec2; SLOT_COUNT],
+    pub gun: Vec2,
+    pub tomes: [Vec2; 3],
+    pub health: Vec2,
+    pub mana: Vec2,
+    pub shield: Vec2,
+    pub live: Vec2,
+    pub spent: Vec2,
+}
+
+/// The HUD's widgets: a `World` resource while gameplay runs, written back
+/// only when the UI's scale changes. Its flashes and the summon's name run
+/// as the tree's tracks on the game clock.
 #[derive(Debug, Clone, Copy)]
 pub struct Hud {
     /// The top left's root, with the health and mana bars.
@@ -158,13 +178,6 @@ pub struct Hud {
     /// The UI's scale the HUD was sized for: an art pixel is a whole
     /// number of screen pixels at it, and the bars sit on whole pixels.
     pub scale: f32,
-    /// Game seconds each slot's ready flash and refused flash still show,
-    /// and the summon's name.
-    pub ready: [f32; SLOT_COUNT],
-    pub refused: [f32; SLOT_COUNT],
-    pub named: f32,
-    /// Each slot's cooldown share as last shown, so its end is seen.
-    pub cooling: [f32; SLOT_COUNT],
 }
 
 /// The bars' liquid, in its texels, and the frame and gap round it; the
@@ -174,10 +187,9 @@ const METER: [f32; 2] = [168.0, 10.0];
 const TRACK_EDGE: f32 = 2.0;
 const READOUT: f32 = 84.0;
 const READOUT_TEXT: [f32; 2] = [14.0, 18.0];
-/// The liquids' textures, in their texels, how many a strip lays side by
-/// side, and how fast the game clock scrolls each, in texels a second;
-/// the mana's starts on its own phase.
-const LIQUID: [f32; 2] = [128.0, 10.0];
+/// How many of a liquid's textures a strip lays side by side, and how fast
+/// the game clock scrolls each, in texels a second; the mana's starts on
+/// its own phase.
 const LIQUID_TILES: usize = 3;
 const HEALTH_LIQUID: &str = "ex10_hud_liquid_health";
 const MANA_LIQUID: &str = "ex10_hud_liquid_mana";
@@ -206,10 +218,9 @@ const PULSE: f32 = 31.0;
 /// The room under the spell bar for one toast: its line, beside its padding,
 /// two of the theme's `spacing.sm`.
 const TOAST_LINE: f32 = 20.0;
-/// The icon tiles' art, in its pixels, and the share of it inside their
-/// bevel, which a sweep and a flash cover.
-const ICON: f32 = 36.0;
-const INSIDE: f32 = (ICON - 4.0) / ICON * 100.0;
+/// The icon tiles' bevel, both sides together, in their art's pixels: a
+/// sweep and a flash cover what lies inside it.
+const BEVEL: f32 = 4.0;
 /// The focus ring's width round the selected slot.
 const BORDER: f32 = 2.0;
 /// The key's plate: its text's size and line, its padding and the alpha
@@ -217,16 +228,15 @@ const BORDER: f32 = 2.0;
 const KEY_TEXT: [f32; 2] = [9.5, 12.0];
 const KEY_PAD: f32 = 2.0;
 const PLATE_ALPHA: u8 = 225;
-/// The most charges a slot shows, and a pip's side.
-pub const PIPS: usize = 3;
+/// A pip's side.
 const PIP: f32 = 4.0;
-/// A slot's flash: its seconds and its peak alpha, white as a cooldown of
-/// at least [`FLASH_COOLDOWN`] seconds ends (I14), the danger colour on a
-/// press refused as not ready (I1).
+/// A slot's flash: its seconds and its peak alpha, fading to none, white as
+/// a cooldown of at least [`FLASH_COOLDOWN`] seconds ends (I14), the danger
+/// colour on a press refused as not ready (I1).
 const FLASH_SECS: f32 = 0.25;
 const FLASH_COOLDOWN: f32 = 0.5;
-const READY_ALPHA: f32 = 120.0;
-const REFUSED_ALPHA: f32 = 110.0;
+const READY_ALPHA: u8 = 120;
+const REFUSED_ALPHA: u8 = 110;
 /// The summon's name over its slot after a turn: its seconds, the last of
 /// them fading, its plate's height, padding and background alpha.
 const NAMED_SECS: f32 = 1.2;
@@ -238,14 +248,12 @@ const NAME_ALPHA: u8 = 200;
 /// alpha in the theme's border.
 const APART: f32 = 26.0;
 const DIVIDER_ALPHA: u8 = 120;
-/// The most rounds the magazine shows, the gun's icon, the cartridges'
-/// art and the texels between them, and the room their count takes in
-/// mono, so "reloading" never shifts the bar, with its size and line.
-pub const ROUNDS: usize = MAGAZINE as usize;
+/// The gun's icon, the cartridges' art and the texels between them, and
+/// the room their count takes in mono, so "reloading" never shifts the
+/// bar, with its size and line.
 const GUN_ICON: &str = "ex10_icon_gun";
 const LIVE_ROUND: &str = "ex10_hud_bullet";
 const SPENT_ROUND: &str = "ex10_hud_bullet_spent";
-const BULLET: [f32; 2] = [5.0, 11.0];
 const BULLET_GAP: f32 = 2.0;
 const MAGAZINE_READOUT: f32 = 72.0;
 const COUNT_TEXT: [f32; 2] = [12.0, 16.0];
@@ -267,10 +275,31 @@ const PANEL_LIFT: f32 = 10.0;
 const TAKE_PROMPT: &str = "{action:interact} Take";
 
 /// Builds the HUD for the run gameplay starts: its roots owned by gameplay,
-/// shown and frozen under a pause.
+/// shown and frozen under a pause; each slot's icon its spell's ability's
+/// (`Abilities::icon`), the summon's following its type.
 pub fn start(world: &mut World) {
+    let tomes = TomeKind::ALL.map(|kind| crate::features::tomes::data(world, kind).icon.clone());
+    let charges = SLOTS.map(|slot| slot.and_then(|spell| most_charges(world, spell)));
+    let names = SLOTS.map(|slot| slot.and_then(|spell| icon_of(world, spell)));
+    let size_of = |name: &str| crate::shared::sprite_size(world, name);
+    let sizes = ArtSizes {
+        slots: names
+            .each_ref()
+            .map(|name| size_of(name.as_deref().unwrap_or(GUN_ICON))),
+        gun: size_of(GUN_ICON),
+        tomes: tomes.each_ref().map(|icon| size_of(icon)),
+        health: size_of(HEALTH_LIQUID),
+        mana: size_of(MANA_LIQUID),
+        shield: size_of(SHIELD_LIQUID),
+        live: size_of(LIVE_ROUND),
+        spent: size_of(SPENT_ROUND),
+    };
     let assets = world.resource_mut::<AssetRegistry>();
-    let icons = SLOTS.map(|slot| slot.map(|spell| (spell, assets.intern_sprite(spell.icon()))));
+    let icons = std::array::from_fn(|i| {
+        names[i]
+            .as_deref()
+            .map(|name| (assets.intern_sprite(name), charges[i]))
+    });
     let art = Art {
         gun: assets.intern_sprite(GUN_ICON),
         health: assets.intern_sprite(HEALTH_LIQUID),
@@ -278,11 +307,13 @@ pub fn start(world: &mut World) {
         shield: assets.intern_sprite(SHIELD_LIQUID),
         live: assets.intern_sprite(LIVE_ROUND),
         spent: assets.intern_sprite(SPENT_ROUND),
-        tomes: TomeKind::ALL.map(|kind| assets.intern_sprite(kind.icon())),
+        tomes: tomes.map(|icon| assets.intern_sprite(&icon)),
+        sizes,
     };
     let scale = ui_scale(world);
+    let rounds = gun::most_rounds(world).unwrap_or(0);
     let tree = world.resource_mut::<UiTree>();
-    let hud = build(tree, icons, art, scale);
+    let hud = build(tree, icons, art, scale, rounds);
     theme::slide_in(tree, hud.meters);
     theme::slide_in(tree, hud.bar);
     let stack = shell::stack(world);
@@ -291,6 +322,22 @@ pub fn start(world: &mut World) {
     stack.own_root(hud.panel.root, RootCover::Hide);
     world.insert_resource(hud);
     update(world);
+}
+
+/// The icon of the run's player's ability for `spell`, a sprite ID; none
+/// leaves its slot without an icon.
+fn icon_of(world: &World, spell: Spell) -> Option<String> {
+    let player = world.get_resource::<Run>()?.player;
+    let data = world.get_resource::<DataRegistry>()?;
+    let abilities = world.get::<Abilities>(player)?;
+    abilities.icon(data, spell.ability()).map(str::to_owned)
+}
+
+/// The most charges `spell`'s ability holds, for one with charges.
+fn most_charges(world: &World, spell: Spell) -> Option<u32> {
+    let data = world.get_resource::<DataRegistry>()?;
+    let ability = data.get::<Ability>(spell.ability())?;
+    ability.charges().map(|(most, _, _)| most)
 }
 
 /// The UI's scale: screen pixels a UI unit.
@@ -304,6 +351,22 @@ fn ui_scale(world: &World) -> f32 {
 /// screen pixels within it, at least one.
 fn texel(scale: f32) -> f32 {
     scale.floor().max(1.0) / scale
+}
+
+/// The share of an icon `side` texels across inside its bevel, a
+/// percentage of its tile.
+fn inside(side: f32) -> f32 {
+    (side - BEVEL) / side * 100.0
+}
+
+/// A box over the part of a tile of `icon`'s art inside its bevel.
+fn inner(icon: Vec2) -> LayoutStyle {
+    LayoutStyle::default()
+        .with_size(
+            Sizing::Percent(inside(icon.x)),
+            Sizing::Percent(inside(icon.y)),
+        )
+        .anchored(Anchor::Center, Vec2::ZERO)
 }
 
 /// `units` UI units at `scale`, to whole screen pixels.
@@ -321,35 +384,100 @@ fn meters_style(spacing: SpacingTokens, scale: f32) -> LayoutStyle {
         .anchored(Anchor::TopStart, Vec2::splat(snap(spacing.lg, scale)))
 }
 
-/// A label's or a button's text, its spans joined: the shell's old helper,
-/// kept so the HUD's comparisons allocate as before (`e01-pit`'s pin).
-fn text_of(tree: &UiTree, id: WidgetId) -> String {
-    let spans = tree.text(id).map(|styled| styled.spans.as_slice());
-    spans
-        .unwrap_or_default()
-        .iter()
-        .map(|span| span.text.as_str())
-        .collect()
+/// Whether `id` shows `text` as its one span, read with no copy: the book
+/// panel's check before it copies a text out of the data.
+fn shows(tree: &UiTree, id: WidgetId, text: &str) -> bool {
+    tree.text(id)
+        .is_some_and(|styled| match styled.spans.as_slice() {
+            [] => text.is_empty(),
+            [span] => span.text == text,
+            _ => false,
+        })
 }
 
-/// Notes a press of the selected spell refused as not ready: its slot
-/// flashes in the danger colour (`refuse_cast`).
+/// Notes a press of the selected spell refused as not ready or out of
+/// charges: its slot flashes in the danger colour (`press`, on its use's
+/// `Used::NotReady` or `Used::NoCharge`).
 pub fn refused(world: &mut World) {
     let slot = world
         .get_resource::<Run>()
         .and_then(|run| world.get::<Spellbook>(run.player))
         .map(|book| book.slot);
-    if let (Some(slot), Some(hud)) = (slot, world.get_resource_mut::<Hud>())
-        && let Some(left) = hud.refused.get_mut(slot)
-    {
-        *left = FLASH_SECS;
+    let flash = slot
+        .zip(world.get_resource::<Hud>())
+        .and_then(|(slot, hud)| hud.slots.get(slot))
+        .and_then(|slot| slot.flash);
+    if let Some(flash) = flash {
+        let tree = world.resource_mut::<UiTree>();
+        let danger = tree.theme().tokens.colors.danger;
+        tree.animate(flash, flash_track(danger, REFUSED_ALPHA));
     }
 }
 
-/// Notes a turn of the summon's type: its name shows over its slot.
+/// A slot's flash in `color`, from its peak `alpha` to none over
+/// [`FLASH_SECS`] on the game clock, so a pause holds it; a later flash
+/// replaces it.
+fn flash_track(color: [u8; 4], alpha: u8) -> UiTrack {
+    UiTrack::background(faded(color, alpha), faded(color, 0), FLASH_SECS).on_game_clock()
+}
+
+/// Notes a turn of the summon's type: its name shows over its slot for
+/// [`NAMED_SECS`], its last [`NAMED_FADE`] fading, on the game clock.
 pub fn summon_turned(world: &mut World) {
-    if let Some(hud) = world.get_resource_mut::<Hud>() {
-        hud.named = NAMED_SECS;
+    let Some(plate) = world.get_resource::<Hud>().map(|hud| hud.name_plate) else {
+        return;
+    };
+    let shown = UiTrack::opacity(1.0, 1.0, NAMED_SECS - NAMED_FADE).on_game_clock();
+    let fading = UiTrack::opacity(1.0, 0.0, NAMED_FADE).on_game_clock();
+    world
+        .resource_mut::<UiTree>()
+        .animate_chain(plate, shown.then(fading));
+}
+
+/// Starts the white flash of each slot whose spell's ability the run's
+/// player readied since the last read ([`AbilityReady`]), a cooldown of at
+/// least [`FLASH_COOLDOWN`] seconds still ready now: a cast that restarts
+/// it in its ready step flashes nothing. `spells_hud` reads every event
+/// through its `cursor` each frame, with no HUD too.
+pub fn ready(world: &mut World, cursor: &mut EventCursor<AbilityReady>) {
+    let Some(queue) = world.get_resource::<EventQueue<AbilityReady>>() else {
+        return;
+    };
+    let player = world.get_resource::<Run>().map(|run| run.player);
+    let mut readied = [false; SLOT_COUNT];
+    for event in cursor.read(queue) {
+        let slot = SLOTS
+            .iter()
+            .position(|slot| slot.is_some_and(|spell| spell.ability() == event.name));
+        if let Some(slot) = slot.filter(|_| Some(event.entity) == player) {
+            readied[slot] = true;
+        }
+    }
+    if !readied.contains(&true) {
+        return;
+    }
+    let (Some(player), Some(hud)) = (player, world.get_resource::<Hud>()) else {
+        return;
+    };
+    let mut flashes = [None; SLOT_COUNT];
+    for (index, (slot, spell)) in hud.slots.iter().zip(SLOTS).enumerate() {
+        let Some(spell) = spell.filter(|_| readied[index]) else {
+            continue;
+        };
+        let long = world
+            .get_resource::<DataRegistry>()
+            .and_then(|data| data.get::<Ability>(spell.ability()))
+            .is_some_and(|ability| ability.cooldown() >= FLASH_COOLDOWN);
+        let still = world
+            .get::<Abilities>(player)
+            .is_some_and(|abilities| abilities.ready(spell.ability()));
+        if long && still {
+            flashes[index] = slot.flash;
+        }
+    }
+    let tree = world.resource_mut::<UiTree>();
+    for flash in flashes.into_iter().flatten() {
+        tree.animate(flash, flash_track(WHITE, READY_ALPHA));
     }
 }
 
@@ -385,17 +513,19 @@ fn readout(tree: &mut UiTree, parent: WidgetId, [size, line]: [f32; 2], room: f3
 
 fn build(
     tree: &mut UiTree,
-    icons: [Option<(Spell, SpriteAssetId)>; SLOT_COUNT],
+    icons: [Option<(SpriteAssetId, Option<u32>)>; SLOT_COUNT],
     art: Art,
     scale: f32,
+    rounds: u32,
 ) -> Hud {
     let (colors, spacing) = (tree.theme().tokens.colors, tree.theme().tokens.spacing);
     let meters = tree.add_root(UiLayer::Game, meters_style(spacing, scale));
     tree.set_hit_testable(meters, false);
     widgets::fill(tree, meters, faded(colors.background, METERS_ALPHA));
-    let health = meter(tree, meters, art.health, HEALTH_EDGE);
-    let shield = shield_bar(tree, &health, art.shield);
-    let mana = meter(tree, meters, art.mana, MANA_EDGE);
+    let sizes = art.sizes;
+    let health = meter(tree, meters, (art.health, sizes.health), HEALTH_EDGE);
+    let shield = shield_bar(tree, &health, (art.shield, sizes.shield));
+    let mana = meter(tree, meters, (art.mana, sizes.mana), MANA_EDGE);
     let strip = strip(tree, meters, art);
     let lane = 2.0 * spacing.sm + TOAST_LINE;
     let style = LayoutStyle::row().with_gap(spacing.sm).anchored(
@@ -405,11 +535,15 @@ fn build(
     let bar = tree.add_root(UiLayer::Game, style);
     tree.set_hit_testable(bar, false);
     widgets::fill(tree, bar, CLEAR);
-    let slots: Vec<Slot> = icons.into_iter().map(|art| slot(tree, bar, art)).collect();
+    let slots: Vec<Slot> = icons
+        .into_iter()
+        .zip(sizes.slots)
+        .map(|(art, side)| slot(tree, bar, art, side))
+        .collect();
     let summon = slot_of(Spell::Summon).unwrap_or(SLOT_COUNT - 1);
     let (name_plate, name) = name_plate(tree, slots[summon].ring);
     divider(tree, bar);
-    let magazine = magazine(tree, bar, art);
+    let magazine = magazine(tree, bar, art, rounds);
     let panel = book_panel(tree);
     let hud = Hud {
         meters,
@@ -425,10 +559,6 @@ fn build(
         panel,
         art,
         scale,
-        ready: [0.0; SLOT_COUNT],
-        refused: [0.0; SLOT_COUNT],
-        named: 0.0,
-        cooling: [0.0; SLOT_COUNT],
     };
     size(tree, &hud, scale);
     hud
@@ -440,46 +570,56 @@ fn size(tree: &mut UiTree, hud: &Hud, scale: f32) {
     let texel = texel(scale);
     let spacing = tree.theme().tokens.spacing;
     tree.set_layout_style(hud.meters, meters_style(spacing, scale));
-    let tile = ICON * texel;
-    for id in hud
+    let sizes = hud.art.sizes;
+    for (id, icon) in hud
         .slots
         .iter()
         .map(|slot| slot.tile)
-        .chain([hud.magazine.tile])
-        .chain(hud.strip.tiles)
+        .zip(sizes.slots)
+        .chain([(hud.magazine.tile, sizes.gun)])
+        .chain(hud.strip.tiles.into_iter().zip(sizes.tomes))
     {
-        resize(tree, id, tile, tile);
+        let tile = icon * texel;
+        resize(tree, id, tile.x, tile.y);
     }
     let [width, height] = METER;
     let edge = TRACK_EDGE * texel;
-    for meter in [hud.health, hud.mana] {
+    for (meter, liquid) in [(hud.health, sizes.health), (hud.mana, sizes.mana)] {
         let track = LayoutStyle::row().with_padding(edge);
         let (outer, tall) = (width * texel + 2.0 * edge, height * texel + 2.0 * edge);
         tree.set_layout_style(meter.track, sized(track, outer, tall));
         resize(tree, meter.well, width * texel, height * texel);
-        let strip = LIQUID[0] * LIQUID_TILES as f32;
+        let strip = liquid.x * LIQUID_TILES as f32;
         resize(tree, meter.strip, strip * texel, height * texel);
         for tile in tree.children(meter.strip).to_vec() {
-            resize(tree, tile, LIQUID[0] * texel, LIQUID[1] * texel);
+            resize(tree, tile, liquid.x * texel, liquid.y * texel);
         }
         resize(tree, meter.edge, texel, height * texel);
     }
-    let strip = LIQUID[0] * LIQUID_TILES as f32;
+    let liquid = sizes.shield;
+    let strip = liquid.x * LIQUID_TILES as f32;
     resize(tree, hud.shield.strip, strip * texel, height * texel);
     for tile in tree.children(hud.shield.strip).to_vec() {
-        resize(tree, tile, LIQUID[0] * texel, LIQUID[1] * texel);
+        resize(tree, tile, liquid.x * texel, liquid.y * texel);
     }
     resize(tree, hud.shield.edge, texel, height * texel);
-    for round in hud.magazine.rounds {
-        resize(tree, round, BULLET[0] * texel, BULLET[1] * texel);
+    for i in 0..tree.children(hud.magazine.row).len() {
+        let round = tree.children(hud.magazine.row)[i];
+        resize(tree, round, sizes.live.x * texel, sizes.live.y * texel);
     }
     let row = LayoutStyle::row().with_gap(BULLET_GAP * texel);
     tree.set_layout_style(hud.magazine.row, row);
 }
 
-/// A bar's widgets, `liquid` its texture and `edge` the colour where it
-/// stands, then its readout; [`size`] gives them their sizes.
-fn meter(tree: &mut UiTree, parent: WidgetId, liquid: SpriteAssetId, edge: [u8; 4]) -> Meter {
+/// A bar's widgets, `liquid` its texture and that texture's size and `edge`
+/// the colour where it stands, then its readout; [`size`] gives them their
+/// sizes.
+fn meter(
+    tree: &mut UiTree,
+    parent: WidgetId,
+    (liquid, art): (SpriteAssetId, Vec2),
+    edge: [u8; 4],
+) -> Meter {
     let row = widgets::row(tree, parent);
     let track = tree.panel(row, LayoutStyle::row());
     let well = tree.panel(track, LayoutStyle::row());
@@ -496,7 +636,7 @@ fn meter(tree: &mut UiTree, parent: WidgetId, liquid: SpriteAssetId, edge: [u8; 
     );
     widgets::fill(tree, strip, CLEAR);
     for _ in 0..LIQUID_TILES {
-        tree.image(strip, liquid, Vec2::from(LIQUID), LayoutStyle::default());
+        tree.image(strip, liquid, art, LayoutStyle::default());
     }
     let whole = LayoutStyle::default()
         .with_size(Sizing::Percent(100.0), Sizing::Percent(100.0))
@@ -521,8 +661,13 @@ fn meter(tree: &mut UiTree, parent: WidgetId, liquid: SpriteAssetId, edge: [u8; 
 }
 
 /// The shield's layer in `health`'s well, over its fill, and its readout
-/// after the health's, collapsed; [`size`] gives them their sizes.
-fn shield_bar(tree: &mut UiTree, health: &Meter, liquid: SpriteAssetId) -> ShieldBar {
+/// after the health's, collapsed, `liquid` its texture and that texture's
+/// size; [`size`] gives them their sizes.
+fn shield_bar(
+    tree: &mut UiTree,
+    health: &Meter,
+    (liquid, art): (SpriteAssetId, Vec2),
+) -> ShieldBar {
     let style = LayoutStyle::default()
         .with_size(Sizing::Percent(0.0), Sizing::Percent(100.0))
         .anchored(Anchor::TopStart, Vec2::ZERO);
@@ -535,7 +680,7 @@ fn shield_bar(tree: &mut UiTree, health: &Meter, liquid: SpriteAssetId) -> Shiel
     );
     widgets::fill(tree, strip, CLEAR);
     for _ in 0..LIQUID_TILES {
-        tree.image(strip, liquid, Vec2::from(LIQUID), LayoutStyle::default());
+        tree.image(strip, liquid, art, LayoutStyle::default());
     }
     let edge = tree.panel(
         fill,
@@ -561,9 +706,14 @@ fn strip(tree: &mut UiTree, parent: WidgetId, art: Art) -> Strip {
     let gap = tree.theme().tokens.spacing.sm / 2.0;
     let row = tree.panel(parent, LayoutStyle::row().with_gap(gap));
     widgets::fill(tree, row, CLEAR);
-    let tiles = art
-        .tomes
-        .map(|icon| tree.image(row, icon, Vec2::splat(ICON), LayoutStyle::default()));
+    let tiles = std::array::from_fn(|k| {
+        tree.image(
+            row,
+            art.tomes[k],
+            art.sizes.tomes[k],
+            LayoutStyle::default(),
+        )
+    });
     widgets::show(tree, row, false);
     Strip { row, tiles }
 }
@@ -613,15 +763,23 @@ pub fn panel(world: &mut World, book: Option<(TomeKind, Vec2)>) {
     let scale = ui_scale(world);
     let top = centre - Vec2::new(0.0, BOOK_CENTRE.y);
     let at = world.resource::<CameraState>().world_to_screen(top) / scale;
+    // Only a text the panel does not show yet is copied out of the data.
+    let changed: Vec<(WidgetId, String)> = {
+        let tome = crate::features::tomes::data(world, kind);
+        let tree = world.resource::<UiTree>();
+        [
+            (panel.name, &tome.name),
+            (panel.gives, &tome.gives),
+            (panel.costs, &tome.costs),
+        ]
+        .into_iter()
+        .filter(|&(id, text)| !shows(tree, id, text))
+        .map(|(id, text)| (id, text.clone()))
+        .collect()
+    };
     let tree = world.resource_mut::<UiTree>();
-    for (id, text) in [
-        (panel.name, kind.name()),
-        (panel.gives, kind.gives()),
-        (panel.costs, kind.costs()),
-    ] {
-        if text_of(tree, id) != text {
-            tree.set_plain_text(id, text);
-        }
+    for (id, text) in changed {
+        tree.set_plain_text(id, &text);
     }
     // The last layout's size, over the book's top and inside the view.
     let size = tree
@@ -649,40 +807,44 @@ fn edged(tree: &mut UiTree, id: WidgetId, color: [u8; 4], background: [u8; 4], w
     tree.set_overrides(id, style);
 }
 
-/// A slot: the ring, inside it the icon tile with its sweep, its flash, its
-/// charges' pips and its key on a corner plate; an empty slot keeps its
-/// place, its tile as large as a full one's.
-fn slot(tree: &mut UiTree, bar: WidgetId, art: Option<(Spell, SpriteAssetId)>) -> Slot {
+/// A slot: the ring, inside it the icon tile with its sweep, its flash, a
+/// pip a charge of its ability's most, and its key on a corner plate, its
+/// icon's art `icon` across; an empty slot keeps its place, its tile as
+/// large as a full one's.
+fn slot(
+    tree: &mut UiTree,
+    bar: WidgetId,
+    art: Option<(SpriteAssetId, Option<u32>)>,
+    icon: Vec2,
+) -> Slot {
     let ring = tree.panel(bar, LayoutStyle::row().with_padding(BORDER));
     edged(tree, ring, CLEAR, CLEAR, BORDER);
     let tile = tree.panel(ring, LayoutStyle::column());
     widgets::fill(tree, tile, CLEAR);
     let colors = tree.theme().tokens.colors;
     let whole = LayoutStyle::default().with_size(Sizing::Percent(100.0), Sizing::Percent(100.0));
-    let inside = LayoutStyle::default()
-        .with_size(Sizing::Percent(INSIDE), Sizing::Percent(INSIDE))
-        .anchored(Anchor::Center, Vec2::ZERO);
+    let inside = inner(icon);
     let (icon, sweep, flash, pips) = match art {
         None => (None, None, None, None),
-        Some((spell, icon)) => {
-            let image = tree.image(tile, icon, Vec2::splat(ICON), whole);
+        Some((sprite, charges)) => {
+            let image = tree.image(tile, sprite, icon, whole);
             // A mesh's own box takes the panel's style: clear, so the icon
             // shows.
             let sweep = tree.mesh(tile, inside.clone());
             widgets::fill(tree, sweep, CLEAR);
             let flash = tree.panel(tile, inside);
             widgets::fill(tree, flash, CLEAR);
-            let pips = (spell == Spell::IronBlock).then(|| {
+            let pips = charges.map(|most| {
                 let style = LayoutStyle::row()
                     .with_gap(PIP / 2.0)
                     .anchored(Anchor::BottomCenter, Vec2::new(0.0, BORDER));
                 let row = tree.panel(tile, style);
                 widgets::fill(tree, row, CLEAR);
-                [(); PIPS].map(|()| {
+                for _ in 0..most {
                     let pip = tree.panel(row, sized(LayoutStyle::default(), PIP, PIP));
                     widgets::fill(tree, pip, colors.text);
-                    pip
-                })
+                }
+                row
             });
             (Some(image), Some(sweep), Some(flash), pips)
         }
@@ -746,20 +908,16 @@ fn divider(tree: &mut UiTree, bar: WidgetId) {
 }
 
 /// The gun's block: its tile with the reload's sweep, no key and never
-/// ringed, then its cartridges in a row with their count under them.
-fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art) -> Magazine {
+/// ringed, then its `rounds` cartridges in a row with their count under
+/// them.
+fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art, rounds: u32) -> Magazine {
     let ring = tree.panel(bar, LayoutStyle::row().with_padding(BORDER));
     widgets::fill(tree, ring, CLEAR);
     let tile = tree.panel(ring, LayoutStyle::column());
     widgets::fill(tree, tile, CLEAR);
     let whole = LayoutStyle::default().with_size(Sizing::Percent(100.0), Sizing::Percent(100.0));
-    let icon = tree.image(tile, art.gun, Vec2::splat(ICON), whole);
-    let sweep = tree.mesh(
-        tile,
-        LayoutStyle::default()
-            .with_size(Sizing::Percent(INSIDE), Sizing::Percent(INSIDE))
-            .anchored(Anchor::Center, Vec2::ZERO),
-    );
+    let icon = tree.image(tile, art.gun, art.sizes.gun, whole);
+    let sweep = tree.mesh(tile, inner(art.sizes.gun));
     widgets::fill(tree, sweep, CLEAR);
     let mut style = LayoutStyle::column().with_gap(tree.theme().tokens.spacing.sm / 2.0);
     style.align_items = Align::Center;
@@ -768,8 +926,9 @@ fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art) -> Magazine {
     widgets::fill(tree, column, CLEAR);
     let row = tree.panel(column, LayoutStyle::row());
     widgets::fill(tree, row, CLEAR);
-    let rounds = [(); ROUNDS]
-        .map(|()| tree.image(row, art.live, Vec2::from(BULLET), LayoutStyle::default()));
+    for _ in 0..rounds {
+        tree.image(row, art.live, art.sizes.live, LayoutStyle::default());
+    }
     let text = readout(tree, column, COUNT_TEXT, MAGAZINE_READOUT);
     widgets::restyle(tree, text, |text| {
         text.align = Some(TextAlign::Center);
@@ -780,17 +939,15 @@ fn magazine(tree: &mut UiTree, bar: WidgetId, art: Art) -> Magazine {
         sweep,
         row,
         text,
-        rounds,
     }
 }
 
 /// What a slot shows of its spell: whether the player can pay for a use,
-/// the share of its cooldown still to run and the cooldown's length, and
-/// its charges left of its most.
+/// the share of its cooldown still to run, and its charges left of its
+/// most.
 struct Shown {
     payable: bool,
     cooling: f32,
-    cooldown: f32,
     charges: Option<(u32, u32)>,
 }
 
@@ -816,7 +973,6 @@ fn shown(world: &World, player: Entity, spell: Spell, mana: f32) -> Option<Shown
     Some(Shown {
         payable,
         cooling,
-        cooldown,
         charges,
     })
 }
@@ -875,11 +1031,11 @@ fn titled(text: &str) -> String {
     })
 }
 
-/// `spells_hud`, in `Update`: writes the run's health, mana, spells and gun
-/// into the HUD, and runs its flashes and the summon's name by the game
-/// clock.
+/// `spells_hud`, in `Update` after [`ready`]: writes the run's health, mana,
+/// spells and gun into the HUD, and `Hud` back only when the UI's scale
+/// changes; the flashes and the summon's name run as tracks.
 pub fn update(world: &mut World) {
-    let (Some(mut hud), Some(player)) = (
+    let (Some(hud), Some(player)) = (
         world.get_resource::<Hud>().copied(),
         world.get_resource::<Run>().map(|run| run.player),
     ) else {
@@ -911,23 +1067,31 @@ pub fn update(world: &mut World) {
     let scale = ui_scale(world);
     let texel = texel(scale);
     let time = drawn_time(world);
-    let dt = world.resource::<Time>().delta();
     let tree = world.resource_mut::<UiTree>();
     let colors = tree.theme().tokens.colors;
-    if scale != hud.scale {
+    let rescaled = scale != hud.scale;
+    if rescaled {
         size(tree, &hud, scale);
-        hud.scale = scale;
     }
     let low = health.0 * 3.0 <= health.1;
     let beat = 0.5 + 0.5 * (time * TAU * PULSE_HZ).sin();
     let health_flow = time * HEALTH_FLOW;
-    fill(tree, hud.health, health, shown_health, health_flow, texel);
+    let sizes = hud.art.sizes;
+    let health_period = sizes.health.x;
+    fill(
+        tree,
+        hud.health,
+        health,
+        shown_health,
+        (health_flow, health_period),
+        texel,
+    );
     shield_fill(
         tree,
         hud.shield,
         shield / health.1.max(f32::EPSILON),
         shield,
-        time,
+        (time, sizes.shield.x),
         texel,
     );
     let border = if low && beat > 0.5 {
@@ -947,7 +1111,14 @@ pub fn update(world: &mut World) {
     widgets::fill(tree, hud.health.pulse, glow);
     let held = held.floor();
     let mana_flow = time * MANA_FLOW + MANA_PHASE;
-    fill(tree, hud.mana, (held, most), held, mana_flow, texel);
+    fill(
+        tree,
+        hud.mana,
+        (held, most),
+        held,
+        (mana_flow, sizes.mana.x),
+        texel,
+    );
     edged(tree, hud.mana.track, colors.border, track, texel);
     for (index, ((slot, state), key)) in hud.slots.iter().zip(states).zip(keys).enumerate() {
         let ring = if selected == Some(index) {
@@ -956,39 +1127,23 @@ pub fn update(world: &mut World) {
             CLEAR
         };
         edged(tree, slot.ring, ring, CLEAR, BORDER);
-        if text_of(tree, slot.key) != key {
-            tree.set_plain_text(slot.key, &key);
-        }
-        hud.ready[index] = (hud.ready[index] - dt).max(0.0);
-        hud.refused[index] = (hud.refused[index] - dt).max(0.0);
-        let (Some(icon), Some(sweep), Some(flash)) = (slot.icon, slot.sweep, slot.flash) else {
+        tree.set_plain_text(slot.key, &key);
+        let (Some(icon), Some(sweep)) = (slot.icon, slot.sweep) else {
             continue;
         };
-        if SLOTS[index] == Some(Spell::Summon) && tree.image_sprite(icon) != Some(summoned_icon) {
-            tree.set_image(icon, summoned_icon, Vec2::splat(ICON));
+        if SLOTS[index] == Some(Spell::Summon) {
+            tree.set_image(icon, summoned_icon, hud.art.sizes.slots[index]);
         }
         let state = state.unwrap_or(Shown {
             payable: false,
             cooling: 0.0,
-            cooldown: 0.0,
             charges: None,
         });
-        if hud.cooling[index] > 0.0 && state.cooling <= 0.0 && state.cooldown >= FLASH_COOLDOWN {
-            hud.ready[index] = FLASH_SECS;
-        }
-        hud.cooling[index] = state.cooling;
         tree.set_image_tint(icon, if state.payable { WHITE } else { GREYED });
         tree.set_mesh(sweep, &veil(state.cooling));
-        let lit = if hud.refused[index] > 0.0 {
-            faded(colors.danger, alpha(REFUSED_ALPHA, hud.refused[index]))
-        } else if hud.ready[index] > 0.0 {
-            faded(WHITE, alpha(READY_ALPHA, hud.ready[index]))
-        } else {
-            CLEAR
-        };
-        widgets::fill(tree, flash, lit);
-        if let (Some(pips), Some((left, most))) = (slot.pips, state.charges) {
-            for (i, pip) in pips.into_iter().enumerate() {
+        if let (Some(row), Some((left, most))) = (slot.pips, state.charges) {
+            for i in 0..tree.children(row).len() {
+                let pip = tree.children(row)[i];
                 let color = if i < left as usize {
                     colors.text
                 } else {
@@ -1003,27 +1158,19 @@ pub fn update(world: &mut World) {
     for (tile, kind) in hud.strip.tiles.into_iter().zip(taken) {
         widgets::show(tree, tile, kind.is_some());
         if let Some(kind) = kind {
-            let art = hud.art.tomes[kind.index()];
-            if tree.image_sprite(tile) != Some(art) {
-                tree.set_image(tile, art, Vec2::splat(ICON));
-            }
+            let index = kind.index();
+            tree.set_image(tile, hud.art.tomes[index], hud.art.sizes.tomes[index]);
         }
     }
-    hud.named = (hud.named - dt).max(0.0);
     let name = titled(summoned.name);
-    if text_of(tree, hud.name) != name {
-        tree.set_plain_text(hud.name, &name);
-    }
-    tree.set_opacity(hud.name_plate, (hud.named / NAMED_FADE).min(1.0));
+    tree.set_plain_text(hud.name, &name);
     if let Some((left, most)) = rounds {
         let readout = if reload.is_some() {
             "reloading".to_string()
         } else {
             format!("{left} / {most}")
         };
-        if text_of(tree, hud.magazine.text) != readout {
-            tree.set_plain_text(hud.magazine.text, &readout);
-        }
+        tree.set_plain_text(hud.magazine.text, &readout);
         let shade = if reload.is_some() {
             colors.text_muted
         } else {
@@ -1034,25 +1181,27 @@ pub fn update(world: &mut World) {
         tree.set_image_tint(hud.magazine.icon, tint);
         let sweep = reload.map_or(0.0, |left| left / RELOAD_SECS);
         tree.set_mesh(hud.magazine.sweep, &veil(sweep));
-        for (i, round) in hud.magazine.rounds.into_iter().enumerate() {
+        // A reload of the gun's data that raises its most adds its rounds.
+        let row = hud.magazine.row;
+        let live = hud.art.sizes.live;
+        for _ in tree.children(row).len()..most as usize {
+            let round = tree.image(row, hud.art.live, live, LayoutStyle::default());
+            resize(tree, round, live.x * texel, live.y * texel);
+        }
+        for i in 0..tree.children(row).len() {
+            let round = tree.children(row)[i];
             widgets::show(tree, round, i < most as usize);
-            let art = if i < left as usize && reload.is_none() {
-                hud.art.live
+            let (art, drawn) = if i < left as usize && reload.is_none() {
+                (hud.art.live, hud.art.sizes.live)
             } else {
-                hud.art.spent
+                (hud.art.spent, hud.art.sizes.spent)
             };
-            if tree.image_sprite(round) != Some(art) {
-                tree.set_image(round, art, Vec2::from(BULLET));
-            }
+            tree.set_image(round, art, drawn);
         }
     }
-    world.insert_resource(hud);
-}
-
-/// A flash's alpha from its `peak`, fading over [`FLASH_SECS`] with `left`
-/// of them to go.
-fn alpha(peak: f32, left: f32) -> u8 {
-    (peak * (left / FLASH_SECS).clamp(0.0, 1.0)).round() as u8
+    if rescaled && let Some(shown) = world.get_resource_mut::<Hud>() {
+        shown.scale = scale;
+    }
 }
 
 /// Health as the HUD and a save's summary read it: whole, rounded up while
@@ -1069,58 +1218,51 @@ pub fn whole_health(health: Option<&Health>) -> f32 {
 }
 
 /// Fills the shield's layer to `share` of the bar, capped at its width,
-/// scrolls its liquid by the game clock `time`, and writes `+shield`,
-/// rounded up, after the health's readout; with no shield, both collapse.
-fn shield_fill(tree: &mut UiTree, bar: ShieldBar, share: f32, shield: f32, time: f32, texel: f32) {
+/// scrolls its liquid by the game clock `time`, over the `period` texels
+/// its texture spans, and writes `+shield`, rounded up, after the health's
+/// readout; with no shield, both collapse.
+fn shield_fill(
+    tree: &mut UiTree,
+    bar: ShieldBar,
+    share: f32,
+    shield: f32,
+    (time, period): (f32, f32),
+    texel: f32,
+) {
     let held = shield.ceil();
     widgets::show(tree, bar.fill, held > 0.0);
     widgets::show(tree, bar.text, held > 0.0);
     if held <= 0.0 {
         return;
     }
-    let text = format!("+{held}");
-    if text_of(tree, bar.text) != text {
-        tree.set_plain_text(bar.text, &text);
-    }
+    tree.set_plain_text(bar.text, &format!("+{held}"));
     let width = Sizing::Percent((share * 100.0).clamp(0.0, 100.0));
-    if tree
-        .layout_style(bar.fill)
-        .is_some_and(|style| style.width != width)
-    {
-        let style = LayoutStyle::default()
-            .with_size(width, Sizing::Percent(100.0))
-            .anchored(Anchor::TopStart, Vec2::ZERO);
-        tree.set_layout_style(bar.fill, style);
-    }
-    let scrolled = (time * SHIELD_FLOW).rem_euclid(LIQUID[0]) * texel;
+    let style = LayoutStyle::default()
+        .with_size(width, Sizing::Percent(100.0))
+        .anchored(Anchor::TopStart, Vec2::ZERO);
+    tree.set_layout_style(bar.fill, style);
+    let scrolled = (time * SHIELD_FLOW).rem_euclid(period) * texel;
     tree.set_translation(bar.strip, Vec2::new(-scrolled, 0.0));
 }
 
 /// Writes `shown / max` into `meter`, fills it to `current / max` and
-/// scrolls its liquid `flow` texels left, a texel `texel` UI units.
+/// scrolls its liquid `flow` texels left, over the `period` texels its
+/// texture spans, a texel `texel` UI units.
 fn fill(
     tree: &mut UiTree,
     meter: Meter,
     (current, max): (f32, f32),
     shown: f32,
-    flow: f32,
+    (flow, period): (f32, f32),
     texel: f32,
 ) {
-    let text = format!("{shown} / {max}");
-    if text_of(tree, meter.text) != text {
-        tree.set_plain_text(meter.text, &text);
-    }
+    tree.set_plain_text(meter.text, &format!("{shown} / {max}"));
     let width = Sizing::Percent((current / max.max(f32::EPSILON) * 100.0).clamp(0.0, 100.0));
-    if tree
-        .layout_style(meter.fill)
-        .is_some_and(|style| style.width != width)
-    {
-        tree.set_layout_style(
-            meter.fill,
-            LayoutStyle::default().with_size(width, Sizing::Fill),
-        );
-    }
-    let scrolled = flow.rem_euclid(LIQUID[0]) * texel;
+    tree.set_layout_style(
+        meter.fill,
+        LayoutStyle::default().with_size(width, Sizing::Fill),
+    );
+    let scrolled = flow.rem_euclid(period) * texel;
     tree.set_translation(meter.strip, Vec2::new(-scrolled, 0.0));
 }
 

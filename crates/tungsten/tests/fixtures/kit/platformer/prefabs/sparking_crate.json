@@ -1,0 +1,23 @@
+{
+  "tag": "sparking_crate",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          8,
+          8
+        ]
+      }
+    },
+    "platformer_controller": {
+      "run_speed": 100,
+      "jump_speed": 400,
+      "gravity": 2000
+    },
+    "tags": [
+      "sparky"
+    ]
+  }
+}

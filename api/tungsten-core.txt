@@ -1,4 +1,6 @@
 pub mod tungsten_core
+pub use tungsten_core::Vec2
+pub use tungsten_core::vec2
 pub mod tungsten_core::assets
 pub mod tungsten_core::assets::animation
 pub enum tungsten_core::assets::animation::AnimationError
@@ -1812,6 +1814,8 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::Pre
 pub struct tungsten_core::assets::prefab::PreparedPrefab
 impl tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
+pub fn tungsten_core::assets::prefab::PreparedPrefab::save_id(&self) -> core::option::Option<tungsten_core::SaveId>
+pub fn tungsten_core::assets::prefab::PreparedPrefab::saved(self, &mut tungsten_core::World, core::option::Option<&str>) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
 pub fn tungsten_core::assets::prefab::PreparedPrefab::unsaved(self) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
@@ -1831,17 +1835,20 @@ pub fn tungsten_core::assets::registry::AssetRegistry::get_sprite(&self, &str) -
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, &str) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
+pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_anchor(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<[f32; 2]>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_ids_for_path(&self, &std::path::Path) -> &[tungsten_core::assets::registry::SpriteAssetId]
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_size(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<(u32, u32)>
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_entry(&mut self, &str, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, u32, u32)
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_lit_atlas(&mut self, &str, core::option::Option<tungsten_core::assets::registry::TextureHandle>)
 impl core::default::Default for tungsten_core::assets::registry::AssetRegistry
@@ -4698,17 +4705,20 @@ pub fn tungsten_core::assets::registry::AssetRegistry::get_sprite(&self, &str) -
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, &str) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
+pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_anchor(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<[f32; 2]>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_ids_for_path(&self, &std::path::Path) -> &[tungsten_core::assets::registry::SpriteAssetId]
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_size(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<(u32, u32)>
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_entry(&mut self, &str, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, u32, u32)
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_lit_atlas(&mut self, &str, core::option::Option<tungsten_core::assets::registry::TextureHandle>)
 impl core::default::Default for tungsten_core::assets::registry::AssetRegistry
@@ -5537,6 +5547,8 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::Pre
 pub struct tungsten_core::assets::PreparedPrefab
 impl tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
+pub fn tungsten_core::assets::prefab::PreparedPrefab::save_id(&self) -> core::option::Option<tungsten_core::SaveId>
+pub fn tungsten_core::assets::prefab::PreparedPrefab::saved(self, &mut tungsten_core::World, core::option::Option<&str>) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
 pub fn tungsten_core::assets::prefab::PreparedPrefab::unsaved(self) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
@@ -9114,6 +9126,7 @@ pub fn tungsten_core::World::register_generator(&mut self, &str, impl tungsten_c
 impl tungsten_core::World
 pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::prefab::PreparedPrefab>, tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::prepare_map_objects_named(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<(tungsten_core::assets::prefab::PreparedPrefab, alloc::string::String)>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::Entity, tungsten_core::assets::prefab::PrefabError>
@@ -12146,6 +12159,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SaveId
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SaveId
 pub struct tungsten_core::save::SaveOptions<T>
 impl<T: 'static> tungsten_core::SaveOptions<T>
+pub fn tungsten_core::SaveOptions<T>::capture_as(self, fn(&tungsten_core::World, core::option::Option<tungsten_core::Entity>, &T) -> core::option::Option<T>) -> Self
 pub fn tungsten_core::SaveOptions<T>::form<F>() -> Self where F: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + for<'a> core::convert::From<&'a T>, T: core::convert::From<F>
 pub fn tungsten_core::SaveOptions<T>::refs(self, tungsten_core::save::RefCodec<T>) -> Self
 pub fn tungsten_core::SaveOptions<T>::step(self, u32, tungsten_core::save::MigrationStep) -> Self
@@ -12250,6 +12264,7 @@ pub struct tungsten_core::save::Saved
 impl tungsten_core::Saved
 pub fn tungsten_core::Saved::area(&self) -> core::option::Option<&str>
 pub fn tungsten_core::Saved::id(&self) -> tungsten_core::SaveId
+pub fn tungsten_core::Saved::kept(tungsten_core::SaveId) -> Self
 pub fn tungsten_core::Saved::prefab(&self) -> core::option::Option<&str>
 impl core::clone::Clone for tungsten_core::Saved
 pub fn tungsten_core::Saved::clone(&self) -> tungsten_core::Saved
@@ -12333,12 +12348,14 @@ pub const tungsten_core::save::SaveData::SCHEMA: u32
 pub fn tungsten_core::save::SaveData::migrate(u32, serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>
 pub fn tungsten_core::save::SaveData::migrate_step(u32, serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>
 pub fn tungsten_core::save::capture_world(&tungsten_core::World) -> core::result::Result<tungsten_core::save::WorldSave, tungsten_core::save::CaptureError>
+pub fn tungsten_core::save::check_world(&mut tungsten_core::World, &tungsten_core::save::WorldSave) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::enter_area<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &str, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::name(&mut tungsten_core::World, tungsten_core::Entity, core::option::Option<&str>, &str) -> core::result::Result<tungsten_core::SaveId, tungsten_core::save::NameError>
 pub fn tungsten_core::save::order_key(&tungsten_core::World, tungsten_core::Entity) -> (bool, u64)
 pub fn tungsten_core::save::regenerate(&mut tungsten_core::World, &tungsten_core::save::WorldSave) -> core::result::Result<alloc::vec::Vec<tungsten_core::GeneratedRooms>, tungsten_core::GenerateError>
 pub fn tungsten_core::save::restore_world<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &tungsten_core::save::WorldSave, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::saving(&tungsten_core::World) -> bool
+pub fn tungsten_core::save::take_id(&mut tungsten_core::World) -> core::option::Option<tungsten_core::SaveId>
 pub type tungsten_core::save::MigrationStep = fn(serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String>
 pub type tungsten_core::save::Refs = alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_core::SaveId>>
 pub mod tungsten_core::schedule
@@ -14173,9 +14190,29 @@ impl core::marker::Unpin for tungsten_core::tween::Vec4Slot
 impl core::marker::UnsafeUnpin for tungsten_core::tween::Vec4Slot
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::tween::Vec4Slot
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::Vec4Slot
+pub struct tungsten_core::tween::EasedChannel
+pub tungsten_core::tween::EasedChannel::channel: tungsten_core::tween::TweenChannel
+pub tungsten_core::tween::EasedChannel::easing: core::option::Option<tungsten_core::tween::Easing>
+impl tungsten_core::tween::EasedChannel
+pub fn tungsten_core::tween::EasedChannel::easing_in(&self, tungsten_core::tween::Easing) -> tungsten_core::tween::Easing
+impl core::clone::Clone for tungsten_core::tween::EasedChannel
+pub fn tungsten_core::tween::EasedChannel::clone(&self) -> tungsten_core::tween::EasedChannel
+impl core::cmp::PartialEq for tungsten_core::tween::EasedChannel
+pub fn tungsten_core::tween::EasedChannel::eq(&self, &tungsten_core::tween::EasedChannel) -> bool
+impl core::fmt::Debug for tungsten_core::tween::EasedChannel
+pub fn tungsten_core::tween::EasedChannel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::tween::EasedChannel
+impl core::marker::StructuralPartialEq for tungsten_core::tween::EasedChannel
+impl core::marker::Freeze for tungsten_core::tween::EasedChannel
+impl core::marker::Send for tungsten_core::tween::EasedChannel
+impl core::marker::Sync for tungsten_core::tween::EasedChannel
+impl core::marker::Unpin for tungsten_core::tween::EasedChannel
+impl core::marker::UnsafeUnpin for tungsten_core::tween::EasedChannel
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::tween::EasedChannel
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::EasedChannel
 pub struct tungsten_core::tween::Tween
-pub tungsten_core::tween::Tween::channels: alloc::vec::Vec<tungsten_core::tween::TweenChannel>
 pub tungsten_core::tween::Tween::completed_cycles: u32
+pub tungsten_core::tween::Tween::despawn_at_end: bool
 pub tungsten_core::tween::Tween::direction: tungsten_core::tween::TweenDirection
 pub tungsten_core::tween::Tween::duration: f32
 pub tungsten_core::tween::Tween::easing: tungsten_core::tween::Easing
@@ -14184,8 +14221,11 @@ pub tungsten_core::tween::Tween::on_complete_tag: core::option::Option<alloc::st
 pub tungsten_core::tween::Tween::pending_remove: bool
 pub tungsten_core::tween::Tween::repeat: tungsten_core::tween::TweenRepeat
 impl tungsten_core::tween::Tween
+pub fn tungsten_core::tween::Tween::channels(&self) -> &[tungsten_core::tween::EasedChannel]
 pub fn tungsten_core::tween::Tween::new(f32, tungsten_core::tween::Easing) -> Self
 pub fn tungsten_core::tween::Tween::with_channel(self, tungsten_core::tween::TweenChannel) -> Self
+pub fn tungsten_core::tween::Tween::with_channel_eased(self, tungsten_core::tween::TweenChannel, tungsten_core::tween::Easing) -> Self
+pub fn tungsten_core::tween::Tween::with_despawn_at_end(self) -> Self
 pub fn tungsten_core::tween::Tween::with_repeat(self, tungsten_core::tween::TweenRepeat) -> Self
 pub fn tungsten_core::tween::Tween::with_tag(self, impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_core::tween::Tween
@@ -20683,17 +20723,20 @@ pub fn tungsten_core::assets::registry::AssetRegistry::get_sprite(&self, &str) -
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, &str) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
+pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_anchor(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<[f32; 2]>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_ids_for_path(&self, &std::path::Path) -> &[tungsten_core::assets::registry::SpriteAssetId]
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_size(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<(u32, u32)>
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_entry(&mut self, &str, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, u32, u32)
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_lit_atlas(&mut self, &str, core::option::Option<tungsten_core::assets::registry::TextureHandle>)
 impl core::default::Default for tungsten_core::assets::registry::AssetRegistry
@@ -22980,6 +23023,8 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry
 pub struct tungsten_core::PreparedPrefab
 impl tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
+pub fn tungsten_core::assets::prefab::PreparedPrefab::save_id(&self) -> core::option::Option<tungsten_core::SaveId>
+pub fn tungsten_core::assets::prefab::PreparedPrefab::saved(self, &mut tungsten_core::World, core::option::Option<&str>) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
 pub fn tungsten_core::assets::prefab::PreparedPrefab::unsaved(self) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
@@ -23576,6 +23621,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SaveId
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SaveId
 pub struct tungsten_core::SaveOptions<T>
 impl<T: 'static> tungsten_core::SaveOptions<T>
+pub fn tungsten_core::SaveOptions<T>::capture_as(self, fn(&tungsten_core::World, core::option::Option<tungsten_core::Entity>, &T) -> core::option::Option<T>) -> Self
 pub fn tungsten_core::SaveOptions<T>::form<F>() -> Self where F: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + for<'a> core::convert::From<&'a T>, T: core::convert::From<F>
 pub fn tungsten_core::SaveOptions<T>::refs(self, tungsten_core::save::RefCodec<T>) -> Self
 pub fn tungsten_core::SaveOptions<T>::step(self, u32, tungsten_core::save::MigrationStep) -> Self
@@ -23662,6 +23708,7 @@ pub struct tungsten_core::Saved
 impl tungsten_core::Saved
 pub fn tungsten_core::Saved::area(&self) -> core::option::Option<&str>
 pub fn tungsten_core::Saved::id(&self) -> tungsten_core::SaveId
+pub fn tungsten_core::Saved::kept(tungsten_core::SaveId) -> Self
 pub fn tungsten_core::Saved::prefab(&self) -> core::option::Option<&str>
 impl core::clone::Clone for tungsten_core::Saved
 pub fn tungsten_core::Saved::clone(&self) -> tungsten_core::Saved
@@ -24891,8 +24938,8 @@ impl core::marker::UnsafeUnpin for tungsten_core::components::Transform
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Transform
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Transform
 pub struct tungsten_core::Tween
-pub tungsten_core::Tween::channels: alloc::vec::Vec<tungsten_core::tween::TweenChannel>
 pub tungsten_core::Tween::completed_cycles: u32
+pub tungsten_core::Tween::despawn_at_end: bool
 pub tungsten_core::Tween::direction: tungsten_core::tween::TweenDirection
 pub tungsten_core::Tween::duration: f32
 pub tungsten_core::Tween::easing: tungsten_core::tween::Easing
@@ -24901,8 +24948,11 @@ pub tungsten_core::Tween::on_complete_tag: core::option::Option<alloc::string::S
 pub tungsten_core::Tween::pending_remove: bool
 pub tungsten_core::Tween::repeat: tungsten_core::tween::TweenRepeat
 impl tungsten_core::tween::Tween
+pub fn tungsten_core::tween::Tween::channels(&self) -> &[tungsten_core::tween::EasedChannel]
 pub fn tungsten_core::tween::Tween::new(f32, tungsten_core::tween::Easing) -> Self
 pub fn tungsten_core::tween::Tween::with_channel(self, tungsten_core::tween::TweenChannel) -> Self
+pub fn tungsten_core::tween::Tween::with_channel_eased(self, tungsten_core::tween::TweenChannel, tungsten_core::tween::Easing) -> Self
+pub fn tungsten_core::tween::Tween::with_despawn_at_end(self) -> Self
 pub fn tungsten_core::tween::Tween::with_repeat(self, tungsten_core::tween::TweenRepeat) -> Self
 pub fn tungsten_core::tween::Tween::with_tag(self, impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_core::tween::Tween
@@ -25453,6 +25503,7 @@ pub fn tungsten_core::World::register_generator(&mut self, &str, impl tungsten_c
 impl tungsten_core::World
 pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::prefab::PreparedPrefab>, tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::prepare_map_objects_named(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<(tungsten_core::assets::prefab::PreparedPrefab, alloc::string::String)>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::Entity, tungsten_core::assets::prefab::PrefabError>

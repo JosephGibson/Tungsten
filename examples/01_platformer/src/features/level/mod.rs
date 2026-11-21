@@ -19,22 +19,19 @@ use std::collections::HashSet;
 
 use glam::{Vec2, Vec3};
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
+use tungsten::core::save::SaveOptions;
 use tungsten::core::{
-    AmbientLight, Bundle, CameraController, Collider, DataRegistry, Entity, Light, ParticleBudget,
-    PhysicsConfig, Position, RigidBodyBundle, Schedule, Stage, TilemapInstance, TilemapRegistry,
-    Transform, World, system,
+    AmbientLight, Bundle, CameraController, Collider, DataRegistry, Entity, Light, Position,
+    RigidBodyBundle, Schedule, SpawnContext, Stage, TilemapInstance, TilemapRegistry, Transform,
+    World, system,
 };
-use tungsten::kit::{PathFollower, Phase, ensure_phases};
+use tungsten::kit::{Phase, StateMachine, TRANSFORM_PROPAGATE, Tags, WorldBounds, ensure_phases};
 use tungsten::plugins::{CAMERA_UPDATE, PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
-use crate::features::dummy::components::Dummy;
-use crate::features::enemies::components::Enemy;
-use crate::features::enemies::drops::Orb;
 use crate::features::player;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, burst_cleanup};
-use components::SceneTime;
+use crate::shared::{SaveId, Saved};
 
 /// The level's tilemap, by its manifest ID.
 pub const MAP: &str = "ex10_level";
@@ -43,111 +40,39 @@ pub const MAP: &str = "ex10_level";
 pub const OPAQUE: &str = "level";
 /// A tile's side, in world pixels.
 pub const TILE: f32 = 64.0;
-/// The map's size, in tiles: `tools/level.json`'s `cols` and `rows`.
-pub const MAP_COLS: u32 = 430;
-pub const MAP_ROWS: u32 = 72;
 /// The physics layer of lava's surface, as a mask bit (`tools/level.py`'s
 /// `LAVA_LAYER`, 4): a static box at each basin's skin that the player's
 /// controller stands on and that meets no body, so balls, blocks and the
 /// enemies, whose filters leave it out, fall in.
 pub const LAVA_LAYER: u32 = 1 << 4;
-/// The world's gravity, px/s² with y down, which the player and the bodies
-/// fall by.
-pub const GRAVITY: f32 = 3600.0;
 /// The rows of tiles a view shows at a zoom of 1.
 pub const CAMERA_ROWS: f32 = 18.0;
 /// The map's marker where a fresh run's player stands, its feet's point.
 pub const SPAWN_MARKER: &str = "spawn";
-/// Below this, `tools/level.json`'s `kill_row`, a fall ends the run.
-pub const KILL_Y: f32 = 71.0 * TILE;
-/// The box the bodies live in: past it, one has escaped the level.
-pub const WORLD_MIN: Vec2 = Vec2::new(-2.0 * TILE, -8.0 * TILE);
-pub const WORLD_MAX: Vec2 = Vec2::new(
-    (MAP_COLS as f32 + 2.0) * TILE,
-    (MAP_ROWS as f32 + 8.0) * TILE,
-);
-/// The start's boundary (01 (k)): a box left of the map, from x -64 to 0
-/// and from the world's top to its foot, its min and max corners. A static
-/// body in the slabs' stone layer meeting every layer, drawing nothing and
-/// saved by no save, so nothing flung over the start's wall leaves the map
-/// on the left; the map cannot place it, since the tests' sky refuses an
-/// object there.
-pub const BOUNDARY: [Vec2; 2] = [Vec2::new(-TILE, WORLD_MIN.y), Vec2::new(0.0, WORLD_MAX.y)];
-/// A span of tiles in `tools/level.json`: a platform's `left` and `right`
-/// columns and the `row` of its top.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TileSpan {
-    pub left: f32,
-    pub right: f32,
-    pub row: f32,
-}
+/// The map's place whose row a fall ends the run below: `tools/level.json`'s
+/// `kill_row`, which the player's rule reads at its spawn.
+pub const KILL_MARKER: &str = "kill";
+/// How far past the loaded map's edges the box the bodies live in reaches:
+/// two tiles a side, eight above and below. That box is the run's
+/// `WorldBounds` ([`spawn`]): past it, one has escaped the level. A toy, a
+/// prop, the dummy or an enemy whose point, its sprite's top-left corner,
+/// leaves it goes at the frame's flush (its prefab's `despawn_outside`),
+/// and the player past its sides or the kill row dies.
+pub const LEVEL_PAD: Vec2 = Vec2::new(2.0 * TILE, 8.0 * TILE);
 
-/// The ball pit under the rope bridge (`tools/level.json`'s `pit`): its
-/// interior's `left` and `right` columns, and its `floor` as the row.
-pub const PIT: TileSpan = TileSpan {
-    left: 48.0,
-    right: 72.0,
-    row: 68.0,
-};
-/// The climbing shelves up the pit's middle, `pit_shelf_1` to `_10`.
-pub const PIT_SHELVES: [TileSpan; 10] = [
-    TileSpan {
-        left: 55.0,
-        right: 57.0,
-        row: 66.0,
-    },
-    TileSpan {
-        left: 59.0,
-        right: 62.0,
-        row: 63.0,
-    },
-    TileSpan {
-        left: 63.0,
-        right: 65.0,
-        row: 60.0,
-    },
-    TileSpan {
-        left: 59.0,
-        right: 62.0,
-        row: 57.0,
-    },
-    TileSpan {
-        left: 55.0,
-        right: 57.0,
-        row: 54.0,
-    },
-    TileSpan {
-        left: 59.0,
-        right: 62.0,
-        row: 51.0,
-    },
-    TileSpan {
-        left: 63.0,
-        right: 65.0,
-        row: 48.0,
-    },
-    TileSpan {
-        left: 59.0,
-        right: 62.0,
-        row: 45.0,
-    },
-    TileSpan {
-        left: 55.0,
-        right: 57.0,
-        row: 42.0,
-    },
-    TileSpan {
-        left: 59.0,
-        right: 62.0,
-        row: 39.0,
-    },
-];
-/// The rope bridge's east deck over the pit, `bridge_b`.
-pub const PIT_DECK: TileSpan = TileSpan {
-    left: 62.0,
-    right: 69.0,
-    row: 36.0,
-};
+/// The start's boundary (01 (k)) for the level's box `bounds`: a box left
+/// of the map, from x -64 to 0 and from the box's top to its foot, its min
+/// and max corners. A static body in the slabs' stone layer meeting every
+/// layer, drawing nothing and saved by no save, so nothing flung over the
+/// start's wall leaves the map on the left; the map cannot place it, since
+/// the tests' sky refuses an object there.
+#[must_use]
+pub fn boundary(bounds: &WorldBounds) -> [Vec2; 2] {
+    [
+        Vec2::new(-TILE, bounds.min().y),
+        Vec2::new(0.0, bounds.max().y),
+    ]
+}
 /// The camera's shake at full trauma, in world pixels, its carrier and its
 /// decay: a hit's trauma of 0.5 moves the view a few pixels for half a
 /// second. The shell's Screen shake option scales the offset.
@@ -169,15 +94,11 @@ pub const LIGHT_EASE: f32 = 1.0;
 pub const AREA_FADE: f32 = 5.0 * TILE;
 /// [`systems::glows`]'s name: the player's lantern writes its glow before.
 pub const GLOWS: &str = "level_glows";
-/// Most particles alive at once, the emitters' shared budget.
-pub const PARTICLE_CAP: u32 = 2048;
 
-/// The level as a plugin: the components its prefabs name, the world's
-/// gravity and its broadphase cells of one tile, which cap a dense pile's
-/// pair candidates, the particle budget, the camera's shake, the
-/// level's clock and the geysers' cycles on the
-/// step, `level_zoom` before the camera's update, the glows in the present
-/// phase, the geysers' look before the frame's particles, the bursts' cleanup and the title's sky in `Update`, the title's
+/// The level as a plugin: the components its prefabs name, the camera's
+/// shake, the geysers' chill and their cycles, the kit's timed machine, on
+/// the step, `level_zoom` before the camera's update, the glows in the present
+/// phase, the geysers' look before the frame's transform propagation and its particles, the bursts' cleanup and the title's sky in `Update`, the title's
 /// view before the camera's update, and the backdrop under the engine's
 /// default drawing.
 pub struct LevelPlugin;
@@ -185,17 +106,25 @@ pub struct LevelPlugin;
 impl Plugin for LevelPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
-        world.register_component::<components::AmbientEmitter>("ambient_emitter");
+        world.register_saved_with(
+            "geyser",
+            SaveOptions::<geyser::Geyser>::form::<geyser::GeyserForm>(),
+        );
+        world.register_saved::<lava::Lava>("lava");
         world.register_component::<components::Hazard>("hazard");
         world.register_component::<components::Area>("area");
-        world.register_component::<components::Glow>("glow");
-        world.register_component::<elevator::ElevatorDef>("elevator");
+        // With its parts' place, so the glows' first frame moves no owner
+        // but for the kit's `Children`.
+        world.register_component_with("glow", |glow: components::Glow, _: &SpawnContext<'_>| {
+            (glow, components::GlowParts::default())
+        });
+        world.register_component::<elevator::Lift>("elevator");
         world.register_component::<geyser::Geyser>("geyser");
+        // The geysers' cycle, the kit's machine, which registers no name
+        // of its own: a prefab's component and a saved one.
+        world.register_component::<StateMachine<geyser::GeyserPhase>>("geyser_phase");
+        world.register_saved::<StateMachine<geyser::GeyserPhase>>("geyser_phase");
         world.register_data_kind::<components::OpaqueTiles>("opaque_tiles");
-        if let Some(physics) = world.get_resource_mut::<PhysicsConfig>() {
-            physics.gravity = Vec2::new(0.0, GRAVITY);
-            physics.broadphase_cell_size = TILE;
-        }
         if let Some(camera) = world.get_resource_mut::<CameraController>() {
             camera.shake_amplitude = Vec2::ZERO;
             camera.shake_frequency_hz = SHAKE_HZ;
@@ -203,23 +132,13 @@ impl Plugin for LevelPlugin {
             camera.shake_max_offset = SHAKE_OFFSET;
         }
         world.insert_resource(components::Zoom::default());
-        world.insert_resource(ParticleBudget {
-            global_cap: PARTICLE_CAP,
-        });
         world.resource_mut::<Extracts>().replace_sprites(draw::base);
         ensure_phases(schedule);
         schedule.add(
             Stage::FixedUpdate,
-            Phase::Tick.join(system("level_clock", systems::clock)),
-        );
-        schedule.add(
-            Stage::FixedUpdate,
-            Phase::Tick.join(system("lava_tick", lava::tick)),
-        );
-        schedule.add(
-            Stage::FixedUpdate,
             Phase::Tick.join(system("geyser_tick", geyser::tick)),
         );
+        geyser::machine().build(schedule, world);
         schedule.add(
             Stage::FixedUpdate,
             Phase::Intent.join(system("elevator_tick", elevator::tick)),
@@ -247,10 +166,12 @@ impl Plugin for LevelPlugin {
             Stage::PostUpdate,
             Phase::Present.join(system("level_light", systems::light)),
         );
-        schedule.add(Stage::Update, system("burst_cleanup", burst_cleanup));
-        // Before the frame's emission, whose embers it starts and stops.
+        // Before the frame's propagation, which places each plume by the
+        // offset the look sets, and its emission, whose embers the look
+        // starts and stops.
         let geysers = system("geyser_look", geyser::look)
             .after(PHYSICS_SYNC)
+            .before(TRANSFORM_PROPAGATE)
             .before(PARTICLE_COUNT_REFRESH);
         schedule.add(Stage::PostUpdate, geysers);
     }
@@ -268,10 +189,10 @@ impl Plugin for CursorPlugin {
 
 /// Spawns the level for a run, owned by gameplay: the map and its objects,
 /// each one a save names ([`saved`]) taking the save ID its name derives
-/// ([`SaveId::authored`]), the start's [`BOUNDARY`], the basins' chill and crust ([`lava::start`]), the geysers' cycles
-/// ([`geyser::start`]), the elevator at rest
-/// ([`elevator::start`]), the moon's light, the
-/// level's clock, the midnight ambient and the post stack. The player's
+/// ([`SaveId::authored`]), the level's box and the start's boundary
+/// ([`boundary`]), the basins' chill and crust ([`lava::start`]), the geysers' cycles
+/// ([`geyser::start`]), the elevators' decks listed ([`elevator::start`]),
+/// the moon's light, the area's light, the midnight ambient and the post stack. The player's
 /// prefab carries the run's camera, a rig bounded by the map. Returns the
 /// objects in layer and file order.
 ///
@@ -282,21 +203,48 @@ impl Plugin for CursorPlugin {
 pub fn spawn(world: &mut World) -> Vec<Entity> {
     let map = TilemapInstance::new(MAP, Vec2::ZERO);
     world.spawn_with((map, SceneEntity { state_id: GAMEPLAY }));
-    let names = object_names(world);
-    let objects = world
-        .spawn_map_objects(MAP, Vec2::ZERO)
+    // Each object takes its state in its spawn's own move: an insert after
+    // it would leave an archetype behind for every query to list.
+    let prepared = world
+        .prepare_map_objects_named(MAP, Vec2::ZERO)
         .expect("the level's objects load with the manifest");
+    let mut names = Vec::with_capacity(prepared.len());
+    let mut objects = Vec::with_capacity(prepared.len());
+    for (prefab, name) in prepared {
+        objects.push(
+            prefab
+                .with((SceneEntity { state_id: GAMEPLAY },))
+                .spawn(world),
+        );
+        names.push(name);
+    }
+    // Ahead of the kept IDs: a basin then never stands with a kept ID and
+    // no `Lava`, so its chain is an archetype shorter, one fewer in every
+    // body query's list.
+    lava::start(world);
     let mut taken = HashSet::from([SaveId::authored(player::SAVE_NAME)]);
+    let mut named = Vec::new();
     for (&entity, name) in objects.iter().zip(&names) {
         if saved(world, entity) {
             assert!(!name.is_empty(), "a saved map object has no name");
             let id = SaveId::authored(name);
             assert!(taken.insert(id), "the map's `{name}` takes a taken save ID");
-            world.insert(entity, id);
+            world.insert(entity, Saved::kept(id));
+            named.push((entity, name.clone()));
         }
-        world.insert(entity, SceneEntity { state_id: GAMEPLAY });
     }
-    let [min, max] = BOUNDARY;
+    world.insert_resource(SavedNames(named));
+    // The box the bodies live in, the loaded map grown by `LEVEL_PAD`:
+    // what the kit's `despawn_outside` rules on the toys', props', dummy's
+    // and enemies' prefabs leave, and the player's and the lightning's read.
+    let size = world
+        .get_resource::<TilemapRegistry>()
+        .and_then(|maps| maps.get(MAP))
+        .expect("the level's map loads with the manifest")
+        .pixel_size();
+    let bounds = WorldBounds::new(-LEVEL_PAD, size + LEVEL_PAD);
+    world.insert_resource(bounds);
+    let [min, max] = boundary(&bounds);
     world.spawn_with(
         RigidBodyBundle::r#static(
             Position((min + max) * 0.5),
@@ -305,7 +253,6 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         .with_layers(crate::features::enemies::SLAB_LAYER)
         .with((SceneEntity { state_id: GAMEPLAY },)),
     );
-    lava::start(world);
     geyser::start(world);
     elevator::start(world);
     let mut moon = Light::directional(MOONLIGHT, -std::f32::consts::FRAC_PI_4);
@@ -315,7 +262,6 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         Transform::default(),
         SceneEntity { state_id: GAMEPLAY },
     ));
-    world.insert_resource(SceneTime::default());
     world.insert_resource(components::AreaLight::default());
     // What the map's opaque tiles hide of the backdrop.
     let cover = world
@@ -335,43 +281,54 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
     objects
 }
 
-/// The names of the map's objects that spawn a prefab, in the order
-/// `spawn_map_objects` spawns them.
-fn object_names(world: &World) -> Vec<String> {
-    world
-        .get_resource::<TilemapRegistry>()
-        .and_then(|maps| maps.get(MAP))
-        .map(|map| {
-            map.object_layers
-                .iter()
-                .flat_map(|layer| &layer.objects)
-                .filter(|object| !object.class.is_empty())
-                .map(|object| object.name.clone())
-                .collect()
-        })
-        .unwrap_or_default()
+/// The map's saved objects with their names, in spawn order: a World
+/// resource from [`spawn`] to [`despawn`], which [`name_saved`] reads.
+#[derive(Debug, Clone, Default)]
+pub struct SavedNames(pub Vec<(Entity, String)>);
+
+/// Names each of the map's saved objects for the engine's saves by its
+/// name in area [`MAP`], once the run's setup is done, so its baseline is
+/// its set-up state: its kept identity, the same save ID, which the run's
+/// start reads, gives way to the name's.
+pub fn name_saved(world: &mut World) {
+    let named = world
+        .get_resource::<SavedNames>()
+        .map(|names| names.0.clone())
+        .unwrap_or_default();
+    for (entity, name) in named {
+        if !world.is_alive(entity) {
+            continue;
+        }
+        world.remove_component::<Saved>(entity);
+        if let Err(err) = tungsten::core::save::name(world, entity, Some(MAP), &name) {
+            log::warn!("{err}");
+        }
+    }
 }
 
+/// The tag of a prefab whose map objects a save names: a hazard's, a
+/// deck's, the dummy's, an enemy's, an orb's and the geyser's carry it
+/// (`tools/level.py`'s `SAVED` and the content prefabs' `tags`).
+pub const SAVED_TAG: &str = "level.saved";
+
 /// Whether a save names the map object `entity`, which then takes a save
-/// ID: a lava basin, a deck, a dummy, an enemy, a placed orb or a geyser,
-/// the layers `tools/level.py` holds to unique names. Props, slabs, iron,
+/// ID: one whose prefab carries [`SAVED_TAG`], a lava basin, a deck, the
+/// elevator's among them, a dummy, an enemy, a placed orb or a geyser, the
+/// layers `tools/level.py` holds to unique names. Props, slabs, iron,
 /// areas, emitters and markers take none, so an art change moves no save
 /// (schema 10).
 fn saved(world: &World, entity: Entity) -> bool {
-    world.has::<components::Hazard>(entity)
-        || world.has::<PathFollower>(entity)
-        || world.has::<elevator::ElevatorDef>(entity)
-        || world.has::<Dummy>(entity)
-        || world.has::<Enemy>(entity)
-        || world.has::<Orb>(entity)
-        || world.has::<geyser::Geyser>(entity)
+    world
+        .get::<Tags>(entity)
+        .is_some_and(|tags| tags.has(SAVED_TAG))
 }
 
 /// Undoes what [`spawn`] set beyond its entities, which leave with
-/// gameplay: the clock, the area's light, the ambient light and the post
-/// stack.
+/// gameplay: the area's light, the ambient light and the post stack.
 pub fn despawn(world: &mut World) {
-    world.remove_resource::<SceneTime>();
+    world.remove_resource::<SavedNames>();
+    world.remove_resource::<elevator::Decks>();
+    world.remove_resource::<WorldBounds>();
     world.remove_resource::<components::Cover>();
     world.remove_resource::<components::AreaLight>();
     world.insert_resource(AmbientLight::default());
@@ -420,6 +377,25 @@ pub fn markers(world: &World, name: &str) -> Vec<Vec2> {
         .flat_map(|layer| &layer.objects)
         .filter(|object| object.class.is_empty() && object.name == name)
         .map(|object| object.position)
+        .collect()
+}
+
+/// The boxes of every map marker named `name` that has a size, objects
+/// with no class: each one's top-left corner and its far one, in file
+/// order. The pit's interior and its shelves are such rectangles.
+#[must_use]
+pub fn marker_boxes(world: &World, name: &str) -> Vec<(Vec2, Vec2)> {
+    let Some(map) = world
+        .get_resource::<TilemapRegistry>()
+        .and_then(|maps| maps.get(MAP))
+    else {
+        return Vec::new();
+    };
+    map.object_layers
+        .iter()
+        .flat_map(|layer| &layer.objects)
+        .filter(|object| object.class.is_empty() && object.name == name)
+        .map(|object| (object.position, object.position + object.size))
         .collect()
 }
 

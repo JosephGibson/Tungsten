@@ -1,0 +1,34 @@
+{
+  "tag": "crystal",
+  "components": {
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 4
+      }
+    },
+    "pickup": {
+      "shape": {
+        "circle": 4
+      },
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      },
+      "magnet": 200
+    },
+    "cues": {
+      "picked_up": [
+        {
+          "counter": {
+            "name": "xp",
+            "add": 1,
+            "target": "other"
+          }
+        }
+      ]
+    }
+  }
+}

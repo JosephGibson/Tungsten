@@ -4,23 +4,38 @@
 //! and the work holds. The frame-time test, the `e01-pit` benchmark row and
 //! the counter guard set it up alike, the script through `fill_pit` and
 //! `wake_foes` ([`script`](super::script)). The `e01-stress` row then lands
-//! spells on it through `cast_at` ([`cast_at`]).
+//! spells on it through `cast_at` ([`cast_at`]). Where the pit is and where
+//! its cast stands are the map's places (`tools/level.py`'s `places`
+//! layer), read by name.
 
 use glam::Vec2;
 use tungsten::core::{Entity, Position, PrevPosition, Velocity, World};
 use tungsten::kit::{Health, StateMachine, Stats};
 
 use super::Run;
-use crate::features::elements::components::BallBurn;
-use crate::features::enemies::components::{EnemyKind, EnemyState};
-use crate::features::level::{PIT, PIT_DECK, PIT_SHELVES, TILE};
-use crate::features::{enemies, lightning, player, toys};
-use crate::shared::SaveIds;
+use crate::features::combat::BURNING;
+use crate::features::elements::components::Flame;
+use crate::features::enemies::components::{EnemyKind, EnemyState, Variant};
+use crate::features::{enemies, level, lightning, player, toys};
 use crate::shell::Difficulty;
+use tungsten::kit::Tags;
 
 /// The participants' max health: every attack lands, the troll's slam on
 /// enemies too, but nothing dies.
 pub const DURABLE: f32 = 1_000_000.0;
+
+/// The map's places the full pit reads: the pit's interior and each of
+/// its climbing shelves, rectangles; the player's feet on the deck over
+/// it; the walkers' feet on that deck's surface; and the flyers' centres,
+/// the two wisps in the order the cast takes them.
+const PIT_INTERIOR: &str = "pit";
+const PIT_SHELF: &str = "pit_shelf";
+const PIT_PLAYER: &str = "pit_player";
+const PIT_CRAWLER: &str = "pit_crawler";
+const PIT_BEETLE: &str = "pit_beetle";
+const PIT_TROLL: &str = "pit_troll";
+const PIT_BAT: &str = "pit_bat";
+const PIT_WISP: &str = "pit_wisp";
 
 /// The six enemies [`wake_foes`] spawned, in its cast's order.
 pub struct PitFoes(pub [Entity; 6]);
@@ -34,24 +49,30 @@ pub struct PitCounts {
     pub foes_awake: usize,
 }
 
-/// Pours small balls over the pit's interior until the world holds `count`,
-/// at most [`toys::BALL_CAP`]: a grid of 16 px slots from the floor up,
-/// clear of the climbing shelves. Returns the world's ball count.
+/// Pours small balls over the pit's interior, the map's `pit` place, until
+/// the world holds `count`, at most [`toys::BALL_CAP`]: a grid of 16 px
+/// slots from the floor up, clear of the climbing shelves, its `pit_shelf`
+/// places. Returns the world's ball count, which a map without the place
+/// leaves as it was.
 pub fn fill(world: &mut World, count: usize) -> usize {
     let target = count.min(toys::BALL_CAP);
-    let across = (((PIT.right - PIT.left) * TILE - 16.0) / 16.0) as usize;
+    let Some(&(min, max)) = level::marker_boxes(world, PIT_INTERIOR).first() else {
+        return toys::ball_count(world);
+    };
+    let shelves = level::marker_boxes(world, PIT_SHELF);
+    let across = (((max.x - min.x) - 16.0) / 16.0) as usize;
+    if across == 0 {
+        return toys::ball_count(world);
+    }
     let mut slot = 0;
     while toys::ball_count(world) < target {
         let at = Vec2::new(
-            PIT.left * TILE + 8.0 + (slot % across) as f32 * 16.0,
-            PIT.row * TILE - 8.0 - (slot / across) as f32 * 16.0,
+            min.x + 8.0 + (slot % across) as f32 * 16.0,
+            max.y - 8.0 - (slot / across) as f32 * 16.0,
         );
         slot += 1;
-        let on_shelf = PIT_SHELVES.iter().any(|shelf| {
-            at.x > shelf.left * TILE - 8.0
-                && at.x < shelf.right * TILE + 8.0
-                && at.y > shelf.row * TILE - 8.0
-                && at.y < shelf.row * TILE + 32.0
+        let on_shelf = shelves.iter().any(|(low, high)| {
+            at.x > low.x - 8.0 && at.x < high.x + 8.0 && at.y > low.y - 8.0 && at.y < low.y + 32.0
         });
         if !on_shelf {
             toys::spawn_ball(world, at, true);
@@ -60,22 +81,22 @@ pub fn fill(world: &mut World, count: usize) -> usize {
     toys::ball_count(world)
 }
 
-/// The deck's middle, where the player's body centre stands.
-fn deck_middle(world: &World) -> Vec2 {
-    Vec2::new(
-        f32::midpoint(PIT_DECK.left, PIT_DECK.right) * TILE,
-        PIT_DECK.row * TILE - player::body(world).half.y - 0.5,
-    )
+/// The map's place `name`, a point.
+fn place(world: &World, name: &str) -> Result<Vec2, String> {
+    level::marker(world, name).ok_or_else(|| format!("the map has no `{name}` place"))
 }
 
 /// Puts the player at rest on the deck's middle and six enemies within
 /// 600 px of them, the walkers on the deck and the east rim beyond the
-/// chute, never over the gap or a chute. Heals the player and makes all
+/// chute, never over the gap or a chute, each at its place on the map.
+/// Heals the player and makes all
 /// seven durable: their max health becomes [`DURABLE`] at the next step,
 /// their health kept full. Keeps the six in [`PitFoes`].
 pub fn wake_foes(world: &mut World) -> Result<[Entity; 6], String> {
     let player = world.get_resource::<Run>().ok_or("no run")?.player;
-    let middle = deck_middle(world);
+    // A stander's body centre over its feet's place.
+    let feet = place(world, PIT_PLAYER)?;
+    let middle = Vec2::new(feet.x, feet.y - player::body(world).half.y - 0.5);
     let at = middle - player::body(world).centre;
     world.get_mut::<Position>(player).ok_or("no player")?.0 = at;
     if let Some(prev) = world.get_mut::<PrevPosition>(player) {
@@ -85,26 +106,32 @@ pub fn wake_foes(world: &mut World) -> Result<[Entity; 6], String> {
         velocity.0 = Vec2::ZERO;
     }
 
-    let surface = PIT_DECK.row * TILE;
-    let walk = |world: &World, kind: EnemyKind, dx: f32| {
-        Vec2::new(
-            middle.x + dx,
-            surface - enemies::body(world, kind).half.y - 0.5,
-        )
+    let walk = |world: &World, kind: EnemyKind, name: &str| {
+        place(world, name)
+            .map(|feet| Vec2::new(feet.x, feet.y - enemies::body(world, kind).half.y - 0.5))
+    };
+    let [west, east] = level::markers(world, PIT_WISP)[..] else {
+        return Err(format!("the map has not two `{PIT_WISP}` places"));
     };
     let cast = [
-        (EnemyKind::Wisp, middle + Vec2::new(-220.0, -200.0)),
-        (EnemyKind::Crawler, walk(world, EnemyKind::Crawler, -150.0)),
-        (EnemyKind::Beetle, walk(world, EnemyKind::Beetle, 544.0)),
-        (EnemyKind::Bat, middle + Vec2::new(120.0, -260.0)),
-        (EnemyKind::Troll, walk(world, EnemyKind::Troll, 700.0)),
-        (EnemyKind::Wisp, middle + Vec2::new(260.0, -180.0)),
+        (EnemyKind::Wisp, west),
+        (
+            EnemyKind::Crawler,
+            walk(world, EnemyKind::Crawler, PIT_CRAWLER)?,
+        ),
+        (
+            EnemyKind::Beetle,
+            walk(world, EnemyKind::Beetle, PIT_BEETLE)?,
+        ),
+        (EnemyKind::Bat, place(world, PIT_BAT)?),
+        (EnemyKind::Troll, walk(world, EnemyKind::Troll, PIT_TROLL)?),
+        (EnemyKind::Wisp, east),
     ];
     let mut six = [player; 6];
     for (slot, (kind, centre)) in six.iter_mut().zip(cast) {
-        let id = world.resource_mut::<SaveIds>().take();
         let corner = centre - enemies::body(world, kind).centre;
-        let enemy = enemies::spawn(world, kind, corner, id).ok_or("an enemy's prefab")?;
+        let enemy = enemies::spawn_record(world, kind, Variant::Plain, corner)
+            .ok_or("an enemy's prefab")?;
         enemies::scale(world, enemy, Difficulty::Normal);
         *slot = enemy;
     }
@@ -174,10 +201,13 @@ pub fn cast_at(world: &mut World, spell: &str, at: Vec2) -> Result<(), String> {
     Ok(())
 }
 
-/// The small balls burning now, and those that have burned out.
+/// The small balls burning now, and those that have burned out: each lit
+/// ball's flame, burning while it carries `status.burning`.
 #[must_use]
 pub fn fire(world: &World) -> (usize, usize) {
-    let burns = || world.query::<&BallBurn>();
-    let burning = burns().filter(|burn| burn.remaining > 0.0).count();
-    (burning, burns().count() - burning)
+    let lit = || world.query::<(&Flame, Option<&Tags>)>();
+    let burning = lit()
+        .filter(|(_, tags)| tags.is_some_and(|tags| tags.has(BURNING)))
+        .count();
+    (burning, lit().count() - burning)
 }

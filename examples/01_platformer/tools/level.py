@@ -40,6 +40,15 @@ SLAB_LAYER, IRON_LAYER, WOOD_LAYER = 1, 2, 3
 # The elevator's sheave in its gantry's art, in tiles from the gantry's
 # top-left: the wheel's centre over the shaft, its rim's bottom.
 LIFT_SHEAVE = (0.5, 0.6)
+# The elevator as the kit's lift (7.13e): its rider rule, 0.3 s aboard before
+# it goes and 4 s alone at the top before it comes back, the player its only
+# rider, a fresh one taken back down from the top too; and the sounds its
+# `departed` and `arrived` cues play, 0.3 s apart at least.
+LIFT_RIDER = dict(board=0.3, back=4.0, filter=dict(any=['team.player']), two_way=True)
+# The tag of a prefab whose map objects a save names: `level::saved` reads it.
+SAVED = ['level.saved']
+LIFT_CUES = dict(departed=[dict(sound=dict(id='ex10_lift_start_sfx', min_interval=0.3))],
+                 arrived=[dict(sound=dict(id='ex10_lift_stop_sfx', min_interval=0.3))])
 WOOD = ('bridge_rope', 'bridge_weathered')
 # A ground platform's style and the family its tiles come from.
 FAMILIES = {'ground': 'masonry', 'pit': 'masonry', 'wet': 'wet', 'basalt': 'basalt', 'mine': 'mine',
@@ -78,6 +87,9 @@ FIRE_DRIPS = 'ex10_fire_drips'
 # for good: a sprite the map newly uses takes `next`, so a sprite added or
 # changed outside the map moves no cell.
 TILESET = TOOLS / 'tileset.json'
+# The full pit's deck (7.13e): the platform the player and the walkers of
+# the pit's cast stand on, whose middle is the `pit_player` place.
+PIT_DECK = 'bridge_b'
 # The object layers a save names (P7-9): 01 derives each object's save ID
 # from its name, so each needs one, unique, and none the player's.
 SAVED_LAYERS = ('hazards', 'platforms', 'dummies', 'enemies', 'pickups', 'geysers')
@@ -135,6 +147,11 @@ def build_objects(source, images, lit):
         return dict(id=0, name=name, type=cls, x=x, y=y, width=0, height=0, rotation=0,
             visible=True, point=True, properties=list(properties))
 
+    def rect(name, left, top, right, bottom):
+        """A classless rectangle, in tiles: a place the game reads by name."""
+        return dict(id=0, name=name, type='', x=left * tile, y=top * tile, width=(right - left) * tile,
+            height=(bottom - top) * tile, rotation=0, visible=True, properties=[])
+
     props = []
     for p in source['props']:
         cls = f"ex10_prop_{p['sprite'].removeprefix('ex10_')}_{p['depth']}"
@@ -178,7 +195,8 @@ def build_objects(source, images, lit):
         centre = [v * tile for v in h['position']]
         if not h['fire']:
             prefabs['ex10_spikes'] = dict(sprite=dict(asset_id='ex10_spikes', z_order=Z_SPIKES), components=dict(
-                hazard=dict(fire=False), contact_damage=dict(touch, shape=dict(aabb=SPIKES_HALF), offset=SPIKES_CENTRE)))
+                hazard=dict(fire=False), tags=SAVED,
+                contact_damage=dict(touch, shape=dict(aabb=SPIKES_HALF), offset=SPIKES_CENTRE)))
             hazards.append(obj('ex10_spikes', centre[0] - SPIKES_CENTRE[0], centre[1] - SPIKES_CENTRE[1],
                                name=h.get('name', '')))
             continue
@@ -193,7 +211,7 @@ def build_objects(source, images, lit):
         # emitter emits from its entity's point, the sprite's top-left.
         trail = f'ex10_fire_trail_{i}'
         prefabs[trail] = dict(components=dict(particle_emitter=dict(config='ex10_fire_trail', seed=700 + i)))
-        components = dict(hazard=dict(fire=True), glow=FIRE_GLOW,
+        components = dict(hazard=dict(fire=True), tags=SAVED, glow=FIRE_GLOW,
             character_animator=dict(idle=dict(left='ex10_fireball_left', right='ex10_fireball')),
             contact_damage=dict(touch, shape=dict(aabb=FIRE_HALF), offset=FIRE_CENTRE),
             spawn_children=[dict(prefab=trail, offset=FIRE_CENTRE),
@@ -211,24 +229,19 @@ def build_objects(source, images, lit):
         hazards.append(obj(cls, start[0] - FIRE_CENTRE[0], start[1] - FIRE_CENTRE[1], name=h.get('name', '')))
     # The lava basins after the fires: a surface the player stands on, a
     # touch from just over it to the bed that burns and throws, a sizzle at
-    # each touch, and the lake's light. A child of each touches what is
-    # frozen with fire, which blows it apart whether it takes fire or not (a
-    # frozen wisp).
+    # each touch, and the lake's light. What is frozen in it blows apart by
+    # thermal shock's rule, the `heat` 01's `lava_take` sends (7.13a).
     for i, basin in enumerate(source.get('lava', [])):
         width = (basin['right'] - basin['left']) * tile
         depth = (lava_bed(source, basin) - basin['row']) * tile - LAVA_TOP + LAVA_REACH
         box = dict(shape=dict(aabb=[width / 2, depth / 2]),
                    offset=[width / 2, LAVA_TOP - LAVA_REACH + depth / 2])
-        frost = f'ex10_lava_frost_{i}'
-        prefabs[frost] = dict(components=dict(contact_damage=dict(
-            box, damage={'damage.fire': HAZARD_DAMAGE}, filter=dict(all=['status.frozen']))))
         bite = dict(box, damage={'damage.fire': LAVA_DAMAGE}, filter=dict(any=['team.enemy', 'team.player']),
                     knockback=LAVA_KNOCKBACK, interval=LAVA_INTERVAL, push_always=True)
         surface = dict(kind='static', shape=dict(kind='aabb', half_extents=[width / 2, LAVA_SURFACE / 2]),
                        offset=[width / 2, LAVA_TOP + LAVA_SURFACE / 2], layers=[LAVA_LAYER], mask=[])
-        components = dict(hazard=dict(fire=False, lava=True), contact_damage=bite, rigid_body=surface,
-                          cues=dict(hit=[dict(sound=dict(id='ex10_lava_sizzle_sfx', min_interval=0.3))]),
-                          spawn_children=[dict(prefab=frost, offset=[0, 0])])
+        components = dict(hazard=dict(fire=False, lava=True), tags=SAVED, contact_damage=bite, rigid_body=surface,
+                          cues=dict(hit=[dict(sound=dict(id='ex10_lava_sizzle_sfx', min_interval=0.3))]))
         if basin.get('light'):
             components['glow'] = dict(LAVA_GLOW, offset=[width / 2, LAVA_TOP])
         cls = f'ex10_lava_{i}'
@@ -241,8 +254,10 @@ def build_objects(source, images, lit):
     for i, m in enumerate(source['moving_platforms']):
         if 'elevator' in m:
             # The mine's elevator (M79): a cage whose floor's top rests at
-            # `position`'s row in the shaft's collar, which 01 sends up `rise`
-            # rows when stood on; its sprite stands over its floor's body.
+            # `position`'s row in the shaft's collar, which the kit's lift
+            # sends up `rise` rows when the player stands on it and back down
+            # from there; its sprite stands over its floor's body. `elevator`
+            # marks it for 01's own rules.
             lift = m['elevator']
             cage = images['lift_deck_elevator']
             half = [m['half_width'] * tile, source['deck_depth'] / 2]
@@ -251,7 +266,9 @@ def build_objects(source, images, lit):
             prefabs[cls] = dict(sprite=dict(asset_id='ex10_lift_deck_elevator', z_order=Z_DECK), components=dict(
                 rigid_body=dict(kind='kinematic', shape=dict(kind='aabb', half_extents=half),
                                 offset=[half[0], floor + half[1]]),
-                elevator=dict(rise=lift['rise'] * tile, speed=lift['speed'])))
+                path_follower=dict(points=[[0, 0], [0, -lift['rise'] * tile]], speed=lift['speed'],
+                                   mode='ping_pong', easing='sine_in_out', rider=LIFT_RIDER),
+                cues=LIFT_CUES, elevator={}, tags=SAVED))
             platforms.append(obj(cls, m['position'][0] * tile - half[0], m['position'][1] * tile - floor,
                                  name=m.get('name', '')))
             continue
@@ -273,7 +290,8 @@ def build_objects(source, images, lit):
         prefabs[cls] = dict(sprite=dict(asset_id='ex10_' + name, z_order=Z_DECK), components=dict(
             rigid_body=dict(kind='kinematic', shape=dict(kind='aabb', half_extents=half), offset=half),
             path_follower=dict(points=[[0, 0], [2 * travel[0], 2 * travel[1]]],
-                speed=4 * math.hypot(*travel) / m['period'], mode='ping_pong', easing='sine_in_out')))
+                speed=4 * math.hypot(*travel) / m['period'], mode='ping_pong', easing='sine_in_out'),
+            tags=SAVED))
         platforms.append(obj(cls, centre[0] - travel[0] - half[0], centre[1] - travel[1] - half[1],
                              name=m.get('name', '')))
     layer('platforms', platforms)
@@ -301,10 +319,10 @@ def build_objects(source, images, lit):
     # and where a fresh run sets each loose iron block, crate and keg down,
     # its box's centre.
     spawn = source['spawn']
-    # The elevator's sheave, where its cable hangs from: the gantry's first
-    # piece, set down on its support, plus the wheel's place in its art.
+    # The elevator's sheave, where its cable hangs from: the gantry, set
+    # down on its support, plus the wheel's place in its art.
     sheaves = [obj('', (p['x'] + LIFT_SHEAVE[0]) * tile, (p['y'] + LIFT_SHEAVE[1]) * tile, name='lift_sheave')
-               for p in source['props'] if p['sprite'] == 'ex10_lift_gantry_big_0_0']
+               for p in source['props'] if p['sprite'] == 'ex10_lift_gantry_big']
     layer('markers', [obj('', spawn['col'] * tile, spawn['surface_row'] * tile, name='spawn')]
           + [obj('', block['x'] * tile, block['y'] * tile, name='iron') for block in source.get('iron', [])]
           + [obj('', box['x'] * tile, box['y'] * tile, name=kind) for kind in ('crate', 'keg')
@@ -339,6 +357,29 @@ def build_objects(source, images, lit):
     layer('geysers', [obj('geyser', g['x'] * tile + GEYSER_POINT[0], rows[g['support']] * tile + GEYSER_POINT[1],
         name=g.get('name', ''), properties=[dict(name='geyser.offset', type='float', value=g['offset'])])
         for g in source.get('geysers', [])])
+    # The places (7.13e), the map's last object layer, after every other so
+    # no object's ID moves: classless points and rectangles the game and its
+    # tests read by name. `kill`, the row a fallen player dies at; the
+    # tests' places, `level.json`'s `places` not named `pit_...`; `pit`, the
+    # ball pit's interior, and a `pit_shelf` a climbing shelf, a row tall,
+    # which the pit's fill pours around; `pit_player`, the feet of the
+    # full pit's player on its deck's middle; then its cast, `places`'
+    # `pit_...`: the walkers' feet on that deck's surface and the flyers'
+    # centres. A place's `x` and `y` are tiles.
+    def place(p):
+        return obj('', p['x'] * tile, p['y'] * tile, name=p['name'])
+    named = source.get('places', [])
+    places = [obj('', 0, source['kill_row'] * tile, name='kill')]
+    places += [place(p) for p in named if not p['name'].startswith('pit_')]
+    pit = source.get('pit')
+    if pit:
+        deck = next(p for p in source['platforms'] if p['name'] == PIT_DECK)
+        places.append(rect('pit', pit['left'], pit['rim'], pit['right'], pit['floor']))
+        places += [rect('pit_shelf', p['left'], p['row'], p['right'], p['row'] + 1)
+                   for p in source['platforms'] if p['name'].startswith('pit_shelf')]
+        places.append(obj('', (deck['left'] + deck['right']) / 2 * tile, deck['row'] * tile, name='pit_player'))
+        places += [place(p) for p in named if p['name'].startswith('pit_')]
+    layer('places', places)
     return layers, prefabs
 
 
@@ -458,8 +499,9 @@ def terrain_tiles(source, cells):
 
 def background_tiles(source, cells, props):
     """The background layer: the caves' backs under an indoor area's roof,
-    the miners' shoring in its `shoring` columns, the tunnel mouths, the
-    outdoor `backs` spans and the river's depths. Which cells draw follows
+    the miners' shoring in its `shoring` columns, the caves' plain rock in
+    a chamber, the tunnel mouths, the outdoor `backs` spans and the river's
+    depths. Which cells draw follows
     the terrain's occupancy and roofs, so each draws from a stream seeded
     by its place, and a terrain change re-rolls only the backs it
     touches."""
@@ -494,6 +536,21 @@ def background_tiles(source, cells, props):
                     out[(x, y)] = f'cave_back_pillar_{rng.randrange(2)}'
                 else:
                     out[(x, y)] = weighted(rng, ((f'cave_back_rock_{rng.randrange(4)}', 12), (f'cave_back_ember_{rng.randrange(4)}', 2)))
+    # A chamber dug into an outdoor area: the caves' plain rock behind its
+    # open cells, stalactites under its roof and no embers, and the same
+    # plain tile behind the roof's lowest cell, so its cut shows rock.
+    for chamber in source.get('chambers', []):
+        for x in range(chamber['left'], chamber['right']):
+            for y in range(chamber['top'], chamber['floor']):
+                if (x, y) in cells:
+                    continue
+                rng = rng_for(f'background-{x}-{y}')
+                if (x, y - 1) in ground:
+                    out[(x, y - 1)] = f'cave_back_rock_{x % 4}'
+                    if rng.randrange(5) < 2:
+                        out[(x, y)] = f'cave_back_stalactites_{rng.randrange(2)}'
+                        continue
+                out[(x, y)] = f'cave_back_rock_{rng.randrange(4)}'
     for tunnel in source.get('tunnels', []):
         for r in range(2):
             for c in range(2):
@@ -682,13 +739,7 @@ def validate_level(source,tiled,sprite_ids):
     # Sparse local IDs, ascending, each once.
     local=[t['id'] for t in ts['tiles']]
     if ts['firstgid']!=1 or local!=sorted(set(local)) or ts['tilecount']!=len(local):raise ValueError('malformed tileset')
-    for t in ts['tiles']:
-        if t['properties'][0]['value'] not in sprite_ids:raise ValueError('unknown sprite reference')
-    gids={ts['firstgid']+i for i in local}
-    for layer in tiled['layers']:
-        if layer['type']!='tilelayer':continue
-        if len(layer['data'])!=cols*rows:raise ValueError('wrong layer length')
-        if any(not isinstance(g,int) or (g and g not in gids) for g in layer['data']):raise ValueError('invalid GID')
+    # A tile's sprite, a layer's length and its GIDs are `tungsten check`'s.
     collision=next(l['data'] for l in tiled['layers'] if l['name']=='collision')
     terrain=next(l['data'] for l in tiled['layers'] if l['name']=='terrain')
     shallow={(int(x/source['tile']),int(y/source['tile'])) for x,y,w,h,_ in source.get('slab_colliders',[])}
@@ -738,8 +789,8 @@ def validate_layout(source, tiled, iron, shallow):
     """M76's checks: the areas tile the map's columns, the tests' sky stays
     empty, no view holds past the light budget, each bat hangs flush under a
     roof, fires sweep clear, the pit holds the balls inside its shell, no
-    iron lies under open air, lava stays in its basin and `backs` stay
-    outdoors."""
+    iron lies under open air, lava stays in its basin, each chamber is open
+    inside and walled round, and `backs` stay outdoors."""
     cols, rows, tile = source['cols'], source['rows'], source['tile']
     columns = [area['columns'] for area in source['landmarks']]
     if columns[0][0] != 0 or columns[-1][1] != cols - 1 or any(b[0] != a[1] + 1 for a, b in zip(columns, columns[1:])):
@@ -824,6 +875,17 @@ def validate_layout(source, tiled, iron, shallow):
             y += 1
         if any((x, y) not in terrain for x in range(b['left'], b['right'])):
             raise ValueError(f"lava basin at {b['left']}: open floor")
+    # Each chamber is open inside and walled round, its floor under it.
+    for chamber in source.get('chambers', []):
+        left, right, top, floor = chamber['left'], chamber['right'], chamber['top'], chamber['floor']
+        if any((x, y) in walls for x in range(left, right) for y in range(top, floor)
+               if not any(p['style'] not in FAMILIES and p['left'] <= x < p['right'] and p['row'] <= y < p['bottom']
+                          for p in source['platforms'])):
+            raise ValueError(f"chamber {chamber['name']}: a wall inside it")
+        rim = [(x, floor) for x in range(left, right)] + [(left - 1, y) for y in range(top, floor)]
+        rim += [(right, y) for y in range(top, floor)]
+        if any(c not in walls for c in rim):
+            raise ValueError(f"chamber {chamber['name']}: open at its floor or sides")
     outdoor = [a['columns'] for a in source['landmarks'] if not a.get('indoor')]
     for span in source.get('backs', []):
         if not any(a[0] <= span['left'] and span['right'] - 1 <= a[1] for a in outdoor):

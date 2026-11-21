@@ -216,6 +216,22 @@ impl Cooldown {
         self.left
     }
 
+    /// Sets the game seconds left in the current cycle, as a save's `left`
+    /// does: the elapses left, and a first cycle's extra still to draw,
+    /// stay as they are.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and at least 0.
+    #[track_caller]
+    pub fn set_left(&mut self, seconds: f32) {
+        assert!(
+            seconds.is_finite() && seconds >= 0.0,
+            "Cooldown::set_left: seconds must be finite and >= 0 (got {seconds})"
+        );
+        self.left = seconds;
+    }
+
     /// The elapses left; `None` without end.
     #[must_use]
     pub fn remaining(&self) -> Option<u32> {

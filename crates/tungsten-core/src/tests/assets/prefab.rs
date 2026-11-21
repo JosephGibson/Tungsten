@@ -251,7 +251,8 @@ fn prefab_file_errors() {
 
 #[test]
 fn the_rules_kept_from_scenes_pass_the_load() {
-    let world = world();
+    let mut world = world();
+    world.resource_mut::<AssetRegistry>().intern_sprite("slime");
     // A tween channel accepts unknown keys, and a type without
     // `deny_unknown_fields` ignores an unknown field.
     let file = PrefabFile::new(Some(
@@ -1313,11 +1314,36 @@ fn map_objects_spawn_with_their_names() {
         ],
     );
     let prepared = world
-        .prepare_map_objects_named("level", Vec2::ZERO)
+        .prepare_map_objects_named("level", [100.0, 200.0])
         .unwrap();
     let names: Vec<&str> = prepared.iter().map(|(_, name)| name.as_str()).collect();
     assert_eq!(names, ["object1", "", "object2"], "in layer and file order");
     assert!(prepared.iter().all(|(prefab, _)| prefab.id() == "slime"));
+    // The public form's use: each object spawned by the caller with a
+    // bundle of its own in the spawn's one move, its name beside it.
+    let before = world.counters();
+    let spawned: Vec<(Vec2, bool, String)> = prepared
+        .into_iter()
+        .map(|(prefab, name)| {
+            let entity = prefab.with((Player,)).spawn(&mut world);
+            let at = world.get::<Transform>(entity).unwrap().position;
+            (at, world.get::<Player>(entity).is_some(), name)
+        })
+        .collect();
+    assert_eq!(
+        spawned,
+        [
+            (Vec2::new(100.0, 200.0), true, "object1".to_owned()),
+            (Vec2::new(108.0, 208.0), true, String::new()),
+            (Vec2::new(116.0, 200.0), true, "object2".to_owned()),
+        ],
+        "the origin added, the caller's bundle on each, the names in step"
+    );
+    assert_eq!(
+        world.counters().archetype_moves - before.archetype_moves,
+        3,
+        "one move a spawn, the bundle in it"
+    );
 }
 
 /// Prefab files `<id>.json` in a temp directory of their own, removed on
@@ -1386,6 +1412,9 @@ fn a_variant_takes_its_bases_fields_and_merges_components_by_member() {
         ),
     ]);
     let mut world = world();
+    world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprites(["slime", "slime_red"]);
     dir.load(&["slime", "slime_red"])
         .commit(&mut world)
         .unwrap();
@@ -1788,4 +1817,142 @@ fn an_unknown_variant_fails_the_load() {
         "{err}"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_unknown_base_sprite_fails_the_load() {
+    let world = variant_world();
+    let load = |sprite: &str| {
+        let file = PrefabFile::new(Some(&format!(r#"{{ "sprite": {sprite} }}"#)));
+        PrefabData::load(&file.path, &world)
+    };
+    let err = load(r#"{ "asset_id": "crat" }"#).unwrap_err();
+    assert!(matches!(err, PrefabError::Validation { .. }), "{err}");
+    assert!(
+        err.to_string()
+            .ends_with("sprite.asset_id: unknown sprite ID `crat`; did you mean `crate`?"),
+        "{err}"
+    );
+    // The base before its variants.
+    let err = load(r#"{ "asset_id": "crat", "variants": ["crate_bb"] }"#).unwrap_err();
+    assert!(err.to_string().contains("sprite.asset_id: "), "{err}");
+    assert!(load(r#"{ "asset_id": "crate" }"#).is_ok());
+}
+
+#[test]
+fn take_id_and_the_flush_count_on_one_counter() {
+    use crate::save::{SaveId, SaveState, Saved, name, take_id};
+
+    let mut world = bolt_world();
+    assert_eq!(take_id(&mut world), None, "a World that names nothing");
+    let turret = world.spawn();
+    name(&mut world, turret, Some("cave"), "turret").unwrap();
+    assert_eq!(take_id(&mut world), Some(SaveId(0)));
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_prefab_from(turret, bolt_at(&mut world, 1.0));
+    world.flush(buffer);
+    let bolt: Vec<SaveId> = world
+        .query::<&Saved>()
+        .filter(|saved| saved.prefab().is_some())
+        .map(Saved::id)
+        .collect();
+    assert_eq!(bolt, [SaveId(1)], "the flush takes the next one");
+    assert_eq!(take_id(&mut world), Some(SaveId(2)));
+    assert_eq!(world.resource::<SaveState>().next_id(), 3);
+}
+
+#[test]
+fn a_prepared_saved_spawn_takes_the_next_id_now_and_gives_it_in_its_one_move() {
+    use crate::save::{SaveId, SaveState, Saved, name, saving};
+
+    let mut world = variant_world();
+    let unsaving = world
+        .prepare_prefab("box", [5.0, 5.0])
+        .unwrap()
+        .saved(&mut world, Some("cave"));
+    assert_eq!(unsaving.save_id(), None, "without save state, nothing");
+    let plain = unsaving.spawn(&mut world);
+    assert!(!world.has::<Saved>(plain));
+    assert!(!saving(&world));
+
+    let source = world.spawn_prefab("bat", [0.0, 0.0]).unwrap();
+    name(&mut world, source, Some("cave"), "bat_1").unwrap();
+    let now = world
+        .prepare_prefab("box", [5.0, 5.0])
+        .unwrap()
+        .saved(&mut world, Some("cave"));
+    assert_eq!(now.save_id(), Some(SaveId(0)));
+    assert_eq!(world.resource::<SaveState>().next_id(), 1, "taken at once");
+    let again = now.saved(&mut world, None);
+    assert_eq!(again.save_id(), Some(SaveId(0)), "one ID a spawn");
+    let moves = world.counters().archetype_moves;
+    let entity = again.spawn(&mut world);
+    assert_eq!(world.counters().archetype_moves - moves, 1, "one move");
+    let saved = world.get::<Saved>(entity).unwrap();
+    assert_eq!(
+        (saved.id(), saved.area(), saved.prefab()),
+        (SaveId(0), Some("cave"), Some("box"))
+    );
+
+    let mut buffer = CommandBuffer::new();
+    let queued = world
+        .prepare_prefab("box", [5.0, 5.0])
+        .unwrap()
+        .saved(&mut world, None);
+    buffer.spawn_prefab(queued);
+    let from = world
+        .prepare_prefab("box", [5.0, 5.0])
+        .unwrap()
+        .saved(&mut world, Some("cave"));
+    buffer.spawn_prefab_from(source, from);
+    let moves = world.counters().archetype_moves;
+    world.flush(buffer);
+    assert_eq!(world.counters().archetype_moves - moves, 2, "one move each");
+    let mut spawned: Vec<(SaveId, Option<String>, Entity)> = world
+        .query::<(Entity, &Saved)>()
+        .filter(|(_, saved)| saved.prefab() == Some("box"))
+        .map(|(entity, saved)| (saved.id(), saved.area().map(str::to_owned), entity))
+        .collect();
+    spawned.sort_by_key(|&(id, ..)| id);
+    let areas: Vec<_> = spawned
+        .iter()
+        .map(|(id, area, _)| (*id, area.clone()))
+        .collect();
+    assert_eq!(
+        areas,
+        [
+            (SaveId(0), Some("cave".to_owned())),
+            (SaveId(1), None),
+            (SaveId(2), Some("cave".to_owned())),
+        ],
+        "the spawn from a source keeps the identity its run gave"
+    );
+    assert_eq!(
+        world.resource::<SaveState>().next_id(),
+        3,
+        "the flush took none"
+    );
+
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..12 {
+        let prepared = world
+            .prepare_prefab("box", [5.0, 5.0])
+            .unwrap()
+            .saved(&mut world, None);
+        spawned.push((
+            prepared.save_id().unwrap(),
+            None,
+            prepared.spawn(&mut world),
+        ));
+    }
+    for (id, _, entity) in spawned {
+        let pool = world.get::<SpriteVariants>(entity).unwrap();
+        assert_eq!(
+            world.get::<Sprite>(entity).unwrap().asset_id,
+            pool.by_save_id(id),
+            "the variant its ID picks"
+        );
+        seen.insert(shown(&world, entity));
+    }
+    assert_eq!(seen.len(), 3, "{seen:?}");
 }

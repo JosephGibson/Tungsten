@@ -15,7 +15,11 @@ just level-check
 cargo test -p example-01-platformer
 ```
 
-This is the authoring edit loop. At handoff, use the canonical
+This is the authoring edit loop. `cargo test -p example-01-platformer` runs
+01's pit guard, whose pin (`tests/game/guards/pit.json`) map content anywhere
+can move, not only the pit's: rewrite it with `TUNGSTEN_GUARDS_WRITE=1` once
+the change is meant, its cause in the change's plan or, with none, its commit's
+one-line subject. At handoff, use the canonical
 [validation matrix](../../../docs/validation.md#change-to-check-matrix), running
 each applicable check once for that stage. The generator and Rust tests cover
 different guarantees; keep both. For visible or audible changes, apply the
@@ -26,8 +30,10 @@ cd examples/01_platformer && cargo run
 ```
 
 The local Python tests are separate from `just script-test`. `just level-check` runs
-`--check` and them together; it needs Pillow, so CI and the standard-library-only
-recipes leave it out. `--check` regenerates
+`--check`, then `tungsten check` from the game's folder (a clip's, a particle
+config's and a tile's sprite, a material's shader, the map's layers and GIDs,
+which the generator leaves to it), then them; it needs Pillow, so CI and the
+standard-library-only recipes leave it out. `--check` regenerates
 into a temporary directory, compares every owned byte, and fails on missing,
 stale or uncovered output. It does not rewrite the working tree. PNG compression
 is fixed with no timestamps, and JSON is sorted.
@@ -78,12 +84,17 @@ locked; the level and `content` are source-driven and never are. Unlocking is
 the owner's call: `--unlock NAME` drops a family's lock before an asset
 session redraws it, and `--lock NAME`, once the owner accepts the new art,
 records its hashes again, refusing while the tree's files differ from what
-the family makes. A code session never unlocks; a change to shared code that
-moves a locked file waits for the owner's unlock of each family it moves.
+the family makes. A session granted an unlock leaves the family unlocked at
+its end unless the owner accepted the new art in that session, and no check
+needs every family locked. A code session never unlocks; a change to shared
+code that moves a locked file waits for the owner's unlock of each family it
+moves.
 
 The shell's assets come with its code: Inter and Source Serif 4 with their
-licence files and the shell's screen files (`assets/ui/screens/`) are copied
-byte for byte from `templates/basic/assets/`, with their manifest entries, so
+licence files, the shell's screen files (`assets/ui/screens/`) and the boot
+splash's disc (`boot_dot`, the shell's one sprite, under the template's ID)
+are copied byte for byte from `templates/basic/assets/`, with their manifest
+entries and the `boot` group that names the disc as its logo, so
 `--check` also catches drift from the template; the kit's hit flash draws
 through the engine's own `damage_flash` material. The `shell` theme is the template's text in
 01's colours (01 (h), `generate.THEME_COLORS`): each of the template's colours
@@ -126,7 +137,7 @@ pixel) for any hand-authored sprite. The modules:
 | `actors.py` | The wizard (his gestures, the sprays' staff pose and the gun's pistol pose), fireball, the fire missile's rocket, the small ball, the bowling ball, the training dummy, the six enemies (wisp, crawler, beetle, bat, troll, goblin, with the goblin's knife) and the goblin's rock and bomb |
 | `props.py` | 01 (g)'s props: the pine crates `pine_crate_0` and `pine_crate_1` in the palette's pale pine ramp (`Л П У`), apart from the mine's dark crates, the powder keg and its four lit frames (`powder_keg_lit_<n>`), a burning crate's char overlay (`pine_crate_char_<stage>`), and the particle sprites of a crate falling in, a keg blowing and a rock breaking (`char_splinter`, `keg_stave`, `rock_chip`); `art.art_families`' props builder calls its `build_props` |
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel and its coping, `coping`, the bridge's deck) and the borders between them |
-| `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust frames (`lava_crust_<part>_<n>_<v>`, nine: the set, its dulling, the hold, two a crack stage) and each row's partials, 8 px apart, as the freeze's front and the melt's come down through a basin (`lava_freeze_*`, `lava_melt_*`, 01 (k)), the elevator's gantry, cage and cable, and the falls' plume; the aqueduct's water (01 (k)): a spill over each broken end's lip (`spill_<side>_<k>`), the pours (`pour_wide`) and their splash feet (`pour_foot`), the drips under the coping (`channel_drips`), the fallen voussoirs and the gargoyle's clip in pale limestone, the water over its tongue; e01hollow's aqueduct: the second gargoyle, a drake in profile (`gargoyle_drake`), its water arcing from its jaws, the small pool behind the floor's turf (`pool_basin`, 3 x 1 tiles, each tile a clip), the broken pillar at the area's start (`broken_pillar`, 2 x 4), the floor's paving (`aq_paving_<k>`, four), a fallen capital, a broken amphora and the statue, a water-bearer in pale stone on a pedestal (2 x 3) |
+| `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), in a tile or, larger, whole (`<name>_big`), its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust frames (`lava_crust_<part>_<n>_<v>`, nine: the set, its dulling, the hold, two a crack stage) and each row's partials, 8 px apart, as the freeze's front and the melt's come down through a basin (`lava_freeze_*`, `lava_melt_*`, 01 (k)), the elevator's gantry, cage and cable, and the falls' plume; the aqueduct's water (01 (k)): a spill over each broken end's lip (`spill_<side>_<k>`), the pours (`pour_wide`) and their splash feet (`pour_foot`), the drips under the coping (`channel_drips`), the fallen voussoirs and the gargoyle's clip in pale limestone, the water over its tongue; e01hollow's aqueduct: the second gargoyle, a drake in profile (`gargoyle_drake`), its water arcing from its jaws, the small pool behind the floor's turf (`pool_basin`, 3 x 1 tiles, one clip `pool_basin_big`), the broken pillar at the area's start (`broken_pillar`, 2 x 4), the floor's paving (`aq_paving_<k>`, four), a fallen capital, a broken amphora and the statue, a water-bearer in pale stone on a pedestal (2 x 3) |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`, 8 × 6 since e01hollow), deep recesses (`cave_deep_0`, `cave_deep_1`), pillars drawn whole (`cave_pillar_<k>`) and the wall by its ember tunnel (`cave_wall_0`), the aqueduct's arcade and the bridge's piers, the aqueduct's four pier bases (`pier_base`, `pier_base_<k>`) and second pier top, an oculus (`arcade_pier_top_1`, e01hollow), each gap's arcade tops cut along one broken profile (`arcade_gap_<g>_<row>_<col>`, 01 (k)) and the wet piers beside them (`pier_wet_<k>`), the ravine's wet backs and the mine's cut |
 | `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the force push's wave and dust (`PUSH_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`); e01tomes' books, their takes and the bound's ring (`TOME_CLIPS`), the three tome tiles and the shield's liquid (`hud_liquid_shield`) |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
@@ -186,10 +197,12 @@ Normal and emissive images derive from each final frame's silhouette and glowing
 detail colors, including every player clip and all rune rotations. Only the glow
 set's symbols glow, matched by colour value (`art.GLOW`: `y Y C c`, and e01tomes'
 `Ъ Ч Я Э Ы`, which no other art uses). Terrain
-(names in `terrain.RELIEF_PREFIXES`) and multi-tile scenery (`*_big_*`) use
-relief normals instead. Relief treats luminance as height and has no whole-tile
-tilt, so light pools cross tile seams smoothly. Fully opaque tiles wrap their
-slopes across the tile edge.
+(names in `terrain.RELIEF_PREFIXES`) and scenery larger than a tile (`art.BIG`:
+a whole prop's `<name>_big`, its clip's frames `<name>_big_<i>`, a backdrop's
+cells `<name>_big_<row>_<col>`) use relief normals instead, over each sprite
+whole. Relief treats luminance as height and has no whole-tile tilt, so light
+pools cross tile seams smoothly. Fully opaque tiles wrap their slopes across
+the tile edge; a whole's padding keeps it from wrapping.
 
 Terrain is one masonry texture that repeats exactly every 64 pixels:
 
@@ -271,10 +284,10 @@ rising mist is animated (`scenery.RISING`): the falls' `plume` and, since
 e01hollow, the lava's heat (`haze` over the lake, `haze_small` over the
 shelf's lava), thin curling wisps in the palette's warm translucents (`э` to
 `Б`), thickest over the surface, each drawn at six phases of one loop,
-150 ms a frame, each tile of its cut its own clip (`<name>_big_<row>_<col>`,
-frames `_0` to `_5`). The ravine's pool runs out against fallen stones at its
-east end, `pool_shore`: four frames of 3 × 2 tiles, each tile with art a clip
-(`pool_shore_big_<row>_<col>`).
+150 ms a frame, one clip a prop (`<name>_big`, frames `<name>_big_0` to
+`_5`). The ravine's pool runs out against fallen stones at its east end,
+`pool_shore`: four frames of 3 × 2 tiles, one clip (`pool_shore_big`), its
+empty cell kept.
 
 Cosmetic RNG streams use the first eight bytes of SHA-256 of the asset name,
 not Python's process-randomized hash. Changing one asset does not perturb others.
@@ -341,6 +354,7 @@ drops both, the mine and the bridge the woodland). The level's other fields:
 | `lava` | Each basin by `name`, `left` to `right` from its surface `row` down to the terrain: lava props, a static surface body at its skin in physics layer 4 (`LAVA_LAYER`) that only the player's controller meets, a `ContactDamage` touch from 4 px over the skin to the bed (`lava_bed`: 16 fire, a 1,500 push that passes the window, every 0.1 s), a child `ex10_lava_frost_<i>` on the same box whose fire touches only what is frozen and, with `light`, its glow and light |
 | `river` | The bridge's river: its surface row, its `rapids` and `rocks` columns, and its depths in the background layer |
 | `tunnels` | A 2 × 2 tunnel mouth in the background layer, by `kind` |
+| `chambers` | Pockets dug into an outdoor area's ground, each by `name`: its open interior `left` to `right` and `top` to its `floor`'s surface row, which platforms carve. The caves' plain rock and stalactites draw behind its open cells, and the layout check refuses a wall inside it or an opening in its floor or sides |
 | `backs` | Background spans outdoors, a family from a `top` row down to the ground: the ravine's `wet_back` behind the falls and the mine's `cut_back`, with iron on its open faces. A wall's edges follow the outline of all its spans together, so one-column spans give it a jagged top |
 | `mists` | A far mist band (`band`, an index into `backdrops.FAR_MISTS`) from its `row` across `left` to `right`, in the decorations layer where no terrain is |
 | `spouts` | The channel cells, `[col, row]`, that take `channel_spout`, each with a pour stack under it (01 (k)); empty since e01hollow |
@@ -348,6 +362,7 @@ drops both, the mine and the bridge the woodland). The level's other fields:
 | `crates`, `kegs` | Each placed pine crate and powder keg (01 (g)), over its `support` platform at column `x`, the box's centre; a `tier` stacks it that many boxes up, each bottom corner over a box of its kind on the tier under it. `placement.prepare` stands each box half a pixel over its support's surface, by its prefab's half height, refuses one with any of its box off its support and lets a solid stair over the support take its place; `level.py` writes a `crate` or `keg` marker at each box's centre, which a fresh run sets down after the iron |
 | `stones` | The hollow's rubble stones (e01hollow), each over its `support` at column `x`, its body's centre, by `size` (`small`, `medium`, `large`). `placement.prepare` stands each half a pixel over its support by its size's prefab's half height and refuses one off its support; `level.py` writes a `stone_<size>` marker at each, which a fresh run sets down after the kegs |
 | `geysers` | The hollow's fire geysers (e01hollow), each by `name` over its `support` at column `x`, its vent's middle, `offset` seconds into its cycle at a run's start; the layout check refuses one off its support or with a wall within its plume, 176 px up and 20 px each side |
+| `places` | The map's last object layer, after every other, so no object's ID moves: `kill`, at `kill_row`, the row a fallen player dies at; `level.json`'s `places` not named `pit_…`, the tests' own (`shot_iron_face`, `shot_bridge_deck`, `walk_start`); `pit`, a rectangle over the ball pit's interior, and a `pit_shelf` rectangle a climbing shelf, a row tall, which the full pit's fill pours around; `pit_player`, the feet of its player on the middle of `PIT_DECK`; then its cast, `places`' `pit_…`: the walkers' feet on that deck's surface (`pit_crawler`, `pit_beetle`, `pit_troll`) and the flyers' centres (`pit_bat`, two `pit_wisp`). A place's `x` and `y` are tiles | None: the game and its tests read them by name (`level::marker`, `markers`, `marker_boxes`) |
 | `pickups` | Each placed health orb by `name`, over its `support` platform at column `x`, its centre `float` tiles above the surface; `placement.prepare` refuses one off its support |
 | `tomes` | Each book (01 (l)) by `name` and `kind` (`pact`, `bounding`, `arcane`), placed as an orb is over its `support` at column `x`, sized by its idle frame, and the route platform its double jump starts `from`, which the route test reads; each book's glow counts in the light budget |
 
@@ -367,7 +382,14 @@ mine) and the aqueduct's ferry are other ways round.
 Gameplay geometry is authored, never randomized. Route tests use actual engine input and physics against the
 real generated map, searching launch positions without changing gravity or
 colliders. Run those tests after any layout change; geometric jump estimates
-alone do not prove clearance beneath the solid platforms.
+alone do not prove clearance beneath the solid platforms. Four tables hold
+launches and walks by column and move with the layout: the route test's
+`LAUNCHES` and `TOME_LAUNCHES` (`tests/game/level.rs`), whose failures print the
+row to write; the playthrough's `MAIN` (`tests/game/playthrough.rs`), the main
+route's `LAUNCHES` rows with a `WAITS` entry each and one for the last walk,
+which fails with where the player stood; and the areas test's `CROSSINGS`
+(`tests/game/areas.rs`, where each walk into an area starts), which fails with
+the area reached against the one expected.
 
 `level.py` emits the embedded Tiled catalog (`firstgid=1`, zero for empty, no flip
 bits) and the map's object layers, with the prefabs their classes name. Edit their
@@ -381,28 +403,40 @@ lists the wholly opaque sprites among the map's tiles and the backdrops
 (`level.opaque_tiles`). `level.tmj` is
 written with sorted keys, a tile layer a map row a line and an object a line
 (`level.tiled_text`), so a change's diff shows the rows and objects it moves. The object layers
-sit before `collision`, in spawn order, and `World::spawn_map_objects` spawns them
-when a run starts. The objects a save names, those of the layers `SAVED_LAYERS`
-lists (the lava basins, the decks, the dummy, the enemies, the placed orbs and
-the geysers), take the save ID their `name` derives (`D-222`), which
-`validate_level` holds unique across those layers and never `player`, so no
-object's place or order moves a save; the rest take none:
+sit before `collision`, in spawn order, and `level::spawn` spawns them from
+`World::prepare_map_objects_named`, each with its state in its spawn's own move,
+when a run starts. The objects a save names are those whose prefab carries the
+`level.saved` tag, which `level::saved` reads: `level.py`'s `SAVED` on the
+basins', spikes', fireballs' and decks' prefabs, and the last of `tags` on the
+content prefabs of the dummy, the enemies, the orbs and the geyser. They are the
+objects of the layers `SAVED_LAYERS` lists (the lava basins, the decks, the
+dummy, the enemies, the placed orbs and the geysers), and each takes the save ID
+its `name` derives (`D-222`), which `validate_level` holds unique across those
+layers and never `player`, so no object's place or order moves a save; the rest
+take none:
 
 | Layer | Objects | Prefab class |
 | --- | --- | --- |
 | `props` | Every prop, at its tile position | `ex10_prop_<sprite>_<depth>`: its sprite, behind (`back`) or among (`world`) the world's sprites, and its animation |
 | `slabs` | One box per thin platform: slab runs that share a row, a depth and a material and touch end to end merge, so a body sunk into a deck meets no join | `ex10_slab_<width>x<height>`: a static body in physics layer 1 (stone); `ex10_wood_<width>x<height>` for the rope bridge's and the scaffolds' wooden decks, in layer 3 |
 | `iron` | The mine's iron cladding, merged into the fewest boxes a greedy pass finds (`level.boxes`) | `ex10_iron_<width>x<height>`: a static body in physics layer 2 |
-| `hazards` | The lava basins, and the spikes and fireballs `level.json`'s `hazards` places (none today) | `ex10_lava_<n>`, each basin's surface body and its touch to the bed, `hazard.lava` set so cold never douses it, the lake's east pool with its glow; `ex10_spikes`; `ex10_fire_<n>`, each fireball's own: its sine motion on the kit's `oscillator`, starting where the sine stands at time 0. All hurt through the kit's `contact_damage`, the spikes and fireballs 34 a touch, pushing 560 px/s away |
-| `platforms` | The moving platforms, and the mine's elevator | `ex10_platform_<n>`, each its own: a kinematic deck on the kit's `path_follower`, ping-ponging between its sine's two ends with a sine easing, half a period a leg, drawn by `lift_deck_<n>`, three deck tiles across its width; deck 4 the elevator (`elevator { rise, speed }`), a cage drawn by `lift_deck_elevator` that the game moves, with the gantry's `lift_sheave` marker for its cable |
+| `hazards` | The lava basins, and the spikes and fireballs `level.json`'s `hazards` places (none today) | `ex10_lava_<n>`, each basin's surface body and its touch to the bed, `hazard.lava` set so cold never douses it, the lake's east pool with its glow; `ex10_spikes`; `ex10_fire_<n>`, each fireball's own: its sine motion on the kit's `oscillator`, starting where the sine stands at time 0. All hurt through the kit's `contact_damage`, the spikes and fireballs 34 a touch, pushing 560 px/s away, and all carry the `level.saved` tag |
+| `platforms` | The moving platforms, and the mine's elevator | `ex10_platform_<n>`, each its own: a kinematic deck on the kit's `path_follower`, ping-ponging between its sine's two ends with a sine easing, half a period a leg, drawn by `lift_deck_<n>`, three deck tiles across its width; deck 4 the elevator, a cage drawn by `lift_deck_elevator` on the kit's two-way lift (`path_follower` with its `rider` rule, `LIFT_RIDER`; `cues` for its start and stop sounds, `LIFT_CUES`; `elevator`, a marker for the game's own rules), with the gantry's `lift_sheave` marker for its cable; every deck's prefab carries the `level.saved` tag |
 | `areas` | `landmarks`, a zone across each one's columns | `ex10_area_<n>`: a sensor body, the kit's `zone` for the player and its `area`: its name, `indoor`, `ambience`, `backdrop`, `night`, `horizon`, `ridges` and `woodland` |
-| `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
+| `emitters` | The ambient emitters | `ex10_ambient_emitter`, classed by its `level.ambient` tag (`content/data/tags/game.json`); each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
 | `markers` | `spawn`, where a fresh run's player stands, an `iron` marker at each loose block's centre, a `crate` or `keg` marker at each placed prop's, a `stone_<size>` marker at each stone's, and the elevator's `lift_sheave` | None: the game reads them by name |
-| `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
-| `enemies` | The 36 enemies, each by its `name`; a new one needs a name no saved object has, and moves no save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
-| `pickups` | The eight placed health orbs, each by its `name` | `health_orb`, the drops' prefab; the run takes their `lifetime` off |
+| `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its first three tags (`flesh`, `freezable`, `conductive`), the prefab's `living` and `level.saved` left after them |
+| `enemies` | The 36 enemies, each by its `name`; a new one needs a name no saved object has, and moves no save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`) or its variant's, whose `tags` end in `level.saved`, its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home. A kind's variant is a `Variant`, its prefab's `enemy.variant`, and a `<kind>_<variant>` prefab in `content/prefabs/` that `enemies::prefab` names, a whole copy of the kind's (`troll_armoured`, the bridge troll's) or one that `extends` it |
+| `pickups` | The eight placed health orbs, each by its `name` | `health_orb`, the drops' prefab, tagged `level.saved`, which only the map's spawn reads, so a dropped orb carries it unread; the run takes their `lifetime` off |
 | `tomes` | The three books; no save names a book, so none takes a save ID | `tome_<kind>`, its point the book's top-left |
-| `geysers` | The three geysers, the map's last object layer, each by its `name` | `geyser`, its point the vent sprite's top-left, its column's middle less 32 px and its support's row less 32, so the vent's bottom row stands on the floor; its `geyser.offset` property |
+| `geysers` | The three geysers, the map's last saved layer, each by its `name` | `geyser`, tagged `level.saved`, its point the vent sprite's top-left, its column's middle less 32 px and its support's row less 32, so the vent's bottom row stands on the floor; its `geyser.offset` property |
+
+A new kind of saved map object takes its kind in 01's `tests/game/saves.rs`,
+whose census (`every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation`)
+panics on a saved entity of no known kind: a branch in `kind` by a component of
+its own, an arm in `lists` naming what its prefab, the map or a load gives again
+(`rebuilt`) and what only draws it (`presentation`), and its name in the kinds
+the census sees.
 
 A parameter that lives in an array (a box's half extents, an oscillator's
 amplitude, a path's points) gives its object a prefab of its own; a scalar would
@@ -492,17 +526,19 @@ attraction. Camera zoom spans 35–300%.
 
 `placement.py` resolves `support` names in `level.json`. `build_level` makes the
 terrain tiles first, since they read only the platforms, and `prepare` stands
-props on what those tiles draw (01 (k)): a grounded prop or group starts with
+props on what those tiles draw (01 (k)): a grounded prop starts with
 its visible bottom edge on the named surface's row, a hung one (`under`) with
 its top tucked `UNDER_TUCK` (6) pixels into its support's underside, a ground
 platform's `bottom` or a deck's visible depth, and each then moves by the
 smallest 0–12 px (down for a grounded one, up for a hung one) at which it
 passes the floating check's own rule below, so it meets the rock families'
 ragged tops and undersides and a weathered deck's planks rather than the
-cell's edge. Composite `groups` preserve relative piece positions and
-validate both feet/trunk against the support width; each takes the pieces
-inside its box where `level.json` writes them, and `prepare` refuses a piece
-inside two groups' boxes. Wall roots remain attached to cliff faces. The
+cell's edge. A prop larger than a tile is one whole sprite or clip
+(`<name>_big`), placed as its own composite: by its opaque box's bottom (its
+top, `under` and `wall`), both feet within its support's width, so `prepare`
+leaves out the centre test and a covering stair that a single tile's prop
+takes. Wall roots remain attached to cliff faces, their box's top on their
+support's row. The
 aqueduct floor's paving (`aq_paving_<k>`, e01hollow) lies in the floor's turf
 band, so `level.json` gives each piece no `support` and writes its `y` with its
 foot `scenery.PAVING_SINK` (6) px into the floor's top, the most `SINK` lets a
@@ -528,9 +564,7 @@ its `anchor`, else by its sprite's list in `scenery.py`:
 | exempt | haze, plumes, the far pieces, the water, river, pool and lava props and the spills, which sit in or on what holds them |
 | anything else | fails as `unjudged`, so a new piece states how it stands |
 
-A group is judged by its own pieces' composite where they landed, as its
-anchor says; a piece inside two groups' boxes where `level.json` writes it,
-a group that moves no piece and a non-exempt piece in no group fail. Each
+A whole prop is judged as any prop, by its `anchor`. Each
 column of `timber_support` pieces ends on solid (it may run on into the
 ground behind it). Decorations are judged by their part in a structure: a
 pier column (pier top, capital, shafts) runs without a hole to a
@@ -838,7 +872,7 @@ a spray's loop and the pour stop over 0.08 seconds.
 | `ex10_toss_sfx` | `toss.wav` | A bowling ball leaves the hand |
 | `ex10_place_sfx` | `place.wav` | An iron block set down |
 | `ex10_black_hole_sfx` | `black_hole_open.wav` | A black hole tearing open (01 (j)): an inward suck rising over its 0.3 s opening, a deep whomp falling into its drone, a rumble and a faint glassy shimmer |
-| `ui_move`, `ui_select`, `ui_back` | `ui_*.wav` | The shell's menu sounds, by the IDs it plays: a plucked tick, two bells rising, two falling |
+| `ui_move`, `ui_select`, `ui_back` | `ui_*.wav` | The shell's menu sounds, by the IDs its theme's `sounds` names: a plucked tick, two bells rising, two falling |
 | `game_over` | `game_over.wav` | Game over's sting: a falling bell line, then a low toll under a plucked D minor chord |
 | `music_title`, `music_over` | `music_*.wav` | The shell's title loop, a twelve-bar lullaby in D minor, and game over's, a four-bar dirge |
 | `music_explore`, `music_pause` | `music_*.wav` | A run's exploration loop, and pause's over the quieted run |
@@ -956,7 +990,7 @@ fading. Normal release adds a quiet 0.18-second pressure tail, the flamethrower'
 a dying puff (`ex10_flame_end_sfx`); death and caster loss stop quietly.
 
 Iron under the spray gradually gains a pale ice shell, white frost rims, crystalline facets,
-branching cracks and hanging icicles. Four unlit `iron_frost_big_*` overlays keep
+branching cracks and hanging icicles. One unlit overlay, `iron_frost_big`, keeps
 the coating visible at night over the lit iron plates. The block stays frozen
 and brittle. Supported frozen
 iron loses horizontal speed at 120 pixels/second², independently of normal friction.
@@ -1065,9 +1099,9 @@ would meet a solid tile, a body that is not dynamic (a deck, a slab, lava's
 surface, the elevator, the wizard or an enemy) or another block is refused
 before the cast spends anything, with a fizzle; balls in the way are shoved
 aside. It is a
-120-pixel square collider, four large-ball diameters on a side, drawn from four
-64-pixel lit quarters (`iron_brick_big_*`: riveted plates cut along their seams),
-so it keeps the terrain's pixel scale. It weighs 400 balls and falls harder:
+120-pixel square collider, four large-ball diameters on a side, drawn whole as
+one 128-pixel lit sprite (`iron_brick_big`: four riveted plates meeting at their
+seams), so it keeps the terrain's pixel scale. It weighs 400 balls and falls harder:
 past 30 pixels/second downward it gains 1,800 pixels/second² more, half the
 world's gravity, unless a troll holds or has thrown it. Iron receives 20%
 of a ball's black-hole acceleration at the same distance, enough for a nearby
@@ -1180,7 +1214,7 @@ Each take (`tome_<kind>_take_<f>`, 64 pixels, six at 80 ms, unlit) flares the
 book, breaks it into shards of light and opens a ring behind them. The bound's
 ring (`bound_ring_<f>`, 64 × 32, six at 50 ms, unlit) is centred on the feet.
 `TOME_CLIPS` lists the three clips of each kind and the ring's, which
-`generate.spray_clips` registers. The tome tiles (`icon_tome_<kind>`) are each
+`effects.build_tome_art` records through `art.clip`. The tome tiles (`icon_tome_<kind>`) are each
 book's first frame on a square tile in its own metal with a bracket on each
 corner, apart from the spells' bevels; `hud_liquid_shield` is the shield's light,
 cool blue strip. `generate.particle_configs` adds each book's motes

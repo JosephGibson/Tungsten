@@ -1,0 +1,39 @@
+[
+  {
+    "on": "damaged_part",
+    "flags": {
+      "all": [
+        "show.damage_numbers"
+      ]
+    },
+    "amount": {
+      "min": 1e-06
+    },
+    "do": [
+      {
+        "label": {
+          "merge": 0.25,
+          "ticks": {
+            "size": 11,
+            "kind": {
+              "any": [
+                "damage.fire",
+                "damage.physical.bleed"
+              ]
+            },
+            "first": true
+          },
+          "crit": {
+            "size": 24,
+            "color": [
+              1.0,
+              0.672,
+              0.003,
+              1.0
+            ]
+          }
+        }
+      }
+    ]
+  }
+]

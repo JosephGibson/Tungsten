@@ -11,6 +11,13 @@
         "sound": {
           "id": "ex10_fireball_blast_sfx"
         }
+      },
+      {
+        "shake": {
+          "trauma": 0.68,
+          "near": 512,
+          "far": 3072
+        }
       }
     ]
   },
@@ -139,16 +146,18 @@
     ]
   },
   {
-    "on": "tossed",
+    "on": "ability_used",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": "bowling_ball",
     "do": [
       {
         "sound": {
-          "id": "ex10_toss_sfx"
+          "id": "ex10_toss_sfx",
+          "at": "centre"
         }
       }
     ]
@@ -170,31 +179,35 @@
     ]
   },
   {
-    "on": "cast",
+    "on": "ability_used",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": "fire_missile",
     "do": [
       {
         "sound": {
-          "id": "ex10_fireball_cast_sfx"
+          "id": "ex10_fireball_cast_sfx",
+          "at": "centre"
         }
       }
     ]
   },
   {
-    "on": "pushed",
+    "on": "ability_used",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": "force_push",
     "do": [
       {
         "sound": {
-          "id": "ex10_force_push_sfx"
+          "id": "ex10_force_push_sfx",
+          "at": "centre"
         }
       }
     ]
@@ -227,22 +240,6 @@
         "sound": {
           "id": "ex10_frost_blast_sfx",
           "min_interval": 0.08
-        }
-      }
-    ]
-  },
-  {
-    "on": "thundered",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_thunder_sfx",
-          "min_interval": 0.1
         }
       }
     ]
@@ -314,16 +311,18 @@
     ]
   },
   {
-    "on": "summoned",
+    "on": "ability_used",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": "summon",
     "do": [
       {
         "sound": {
-          "id": "ex10_summon_sfx"
+          "id": "ex10_summon_sfx",
+          "at": "aim"
         }
       }
     ]
@@ -485,6 +484,13 @@
           "id": "ex10_troll_slam_sfx",
           "min_interval": 0.1
         }
+      },
+      {
+        "shake": {
+          "trauma": 0.5,
+          "near": 120,
+          "far": 640
+        }
       }
     ]
   },
@@ -521,37 +527,61 @@
     ]
   },
   {
-    "on": "player_hurt",
+    "on": "killed",
     "filter": {
       "all": [
         "team.player"
       ]
     },
-    "do": [
-      {
-        "shake": 0.5
-      },
-      {
-        "sound": {
-          "id": "ex10_player_hit_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "player_died",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
+    "group": "player_hurt",
     "do": [
       {
         "shake": 0.8
       },
       {
         "sound": {
-          "id": "ex10_player_death_sfx"
+          "id": "ex10_player_death_sfx",
+          "at": "centre"
+        }
+      }
+    ]
+  },
+  {
+    "on": "damaged",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "periodic": false,
+    "group": "player_hurt",
+    "do": [
+      {
+        "shake": 0.5
+      },
+      {
+        "sound": {
+          "id": "ex10_player_hit_sfx",
+          "at": "centre"
+        }
+      }
+    ]
+  },
+  {
+    "on": "damaged",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "periodic": true,
+    "group": "player_hurt",
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_player_tick_sfx",
+          "min_interval": 0.15,
+          "at": "centre"
         }
       }
     ]
@@ -567,22 +597,6 @@
       {
         "sound": {
           "id": "ex10_staff_gutter_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "crawler_scared",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_crawler_scared_sfx",
-          "min_interval": 0.4
         }
       }
     ]
@@ -604,69 +618,6 @@
     ]
   },
   {
-    "on": "lift_started",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_lift_start_sfx",
-          "min_interval": 0.3
-        }
-      }
-    ]
-  },
-  {
-    "on": "lift_stopped",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_lift_stop_sfx",
-          "min_interval": 0.3
-        }
-      }
-    ]
-  },
-  {
-    "on": "hole_collapsed",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_black_hole_collapse_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "iron_landed",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_iron_thud_sfx",
-          "min_interval": 0.1
-        }
-      }
-    ]
-  },
-  {
     "on": "fizzled",
     "filter": {
       "all": [
@@ -678,36 +629,6 @@
         "sound": {
           "id": "ex10_fizzle_sfx",
           "min_interval": 0.1
-        }
-      }
-    ]
-  },
-  {
-    "on": "snapped",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_thunder_snap_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "thawed",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_ice_crack_sfx"
         }
       }
     ]
@@ -774,13 +695,19 @@
     ]
   },
   {
-    "on": "double_jumped",
+    "on": "air_jumped",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "amount": {
+      "max": 0
+    },
     "do": [
+      {
+        "burst": "ex10_double_jump"
+      },
       {
         "sound": {
           "id": "ex10_air_jump_sfx"
@@ -819,17 +746,98 @@
     ]
   },
   {
-    "on": "not_ready",
+    "on": "ability_refused",
     "filter": {
       "all": [
         "team.player"
       ]
     },
+    "ability": [
+      "fire_missile",
+      "force_push",
+      "black_hole",
+      "iron_block",
+      "bowling_ball",
+      "lightning",
+      "toxic_flask",
+      "summon"
+    ],
+    "reason": "no_cost",
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_no_mana_sfx",
+          "at": "aim"
+        }
+      }
+    ]
+  },
+  {
+    "on": "ability_refused",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "ability": [
+      "fire_missile",
+      "force_push",
+      "black_hole",
+      "iron_block",
+      "bowling_ball",
+      "lightning",
+      "toxic_flask",
+      "summon"
+    ],
+    "reason": [
+      "not_ready",
+      "no_charge"
+    ],
     "do": [
       {
         "sound": {
           "id": "ex10_not_ready_sfx",
-          "min_interval": 0.15
+          "min_interval": 0.15,
+          "at": "aim"
+        }
+      }
+    ]
+  },
+  {
+    "on": "ability_refused",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "ability": [
+      "fire_missile",
+      "force_push",
+      "black_hole",
+      "iron_block",
+      "bowling_ball",
+      "lightning",
+      "toxic_flask",
+      "summon"
+    ],
+    "reason": [
+      "no_target",
+      "no_room",
+      "capped"
+    ],
+    "do": [
+      {
+        "burst": {
+          "particles": "ex10_fizzle",
+          "key": true,
+          "at": "aim"
+        }
+      },
+      {
+        "sound": {
+          "id": "ex10_fizzle_sfx",
+          "min_interval": 0.1,
+          "at": "aim"
         }
       }
     ]
@@ -910,6 +918,13 @@
           "id": "ex10_keg_boom_sfx",
           "min_interval": 0.06
         }
+      },
+      {
+        "shake": {
+          "trauma": 0.68,
+          "near": 512,
+          "far": 3072
+        }
       }
     ]
   },
@@ -936,6 +951,7 @@
         "team.player"
       ]
     },
+    "cap": 4,
     "do": [
       {
         "sound": {
@@ -1090,58 +1106,22 @@
     ]
   },
   {
-    "on": "tome_pact_taken",
+    "on": "air_jumped",
     "filter": {
       "all": [
         "team.player"
       ]
+    },
+    "amount": {
+      "min": 1
     },
     "do": [
       {
-        "sound": {
-          "id": "ex10_tome_pact_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "tome_bounding_taken",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
+        "burst": "ex10_bound_sparks"
+      },
       {
-        "sound": {
-          "id": "ex10_tome_bounding_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "tome_arcane_taken",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_tome_arcane_sfx"
-        }
-      }
-    ]
-  },
-  {
-    "on": "bounded",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
+        "burst": "ex10_bound_trail"
+      },
       {
         "sound": {
           "id": "ex10_bound_sfx",
@@ -1162,22 +1142,6 @@
         "sound": {
           "id": "ex10_beetle_plough_sfx",
           "min_interval": 0.1
-        }
-      }
-    ]
-  },
-  {
-    "on": "crawler_retreated",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_crawler_retreat_sfx",
-          "min_interval": 0.2
         }
       }
     ]
@@ -1279,38 +1243,6 @@
     ]
   },
   {
-    "on": "ground_struck",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_ground_strike_sfx",
-          "min_interval": 0.1
-        }
-      }
-    ]
-  },
-  {
-    "on": "player_ticked",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_player_tick_sfx",
-          "min_interval": 0.15
-        }
-      }
-    ]
-  },
-  {
     "on": "crate_broke",
     "filter": {
       "all": [
@@ -1365,6 +1297,7 @@
         "team.player"
       ]
     },
+    "cap": 4,
     "do": [
       {
         "sound": {
@@ -1375,49 +1308,19 @@
     ]
   },
   {
-    "on": "poisoned",
+    "on": "ability_used",
     "filter": {
       "all": [
         "team.player"
       ]
     },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_poisoned_sfx",
-          "min_interval": 0.08
-        }
-      }
-    ]
-  },
-  {
-    "on": "flask_thrown",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
+    "ability": "toxic_flask",
     "do": [
       {
         "sound": {
           "id": "ex10_flask_throw_sfx",
-          "min_interval": 0.08
-        }
-      }
-    ]
-  },
-  {
-    "on": "flask_burst",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_flask_burst_sfx",
-          "min_interval": 0.08
+          "min_interval": 0.08,
+          "at": "centre"
         }
       }
     ]

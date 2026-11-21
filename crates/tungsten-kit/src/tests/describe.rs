@@ -132,10 +132,11 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     assert_eq!(kinds.len(), 11);
     assert_eq!(
         descriptions.shapes().count(),
-        86,
+        89,
         "7.10c's lob, the prefab and roll actions' object forms, the cone, the conduction, \
          the projectile's end and the place; 7.10g's clip rule, blink, path rider and tag look; \
-         7.18's camera box, lead, follow and fixed, and the camera action"
+         7.18's camera box, lead, follow and fixed, and the camera action; 7.13c's impact extra \
+         and push; 7.13c's foes and cues' burst action; 7.13c's foes' overlay bob"
     );
 }
 
@@ -252,8 +253,8 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 59,
-        "the cue action's sixteen forms, the target's three, the hit shape's two, the modifier's \
+        probed, 60,
+        "the cue action's seventeen forms, the target's three, the hit shape's two, the modifier's \
          four, the ability trigger's four, its target's four, its payload's seven, the offer's two, \
          a chemistry output's eleven, a projectile end's one, a fixed camera's three and a camera \
          action's two"
@@ -299,17 +300,23 @@ fn each_described_enum_variant_deserializes() {
             + 2
             + 2
             + 2
-            + 6
             + 2
             + 4
             + 2
-            + 2,
+            + 2
+            + 1
+            + 1
+            + 2
+            + 2
+            + 2
+            + 3 * 4,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
          steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
          axes, the effect action's targets, the stack's refresh and expire policies, and the \
          ability action's ops and targets, the level's counter targets, the ability's \
-         directions, a cue rule's reasons, a cap's past, a clip rule's motions, a hitbox's facings \
-         and a camera lead's sources"
+         directions, a cap's past, a clip rule's motions, a hitbox's facings and credits, \
+         a camera lead's sources, a blast's spare, point and land and an impact's land and four \
+         actions' `at`, each with `aim`; a cue rule's reasons are a name or a list"
     );
 }
 
@@ -422,13 +429,13 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 179,
+        checked, 192,
         "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
          four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, the \
          hit flash's interval, a look's overlay speed and depth and glow radius, its light's \
          radius and intensity and sound's volume, a lob's speed, a cone's reach, half angle, \
          rays, damage, knockback, sweep, push and far share, a conduction's damage, \
-         reach, keep and jumps, a cap's max and a place's range, a blink's last seconds, a spawner's alive and first, a world rule's margin, a path's wait, a lift's board and back, a tag look's growth, a health bar's rise and inset, and a camera rig's view height, zoom and priority and its lead's max, time and smoothing"
+         reach, keep and jumps, a cap's max and a place's range, a blink's last seconds, a spawner's alive and first, a world rule's margin, a path's wait, a lift's board and back, a tag look's growth, an overlay bob's height and seconds, a health bar's rise and inset, and a camera rig's view height, zoom and priority and its lead's max, time and smoothing, a blast's far share, an impact's speed, per mass, most, floor, mass, amount, margin and scale, its extra's damage and its push's away, most and along, a pickup's fall, a steering's pace and a projectile's seconds"
     );
 }
 
@@ -438,7 +445,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 50);
-    assert_eq!(count("shape "), 86);
+    assert_eq!(count("shape "), 89);
     assert_eq!(count("kind "), 11);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));

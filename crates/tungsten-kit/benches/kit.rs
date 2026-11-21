@@ -32,10 +32,7 @@
 //!   per entity with a modifier and a half-second period, its ticks queued
 //!   for the health plugin's resolve), `effect_tick_by_id` (the same effect
 //!   named by ID, an entry among 32), `effect_resolve` (one request a step
-//!   per target at its stack limit under `refresh`), `ailment_tick` (a
-//!   bucket per entity draining under a threshold), `ailment_feed` (one
-//!   typed part a step per entity, below its ladder's `needs`),
-//!   `ability_tick` (an interval ability used each step, arming a windowed
+//!   per target at its stack limit under `refresh`), `ability_tick` (an interval ability used each step, arming a windowed
 //!   hitbox, no hit plugin) and `level_tick` (a counter below the next
 //!   level);
 //! - present phase: `oscillator_present` (rotation and scale), `facing`,
@@ -59,19 +56,18 @@ use tungsten_core::{
     SpriteAssetId, Stage, StagedLoad, Time, Transform, World,
 };
 use tungsten_kit::{
-    Abilities, AbilitiesPlugin, Ability, ActionInput, ActionInputPlugin, AilmentBuckets,
-    AilmentThreshold, Aim, AimPlugin, AnimationPlugin, CharacterAnimator, CharacterAnimatorPlugin,
-    ChemistryPlugin, Clips, ContactDamage, ContactDamagePlugin, Conversion, Cooldown,
-    CooldownPlugin, Counters, CountersPlugin, CueAction, Cues, CuesPlugin, Curve, DamagePart,
-    DamageRequest, Damaged, DamagedPart, DepthSort, DepthSortPlugin, Effect, EffectRequest,
-    Effects, EffectsPlugin, Expire, Facing, FacingPlugin, Follow, FollowPlugin, Health,
-    HealthPlugin, HitPlugin, HitShape, Hitbox, Hurtbox, Intent, Interaction, Knockback,
-    KnockbackPlugin, Level, LevelPlugin, Lifetime, LifetimePlugin, LinearMotion,
-    LinearMotionPlugin, Modifier, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Payload,
-    Penetration, Pickup, PickupPlugin, PlatformerController, Projectile, ProjectilePlugin, Refresh,
-    Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin,
-    Steering, SteeringPlugin, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
-    TopDownMoverPlugin, Trigger, Wrap, WrapPlugin, knock_back,
+    Abilities, AbilitiesPlugin, Ability, ActionInput, ActionInputPlugin, Aim, AimPlugin,
+    AnimationPlugin, CharacterAnimator, CharacterAnimatorPlugin, ChemistryPlugin, Clips,
+    ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownPlugin, Counters,
+    CountersPlugin, CueAction, Cues, CuesPlugin, Curve, DamagePart, DamageRequest, Damaged,
+    DamagedPart, DepthSort, DepthSortPlugin, Effect, EffectRequest, Effects, EffectsPlugin, Expire,
+    Facing, FacingPlugin, Follow, FollowPlugin, Health, HealthPlugin, HitPlugin, HitShape, Hitbox,
+    Hurtbox, Intent, Interaction, Knockback, KnockbackPlugin, Level, LevelPlugin, Lifetime,
+    LifetimePlugin, LinearMotion, LinearMotionPlugin, Modifier, Orbit, OrbitPlugin, Oscillator,
+    OscillatorPlugin, Payload, Penetration, Pickup, PickupPlugin, PlatformerController, Projectile,
+    ProjectilePlugin, Refresh, Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin,
+    StayInView, StayInViewPlugin, Steering, SteeringPlugin, TagFilter, Tags, TagsPlugin, Target,
+    TopDownMover, TopDownMoverPlugin, Trigger, Wrap, WrapPlugin, knock_back,
 };
 
 const SIZES: [usize; 2] = [1_000, 10_000];
@@ -955,23 +951,14 @@ fn rig_set(set: PluginSet) -> (World, Schedule) {
     (world, schedule)
 }
 
-/// Tags (the ladder's `bench.a` declared), health, stats and effects: what
-/// the effect rows run on.
+/// Tags (`bench.a` declared), health, stats and effects: what the effect
+/// rows run on.
 fn effect_set() -> PluginSet {
     PluginSet::new()
         .with(TagsPlugin::new().with_tags(["bench.a"]))
         .with(HealthPlugin)
         .with(StatsPlugin::new())
         .with(EffectsPlugin)
-}
-
-/// M67's ladder: `bench.a` with one rung far out of reach.
-fn stage_ladder(world: &mut World) {
-    stage(
-        world,
-        "damage_types",
-        r#"{ "bench.a": { "ailments": [{ "effect": { "duration": 1 }, "needs": 1, "window": 1000000 }] } }"#,
-    );
 }
 
 fn effect_tick(c: &mut Criterion) {
@@ -1117,51 +1104,6 @@ fn effect_resolve(c: &mut Criterion) {
     group.finish();
 }
 
-fn ailment_tick(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ailment_tick");
-    for n in SIZES {
-        let (mut world, mut schedule) = rig_set(effect_set());
-        stage_ladder(&mut world);
-        for _ in 0..n {
-            // A bucket far above what a sitting drains at the rung's window.
-            let buckets: AilmentBuckets =
-                serde_json::from_value(serde_json::json!({ "bench.a": 1e9 })).unwrap();
-            world.spawn_with((Health::new(100.0), AilmentThreshold::new(1.0), buckets));
-        }
-        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
-            b.iter(|| fixed_step(black_box(&mut world), &mut schedule));
-        });
-    }
-    group.finish();
-}
-
-fn ailment_feed(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ailment_feed");
-    for n in SIZES {
-        let (mut world, mut schedule) = rig_set(effect_set());
-        stage_ladder(&mut world);
-        let kind = Tags::new(["bench.a"]);
-        // A threshold no sitting's fills reach: every part feeds, no rung
-        // passes.
-        let targets: Vec<_> = (0..n)
-            .map(|_| world.spawn_with((Health::new(1e12), AilmentThreshold::new(1e9))))
-            .collect();
-        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
-            b.iter(|| {
-                for &target in targets.iter().rev() {
-                    DamageRequest::from_parts(
-                        target,
-                        [DamagePart::new(1.0).with_tags(kind.clone())],
-                    )
-                    .queue(&mut world);
-                }
-                fixed_step_and_flush(black_box(&mut world), &mut schedule);
-            });
-        });
-    }
-    group.finish();
-}
-
 fn ability_tick(c: &mut Criterion) {
     let mut group = c.benchmark_group("ability_tick");
     for n in SIZES {
@@ -1245,8 +1187,6 @@ criterion_group!(
     effect_tick_by_id,
     chemistry_emission,
     effect_resolve,
-    ailment_tick,
-    ailment_feed,
     ability_tick,
     level_tick
 );

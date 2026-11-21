@@ -1,7 +1,9 @@
 use super::*;
 use serde_json::json;
 use tungsten_core::physics::PrevPosition;
-use tungsten_core::{AssetRegistry, Bundle, ComponentRegistry, PrefabData, Schedule, Stage};
+use tungsten_core::{
+    AssetRegistry, Bundle, ComponentRegistry, EventCursor, PrefabData, Schedule, Stage,
+};
 
 use crate::damage::effects::{Effect, Effects, EffectsPlugin};
 use crate::damage::health::HealthPlugin;
@@ -1550,6 +1552,83 @@ fn an_entry_turns_ready_once_a_cooldown() {
 }
 
 #[test]
+fn an_ability_sends_its_ready_event() {
+    let (mut world, mut schedule) = rig();
+    let hitbox = || Payload::Hitbox(0.1);
+    let cool = insert(
+        &mut world,
+        "cool",
+        Ability::new().with_cooldown(0.5).with_payload(hitbox()),
+    );
+    let shot = insert(
+        &mut world,
+        "shot",
+        Ability::new()
+            .with_charges(1, 2.0 * STEP, false)
+            .with_payload(hitbox()),
+    );
+    let free = insert(&mut world, "free", Ability::new().with_payload(hitbox()));
+    let quiet = at(
+        &mut world,
+        0.0,
+        0.0,
+        (Abilities::new().with(cool.clone()).with(shot).with(free),),
+    );
+    let named = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(cool),
+            Cues::new().on(ABILITY_READY, [CueAction::counter_add("ready", 1)]),
+            Counters::new(),
+        ),
+    );
+    let mut cursor = EventCursor::<AbilityReady>::new();
+    let mut read = |world: &World| -> Vec<(Entity, String)> {
+        cursor
+            .read(world.resource::<EventQueue<AbilityReady>>())
+            .map(|ready| (ready.entity, ready.name.clone()))
+            .collect()
+    };
+    steps(&mut world, &mut schedule, 5);
+    assert!(
+        read(&world).is_empty(),
+        "an entry starts ready: a spawn sends none"
+    );
+    for name in ["cool", "shot", "free"] {
+        assert_eq!(use_ability(&mut world, quiet, name), Used::Used);
+    }
+    assert_eq!(use_ability(&mut world, named, "cool"), Used::Used);
+    let mut seen = Vec::new();
+    for step in 1..=32 {
+        steps(&mut world, &mut schedule, 1);
+        seen.extend(
+            read(&world)
+                .into_iter()
+                .map(|(entity, name)| (step, entity, name)),
+        );
+    }
+    assert_eq!(
+        seen,
+        [
+            (2, quiet, "shot".to_string()),
+            (30, quiet, "cool".to_string()),
+            (30, named, "cool".to_string()),
+        ],
+        "the charge back from none at step 2 and the 0.5 s cooldown's end at step 30, \
+         each once, with no cue naming `ability_ready` on `quiet`; `free` never waits"
+    );
+    assert_eq!(
+        world.get::<Counters>(named).unwrap().get("ready"),
+        1,
+        "a named cue still fires beside the event"
+    );
+    steps(&mut world, &mut schedule, 2);
+    assert!(read(&world).is_empty(), "each event read once");
+}
+
+#[test]
 fn a_held_trigger_cues_its_hold_and_release() {
     let (mut world, mut schedule) = rig();
     let run = insert(
@@ -2181,6 +2260,602 @@ fn a_chain_ends_when_its_user_or_last_receiver_goes() {
     let _ = first;
 }
 
+// example-01-spells-toys-gun, Step 1: conduction from code, its strikes as
+// a blast's hits, its jump event and two opt-ins.
+
+/// The damage the last step dealt, by target.
+fn hurt(world: &World) -> Vec<(Entity, f32)> {
+    world
+        .resource::<EventQueue<crate::Damaged>>()
+        .iter()
+        .map(|hit| (hit.entity, hit.amount))
+        .collect()
+}
+
+/// The jumps the last step sent.
+fn jumped(world: &World) -> Vec<Conducted> {
+    world
+        .resource::<EventQueue<Conducted>>()
+        .iter()
+        .copied()
+        .collect()
+}
+
+/// A step's damage by target and its jumps.
+type Zapped = (Vec<(Entity, f32)>, Vec<Conducted>);
+
+/// `count` steps, `zap` pressed on `caster` at the first when `press`
+/// (nothing pressed when `caster` has no intent): each step's damage by
+/// target and its jumps.
+fn zap_jumps(
+    world: &mut World,
+    schedule: &mut Schedule,
+    caster: Entity,
+    count: usize,
+    press: bool,
+) -> Vec<Zapped> {
+    (1..=count)
+        .map(|i| {
+            if let Some(intent) = world.get_mut::<Intent>(caster) {
+                intent.set_slot("zap", press && i == 1, press && i == 1);
+            }
+            steps(world, schedule, 1);
+            (hurt(world), jumped(world))
+        })
+        .collect()
+}
+
+/// The chains in flight: each one's last receiver, its chained receivers,
+/// its damage and its jumps left.
+fn chains(world: &World) -> Vec<(Entity, Vec<Entity>, f32, u32)> {
+    conductions(world)
+        .into_iter()
+        .map(|chain| (chain.last, chain.chained, chain.damage, chain.jumps))
+        .collect()
+}
+
+#[test]
+fn a_conduction_from_code_jumps_past_its_chained_receivers() {
+    use crate::damage::pipeline::Requests;
+    let (mut world, mut schedule) = rig();
+    let user = at(&mut world, 0.0, 0.0, (Intent::default(),));
+    // From the start the chained receiver lies nearest; from the next, the
+    // start and the chained one lie nearer than or as near as the last.
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let chained = conductor(&mut world, 150.0, 0.0, &[]);
+    let next = conductor(&mut world, 210.0, 0.0, &[]);
+    let last = conductor(&mut world, 320.0, 0.0, &[]);
+    let bolt = Conduct::new(20.0, 120.0, conductive())
+        .with_keep(0.5)
+        .with_jumps(2);
+    assert!(conduct_from(&mut world, user, first, &bolt, &[chained]));
+    assert!(
+        world.resource::<Requests>().damage().is_empty(),
+        "no strike at the start"
+    );
+    assert_eq!(conductions(&world)[0].user, user);
+    assert_eq!(chains(&world), [(first, vec![chained, first], 20.0, 2)]);
+    let run = zap_jumps(&mut world, &mut schedule, user, 1, false);
+    assert_eq!(
+        run[0].0,
+        [(next, 10.0)],
+        "its first jump at the next step's tick, past the chained one"
+    );
+    assert_eq!(
+        chains(&world),
+        [(next, vec![chained, first, next], 10.0, 1)]
+    );
+    let run = zap_jumps(&mut world, &mut schedule, user, 1, false);
+    assert_eq!(run[0].0, [(last, 5.0)], "never back, the tie to the last");
+    assert!(conductions(&world).is_empty(), "spent, it reads none");
+    assert!(
+        zap_jumps(&mut world, &mut schedule, user, 2, false)
+            .iter()
+            .all(|(hits, jumps)| hits.is_empty() && jumps.is_empty())
+    );
+    for receiver in [first, chained] {
+        assert_eq!(world.get::<Health>(receiver).unwrap().current(), 100.0);
+    }
+}
+
+#[test]
+fn a_conduction_from_code_refuses_a_spent_or_stopped_start() {
+    use crate::damage::defense::Resist;
+    let (mut world, _) = rig();
+    let user = at(&mut world, 0.0, 0.0, (Intent::default(),));
+    let bolt = Conduct::new(20.0, 120.0, conductive())
+        .with_tags(["damage.lightning"])
+        .with_stop(TagFilter::new().any(["status.frozen"]));
+    let dead = conductor(&mut world, 100.0, 0.0, &[]);
+    crate::kill(&mut world, dead);
+    let immune = conductor(&mut world, 100.0, 0.0, &[]);
+    world.insert(immune, Resist::new().with_factor("damage.lightning", 0.0));
+    let frozen = conductor(&mut world, 100.0, 0.0, &["status.frozen"]);
+    let going = conductor(&mut world, 100.0, 0.0, &[]);
+    world.insert(going, Despawning);
+    let gone = conductor(&mut world, 100.0, 0.0, &[]);
+    world.despawn(gone);
+    let live = conductor(&mut world, 100.0, 0.0, &[]);
+    for (first, conduct, why) in [
+        (dead, bolt.clone(), "dead"),
+        (immune, bolt.clone(), "immune"),
+        (frozen, bolt.clone(), "stopping"),
+        (
+            frozen,
+            bolt.clone().with_stop_struck(true),
+            "stopping, unstruck",
+        ),
+        (going, bolt.clone(), "despawning"),
+        (gone, bolt.clone(), "gone"),
+        (live, bolt.clone().with_jumps(0), "no jumps"),
+    ] {
+        assert!(
+            !conduct_from(&mut world, user, first, &conduct, &[]),
+            "{why}"
+        );
+        assert!(conductions(&world).is_empty(), "{why}: nothing pushed");
+    }
+    assert!(skipped(&world, user).is_empty());
+    for _ in 0..MAX_CHAINS {
+        assert!(conduct_from(&mut world, user, live, &bolt, &[]));
+    }
+    assert!(!conduct_from(&mut world, user, live, &bolt, &[]));
+    assert_eq!(
+        conductions(&world).len(),
+        MAX_CHAINS,
+        "the 65th pushed nothing"
+    );
+    assert_eq!(skipped(&world, user), [("conduct", NO_CHAIN_STARTED)]);
+}
+
+/// A preparation that marks, by a knockback, a strike whose point, source
+/// and `hit.spell` context are set and whose crit is not rolled yet.
+fn grounding(_: &World, hit: &mut DamageRequest) {
+    if hit.position().is_some()
+        && hit.source().is_some()
+        && hit.context().has("hit.spell")
+        && !hit.is_crit()
+    {
+        let taken = std::mem::replace(hit, DamageRequest::new(hit.target(), 0.0));
+        *hit = taken.with_knockback(Vec2::new(0.0, -1.0));
+    }
+}
+
+#[test]
+fn a_conductions_strike_is_a_blasts_hit() {
+    use crate::damage::pipeline::Requests;
+    let bolt = || {
+        Conduct::new(20.0, 120.0, conductive())
+            .with_keep(0.5)
+            .with_tags(["damage.lightning"])
+            .with_context(["hit.spell"])
+            .with_prepare("grounding")
+    };
+    let sure = || {
+        Stats::new()
+            .with(Stats::CRIT_CHANCE, 1.0)
+            .with(Stats::CRIT_MULTIPLIER, 2.0)
+    };
+    // The payload: its target struck, an iron rod without health passed
+    // through, the one past it struck; one crit draw a struck receiver with
+    // health.
+    let (mut world, mut schedule) = rig();
+    crate::add_hit_prep(&mut world, "grounding", grounding);
+    let caster = zapper(&mut world, bolt());
+    world.insert(caster, sure());
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let rod = at(&mut world, 200.0, 0.0, (Tags::new(["conductive"]),));
+    let far = conductor(&mut world, 300.0, 0.0, &[]);
+    world.insert_resource(KitRng::seeded(7));
+    let mut draws = Vec::new();
+    let mut hits = Vec::new();
+    let mut jumps = Vec::new();
+    for i in 1..=4 {
+        world
+            .get_mut::<Intent>(caster)
+            .unwrap()
+            .set_slot("zap", i == 1, i == 1);
+        steps(&mut world, &mut schedule, 1);
+        jumps.push(
+            jumped(&world)
+                .iter()
+                .map(|jump| (jump.receiver, jump.struck))
+                .collect::<Vec<_>>(),
+        );
+        hits.push(
+            world
+                .resource::<EventQueue<crate::Damaged>>()
+                .iter()
+                .map(|hit| (hit.entity, hit.amount, hit.crit, hit.source, hit.position))
+                .collect::<Vec<_>>(),
+        );
+        draws.push(world.resource::<KitRng>().draws());
+    }
+    let at_of = |x: f32| Some(Vec2::new(x, 0.0));
+    assert_eq!(
+        hits,
+        [
+            vec![(first, 40.0, true, Some(caster), at_of(100.0))],
+            vec![],
+            vec![(far, 10.0, true, Some(caster), at_of(300.0))],
+            vec![],
+        ],
+        "a crit's 2 on each struck receiver with health, at its centre, from the user"
+    );
+    assert_eq!(draws, [1, 1, 2, 2], "no request, no draw, on the rod");
+    assert_eq!(
+        jumps,
+        [vec![], vec![(rod, true)], vec![(far, true)], vec![]],
+        "the rod struck all the same"
+    );
+    // A jump's request, read before the resolve: its context, its point and
+    // the preparation run before its crit.
+    let (mut world, _) = rig();
+    crate::add_hit_prep(&mut world, "grounding", grounding);
+    let user = at(&mut world, 0.0, 0.0, (sure(),));
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let next = conductor(&mut world, 200.0, 0.0, &[]);
+    assert!(conduct_from(&mut world, user, first, &bolt(), &[]));
+    jump_chains(&mut world);
+    let requests = world.resource::<Requests>().damage();
+    assert_eq!(requests.len(), 1);
+    let request = &requests[0];
+    assert_eq!(request.target(), next);
+    assert!(request.context().has("hit.spell"));
+    assert_eq!(request.position(), Some(Vec2::new(200.0, 0.0)));
+    assert_eq!(request.source(), Some(user));
+    assert_eq!(
+        request.knockback(),
+        Some(Vec2::new(0.0, -1.0)),
+        "prepared before its crit"
+    );
+    assert!(request.is_crit());
+    assert_eq!(request.amount(), 20.0, "10, a crit's 2");
+    // A conduction naming no registered preparation is refused.
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(&mut world, bolt().with_prepare("missing"));
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    assert!(!conduct_from(&mut world, caster, first, &bolt(), &[]));
+    assert!(
+        zap_steps(&mut world, &mut schedule, caster, 3, true)
+            .iter()
+            .all(Vec::is_empty)
+    );
+    assert!(conductions(&world).is_empty());
+}
+
+#[test]
+fn a_conduction_sends_each_jump() {
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(
+        &mut world,
+        Conduct::new(20.0, 120.0, conductive())
+            .with_keep(0.5)
+            .with_stop(TagFilter::new().any(["status.frozen"])),
+    );
+    let first = conductor(&mut world, 100.0, 0.0, &[]);
+    let second = conductor(&mut world, 200.0, 0.0, &[]);
+    let frozen = conductor(&mut world, 300.0, 0.0, &["status.frozen"]);
+    let jumps: Vec<Vec<Conducted>> = zap_jumps(&mut world, &mut schedule, caster, 5, true)
+        .into_iter()
+        .map(|(_, jumps)| jumps)
+        .collect();
+    let jump = |receiver, from: f32, to: f32, jump, damage, struck| Conducted {
+        user: caster,
+        receiver,
+        from: Vec2::new(from, 0.0),
+        to: Vec2::new(to, 0.0),
+        jump,
+        damage,
+        struck,
+    };
+    assert_eq!(
+        jumps,
+        [
+            vec![],
+            vec![jump(second, 100.0, 200.0, 1, 10.0, true)],
+            vec![jump(frozen, 200.0, 300.0, 2, 5.0, false)],
+            vec![],
+            vec![],
+        ],
+        "the target's strike no jump; the frozen one's jump sent unstruck"
+    );
+    assert_eq!(world.get::<Health>(frozen).unwrap().current(), 100.0);
+    let _ = first;
+}
+
+#[test]
+fn a_struck_stop_ends_the_chain_after_its_strike() {
+    use crate::damage::defense::Resist;
+    let bolt = || {
+        Conduct::new(20.0, 120.0, conductive())
+            .with_keep(0.5)
+            .with_tags(["damage.lightning"])
+            .with_stop(TagFilter::new().any(["status.frozen"]))
+            .with_stop_struck(true)
+    };
+    for case in ["frozen", "immune"] {
+        let (mut world, mut schedule) = rig();
+        let caster = zapper(&mut world, bolt());
+        let first = conductor(&mut world, 100.0, 0.0, &[]);
+        let stop = if case == "frozen" {
+            conductor(&mut world, 200.0, 0.0, &["status.frozen"])
+        } else {
+            let stop = conductor(&mut world, 200.0, 0.0, &[]);
+            world.insert(stop, Resist::new().with_factor("damage.lightning", 0.0));
+            stop
+        };
+        let third = conductor(&mut world, 300.0, 0.0, &[]);
+        let run = zap_jumps(&mut world, &mut schedule, caster, 5, true);
+        assert_eq!(run[1].1.len(), 1, "{case}");
+        assert!(run[1].1[0].struck, "{case}: struck");
+        assert!(
+            run[2..]
+                .iter()
+                .all(|(hits, jumps)| hits.is_empty() && jumps.is_empty()),
+            "{case}: the chain ends there"
+        );
+        assert_eq!(world.get::<Health>(third).unwrap().current(), 100.0);
+        let lost = 100.0 - world.get::<Health>(stop).unwrap().current();
+        assert_eq!(lost, if case == "frozen" { 10.0 } else { 0.0 }, "{case}");
+        assert_eq!(world.get::<Health>(first).unwrap().current(), 80.0);
+    }
+    // A stopping target takes the payload's strike, and nothing jumps on.
+    let (mut world, mut schedule) = rig();
+    let caster = zapper(&mut world, bolt());
+    let frozen = conductor(&mut world, 100.0, 0.0, &["status.frozen"]);
+    let next = conductor(&mut world, 200.0, 0.0, &[]);
+    assert_eq!(
+        zap_steps(&mut world, &mut schedule, caster, 3, true),
+        [vec![(frozen, 20.0)], vec![], vec![]]
+    );
+    assert_eq!(world.get::<Health>(next).unwrap().current(), 100.0);
+}
+
+#[test]
+fn a_chain_past_gone_jumps_on_from_its_last_point() {
+    for (past, despawned) in [(true, true), (true, false), (false, true), (false, false)] {
+        let case = format!("past_gone {past}, despawned {despawned}");
+        let (mut world, mut schedule) = rig();
+        let caster = zapper(
+            &mut world,
+            Conduct::new(20.0, 120.0, conductive())
+                .with_keep(0.5)
+                .with_past_gone(past),
+        );
+        let first = conductor(&mut world, 100.0, 0.0, &[]);
+        let second = conductor(&mut world, 200.0, 0.0, &[]);
+        let third = conductor(&mut world, 300.0, 0.0, &[]);
+        let run = zap_jumps(&mut world, &mut schedule, caster, 1, true);
+        assert_eq!(run[0].0, [(first, 20.0)], "{case}");
+        // The last receiver goes after its strike: despawned, or carried
+        // out of every reach and being despawned.
+        if despawned {
+            world.despawn(first);
+        } else {
+            let away = Vec2::new(900.0, 0.0);
+            world.get_mut::<Position>(first).unwrap().0 = away;
+            *world.get_mut::<Transform>(first).unwrap() = Transform::from_position(away);
+            world.insert(first, Despawning);
+        }
+        let run = zap_jumps(&mut world, &mut schedule, caster, 3, false);
+        if past {
+            assert_eq!(run[0].0, [(second, 10.0)], "{case}");
+            assert_eq!(
+                run[0].1[0].from,
+                Vec2::new(100.0, 0.0),
+                "{case}: from its kept centre"
+            );
+            assert_eq!(run[1].0, [(third, 5.0)], "{case}");
+            assert_eq!(run[1].1[0].from, Vec2::new(200.0, 0.0), "{case}");
+        } else {
+            assert!(
+                run.iter()
+                    .all(|(hits, jumps)| hits.is_empty() && jumps.is_empty()),
+                "{case}: the chain ends"
+            );
+        }
+    }
+}
+
+// example-01-spells-toys-gun, Step 2: the chains saved by save ID.
+
+/// The line's names: a caster and five conductors.
+const LINE: [&str; 6] = ["caster", "c0", "c1", "c2", "c3", "c4"];
+
+/// A World whose caster, named `caster`, conducts `conduct` from the
+/// nearest conductor on its `zap`, and five conductors named `c0` to `c4`,
+/// 100 px apart from x 100, each within a jump of the next and out of one
+/// from the one after: `others` entities spawned and despawned first, so
+/// its entities take other indices, the conductors spawned from the far
+/// end when `reversed`, and the names in `skip` left out.
+fn line_rig(
+    conduct: &Conduct,
+    others: usize,
+    reversed: bool,
+    skip: &[&str],
+) -> (World, Schedule, Vec<(&'static str, Entity)>) {
+    use tungsten_core::save::name;
+    let (mut world, schedule) = rig();
+    for _ in 0..others {
+        let other = world.spawn();
+        world.despawn(other);
+    }
+    let mut order: Vec<usize> = (0..5).collect();
+    if reversed {
+        order.reverse();
+    }
+    let mut named = Vec::new();
+    if !skip.contains(&"caster") {
+        let caster = zapper(&mut world, conduct.clone());
+        name(&mut world, caster, None, "caster").unwrap();
+        named.push(("caster", caster));
+    }
+    for i in order {
+        let label = LINE[i + 1];
+        if skip.contains(&label) {
+            continue;
+        }
+        let entity = conductor(&mut world, 100.0 + 100.0 * i as f32, 0.0, &[]);
+        name(&mut world, entity, None, label).unwrap();
+        named.push((label, entity));
+    }
+    (world, schedule, named)
+}
+
+/// The entity named `label` in `named`.
+fn named(named: &[(&'static str, Entity)], label: &str) -> Entity {
+    named
+        .iter()
+        .find(|(name, _)| *name == label)
+        .map_or_else(|| panic!("no {label}"), |&(_, entity)| entity)
+}
+
+/// A step's jumps and hits by save ID: each jump's receiver, number,
+/// damage, from and to, and each hit's target and amount.
+type ById = (
+    Vec<(Option<u64>, u32, f32, Vec2, Vec2)>,
+    Vec<(Option<u64>, f32)>,
+);
+
+/// `run`'s steps by save ID.
+fn by_id(world: &World, run: &[Zapped]) -> Vec<ById> {
+    use tungsten_core::save::Saved;
+    let id = |entity: Entity| world.get::<Saved>(entity).map(|saved| saved.id().0);
+    run.iter()
+        .map(|(hits, jumps)| {
+            (
+                jumps
+                    .iter()
+                    .map(|jump| {
+                        (
+                            id(jump.receiver),
+                            jump.jump,
+                            jump.damage,
+                            jump.from,
+                            jump.to,
+                        )
+                    })
+                    .collect(),
+                hits.iter()
+                    .map(|&(target, amount)| (id(target), amount))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+/// The capture of `world`, as JSON.
+fn captured(world: &World) -> serde_json::Value {
+    serde_json::to_value(tungsten_core::save::capture_world(world).unwrap()).unwrap()
+}
+
+/// The line's World, zapped and stepped past its chain's second jump, and
+/// its capture then.
+fn mid_chain(conduct: &Conduct) -> (World, Schedule, Entity, tungsten_core::save::WorldSave) {
+    let (mut world, mut schedule, line) = line_rig(conduct, 0, false, &[]);
+    let caster = named(&line, "caster");
+    let run = zap_jumps(&mut world, &mut schedule, caster, 3, true);
+    assert_eq!(
+        run.iter().map(|(_, jumps)| jumps.len()).collect::<Vec<_>>(),
+        [0, 1, 1],
+        "the strike, then two jumps"
+    );
+    let saved = tungsten_core::save::capture_world(&world).unwrap();
+    (world, schedule, caster, saved)
+}
+
+#[test]
+fn a_conduction_saves_and_loads_mid_chain() {
+    use tungsten_core::save::restore_world;
+    let bolt = Conduct::new(40.0, 120.0, conductive()).with_keep(0.5);
+    let (mut a, mut schedule_a, caster_a, saved) = mid_chain(&bolt);
+    let text = serde_json::to_value(&saved).unwrap();
+    assert_eq!(
+        text["resources"]["conductions"]["chains"][0]["jumps"],
+        json!(4),
+        "{text}"
+    );
+    let (mut b, mut schedule_b, line) = line_rig(&bolt, 5, true, &[]);
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert_eq!(
+        captured(&b),
+        text,
+        "the capture after the load the one before it"
+    );
+    let chain = &conductions(&b)[0];
+    assert_eq!(chain.user, named(&line, "caster"));
+    assert_eq!(chain.last, named(&line, "c2"));
+    assert_eq!(
+        chain.chained,
+        ["c0", "c1", "c2"].map(|label| named(&line, label))
+    );
+    let unsaved = zap_jumps(&mut a, &mut schedule_a, caster_a, 4, false);
+    let loaded = zap_jumps(&mut b, &mut schedule_b, named(&line, "caster"), 4, false);
+    let unsaved = by_id(&a, &unsaved);
+    assert_eq!(
+        unsaved
+            .iter()
+            .map(|(jumps, _)| jumps.len())
+            .collect::<Vec<_>>(),
+        [1, 1, 0, 0],
+        "on to c3 and c4, then none in reach"
+    );
+    assert_eq!(
+        by_id(&b, &loaded),
+        unsaved,
+        "the same jumps by save ID, at the same steps"
+    );
+    assert!(conductions(&b).is_empty() && conductions(&a).is_empty());
+}
+
+#[test]
+fn a_loaded_chain_drops_what_did_not_load() {
+    use tungsten_core::save::restore_world;
+    let bolt = Conduct::new(40.0, 120.0, conductive()).with_keep(0.5);
+    let (_, _, _, saved) = mid_chain(&bolt);
+    // Its user did not load: dropped.
+    let (mut b, mut schedule_b, line) = line_rig(&bolt, 2, false, &["caster"]);
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert!(conductions(&b).is_empty(), "no user, no chain");
+    let caster = named(&line, "c0");
+    assert!(
+        zap_jumps(&mut b, &mut schedule_b, caster, 3, false)
+            .iter()
+            .all(|(hits, jumps)| hits.is_empty() && jumps.is_empty())
+    );
+    // A chained receiver did not load: gone from the list, the chain on.
+    let (mut b, mut schedule_b, line) = line_rig(&bolt, 2, false, &["c0"]);
+    restore_world(&mut b, &saved, &(Restored,)).unwrap();
+    assert_eq!(
+        conductions(&b)[0].chained,
+        ["c1", "c2"].map(|label| named(&line, label))
+    );
+    let run = zap_jumps(&mut b, &mut schedule_b, named(&line, "caster"), 2, false);
+    assert_eq!(run[0].0, [(named(&line, "c3"), 5.0)]);
+    assert_eq!(run[1].0, [(named(&line, "c4"), 2.5)]);
+    // Its last receiver did not load: ended, or with `past_gone` jumping on
+    // from the point it was struck at.
+    for past in [false, true] {
+        let bolt = bolt.clone().with_past_gone(past);
+        let (_, _, _, saved) = mid_chain(&bolt);
+        let (mut b, mut schedule_b, line) = line_rig(&bolt, 2, false, &["c2"]);
+        restore_world(&mut b, &saved, &(Restored,)).unwrap();
+        let run = zap_jumps(&mut b, &mut schedule_b, named(&line, "caster"), 2, false);
+        if past {
+            assert_eq!(conductions(&b).len(), 1, "kept, until it jumps on");
+            assert_eq!(run[0].0, [(named(&line, "c3"), 5.0)]);
+            assert_eq!(run[0].1[0].from, Vec2::new(300.0, 0.0), "from c2's point");
+        } else {
+            assert!(
+                run.iter()
+                    .all(|(hits, jumps)| hits.is_empty() && jumps.is_empty()),
+                "no last receiver, no chain"
+            );
+        }
+    }
+}
+
 // place-and-caps, Step 2: the place payload (S-17).
 
 /// A World with a clock at the fixed step, a command buffer, a trace,
@@ -2684,4 +3359,190 @@ fn an_id_backed_look_reads_before_a_tick_and_after_a_reload() {
 #[test]
 fn the_payload_keeps_its_size() {
     assert_eq!(std::mem::size_of::<Payload>(), 32);
+}
+
+// 7.13c: a scaled prefab's centred spawn, by its drawn centre.
+
+#[test]
+fn a_scaled_prefab_spawns_by_its_scaled_centre() {
+    let (mut world, mut schedule) = rig();
+    sprite(&mut world, "missile", [64, 64], None);
+    prefab(
+        &mut world,
+        "missile",
+        json!({ "tag": "missile", "sprite": { "asset_id": "missile" }, "scale": [0.625, 0.625] }),
+    );
+    assert_eq!(
+        crate::motion::drive::prefab_centre(&world, "missile"),
+        Vec2::new(20.0, 20.0),
+        "its 64 px sprite at 0.625"
+    );
+    let cast = insert(
+        &mut world,
+        "cast",
+        Ability::new().with_payload(spawn_of("missile", true, 0.0)),
+    );
+    let caster = world.spawn_with((
+        Position(Vec2::new(100.0, 100.0)),
+        Abilities::new().with(cast),
+        Intent::default(),
+    ));
+    assert_eq!(use_ability(&mut world, caster, "cast"), Used::Used);
+    steps(&mut world, &mut schedule, 1);
+    let missile = tagged(&world, "missile")[0];
+    assert_eq!(
+        (
+            world.get::<Transform>(missile).unwrap().position,
+            centre_of(&world, missile).unwrap()
+        ),
+        (Vec2::new(80.0, 80.0), Vec2::new(100.0, 100.0)),
+        "its drawn centre on the caster's"
+    );
+}
+
+// 7.13d's toys and data: a bodiless sprite's centre by its noted size.
+
+#[test]
+fn a_centred_spawn_centres_a_bodiless_sprite_by_its_noted_size() {
+    let (mut world, mut schedule) = rig();
+    world.insert_resource(AssetRegistry::new());
+    for id in ["missile", "glow", "spark"] {
+        prefab(
+            &mut world,
+            id,
+            json!({ "tag": id, "sprite": { "asset_id": id }, "scale": [0.625, 0.625] }),
+        );
+    }
+    // Headless, the missile's 64 × 64 art noted, never registered.
+    let assets = world.resource_mut::<AssetRegistry>();
+    assets.note_sprite_size("missile", 64, 64, None);
+    // Noted at 64 but registered at 32: the registered size wins.
+    assets.note_sprite_size("glow", 64, 64, None);
+    sprite(&mut world, "glow", [32, 32], None);
+    // The spark is neither noted nor registered.
+    world.resource_mut::<AssetRegistry>().intern_sprite("spark");
+    let mut placed = Vec::new();
+    for id in ["missile", "glow", "spark"] {
+        let cast = insert(
+            &mut world,
+            id,
+            Ability::new().with_payload(spawn_of(id, true, 0.0)),
+        );
+        let caster = world.spawn_with((
+            Position(Vec2::new(100.0, 100.0)),
+            Abilities::new().with(cast),
+            Intent::default(),
+        ));
+        assert_eq!(use_ability(&mut world, caster, id), Used::Used);
+        steps(&mut world, &mut schedule, 1);
+        let spawned = tagged(&world, id)[0];
+        placed.push(world.get::<Transform>(spawned).unwrap().position);
+    }
+    assert_eq!(
+        placed,
+        [
+            Vec2::new(80.0, 80.0),
+            Vec2::new(90.0, 90.0),
+            Vec2::new(100.0, 100.0)
+        ],
+        "the noted 64 px at 0.625 puts its point 20, 20 short of the caster's \
+         centre; the registered 32 px wins at 10, 10; with neither, the caster's centre"
+    );
+}
+
+// 7.13c's foes: a bodiless prefab's centre from its own shapes.
+
+#[test]
+fn a_bodiless_prefab_centres_on_its_shapes_offset() {
+    use crate::motion::drive::prefab_centre;
+    let (mut world, mut schedule) = rig();
+    crate::PickupPlugin.build(&mut schedule, &mut world);
+    crate::HitPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    // No art loaded: the orb's and the dart's sprites are never registered.
+    prefab(
+        &mut world,
+        "orb",
+        json!({ "tag": "orb", "sprite": { "asset_id": "orb" },
+                "components": { "pickup": { "shape": { "circle": 6 }, "offset": [6, 6] } } }),
+    );
+    prefab(
+        &mut world,
+        "dart",
+        json!({ "tag": "dart", "sprite": { "asset_id": "dart" },
+                "components": { "hitbox": { "shape": { "aabb": [8, 2] }, "offset": [8, 2], "damage": 1 } } }),
+    );
+    // A body's offset first, over its hurtbox's; a projectile's own shape's;
+    // with neither, its sprite's drawn centre, else its point.
+    prefab(
+        &mut world,
+        "rock",
+        json!({ "tag": "rock", "components": {
+            "rigid_body": { "kind": "dynamic", "shape": { "kind": "circle", "radius": 4 }, "offset": [4, 4] },
+            "hurtbox": { "shape": { "circle": 4 }, "offset": [9, 9] } } }),
+    );
+    prefab(
+        &mut world,
+        "pellet",
+        json!({ "tag": "pellet", "components": {
+            "projectile": { "shape": { "circle": 2 }, "offset": [3, 1] } } }),
+    );
+    sprite(&mut world, "mote", [8, 6], None);
+    prefab(
+        &mut world,
+        "mote",
+        json!({ "tag": "mote", "sprite": { "asset_id": "mote" } }),
+    );
+    prefab(&mut world, "speck", json!({ "tag": "speck" }));
+    let centres =
+        ["orb", "dart", "rock", "pellet", "mote", "speck"].map(|id| prefab_centre(&world, id));
+    assert_eq!(
+        centres,
+        [
+            Vec2::new(6.0, 6.0),
+            Vec2::new(8.0, 2.0),
+            Vec2::new(4.0, 4.0),
+            Vec2::new(3.0, 1.0),
+            Vec2::new(4.0, 3.0),
+            Vec2::ZERO,
+        ]
+    );
+    // Spawned centred by a user at (100, 50), each shape's centre on the
+    // user's.
+    let drop = insert(
+        &mut world,
+        "drop",
+        Ability::new().with_payload(spawn_of("orb", true, 0.0)),
+    );
+    let throw = insert(
+        &mut world,
+        "throw",
+        Ability::new().with_payload(spawn_of("dart", true, 0.0)),
+    );
+    let user = at(
+        &mut world,
+        100.0,
+        50.0,
+        (Abilities::new().with(drop).with(throw), Intent::default()),
+    );
+    for (ability, prefab, shape) in [
+        ("drop", "orb", Vec2::new(6.0, 6.0)),
+        ("throw", "dart", Vec2::new(8.0, 2.0)),
+    ] {
+        assert_eq!(
+            use_ability(&mut world, user, ability),
+            Used::Used,
+            "{ability}"
+        );
+        steps(&mut world, &mut schedule, 1);
+        let [spawned] = tagged(&world, prefab)[..] else {
+            panic!("one {prefab}");
+        };
+        let point = world.get::<Transform>(spawned).unwrap().position;
+        assert_eq!(
+            point + shape,
+            Vec2::new(100.0, 50.0),
+            "the {prefab}'s shape centred on the user"
+        );
+    }
 }

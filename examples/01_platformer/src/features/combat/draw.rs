@@ -63,7 +63,9 @@ fn ice(world: &World, entity: Entity, class: &str, time: f32) -> String {
     let cube = if world.has::<Dummy>(entity) {
         "ex10_status_ice_dummy".to_string()
     } else if let Some(enemy) = world.get::<Enemy>(entity) {
-        enemy.kind.info().ice.to_string()
+        crate::features::enemies::info(world, enemy.kind)
+            .ice
+            .clone()
     } else {
         format!("ex10_status_ice_{class}")
     };
@@ -81,7 +83,9 @@ fn frost(world: &World, entity: Entity, class: &str, stage: u8) -> String {
     if world.has::<Dummy>(entity) {
         format!("ex10_frost_dummy_{stage}")
     } else if let Some(enemy) = world.get::<Enemy>(entity) {
-        let kind = enemy.kind.info().ice.trim_start_matches("ex10_status_ice_");
+        let kind = crate::features::enemies::info(world, enemy.kind)
+            .ice
+            .trim_start_matches("ex10_status_ice_");
         format!("ex10_frost_{kind}_{stage}")
     } else {
         format!("ex10_frost_{class}_{stage}")
@@ -139,7 +143,7 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
                 .map_or(64.0, |asset| asset.width as f32);
             let mut origin = at.position;
             if let Some(enemy) = world.get::<Enemy>(entity)
-                && enemy.heading < 0.0
+                && enemies::heading_of(world, entity) == Some(-1.0)
                 && world.has::<StateMachine<EnemyState>>(entity)
             {
                 let body = enemies::body(world, enemy.kind);

@@ -1,5 +1,5 @@
 //! The gun: `shoot` held fires the player's `gun` ability at its cooldown,
-//! [`MAGAZINE`] rounds a magazine, all back [`RELOAD_SECS`] after the last
+//! its ability's charges a magazine ([`most_rounds`]), all back [`RELOAD_SECS`] after the last
 //! or after a `reload` press, while no round fires and the trigger clicks;
 //! its spawn payload fires a `bullet`, the kit's projectile, which 01 adopts
 //! as it adopts the missile. The ability's charges count the rounds; 01 times
@@ -20,36 +20,34 @@ use tungsten::core::{
     World, system,
 };
 use tungsten::kit::{
-    ABILITY_TICK, Abilities, Ability, LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase,
+    ABILITY_TICK, Abilities, Ability, LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Payload, Phase,
     Projectile, ensure_phases,
 };
 use tungsten::{Plugin, SceneEntity};
 
 use crate::game::GAMEPLAY;
-use crate::shared::SaveId;
+use crate::shared::{SaveId, prefab_part};
 use components::Bullet;
 
 /// The action that fires, held to repeat at the cooldown, and the one that
 /// reloads a magazine short of its rounds.
 pub const SHOOT: &str = "shoot";
 pub const RELOAD: &str = "reload";
-/// The magazine's rounds, the `gun` ability's `charges.max`.
-pub const MAGAZINE: u32 = 9;
 /// The player's ability, and the prefab its payload fires.
 pub const GUN: &str = "gun";
 pub const BULLET_PREFAB: &str = "bullet";
-/// A bullet's centre in its tracer's art, 32 × 3 along its flight, and its
-/// hitbox's radius there.
-pub const BULLET_CENTRE: Vec2 = Vec2::new(16.0, 1.5);
-pub const BULLET_RADIUS: f32 = 2.0;
+/// The walls' answers, named world cues (`data/world_cues/`): the kit's
+/// turn off an iron wall's sparks, a wooden deck passed's splinters and a
+/// wall end's dust.
+pub const SHOT_SPARKED: &str = "shot_sparked";
+pub const SHOT_SPLINTERED: &str = "shot_splintered";
+pub const SHOT_DUSTED: &str = "shot_dusted";
 /// A hit's physical damage and push, px/s.
 pub const SHOT_DAMAGE: f32 = 6.0;
 pub const SHOT_PUSH: f32 = 120.0;
 /// The kick a shot gives a ball along its flight, px/s over the ball's
 /// mass.
 pub const BALL_KICK: f32 = 900.0;
-/// The most times a bullet turns off iron.
-pub const MAX_RICOCHETS: u32 = 2;
 /// A muzzle flash's frames and the seconds each shows, and the warm point
 /// light it carries over them, fading: its colour, reach and intensity.
 pub const MUZZLE_FRAMES: [&str; 3] = ["ex10_muzzle_0", "ex10_muzzle_1", "ex10_muzzle_2"];
@@ -57,9 +55,6 @@ pub const MUZZLE_FRAME_SECS: f32 = 0.03;
 pub const MUZZLE_LIGHT_COLOR: Vec3 = Vec3::new(1.0, 0.72, 0.36);
 pub const MUZZLE_LIGHT_REACH: f32 = 140.0;
 pub const MUZZLE_LIGHT: f32 = 2.0;
-/// How far along the aim the shot leaves the courier's centre, as the
-/// ability's payload sets it.
-pub const MUZZLE_OFFSET: f32 = 24.0;
 /// The seconds a reload takes, from the last round or a `reload` press,
 /// until the magazine is whole again.
 pub const RELOAD_SECS: f32 = 1.2;
@@ -75,6 +70,11 @@ pub struct GunPlugin;
 impl Plugin for GunPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_component::<Bullet>("bullet");
+        world.register_saved_with(
+            "bullet",
+            tungsten::core::save::SaveOptions::<Bullet>::form::<components::BulletForm>(),
+        );
+        world.register_saved::<components::Reload>("reload");
         ensure_phases(schedule);
         let shoot = system("gun_shoot", systems::shoot).after(ABILITY_TICK);
         schedule.add(Stage::FixedUpdate, Phase::Intent.join(shoot));
@@ -97,16 +97,58 @@ impl Plugin for GunPlugin {
     }
 }
 
-/// The player's magazine: its rounds left and its most, from the `gun`
-/// ability's charges; none without the ability.
+/// The magazine's rounds at most, the `gun` ability's `charges.max` as
+/// the data holds it now; none without the ability.
 #[must_use]
-pub fn rounds(world: &World, player: tungsten::core::Entity) -> Option<(u32, u32)> {
+pub fn most_rounds(world: &World) -> Option<u32> {
     let (most, ..) = world
         .get_resource::<DataRegistry>()?
         .get::<Ability>(GUN)?
         .charges()?;
+    Some(most)
+}
+
+/// The player's magazine: its rounds left and its most ([`most_rounds`]);
+/// none without the ability.
+#[must_use]
+pub fn rounds(world: &World, player: tungsten::core::Entity) -> Option<(u32, u32)> {
+    let most = most_rounds(world)?;
     let left = world.get::<Abilities>(player)?.charges(GUN).unwrap_or(most);
     Some((left, most))
+}
+
+/// A bullet's hitbox as its prefab sets it: its centre in its tracer's
+/// art, 32 × 3 along its flight, and its circle's radius there.
+///
+/// # Panics
+///
+/// When the prefab has no circle hitbox: it loads with the manifest.
+#[must_use]
+pub fn hitbox(world: &World) -> (Vec2, f32) {
+    let offset = prefab_part::<[f32; 2]>(world, BULLET_PREFAB, &["hitbox", "offset"]);
+    let radius = prefab_part::<f32>(world, BULLET_PREFAB, &["hitbox", "shape", "circle"]);
+    match (offset, radius) {
+        (Some(offset), Some(radius)) => (Vec2::from(offset), radius),
+        _ => {
+            panic!("the `{BULLET_PREFAB}` prefab has no circle hitbox: it loads with the manifest")
+        }
+    }
+}
+
+/// How far along the aim the shot leaves the courier's centre, the `gun`
+/// ability's spawn payload's offset; 0 without one.
+#[must_use]
+pub fn muzzle_offset(world: &World) -> f32 {
+    let spawn = |payload: &Payload| match payload {
+        Payload::Spawn { offset, .. } => Some(*offset),
+        Payload::SpawnWith(spawn) => Some(spawn.offset()),
+        _ => None,
+    };
+    world
+        .get_resource::<DataRegistry>()
+        .and_then(|data| data.get::<Ability>(GUN))
+        .and_then(|gun| gun.payload().iter().find_map(spawn))
+        .unwrap_or(0.0)
 }
 
 /// A bullet's turn along `velocity`: its tracer's art lies along +x.
@@ -117,30 +159,27 @@ pub fn heading(velocity: Vec2) -> f32 {
 
 /// Fires a bullet with its centre at `centre` at `velocity`, from
 /// `source`, credited and spared as the gun's payload would: spawned at the
-/// frame's flush, its save ID, flight and look its own, so `bullet_adopt`
-/// leaves it be. Its save ID.
+/// frame's flush, one of the run's records, its flight and look its own, so
+/// `bullet_adopt` leaves it be. Its save ID.
 pub fn fire(
     world: &mut World,
     centre: Vec2,
     velocity: Vec2,
     source: Option<tungsten::core::Entity>,
 ) -> Option<SaveId> {
-    let id = world.resource_mut::<crate::shared::SaveIds>().take();
     let bullet = BulletShot {
-        id,
         centre,
         motion: LinearMotion::new(velocity),
         projectile: None,
         ricochets: 0,
     };
-    spawn(world, bullet, source).then_some(id)
+    spawn(world, bullet, source)
 }
 
-/// A bullet to spawn: its save ID, its centre, its flight, its range so
-/// far (a fresh one's when none) and the times it turned off iron.
+/// A bullet to spawn: its centre, its flight, its range so far (a fresh
+/// one's when none) and the times it turned off iron.
 #[derive(Debug, Clone)]
 pub struct BulletShot {
-    pub id: SaveId,
     pub centre: Vec2,
     pub motion: LinearMotion,
     pub projectile: Option<Projectile>,
@@ -148,13 +187,16 @@ pub struct BulletShot {
 }
 
 /// Spawns `shot` at the frame's flush from `source`, so its source and its
-/// emitter come with it, shown and turned along its flight. Whether its
-/// prefab loaded.
-pub fn spawn(world: &mut World, shot: BulletShot, source: Option<tungsten::core::Entity>) -> bool {
-    let at = shot.centre - BULLET_CENTRE;
-    let Ok(prepared) = world.prepare_prefab(BULLET_PREFAB, at.to_array()) else {
-        return false;
-    };
+/// emitter come with it, shown and turned along its flight, as one of the
+/// run's records (`PreparedPrefab::saved`, the map's area). Its save ID,
+/// none when its prefab did not load.
+pub fn spawn(
+    world: &mut World,
+    shot: BulletShot,
+    source: Option<tungsten::core::Entity>,
+) -> Option<SaveId> {
+    let at = shot.centre - hitbox(world).0;
+    let prepared = world.prepare_prefab(BULLET_PREFAB, at.to_array()).ok()?;
     let transform = Transform {
         position: at,
         rotation: heading(shot.motion.velocity()),
@@ -164,7 +206,7 @@ pub fn spawn(world: &mut World, shot: BulletShot, source: Option<tungsten::core:
         transform,
         Position(at),
         PrevPosition(at),
-        shot.id,
+        crate::shared::Joined,
         shot.motion,
         Bullet {
             ricochets: shot.ricochets,
@@ -176,6 +218,8 @@ pub fn spawn(world: &mut World, shot: BulletShot, source: Option<tungsten::core:
     if let Some(projectile) = shot.projectile {
         prepared = prepared.with((projectile,));
     }
+    let prepared = prepared.saved(world, Some(crate::features::level::MAP));
+    let id = prepared.save_id();
     let commands = world.resource_mut::<CommandBuffer>();
     match source {
         Some(source) => {
@@ -185,5 +229,5 @@ pub fn spawn(world: &mut World, shot: BulletShot, source: Option<tungsten::core:
             commands.spawn_prefab(prepared);
         }
     }
-    true
+    id
 }

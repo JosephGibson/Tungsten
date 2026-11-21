@@ -50,8 +50,11 @@ const DEFAULT_INTERVAL: f32 = 0.5;
 /// A target met is hit at once, then each `interval` of the game seconds
 /// the item has stepped while it is still met; a target met by none of its
 /// steps for a whole interval starts over. Each hit sends
-/// [`Struck`](crate::Struck) and, when its damage is above 0, queues a
-/// [`DamageRequest`](crate::DamageRequest) as a hitbox's does. An entity
+/// [`Struck`](crate::Struck), which runs the entity's `hit` cues, so an
+/// `effect` a `hit` cue applies to the other lands again each interval while
+/// they touch, and, when its damage is above 0, queues a
+/// [`DamageRequest`](crate::DamageRequest) as a hitbox's does: at a damage of
+/// 0 it is a trigger alone. An entity
 /// with neither shape hits nothing, with one warning. Composing beats
 /// options: an aura is contact damage with its own shape.
 ///

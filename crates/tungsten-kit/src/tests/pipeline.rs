@@ -1622,3 +1622,101 @@ fn a_lethal_kill_passes_resist_immunity_and_the_shield() {
     world.despawn(gone);
     assert_eq!(crate::kill(&mut world, gone), Hit::Ignored);
 }
+
+/// A source whose `damage_dealt` doubles its `hit.spell` hits, triples
+/// those on an `undead` target and quintuples them while it is `enraged`,
+/// with `extra` stats beside.
+fn dealer(world: &mut World, extra: crate::Stats) -> Entity {
+    use crate::{Line, Stats, TagFilter};
+    let all = |tag: &str| TagFilter::new().all([tag]);
+    let mut stats = extra.with(Stats::DAMAGE_DEALT, 1.0);
+    stats.add_line(
+        Stats::DAMAGE_DEALT,
+        "tome",
+        Line::new(Modifier::Mul(2.0)).with(all("hit.spell")),
+    );
+    stats.add_line(
+        Stats::DAMAGE_DEALT,
+        "bane",
+        Line::new(Modifier::Mul(3.0)).against(all("undead")),
+    );
+    stats.add_line(
+        Stats::DAMAGE_DEALT,
+        "rage",
+        Line::new(Modifier::Mul(5.0)).while_holder(all("enraged")),
+    );
+    world.spawn_with((stats, Tags::default()))
+}
+
+#[test]
+fn a_sources_dealt_damage_scales_its_hits_in_their_context() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["fire", "ice"]);
+    let mage = dealer(&mut world, crate::Stats::new());
+    let target = world.spawn_with((
+        Health::new(100_000.0),
+        Resist::new().with_factor("ice", 0.0),
+    ));
+    let spell = Tags::new(["hit.spell"]);
+    let cast = |source: Entity| {
+        DamageRequest::from_parts(target, [typed(2.0, &["fire"]), typed(3.0, &["ice"])])
+            .with_source(source)
+            .with_context(Tags::new(["hit.spell"]))
+    };
+    cast(mage).apply(&mut world);
+    let landed = parts_sent(&world);
+    assert_eq!(landed, [(4.0, vec!["fire"])], "fire doubled");
+    let immune: Vec<f32> = immune_sent(&world).iter().map(|part| part.1).collect();
+    assert_eq!(immune, [6.0], "the immune part's amount doubled too");
+    // A plain hit and a periodic one: untouched.
+    DamageRequest::from_parts(target, [typed(2.0, &["fire"])])
+        .with_source(mage)
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 2.0, "no context, no line");
+    DamageRequest::from_parts(target, [typed(2.0, &["fire"])])
+        .with_source(mage)
+        .with_context(spell.clone())
+        .with_periodic(true)
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 2.0, "a periodic hit takes none");
+    // Its `against` lines read the target's tags, its `while` lines its own.
+    let ghoul = world.spawn_with((Health::new(1000.0), Tags::new(["undead"])));
+    DamageRequest::from_parts(ghoul, [typed(2.0, &["fire"])])
+        .with_source(mage)
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 6.0, "against an undead target");
+    world.get_mut::<Tags>(mage).unwrap().insert("enraged");
+    DamageRequest::from_parts(target, [typed(2.0, &["fire"])])
+        .with_source(mage)
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 10.0, "while the source is enraged");
+    // A despawned source reads nothing.
+    let gone = dealer(&mut world, crate::Stats::new());
+    world.despawn(gone);
+    DamageRequest::from_parts(target, [typed(2.0, &["fire"])])
+        .with_source(gone)
+        .with_context(spell.clone())
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 2.0, "a source gone deals as dealt");
+    // A crit its builder decided multiplies with it: 2 × 2.
+    let sure = dealer(
+        &mut world,
+        crate::Stats::new()
+            .with(crate::Stats::CRIT_CHANCE, 1.0)
+            .with(crate::Stats::CRIT_MULTIPLIER, 2.0),
+    );
+    let crit = DamageRequest::from_parts(target, [typed(2.0, &["fire"])])
+        .with_source(sure)
+        .with_context(spell)
+        .roll_crit(&mut world);
+    assert!(crit.is_crit());
+    crit.apply(&mut world);
+    assert_eq!(last_amount(&world), 8.0, "4 × its 2");
+    // A source without the stat draws no new read: its hit as before.
+    let plain = world.spawn_with((crate::Stats::new().with(crate::Stats::DAMAGE, 1.0),));
+    DamageRequest::from_parts(target, [typed(2.0, &["fire"])])
+        .with_source(plain)
+        .with_context(Tags::new(["hit.spell"]))
+        .apply(&mut world);
+    assert_eq!(last_amount(&world), 2.0);
+}

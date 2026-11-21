@@ -2,9 +2,9 @@
 //! velocity turned toward the one it wants by a bounded acceleration.
 
 use glam::Vec2;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tungsten_core::physics::{Position, PrevPosition, Velocity};
-use tungsten_core::{Entity, Inspectable, Plugin, Schedule, SpawnContext, World, system};
+use tungsten_core::{Entity, Inspectable, Plugin, Schedule, SpawnContext, Without, World, system};
 
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, SHOOTER, TOP_DOWN,
@@ -59,7 +59,12 @@ enum Mode {
 /// With no target it brakes. Its velocity is the body's `Velocity` when it
 /// has one, so a dynamic body's contacts carry into its next step, else its
 /// own. A `move_speed` stat sets its top speed, written by
-/// [`StatsPlugin`](crate::StatsPlugin)'s `stats_apply`.
+/// [`StatsPlugin`](crate::StatsPlugin)'s `stats_apply`; its
+/// [`pace`](Self::set_pace), 1 by default, is the share of that top speed
+/// it wants and is capped at, so a game slows it by state without touching
+/// the stat. Switched [off](Self::set_on), it steers nothing and writes
+/// nothing: a mover it drives moves by its own direction or intent, and it
+/// is no driver of its body (`D-174`).
 ///
 /// Without a `RigidBody` it moves its `Position` by its velocity, with no
 /// cast, and writes a `Velocity` when it has one; on a kinematic body it
@@ -75,7 +80,8 @@ enum Mode {
 /// `{ "target": { "nearest": { "all": ["team.player"] } }, "mode": "seek", "max_speed": 90, "acceleration": 600, "radius": 64 }`,
 /// `mode` one of `seek` (default), `flee` and `arrive`, `max_speed` in
 /// world pixels per second, `acceleration` in world pixels per second
-/// squared (at once when left out) and `radius` 64 by default, which spawns
+/// squared (at once when left out), `radius` 64 by default, `pace` in
+/// (0, 1], 1 by default, and `on`, true by default, which spawns
 /// a `Position` and a `PrevPosition` at the spawn point, so a prefab
 /// without a `rigid_body` moves bodiless. It is data: a game's save can
 /// hold it, without the entity it steered at, which the next step resolves
@@ -120,6 +126,10 @@ pub struct Steering {
     max_speed: f32,
     acceleration: Option<f32>,
     radius: f32,
+    /// The share of its top speed it wants and is capped at, in (0, 1].
+    pace: f32,
+    /// Whether it steers; off, it steers and writes nothing.
+    on: bool,
     /// Its own velocity at the end of its last step.
     velocity: Vec2,
     /// The entity it steered at at its last step.
@@ -138,12 +148,53 @@ struct SteeringFields {
     acceleration: Option<f32>,
     #[serde(default = "default_radius")]
     radius: f32,
+    #[serde(default = "full_pace", skip_serializing_if = "is_full_pace")]
+    pace: f32,
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    on: bool,
     #[serde(default, with = "vec2")]
     velocity: Vec2,
 }
 
 fn default_radius() -> f32 {
     DEFAULT_RADIUS
+}
+
+fn full_pace() -> f32 {
+    1.0
+}
+
+// The reference is serde's `skip_serializing_if` signature.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_full_pace(pace: &f32) -> bool {
+    *pace == 1.0
+}
+
+fn yes() -> bool {
+    true
+}
+
+// The reference is serde's `skip_serializing_if` signature.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_yes(on: &bool) -> bool {
+    *on
+}
+
+/// Whether `pace` is one a steering takes: finite, above 0 and at most 1.
+fn is_pace(pace: f32) -> bool {
+    pace.is_finite() && pace > 0.0 && pace <= 1.0
+}
+
+/// A `pace` as a scene writes it: in (0, 1].
+fn pace_field<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let pace = f32::deserialize(deserializer)?;
+    if is_pace(pace) {
+        Ok(pace)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "must be finite, > 0 and <= 1 (got {pace})"
+        )))
+    }
 }
 
 impl TryFrom<SteeringFields> for Steering {
@@ -173,12 +224,20 @@ impl TryFrom<SteeringFields> for Steering {
                 fields.velocity
             ));
         }
+        if !is_pace(fields.pace) {
+            return Err(format!(
+                "pace: must be finite, > 0 and <= 1 (got {})",
+                fields.pace
+            ));
+        }
         Ok(Self {
             target: fields.target,
             mode: fields.mode,
             max_speed: fields.max_speed,
             acceleration: fields.acceleration,
             radius: fields.radius,
+            pace: fields.pace,
+            on: fields.on,
             velocity: fields.velocity,
             target_entity: None,
         })
@@ -193,6 +252,8 @@ impl From<Steering> for SteeringFields {
             max_speed: steering.max_speed,
             acceleration: steering.acceleration,
             radius: steering.radius,
+            pace: steering.pace,
+            on: steering.on,
             velocity: steering.velocity,
         }
     }
@@ -211,6 +272,8 @@ impl Steering {
             max_speed,
             acceleration: None,
             radius: DEFAULT_RADIUS,
+            pace: 1.0,
+            on: true,
             velocity: Vec2::ZERO,
             target_entity: None,
         }
@@ -286,6 +349,44 @@ impl Steering {
         self
     }
 
+    /// Sets its pace from its next step: the share of its top speed it
+    /// wants and is capped at, so 0.5 moves it at half its top speed and an
+    /// arrive slows inside its radius from half as fast.
+    ///
+    /// # Panics
+    ///
+    /// When `pace` is not finite, above 0 and at most 1.
+    #[track_caller]
+    pub fn set_pace(&mut self, pace: f32) {
+        assert!(
+            is_pace(pace),
+            "Steering::set_pace: pace must be finite, > 0 and <= 1 (got {pace})"
+        );
+        self.pace = pace;
+    }
+
+    /// Its pace: the share of its top speed it wants, 1 by default.
+    #[must_use]
+    pub fn pace(&self) -> f32 {
+        self.pace
+    }
+
+    /// Switches it on or off from its next step. Off, it steers nothing and
+    /// writes nothing, its velocity and its target entity kept as its last
+    /// step left them: a [`TopDownMover`] it drives moves by its own
+    /// direction or intent, steering's system passes it, and it is no
+    /// driver of its body, so an oscillator or a knockback drives that body
+    /// in its place, as `D-174` has it.
+    pub fn set_on(&mut self, on: bool) {
+        self.on = on;
+    }
+
+    /// Whether it steers.
+    #[must_use]
+    pub fn is_on(&self) -> bool {
+        self.on
+    }
+
     /// Its velocity at the end of its last step.
     #[must_use]
     pub fn velocity(&self) -> Vec2 {
@@ -330,6 +431,11 @@ impl Steering {
         self.target_entity = target;
     }
 
+    /// Its top speed at its pace: what it wants at most and is capped at.
+    fn paced_speed(&self) -> f32 {
+        self.max_speed * self.pace
+    }
+
     /// The velocity it wants toward a target `to` away, or with none.
     fn desired(&self, to: Option<Vec2>) -> Vec2 {
         let Some(to) = to else {
@@ -337,12 +443,13 @@ impl Steering {
         };
         let distance = to.length();
         let direction = to.normalize_or_zero();
+        let top = self.paced_speed();
         match self.mode {
-            Mode::Seek => direction * self.max_speed,
-            Mode::Flee if distance < self.radius => -direction * self.max_speed,
+            Mode::Seek => direction * top,
+            Mode::Flee if distance < self.radius => -direction * top,
             Mode::Flee => Vec2::ZERO,
             Mode::Arrive => {
-                let mut speed = self.max_speed.min(self.max_speed * distance / self.radius);
+                let mut speed = top.min(top * distance / self.radius);
                 if let Some(acceleration) = self.acceleration {
                     speed = speed.min((2.0 * acceleration * distance).sqrt());
                 }
@@ -353,14 +460,15 @@ impl Steering {
 
     /// Its velocity after a step of `dt` from `current`, toward a target
     /// `to` away: turned by at most its acceleration, capped at its top
-    /// speed, and, arriving, never further than the distance left.
+    /// speed at its pace, and, arriving, never further than the distance
+    /// left.
     pub(crate) fn steer(&self, current: Vec2, to: Option<Vec2>, dt: f32) -> Vec2 {
         let desired = self.desired(to);
         let turned = match self.acceleration {
             Some(acceleration) => current + (desired - current).clamp_length_max(acceleration * dt),
             None => desired,
         };
-        let velocity = turned.clamp_length_max(self.max_speed);
+        let velocity = turned.clamp_length_max(self.paced_speed());
         match to {
             // The last approach: land on the target, braking harder than
             // the acceleration if it must.
@@ -434,6 +542,25 @@ impl Plugin for SteeringPlugin {
                 )
                 .default("64.0"),
             )
+            .field(
+                FieldDescription::new(
+                    "pace",
+                    FieldType::F32 {
+                        min: Bound::Exclusive(0.0),
+                        max: Bound::Inclusive(1.0),
+                    },
+                    "the share of its top speed it wants and is capped at",
+                )
+                .default("1.0"),
+            )
+            .field(
+                FieldDescription::new(
+                    "on",
+                    FieldType::Bool,
+                    "whether it steers; off, it moves and writes nothing and drives no body",
+                )
+                .default("true"),
+            )
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
             .genre(SHOOTER)
@@ -450,6 +577,8 @@ impl Plugin for SteeringPlugin {
                 if let Some(acceleration) = def.acceleration {
                     steering = steering.with_acceleration(acceleration);
                 }
+                steering.set_pace(def.pace);
+                steering.set_on(def.on);
                 (steering, Position(spawn), PrevPosition(spawn))
             },
         );
@@ -474,6 +603,10 @@ struct SteeringDef {
     acceleration: Option<f32>,
     #[serde(default = "default_radius", deserialize_with = "positive")]
     radius: f32,
+    #[serde(default = "full_pace", deserialize_with = "pace_field")]
+    pace: f32,
+    #[serde(default = "yes")]
+    on: bool,
 }
 
 /// The system's state between steps.
@@ -487,7 +620,9 @@ struct Runner {
 }
 
 impl Runner {
-    /// Steers every steering entity by the step.
+    /// Steers every steering entity that is on by the step, but a
+    /// top-down mover's, whose own step steers it: its query leaves the
+    /// movers out.
     fn run(&mut self, world: &mut World) {
         let dt = step_dt(world);
         if dt <= 0.0 {
@@ -497,7 +632,8 @@ impl Runner {
         self.entities.clear();
         self.entities.extend(
             world
-                .query::<(Entity, &Steering)>()
+                .query_filtered::<(Entity, &Steering), Without<TopDownMover>>()
+                .filter(|(_, steering)| steering.on)
                 .map(|(entity, _)| entity),
         );
         for &entity in &self.entities {
@@ -510,10 +646,6 @@ impl Runner {
             };
             if let Some(skip) = skip {
                 self.warned.skip("Steering", entity, skip);
-                continue;
-            }
-            // A top-down mover's step steers its entity.
-            if world.has::<TopDownMover>(entity) {
                 continue;
             }
             let from = world.get::<Position>(entity).unwrap().0;
