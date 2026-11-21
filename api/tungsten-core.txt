@@ -12350,6 +12350,7 @@ pub fn tungsten_core::save::SaveData::migrate_step(u32, serde_json::value::Value
 pub fn tungsten_core::save::capture_world(&tungsten_core::World) -> core::result::Result<tungsten_core::save::WorldSave, tungsten_core::save::CaptureError>
 pub fn tungsten_core::save::check_world(&mut tungsten_core::World, &tungsten_core::save::WorldSave) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::enter_area<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &str, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
+pub fn tungsten_core::save::expand_tables(&mut serde_json::value::Value) -> core::result::Result<(), alloc::string::String>
 pub fn tungsten_core::save::name(&mut tungsten_core::World, tungsten_core::Entity, core::option::Option<&str>, &str) -> core::result::Result<tungsten_core::SaveId, tungsten_core::save::NameError>
 pub fn tungsten_core::save::order_key(&tungsten_core::World, tungsten_core::Entity) -> (bool, u64)
 pub fn tungsten_core::save::regenerate(&mut tungsten_core::World, &tungsten_core::save::WorldSave) -> core::result::Result<alloc::vec::Vec<tungsten_core::GeneratedRooms>, tungsten_core::GenerateError>

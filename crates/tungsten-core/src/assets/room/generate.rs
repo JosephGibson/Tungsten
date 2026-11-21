@@ -68,7 +68,11 @@ pub trait RoomGenerator: 'static {
 
     /// Rewrites a saved area made under `from` for its room's generation
     /// `now` (`None`: an authored room, or none); false refuses the restore.
-    /// By default it refuses.
+    /// By default it refuses. `area` is the area's record as JSON, its
+    /// components at the registry's versions: its `named` records, its
+    /// `gone` names and its `spawns`, each spawn a record of `id`, `prefab`,
+    /// `components` and `refs`. A table of spawns (save format 2) is
+    /// written back as its records before the call.
     fn migrate(&self, from: &Generation, now: Option<&Generation>, area: &mut Value) -> bool {
         let _ = (from, now, area);
         false

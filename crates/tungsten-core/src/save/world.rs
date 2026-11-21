@@ -3,7 +3,10 @@
 //!
 //! A [`WorldSave`] is plain JSON a game's `SaveData` type holds as a field;
 //! the envelope and slots stay `D-160`'s. Its keys sort and a run's spawns
-//! go by ID, so two captures of one world are byte-equal.
+//! go by ID, so two captures of one world are byte-equal. Sixteen or more
+//! spawns of one area, one prefab and one set of saved components are a
+//! table (format 2, `D-295`, [`super::table`]): a row a spawn, its
+//! components' leaves in place of a record's tree.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -16,6 +19,9 @@ use super::area::{TilePlan, TileRecord, apply_tiles, capture_tiles, plan_tiles};
 use super::id::{AUTHORED, PendingRef, SaveId, SaveState, Saved};
 use super::patch::{diff, merge};
 use super::registry::{Entry, Holder, Refs, SaveRegistry};
+use super::table::{
+    Cells, Shape, SpawnEntry, SpawnTable, TABLE_MIN, Token, expanded, records_in_order,
+};
 use crate::assets::{
     GenerateError, GeneratedRooms, Generation, PrefabError, PreparedPrefab, RoomGenerators,
     RoomRegistry,
@@ -23,8 +29,13 @@ use crate::assets::{
 use crate::ecs::{Bundle, CommandBuffer, Entity, World};
 use crate::physics::{BodyKind, Position, RigidBody, free_spot, teleport};
 
-/// The format this build writes and reads.
-pub const FORMAT: u32 = 1;
+/// The format this build writes. It reads this one and format 1, whose
+/// spawns are records alone; format 2 writes many spawns of one prefab as a
+/// table (`D-295`).
+pub const FORMAT: u32 = 2;
+
+/// The oldest format this build reads.
+const OLDEST_FORMAT: u32 = 1;
 
 /// The saved component a body's place restores through
 /// [`teleport`](crate::physics::teleport), so its history moves with it.
@@ -99,8 +110,9 @@ pub(crate) struct AreaSave {
     pub(crate) named: BTreeMap<String, NamedRecord>,
     #[serde(default)]
     pub(crate) gone: Vec<String>,
+    /// The run's spawns here: records by ID, then tables.
     #[serde(default)]
-    pub(crate) spawns: Vec<SpawnRecord>,
+    pub(crate) spawns: Vec<SpawnEntry>,
     /// Each of the area's maps the game edited or damaged.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) tiles: BTreeMap<String, TileRecord>,
@@ -162,7 +174,7 @@ pub enum CaptureError {
 #[non_exhaustive]
 pub enum RestoreError {
     /// A format this build does not read.
-    #[error("world save format {found}; this build reads format {FORMAT}")]
+    #[error("world save format {found}; this build reads formats {OLDEST_FORMAT} to {FORMAT}")]
     Format {
         /// The format it names.
         found: u32,
@@ -256,6 +268,14 @@ impl RestoreReport {
 /// and each area kept while the World has not loaded it, with the
 /// references waiting on one. A World with no save state captures its
 /// resources alone.
+///
+/// Sixteen or more spawns of one area, one prefab and one set of saved
+/// components are written as a table (format 2): a row a spawn, for each
+/// that holds the references and the layout of the group's lowest ID; any
+/// other spawn is a record. Which spawns join rests on what the World
+/// holds, so a World restored into other entities captures the same bytes,
+/// and [`expand_tables`](super::expand_tables) writes the tables back as
+/// records.
 ///
 /// # Errors
 ///
@@ -369,9 +389,9 @@ fn capture(world: &World, spawns: SpawnWalk) -> Result<WorldSave, CaptureError> 
             &mut capture,
         )?,
     }
-    capture.global.spawns.sort_by_key(|spawn| spawn.id);
+    capture.global.spawns.sort_by(SpawnEntry::order);
     for area in capture.areas.values_mut() {
-        area.spawns.sort_by_key(|spawn| spawn.id);
+        area.spawns.sort_by(SpawnEntry::order);
     }
     let kept_generations = world.get_resource::<KeptGenerations>();
     for (name, area) in &state.kept {
@@ -454,11 +474,114 @@ impl Capture {
 /// record: nothing is looked up while none wait.
 type Waiting = HashMap<Option<SaveId>, BTreeMap<String, Refs>>;
 
-/// The run's spawns as records, each pushed onto its area's list: the saved
-/// entities an archetype at a time, each registered component asked once an
-/// archetype whether its rows hold it, so a record reads its own components
-/// alone, in the registry's order. The records are the ones a walk that
-/// asks every component of every spawn writes.
+/// A group of the run's spawns: one area, one prefab and one set of saved
+/// components.
+struct Group<'w> {
+    area: Option<&'w str>,
+    prefab: &'w str,
+    /// The spawns it holds.
+    count: usize,
+    /// Its lowest ID and that spawn's entity: the spawn a table opens on.
+    lowest: (SaveId, Entity),
+    /// Its table, once it holds [`TABLE_MIN`] spawns and its lowest-ID
+    /// spawn gave a layout.
+    table: Option<Building>,
+}
+
+/// A table as a capture fills it.
+struct Building {
+    table: SpawnTable,
+    /// Each column's layout as the first row serialized, which each later
+    /// row is held to.
+    layouts: Vec<Vec<Token>>,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests: the tables a capture opened and the spawns whose components
+    /// it serialized, each time it did, on this thread.
+    pub(crate) static CAPTURE_COUNTS: std::cell::Cell<(usize, usize)> =
+        const { std::cell::Cell::new((0, 0)) };
+}
+
+/// Tests: counts a table opened or a spawn's components serialized.
+#[cfg(test)]
+fn count_capture(tables: usize, spawns: usize) {
+    CAPTURE_COUNTS.with(|counts| {
+        let (opened, serialized) = counts.get();
+        counts.set((opened + tables, serialized + spawns));
+    });
+}
+
+/// A spawn's references as a capture writes them: each held component's
+/// own, then those waiting on the spawn.
+fn spawn_refs(
+    world: &World,
+    held: &[(&String, &Entry)],
+    (id, at): (SaveId, Holder),
+    ids: &dyn Fn(Entity) -> Option<SaveId>,
+    waiting: &mut Waiting,
+    dropped: &mut usize,
+) -> BTreeMap<String, Refs> {
+    let mut all = BTreeMap::new();
+    for &(name, entry) in held {
+        if let Some((refs, lost)) = entry.saved.save_refs(world, at, ids) {
+            *dropped += lost;
+            if !refs.is_empty() {
+                all.insert(name.clone(), refs);
+            }
+        }
+    }
+    if !waiting.is_empty() {
+        add_refs(&mut all, waiting.remove(&Some(id)));
+    }
+    all
+}
+
+/// One spawn's leaves onto `building`'s cells, held to its layouts, or
+/// recorded as them for its first row. False, with the cells as they were,
+/// when the spawn does not fit: a component whose form gives another
+/// layout, or one that fails to serialize.
+fn push_row(
+    world: &World,
+    held: &[(&String, &Entry)],
+    at: Holder,
+    building: &mut Building,
+    first: bool,
+) -> bool {
+    #[cfg(test)]
+    count_capture(0, 1);
+    let start = building.table.cells.len();
+    for (&(_, entry), layout) in held.iter().zip(&mut building.layouts) {
+        let mut cells = Cells {
+            leaves: &mut building.table.cells,
+            layout,
+            cursor: (!first).then_some(0),
+        };
+        let wrote = entry.saved.to_leaves(world, at, &mut cells);
+        if !matches!(wrote, Some(Ok(()))) || !cells.fits() {
+            building.table.cells.truncate(start);
+            return false;
+        }
+    }
+    true
+}
+
+/// The run's spawns, each pushed onto its area's list: the saved entities
+/// an archetype at a time, each registered component asked once an
+/// archetype whether its rows hold it, so a spawn reads its own components
+/// alone, in the registry's order.
+///
+/// A first walk reads no value: it counts each group of one area, one
+/// prefab and one set of saved components, and finds the group's lowest ID.
+/// A group of [`TABLE_MIN`] or more opens a table on that spawn, whose
+/// leaves fix each column's layout and whose references are the table's.
+/// In the second walk a spawn of the group joins the table when its
+/// references equal the table's and its cells fit the layout; any other
+/// spawn is a record, the one a walk that asks every component of every
+/// spawn writes. A table left under [`TABLE_MIN`] rows goes back to
+/// records. So a spawn's place rests on what the World holds, never on the
+/// order its archetypes or rows are walked in.
 fn capture_spawns(
     world: &World,
     registry: &SaveRegistry,
@@ -466,8 +589,18 @@ fn capture_spawns(
     waiting: &mut Waiting,
     capture: &mut Capture,
 ) -> Result<(), CaptureError> {
+    let archetypes: Vec<_> = world.query_slices::<(Entity, &Saved)>().collect();
+
+    // The first walk: each archetype's set of saved components, and each
+    // spawn's group, found by the last spawn's, then by a map.
+    let mut sets: Vec<Vec<(&String, &Entry)>> = Vec::new();
+    let mut set_of: Vec<usize> = Vec::with_capacity(archetypes.len());
+    let mut groups: Vec<Group> = Vec::new();
+    let mut group_of: HashMap<(Option<&str>, &str, usize), usize> = HashMap::new();
+    let mut spawn_groups: Vec<usize> =
+        Vec::with_capacity(archetypes.iter().map(|(rows, _)| rows).sum());
     let mut held: Vec<(&String, &Entry)> = Vec::new();
-    for (_, (entities, saveds)) in world.query_slices::<(Entity, &Saved)>() {
+    for (_, (entities, saveds)) in &archetypes {
         // Every row of an archetype holds the same components.
         let first = Holder::Entity(entities[0]);
         held.clear();
@@ -478,35 +611,177 @@ fn capture_spawns(
                 .iter()
                 .filter(|(_, entry)| entry.saved.has(world, first)),
         );
-        for (&entity, saved) in entities.iter().zip(saveds) {
+        let same = |set: &Vec<(&String, &Entry)>| {
+            set.len() == held.len()
+                && set
+                    .iter()
+                    .zip(&held)
+                    .all(|((a, _), (b, _))| std::ptr::eq(*a, *b))
+        };
+        let set = sets.iter().position(same).unwrap_or_else(|| {
+            sets.push(held.clone());
+            sets.len() - 1
+        });
+        set_of.push(set);
+        let mut last: Option<usize> = None;
+        for (&entity, saved) in entities.iter().zip(saveds.iter()) {
             let Some(prefab) = &saved.prefab else {
                 continue;
             };
+            let area = saved.area.as_deref();
+            let group = match last {
+                Some(group) if groups[group].prefab == prefab && groups[group].area == area => {
+                    group
+                }
+                _ => *group_of.entry((area, prefab, set)).or_insert_with(|| {
+                    groups.push(Group {
+                        area,
+                        prefab,
+                        count: 0,
+                        lowest: (saved.id, entity),
+                        table: None,
+                    });
+                    groups.len() - 1
+                }),
+            };
+            last = Some(group);
+            let found = &mut groups[group];
+            found.count += 1;
+            if saved.id < found.lowest.0 {
+                found.lowest = (saved.id, entity);
+            }
+            spawn_groups.push(group);
+        }
+    }
+
+    // Each group of enough spawns opens its table on its lowest ID. A spawn
+    // that gives no layout opens none, and is reported, if it fails, where
+    // the second walk meets it.
+    for (&(_, _, set), &group) in &group_of {
+        let group = &mut groups[group];
+        if group.count < TABLE_MIN {
+            continue;
+        }
+        let held = &sets[set];
+        let (id, entity) = group.lowest;
+        let at = Holder::Entity(entity);
+        let mut building = Building {
+            table: SpawnTable {
+                prefab: group.prefab.to_owned(),
+                columns: Vec::new(),
+                refs: BTreeMap::new(),
+                ids: Vec::new(),
+                cells: Vec::new(),
+                width: 0,
+            },
+            layouts: vec![Vec::new(); held.len()],
+        };
+        if !push_row(world, held, at, &mut building, true) {
+            continue;
+        }
+        let shapes: Option<Vec<Shape>> = building
+            .layouts
+            .iter()
+            .map(|layout| Shape::from_tokens(layout))
+            .collect();
+        let Some(shapes) = shapes else {
+            continue;
+        };
+        #[cfg(test)]
+        count_capture(1, 0);
+        let table = &mut building.table;
+        table.columns = held
+            .iter()
+            .zip(shapes)
+            .map(|((name, _), shape)| ((*name).clone(), shape))
+            .collect();
+        table.width = table.cells.len();
+        table.cells.reserve(table.width * (group.count - 1));
+        table.ids.reserve(group.count);
+        table.ids.push(id);
+        table.refs = spawn_refs(world, held, (id, at), ids, waiting, &mut capture.dropped);
+        group.table = Some(building);
+    }
+
+    // The second walk: a row for each spawn that fits its group's table, a
+    // record for every other.
+    let mut spawn_groups = spawn_groups.into_iter();
+    for ((_, (entities, saveds)), &set) in archetypes.iter().zip(&set_of) {
+        let held = &sets[set];
+        for (&entity, saved) in entities.iter().zip(saveds.iter()) {
+            let Some(prefab) = &saved.prefab else {
+                continue;
+            };
+            let group = spawn_groups.next().expect("the first walk met each spawn");
             let at = Holder::Entity(entity);
+            let mut refs = None;
+            if let Some(building) = &mut groups[group].table {
+                if saved.id == building.table.ids[0] {
+                    continue;
+                }
+                let own = spawn_refs(
+                    world,
+                    held,
+                    (saved.id, at),
+                    ids,
+                    waiting,
+                    &mut capture.dropped,
+                );
+                if own == building.table.refs && push_row(world, held, at, building, false) {
+                    building.table.ids.push(saved.id);
+                    continue;
+                }
+                refs = Some(own);
+            }
+            #[cfg(test)]
+            count_capture(0, 1);
             let mut record = SpawnRecord {
                 id: saved.id,
                 prefab: prefab.clone(),
                 components: BTreeMap::new(),
                 refs: BTreeMap::new(),
             };
-            for &(name, entry) in &held {
+            let read_refs = refs.is_none();
+            for &(name, entry) in held {
                 if let Some(value) = entry.saved.to_value(world, at) {
                     let value = value.map_err(|err| {
                         serialize_error(&format!("spawn {}", saved.id.0), name, &err)
                     })?;
                     record.components.insert(name.clone(), value);
                 }
-                if let Some((refs, dropped)) = entry.saved.save_refs(world, at, ids) {
+                if read_refs && let Some((refs, dropped)) = entry.saved.save_refs(world, at, ids) {
                     capture.dropped += dropped;
                     if !refs.is_empty() {
                         record.refs.insert(name.clone(), refs);
                     }
                 }
             }
-            if !waiting.is_empty() {
-                add_refs(&mut record.refs, waiting.remove(&Some(saved.id)));
+            match refs {
+                Some(refs) => record.refs = refs,
+                None if !waiting.is_empty() => {
+                    add_refs(&mut record.refs, waiting.remove(&Some(saved.id)));
+                }
+                None => {}
             }
-            capture.area(saved.area.as_deref()).spawns.push(record);
+            capture
+                .area(saved.area.as_deref())
+                .spawns
+                .push(SpawnEntry::Record(record));
+        }
+    }
+
+    // A table that kept its rows joins its area's spawns, its rows by ID;
+    // one left under the floor goes back to the records it stands for.
+    for group in groups {
+        let Some(Building { mut table, .. }) = group.table else {
+            continue;
+        };
+        let spawns = &mut capture.area(group.area).spawns;
+        if table.ids.len() < TABLE_MIN {
+            spawns.extend(table.records().map(SpawnEntry::Record));
+        } else {
+            table.sort_rows();
+            spawns.push(SpawnEntry::Table(Box::new(table)));
         }
     }
     Ok(())
@@ -552,7 +827,7 @@ fn capture_spawns_asking_every_component(
         capture
             .area_cloning_its_name(saved.area.as_deref())
             .spawns
-            .push(record);
+            .push(SpawnEntry::Record(record));
     }
     Ok(())
 }
@@ -738,7 +1013,7 @@ struct Checked {
 }
 
 fn check_save(world: &mut World, save: &WorldSave) -> Result<Checked, RestoreError> {
-    if save.format != FORMAT {
+    if !(OLDEST_FORMAT..=FORMAT).contains(&save.format) {
         return Err(RestoreError::Format { found: save.format });
     }
     if save.next_id >= AUTHORED {
@@ -895,7 +1170,9 @@ fn migrate_generated(
     else {
         return Err(refused());
     };
-    let record = keep_area(registry, versions, name, area, report)?;
+    // A generator's `migrate` reads records alone.
+    let mut record = keep_area(registry, versions, name, area, report)?;
+    record.spawns = expanded(&record.spawns);
     let what = format!("area `{name}`'s migrated record");
     let mut value = serde_json::to_value(&record).map_err(|err| RestoreError::Value {
         what: what.clone(),
@@ -1186,7 +1463,10 @@ fn plan_area(
         }
     }
 
-    for spawn in &record.spawns {
+    // A table's row takes its record's path. With a table the area's
+    // spawns apply by ID across records and rows; records alone keep their
+    // file's order.
+    for spawn in &records_in_order(&record.spawns) {
         let what = format!("spawn {} (`{}`)", spawn.id.0, spawn.prefab);
         let mut puts = Vec::new();
         for (component, value) in &spawn.components {
@@ -1271,10 +1551,50 @@ fn keep_area(
             .removed
             .retain(|component| registry.components.entries.contains_key(component));
     }
-    for spawn in &mut kept.spawns {
+    // A table is checked as its records are, in their order: each spawn's
+    // components, a row's built back, are migrated and checked by ID across
+    // the records and the rows, so a report's lines and the first error are
+    // its expansion's. A table stays the table it came as when no column
+    // was saved at an older version and the registry holds every column;
+    // else its records are kept, migrated, less what was dropped.
+    let entries = std::mem::take(&mut kept.spawns);
+    let mut records = Vec::with_capacity(entries.len());
+    for record in records_in_order(&entries) {
+        let mut spawn = record.into_owned();
         let what = format!("spawn {} (`{}`)", spawn.id.0, spawn.prefab);
         migrate_all(&what, &mut spawn.components, true, report)?;
+        records.push(spawn);
     }
+    let as_saved = |table: &SpawnTable| {
+        table.columns.iter().all(|(component, _)| {
+            registry
+                .components
+                .entries
+                .get(component)
+                .is_some_and(|entry| saved_version(versions, component) == entry.version)
+        })
+    };
+    let mut in_tables = HashSet::new();
+    let mut spawns = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if let SpawnEntry::Table(table) = entry
+            && as_saved(&table)
+        {
+            in_tables.extend(table.ids.iter().copied());
+            spawns.push(SpawnEntry::Table(table));
+        }
+    }
+    spawns.extend(
+        records
+            .into_iter()
+            .filter(|spawn| !in_tables.contains(&spawn.id))
+            .map(SpawnEntry::Record),
+    );
+    // Records alone keep their file's order, as before tables.
+    if !in_tables.is_empty() {
+        spawns.sort_by(SpawnEntry::order);
+    }
+    kept.spawns = spawns;
     Ok(kept)
 }
 
@@ -1418,7 +1738,12 @@ impl Waits {
             kept_spawns: state
                 .kept
                 .values()
-                .flat_map(|area| area.spawns.iter().map(|spawn| spawn.id))
+                .flat_map(|area| &area.spawns)
+                .flat_map(|entry| match entry {
+                    SpawnEntry::Record(spawn) => std::slice::from_ref(&spawn.id),
+                    SpawnEntry::Table(table) => table.ids.as_slice(),
+                })
+                .copied()
                 .collect(),
             any_kept: !state.kept.is_empty(),
         }

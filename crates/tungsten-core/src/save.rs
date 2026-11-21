@@ -25,6 +25,7 @@ pub(crate) mod area;
 pub(crate) mod id;
 pub(crate) mod patch;
 pub(crate) mod registry;
+pub(crate) mod table;
 pub(crate) mod world;
 
 pub use area::{AreaError, enter_area};
@@ -32,6 +33,7 @@ pub use id::{AUTHORED, NameError, SaveId, SaveState, Saved, name, order_key, sav
 pub use registry::{
     MigrationStep, RefCodec, RefReader, RefWriter, Refs, SaveOptions, SaveRegistry,
 };
+pub use table::expand_tables;
 pub use world::{
     CaptureError, FORMAT, RestoreError, RestoreReport, WorldSave, capture_world, check_world,
     regenerate, restore_world,
