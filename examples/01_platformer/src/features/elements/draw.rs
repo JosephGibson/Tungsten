@@ -54,11 +54,13 @@ fn shells(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     for (tags, _, at) in
         world.query::<(&Tags, &crate::features::toys::components::Ball, &Transform)>()
     {
-        if !tags.has(FROZEN) {
-            continue;
-        }
+        // In view first: a burning pile's balls carry tags too, and those
+        // off screen are not asked theirs.
         let size = Vec2::splat(64.0) * at.scale;
         if (at.position + size).cmplt(min).any() || at.position.cmpgt(max).any() {
+            continue;
+        }
+        if !tags.has(FROZEN) {
             continue;
         }
         push_quad(
