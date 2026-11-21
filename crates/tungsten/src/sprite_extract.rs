@@ -22,7 +22,11 @@
 //! already yields painter order) and a second pass gathers the instances into
 //! their batches. A frame that is one batch in query order skips the second
 //! pass: its instance list becomes the batch. A sprite's interned asset ID
-//! indexes the registry directly, with no hashing or string compare.
+//! indexes the registry directly, with no hashing or string compare. An
+//! archetype with no override block and no flip, the common one, takes a row
+//! loop of its own (7.14's C6), which keeps what a sprite ID and material
+//! resolve to while the next row names the same pair; the rest take the
+//! general loop, and both write the same keys and instances.
 //!
 //! A sprite ID with no loaded asset, or a lit sprite carrying a material, logs
 //! a warning once per ID for as long as `ExtractScratch` lives (every
@@ -275,6 +279,11 @@ pub(crate) struct ExtractBuffers {
     /// Tilemap IDs the tilemap extract found no map for, warned about once
     /// each.
     pub(crate) unknown_tilemaps: Vec<String>,
+    /// Runs pass 1's general loop over every archetype, as the extract did
+    /// before plain archetypes took a loop of their own: the tests' reference
+    /// for that loop.
+    #[cfg(test)]
+    general_only: bool,
 }
 
 /// World resource that lets [`extract_sprites_default`] and the tilemap
@@ -701,6 +710,171 @@ fn outside_view(position: Vec2, size: Vec2, rotation: f32, (min, max): (Vec2, Ve
     (hi.cmplt(min) | lo.cmpgt(max)).any()
 }
 
+/// Pass 1's running state across archetypes.
+struct Pass1 {
+    last_class: Option<(BatchKey, u32)>,
+    last_order: u64,
+    in_painter_order: bool,
+    set_bits: u64,
+    common_bits: u64,
+    culled: usize,
+}
+
+/// The buffers pass 1 writes.
+struct Pass1Out<'a> {
+    keys: &'a mut Vec<SortKey>,
+    records: &'a mut Vec<SpriteInstance>,
+    classes: &'a mut Vec<BatchClass>,
+    class_of: &'a mut HashMap<BatchKey, u32>,
+    warnings: &'a mut SpriteWarnings,
+}
+
+/// What a sprite ID and material resolve to in one archetype, kept while the
+/// next row names the same pair.
+#[derive(Clone, Copy)]
+struct Resolved {
+    id: SpriteAssetId,
+    material: Option<MaterialAssetId>,
+    class: u32,
+    /// Whether the stock pipelines draw it, so the view culls it.
+    culls: bool,
+    base: Vec2,
+    anchor: Option<[f32; 2]>,
+    uv_min: [f32; 2],
+    uv_size: [f32; 2],
+}
+
+/// Pass 1 over an archetype with no override block and no flip: the general
+/// loop's keys and instances, row for row.
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+fn plain_rows(
+    st: &mut Pass1,
+    out: &mut Pass1Out<'_>,
+    assets: &AssetRegistry,
+    view: Option<(Vec2, Vec2)>,
+    unlit: bool,
+    last_total: usize,
+    (entities, transforms, sprites, visibilities): (
+        &[Entity],
+        &[Transform],
+        &[Sprite],
+        &[Visibility],
+    ),
+    place: impl Fn(usize, &Transform) -> Vec2,
+) {
+    let mut last_class = st.last_class;
+    let mut last_order = st.last_order;
+    let mut in_painter_order = st.in_painter_order;
+    let (mut set_bits, mut common_bits) = (st.set_bits, st.common_bits);
+    let mut culled = st.culled;
+    let mut memo: Option<Resolved> = None;
+    let rows = entities
+        .iter()
+        .zip(transforms)
+        .zip(sprites)
+        .zip(visibilities)
+        .enumerate();
+    for (row, (((&e, t), s), v)) in rows {
+        if !v.visible {
+            continue;
+        }
+        let resolved = match memo {
+            Some(kept) if kept.id == s.asset_id && kept.material == s.material_id => kept,
+            _ => {
+                let Some(asset) = assets.sprite(s.asset_id) else {
+                    warn_once(out.warnings, assets, s.asset_id, SpriteWarning::NoAsset);
+                    continue;
+                };
+                let lit = asset.lit_atlas.is_some() && !unlit;
+                let effective_material = if lit { None } else { s.material_id };
+                if lit && s.material_id.is_some() {
+                    let warning = SpriteWarning::LitMaterial(s.material_id);
+                    warn_once(out.warnings, assets, s.asset_id, warning);
+                }
+                let key: BatchKey = (asset.atlas.0, asset.filter, effective_material, None, lit);
+                let class = match last_class {
+                    Some((last_key, class)) if last_key == key => class,
+                    _ => {
+                        let classes = &mut *out.classes;
+                        let class = *out.class_of.entry(key).or_insert_with(|| {
+                            classes.push(BatchClass {
+                                texture: asset.atlas,
+                                filter: asset.filter,
+                                material_id: effective_material,
+                                uniform_overrides: None,
+                                lit,
+                                run: 0,
+                                batch: 0,
+                            });
+                            (classes.len() - 1) as u32
+                        });
+                        last_class = Some((key, class));
+                        class
+                    }
+                };
+                let kept = Resolved {
+                    id: s.asset_id,
+                    material: s.material_id,
+                    class,
+                    culls: effective_material.is_none(),
+                    base: Vec2::new(asset.width as f32, asset.height as f32),
+                    anchor: asset.anchor,
+                    uv_min: asset.uv.min,
+                    uv_size: [
+                        asset.uv.max[0] - asset.uv.min[0],
+                        asset.uv.max[1] - asset.uv.min[1],
+                    ],
+                };
+                memo = Some(kept);
+                kept
+            }
+        };
+        let mut position = place(row, t);
+        let size = resolved.base * t.scale;
+        if let Some(anchor) = resolved.anchor {
+            position += anchor_offset(anchor, t.scale, size, t.rotation);
+        }
+        let order = painter_order(s.z_order, e.id());
+        in_painter_order &= order >= last_order;
+        last_order = order;
+        set_bits |= order;
+        common_bits &= order;
+        let index = out.keys.len();
+        if resolved.culls && view.is_some_and(|view| outside_view(position, size, t.rotation, view))
+        {
+            culled += 1;
+            out.keys.push(SortKey {
+                order,
+                record: CULLED,
+                class: resolved.class,
+            });
+            continue;
+        }
+        out.keys.push(SortKey {
+            order,
+            record: out.records.len() as u32,
+            class: resolved.class,
+        });
+        out.records.push(SpriteInstance {
+            position: [position.x, position.y],
+            size: [size.x, size.y],
+            rotation: t.rotation,
+            color: s.color,
+            uv_min: resolved.uv_min,
+            uv_size: resolved.uv_size,
+            z_norm: z_norm(last_total, index),
+            _pad: 0.0,
+        });
+    }
+    st.last_class = last_class;
+    st.last_order = last_order;
+    st.in_painter_order = in_painter_order;
+    st.set_bits = set_bits;
+    st.common_bits = common_bits;
+    st.culled = culled;
+}
+
 fn extract_into(
     world: &World,
     assets: &AssetRegistry,
@@ -708,6 +882,10 @@ fn extract_into(
     buffers: &mut ExtractBuffers,
     raised: &mut [RaisedLayer],
 ) -> Vec<SpriteBatch> {
+    #[cfg(test)]
+    let plain_loop = !buffers.general_only;
+    #[cfg(not(test))]
+    let plain_loop = true;
     let ExtractBuffers {
         keys,
         keys_swap,
@@ -736,15 +914,18 @@ fn extract_into(
     }
     classes.clear();
     class_of.clear();
-    let mut last_class: Option<(BatchKey, u32)> = None;
-    let mut last_order = 0u64;
-    let mut in_painter_order = true;
-    let (mut set_bits, mut common_bits) = (0u64, u64::MAX);
-    let mut culled = 0usize;
-    // The slice form, each archetype's rows zipped as `query3_opt2` zipped
-    // its columns and consumed with `for_each` at both levels: that row loop
-    // keeps its state in registers, where the tuple row iterator spills
-    // (M40 step 5).
+    let mut st = Pass1 {
+        last_class: None,
+        last_order: 0,
+        in_painter_order: true,
+        set_bits: 0,
+        common_bits: u64::MAX,
+        culled: 0,
+    };
+    // The slice form: each archetype's rows as its columns' slices. An
+    // archetype with no override block and no flip, the common one, takes
+    // the plain loop, which keeps what a sprite ID and material resolve to
+    // while the pair repeats; the rest take the general one.
     let archetypes = world.query_slices::<(
         Entity,
         &Transform,
@@ -753,11 +934,51 @@ fn extract_into(
         Option<&UniformOverrideBlock>,
         Option<&ParallaxLayer>,
     )>();
-    archetypes.for_each(|(_, columns)| {
+    for (_, columns) in archetypes {
         let (entities, transforms, sprites, visibilities, override_blocks, parallaxes) = columns;
         let first = entities.first();
         let flips = first.is_some_and(|&e| world.has::<SpriteFlip>(e));
         let unlit = first.is_some_and(|&e| world.has::<Unlit>(e));
+        keys.reserve(entities.len());
+        if plain_loop && override_blocks.is_none() && !flips {
+            let mut out = Pass1Out {
+                keys,
+                records,
+                classes,
+                class_of,
+                warnings,
+            };
+            let columns = (entities, transforms, sprites, visibilities);
+            match parallaxes {
+                None => plain_rows(
+                    &mut st,
+                    &mut out,
+                    assets,
+                    view,
+                    unlit,
+                    last_total,
+                    columns,
+                    |_, t| t.position,
+                ),
+                Some(layers) => plain_rows(
+                    &mut st,
+                    &mut out,
+                    assets,
+                    view,
+                    unlit,
+                    last_total,
+                    columns,
+                    |row, t| {
+                        parallax_world_position(
+                            t.position,
+                            layers[row].scroll_factor,
+                            camera_position,
+                        )
+                    },
+                ),
+            }
+            continue;
+        }
         let rows = entities
             .iter()
             .zip(transforms)
@@ -793,7 +1014,7 @@ fn extract_into(
                 override_hash,
                 lit,
             );
-            let class = match last_class {
+            let class = match st.last_class {
                 Some((last_key, class)) if last_key == key => class,
                 _ => {
                     let class = *class_of.entry(key).or_insert_with(|| {
@@ -808,7 +1029,7 @@ fn extract_into(
                         });
                         (classes.len() - 1) as u32
                     });
-                    last_class = Some((key, class));
+                    st.last_class = Some((key, class));
                     class
                 }
             };
@@ -835,15 +1056,15 @@ fn extract_into(
                 position += anchor_offset(anchor, t.scale, size, t.rotation);
             }
             let order = painter_order(s.z_order, e.id());
-            in_painter_order &= order >= last_order;
-            last_order = order;
-            set_bits |= order;
-            common_bits &= order;
+            st.in_painter_order &= order >= st.last_order;
+            st.last_order = order;
+            st.set_bits |= order;
+            st.common_bits &= order;
             let index = keys.len();
             if effective_material.is_none()
                 && view.is_some_and(|view| outside_view(position, size, t.rotation, view))
             {
-                culled += 1;
+                st.culled += 1;
                 keys.push(SortKey {
                     order,
                     record: CULLED,
@@ -879,7 +1100,14 @@ fn extract_into(
                 _pad: 0.0,
             });
         });
-    });
+    }
+    let Pass1 {
+        in_painter_order,
+        set_bits,
+        common_bits,
+        culled,
+        ..
+    } = st;
 
     // Bits of the order that differ between sprites. The orders are distinct,
     // so any correct sort gives the one painter order a stable sort by

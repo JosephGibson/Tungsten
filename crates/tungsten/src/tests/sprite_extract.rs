@@ -1967,3 +1967,292 @@ fn sprite_point_lands_where_the_extract_draws_it() {
         );
     }
 }
+
+// 7.14's C6: an archetype with no override block and no flip takes pass 1's
+// plain loop, which keeps what a sprite ID and material resolve to while the
+// next row names the same pair. `ExtractBuffers::general_only` runs the
+// general loop over every archetype, the path as it stood, as the reference.
+
+/// Sprite IDs of the mixed worlds: unlit on two pages and both filters, two
+/// lit, one that `extras` anchors, and one no registry holds.
+const MIXED_IDS: [&str; 8] = [
+    "mixed_page0",
+    "mixed_page0_wide",
+    "mixed_linear",
+    "mixed_page1",
+    "mixed_lit",
+    "mixed_lit_tall",
+    "mixed_anchored",
+    "mixed_missing",
+];
+
+/// Uniform below `n`.
+fn pick(rng: &mut Pcg32, n: u32) -> u32 {
+    rng.next_u32() % n
+}
+
+/// A seeded world laid down in runs of rows, each run one archetype and one
+/// pattern of IDs and materials, so the pattern sits row after row in that
+/// archetype: one ID repeating, two alternating, a miss between kept rows, a
+/// material changing under one ID, a lit sprite carrying a material after a
+/// kept one, and anything at all. Runs take parallax layers and override
+/// blocks, and with `extras` what the pre-rewrite reference never drew: an
+/// anchored ID, `Unlit` and `SpriteFlip`. Rows are hidden, turned and
+/// unturned; a camera and a 400 × 300 window cull a share of them.
+fn mixed_world(seed: u64, runs: u32, extras: bool) -> World {
+    use tungsten_core::components::{SpriteFlip, Unlit};
+    let mut world = world_with_registry();
+    let quarter = |x: f32, y: f32| UvRect {
+        min: [x, y],
+        max: [x + 0.25, y + 0.5],
+    };
+    for (id, filter, page, size, uv) in [
+        (
+            MIXED_IDS[0],
+            FilterMode::Nearest,
+            0,
+            (16, 16),
+            quarter(0.0, 0.0),
+        ),
+        (
+            MIXED_IDS[1],
+            FilterMode::Nearest,
+            0,
+            (32, 8),
+            quarter(0.25, 0.5),
+        ),
+        (
+            MIXED_IDS[2],
+            FilterMode::Linear,
+            0,
+            (16, 16),
+            quarter(0.5, 0.0),
+        ),
+        (MIXED_IDS[3], FilterMode::Nearest, 1, (24, 24), UvRect::FULL),
+        (
+            MIXED_IDS[6],
+            FilterMode::Nearest,
+            1,
+            (16, 16),
+            quarter(0.5, 0.5),
+        ),
+    ] {
+        register_on_page(&mut world, id, filter, page, size, uv, false);
+    }
+    for (id, size, uv) in [
+        (MIXED_IDS[4], (16, 16), quarter(0.0, 0.0)),
+        (MIXED_IDS[5], (16, 32), quarter(0.75, 0.5)),
+    ] {
+        register_on_page(&mut world, id, FilterMode::Nearest, 7, size, uv, true);
+    }
+    if extras {
+        world.resource_mut::<AssetRegistry>().set_sprite_frame(
+            MIXED_IDS[6],
+            None,
+            Some([4.0, 15.0]),
+        );
+    }
+    let mut camera = CameraState::new();
+    camera.position = Vec2::new(60.0, -40.0);
+    world.insert_resource(camera);
+    world.insert_resource(WindowSize {
+        width: 400,
+        height: 300,
+    });
+    let ids = MIXED_IDS.map(|name| intern(&mut world, name));
+    let (lit, missing) = (ids[4], ids[7]);
+
+    let mut rng = Pcg32::seeded(seed);
+    let mut live: Vec<Entity> = Vec::new();
+    for run in 0..runs {
+        let parallax = pick(&mut rng, 4) == 0;
+        let block = pick(&mut rng, 5) == 0;
+        let flip = extras && pick(&mut rng, 5) == 0;
+        let unlit = extras && pick(&mut rng, 4) == 0;
+        let pattern = pick(&mut rng, 6);
+        let (a, b) = (
+            ids[pick(&mut rng, 7) as usize],
+            ids[pick(&mut rng, 7) as usize],
+        );
+        let material = Some(MaterialAssetId(pick(&mut rng, 2)));
+        let run_z = [-1, 0, 7][pick(&mut rng, 3) as usize];
+        for row in 0..2 + pick(&mut rng, 9) {
+            let (asset_id, material_id) = match pattern {
+                0 => (a, None),
+                1 => (if row % 2 == 0 { a } else { b }, None),
+                2 => (if row % 3 == 1 { missing } else { a }, None),
+                3 => (a, if row % 2 == 0 { None } else { material }),
+                4 => (lit, if row == 0 { None } else { material }),
+                _ => (
+                    ids[pick(&mut rng, 8) as usize],
+                    [None, None, material][pick(&mut rng, 3) as usize],
+                ),
+            };
+            let e = world.spawn();
+            world.insert(
+                e,
+                Transform {
+                    position: Vec2::new(
+                        rng.next_range(-500.0, 500.0),
+                        rng.next_range(-500.0, 500.0),
+                    ),
+                    rotation: if pick(&mut rng, 2) == 0 {
+                        0.0
+                    } else {
+                        rng.next_range(-3.0, 3.0)
+                    },
+                    scale: Vec2::new(rng.next_range(0.5, 2.5), rng.next_range(0.5, 2.5)),
+                },
+            );
+            world.insert(
+                e,
+                Sprite {
+                    asset_id,
+                    color: rng.next_u32().to_le_bytes(),
+                    z_order: if pattern == 5 {
+                        [-1, 0, 7][pick(&mut rng, 3) as usize]
+                    } else {
+                        run_z
+                    },
+                    material_id,
+                },
+            );
+            world.insert(
+                e,
+                Visibility {
+                    visible: pick(&mut rng, 8) != 0,
+                },
+            );
+            if parallax {
+                world.insert(e, ParallaxLayer::new(Vec2::new(0.5, 1.0)));
+            }
+            if block {
+                let mut payload = UniformOverrideBlock::default();
+                payload.f32s[0] = (run % 3) as f32;
+                world.insert(e, payload);
+            }
+            if flip {
+                world.insert(e, SpriteFlip(pick(&mut rng, 2) == 0));
+            }
+            if unlit {
+                world.insert(e, Unlit);
+            }
+            live.push(e);
+        }
+        if run % 4 == 3 {
+            let victim = live.swap_remove(rng.next_u32() as usize % live.len());
+            world.despawn(victim);
+        }
+    }
+    world
+}
+
+/// The sprite IDs `warned` has named, by index.
+fn flagged(warned: &WarnedIds) -> Vec<u32> {
+    (0..warned.0.len() as u32 * 64)
+        .filter(|&index| warned.contains(SpriteAssetId::new(index)))
+        .collect()
+}
+
+#[test]
+fn plain_archetypes_extract_as_the_general_loop_does() {
+    use tungsten_core::components::SpriteFlip;
+    // Each world through the plain loop and through the general loop alone,
+    // unculled and culled, two frames on each set of buffers: every batch
+    // byte and every warned ID equal, and equal to the pre-rewrite reference
+    // where it draws the same sprites (no extras, no cull).
+    let (mut missed, mut lit_with_material, mut culled_some) = (false, false, false);
+    for extras in [false, true] {
+        for seed in 1..=10u64 {
+            let world = mixed_world(seed, 60 + 20 * seed as u32, extras);
+            let general = world
+                .query::<(
+                    Entity,
+                    &Sprite,
+                    Option<&UniformOverrideBlock>,
+                    Option<&SpriteFlip>,
+                )>()
+                .filter(|(.., block, flip)| block.is_some() || flip.is_some())
+                .count();
+            let sprites = world.query::<(Entity, &Sprite)>().count();
+            assert!(
+                general > 20 && sprites - general > 100,
+                "seed {seed}: {general} of {sprites} sprites in general archetypes"
+            );
+            let assets = world.resource::<AssetRegistry>();
+            for view in [None, view_bounds(&world)] {
+                let context = format!("seed {seed}, extras {extras}, culled {}", view.is_some());
+                let mut plain = ExtractBuffers::default();
+                let mut reference = ExtractBuffers {
+                    general_only: true,
+                    ..ExtractBuffers::default()
+                };
+                for frame in 0..2 {
+                    let batches = extract_into(&world, assets, view, &mut plain, &mut []);
+                    let expected = extract_into(&world, assets, view, &mut reference, &mut []);
+                    assert_same_batches(&batches, &expected, &format!("{context}, frame {frame}"));
+                    if !extras && view.is_none() {
+                        assert_same_batches(&batches, &reference_extract(&world), &context);
+                    }
+                    if view.is_some() {
+                        let all = extract_into(
+                            &world,
+                            assets,
+                            None,
+                            &mut ExtractBuffers::default(),
+                            &mut [],
+                        );
+                        culled_some |= instance_count(&batches) < instance_count(&all);
+                    }
+                }
+                let warned = |buffers: &ExtractBuffers| {
+                    (
+                        flagged(&buffers.warnings.no_asset),
+                        flagged(&buffers.warnings.lit_material),
+                    )
+                };
+                assert_eq!(warned(&plain), warned(&reference), "{context}: warned IDs");
+                missed |= !warned(&plain).0.is_empty();
+                lit_with_material |= !warned(&plain).1.is_empty();
+            }
+        }
+    }
+    assert!(missed && lit_with_material && culled_some);
+
+    // The extract as it stood before the plain loop (at `63c4fa78`), on three
+    // worlds with every extra: batches, instances and digest, unculled and
+    // culled.
+    let pinned: [[(usize, usize, u64); 2]; 3] = [
+        [
+            (56, 401, 0xdac7_e262_1e67_752a),
+            (41, 123, 0xae2e_7680_886d_1546),
+        ],
+        [
+            (47, 323, 0x0f18_8528_e422_9913),
+            (33, 91, 0x8f8e_4bae_065c_5410),
+        ],
+        [
+            (50, 413, 0xee2b_589c_83f6_fc6d),
+            (39, 106, 0xbceb_357a_9d7a_1130),
+        ],
+    ];
+    for (seed, pins) in (1..).zip(pinned) {
+        let world = mixed_world(seed, 80, true);
+        let assets = world.resource::<AssetRegistry>();
+        for (view, pin) in [None, view_bounds(&world)].into_iter().zip(pins) {
+            let mut buffers = ExtractBuffers::default();
+            let batches = extract_into(&world, assets, view, &mut buffers, &mut []);
+            assert_eq!(
+                (
+                    batches.len(),
+                    instance_count(&batches),
+                    fnv1a(&batch_bytes(&batches))
+                ),
+                pin,
+                "seed {seed}, culled {}",
+                view.is_some()
+            );
+            assert_eq!(flagged(&buffers.warnings.no_asset), [7], "seed {seed}");
+        }
+    }
+}
