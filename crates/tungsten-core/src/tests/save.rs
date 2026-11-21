@@ -365,3 +365,199 @@ fn a_stamped_save_lists_and_loads_with_its_stamp() {
         })
     ));
 }
+
+// S-191: `list` reads a slot's header up to its `data` key.
+
+/// A reader that counts the bytes it hands over.
+struct Counting<R> {
+    inner: R,
+    handed: usize,
+}
+
+impl<R: std::io::Read> std::io::Read for Counting<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        self.handed += read;
+        Ok(read)
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct Heavy {
+    level: u32,
+    blob: String,
+}
+
+impl SaveData for Heavy {
+    const SCHEMA: u32 = 5;
+}
+
+#[test]
+fn a_slots_header_reads_without_its_data() {
+    let slots = slots();
+    let heavy = Heavy {
+        level: 1,
+        blob: "x".repeat(1 << 20),
+    };
+    slots.save("heavy", &heavy).unwrap();
+    let path = slots.dir().unwrap().join("heavy.json");
+    assert!(std::fs::metadata(&path).unwrap().len() > 1 << 20);
+
+    let mut file = Counting {
+        inner: std::fs::File::open(&path).unwrap(),
+        handed: 0,
+    };
+    let header = header_before_data(&mut file).expect("an engine-written slot");
+    assert_eq!(
+        (header.schema, header.engine_version.as_str()),
+        (5, env!("CARGO_PKG_VERSION"))
+    );
+    assert!(header.saved_at_ms > 0);
+    assert!(
+        file.handed > 0 && file.handed <= 16 * 1024,
+        "{} bytes read of a slot over 1 MiB",
+        file.handed
+    );
+    // `list` reads it the same way, and the data still loads.
+    assert_eq!(
+        slots.list().unwrap().slots,
+        [SlotInfo {
+            name: "heavy".into(),
+            schema: 5,
+            engine_version: env!("CARGO_PKG_VERSION").into(),
+            saved_at_ms: header.saved_at_ms,
+        }]
+    );
+    assert_eq!(slots.load::<Heavy>("heavy").unwrap().blob.len(), 1 << 20);
+}
+
+#[test]
+fn list_answers_as_the_whole_parse_does() {
+    let slots = slots();
+    slots.save("a_first", &progress()).unwrap();
+    slots
+        .save_stamped("older", &progress(), &SaveStamp::new(1, "0.70.0", 123))
+        .unwrap();
+    let dir = slots.dir().unwrap().to_path_buf();
+    // Whether the header reads before the data, and the file.
+    let files = [
+        (true, "a_first", None),
+        (true, "older", None),
+        (
+            false,
+            "data-first",
+            Some(
+                r#"{ "data": { "level": 3 }, "envelope": 1, "slot": "data-first", "schema": 2, "engine_version": "0.73.0", "saved_at_ms": 5 }"#,
+            ),
+        ),
+        (
+            false,
+            "data-early",
+            Some(
+                r#"{ "envelope": 1, "schema": 2, "data": {}, "engine_version": "0.1.0", "saved_at_ms": 7 }"#,
+            ),
+        ),
+        (
+            false,
+            "no-data",
+            Some(r#"{ "envelope": 1, "schema": 2, "engine_version": "0.73.0", "saved_at_ms": 5 }"#),
+        ),
+        (
+            true,
+            "twice",
+            Some(
+                r#"{ "envelope": 1, "schema": 1, "schema": 3, "engine_version": "a", "saved_at_ms": 5, "data": {} }"#,
+            ),
+        ),
+        (
+            false,
+            "newer",
+            Some(
+                r#"{ "envelope": 2, "slot": "newer", "schema": 2, "engine_version": "9.0.0", "saved_at_ms": 5, "data": {} }"#,
+            ),
+        ),
+        (
+            false,
+            "newer-shape",
+            Some(r#"{ "envelope": 2, "header": {}, "payload": [] }"#),
+        ),
+        (
+            false,
+            "mistyped",
+            Some(
+                r#"{ "envelope": 1, "schema": "two", "engine_version": "0.73.0", "saved_at_ms": 5, "data": {} }"#,
+            ),
+        ),
+        (false, "no-json", Some("{ nope")),
+        (false, "a-list", Some("[1, 2]")),
+        (false, "empty", Some("")),
+        (
+            false,
+            "Shouting",
+            Some(
+                r#"{ "envelope": 1, "schema": 2, "engine_version": "0.73.0", "saved_at_ms": 5, "data": {} }"#,
+            ),
+        ),
+    ];
+    for (_, name, text) in &files {
+        if let Some(text) = text {
+            write_slot(&slots, name, text);
+        }
+    }
+    std::fs::write(dir.join(".a_first.json.1.0.tmp"), "half").unwrap();
+    std::fs::write(dir.join(".hidden.json"), "{}").unwrap();
+    std::fs::write(dir.join("notes.txt"), "not a slot").unwrap();
+
+    let list = slots.list().unwrap();
+    let whole = slots.list_by(read_header_whole).unwrap();
+    assert_eq!(list.slots, whole.slots);
+    assert_eq!(list.warnings, whole.warnings);
+    let names: Vec<&str> = list.slots.iter().map(|info| info.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "a_first",
+            "data-early",
+            "data-first",
+            "no-data",
+            "older",
+            "twice"
+        ]
+    );
+    assert_eq!(list.slots[5].schema, 3, "a key given twice keeps its last");
+    assert_eq!(list.warnings.len(), 7, "{:?}", list.warnings);
+    for (before_data, name, _) in files {
+        let file = std::fs::File::open(dir.join(format!("{name}.json"))).unwrap();
+        // The read alone: an invalid name never reaches it.
+        let read = header_before_data(file).is_some();
+        assert_eq!(read, before_data || name == "Shouting", "{name}");
+    }
+}
+
+#[test]
+fn a_slot_with_a_whole_header_and_broken_data_lists_and_fails_to_load() {
+    let slots = slots();
+    // Torn in its data, and whole with something after it.
+    for text in [
+        r#"{ "envelope": 1, "slot": "torn", "schema": 2, "engine_version": "0.73.0", "saved_at_ms": 5, "data": { "level": 3, "name": "a"#,
+        r#"{ "envelope": 1, "slot": "torn", "schema": 2, "engine_version": "0.73.0", "saved_at_ms": 5, "data": { "level": 3, "name": "ada" } } trailing"#,
+    ] {
+        write_slot(&slots, "torn", text);
+        let list = slots.list().unwrap();
+        assert!(list.warnings.is_empty(), "{:?}", list.warnings);
+        assert_eq!(
+            list.slots,
+            [SlotInfo {
+                name: "torn".into(),
+                schema: 2,
+                engine_version: "0.73.0".into(),
+                saved_at_ms: 5,
+            }]
+        );
+        // The whole parse skipped it, and `load` still reports it.
+        let whole = slots.list_by(read_header_whole).unwrap();
+        assert!(whole.slots.is_empty() && whole.warnings.len() == 1);
+        let error = slots.load::<Progress>("torn").unwrap_err();
+        assert!(matches!(error, SaveError::Corrupt { .. }), "{error}");
+    }
+}

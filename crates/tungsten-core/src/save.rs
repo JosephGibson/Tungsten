@@ -14,8 +14,8 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::de::{DeserializeOwned, IgnoredAny, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 
 use crate::config::GameConfig;
@@ -408,11 +408,26 @@ impl SaveSlots {
     /// [`SlotList::warnings`], and [`load`](Self::load) reports it; the
     /// write's temp files are dotfiles and are not listed.
     ///
+    /// A slot this engine wrote is read up to its `data` key and no further,
+    /// whatever its size: the envelope writes its header first. So a slot
+    /// whose header reads lists though its data may not parse, which
+    /// [`load`](Self::load) then reports, and a header key repeated after
+    /// `data` is not seen. A file whose keys come in another order, or whose
+    /// header is not whole before `data`, is parsed whole.
+    ///
     /// # Errors
     ///
     /// [`SaveError::NoFolder`], or [`SaveError::Io`] when the folder cannot
     /// be read. A folder not yet created lists no slots.
     pub fn list(&self) -> Result<SlotList, SaveError> {
+        self.list_by(read_header)
+    }
+
+    /// [`list`](Self::list), each slot's header read by `read`.
+    fn list_by(
+        &self,
+        read: fn(&Path, &str) -> Result<Header, String>,
+    ) -> Result<SlotList, SaveError> {
         let dir = self.dir.as_deref().ok_or(SaveError::NoFolder)?;
         let io_error = |source| SaveError::Io {
             path: dir.to_path_buf(),
@@ -441,7 +456,7 @@ impl SaveSlots {
 
         let mut list = SlotList::default();
         for name in names {
-            match read_header(dir, &name) {
+            match read(dir, &name) {
                 Ok(header) => list.slots.push(SlotInfo {
                     name,
                     schema: header.schema,
@@ -499,7 +514,22 @@ fn is_valid_slot_name(name: &str) -> bool {
         && game.validate().is_ok()
 }
 
+/// A slot's header: read up to the `data` key where the envelope writes its
+/// header first ([`header_before_data`]), else from the file parsed whole,
+/// whose answer and whose reason for a file it skips are what every file got
+/// before.
 fn read_header(dir: &Path, name: &str) -> Result<Header, String> {
+    if is_valid_slot_name(name)
+        && let Ok(file) = std::fs::File::open(dir.join(format!("{name}.json")))
+        && let Some(header) = header_before_data(file)
+    {
+        return Ok(header);
+    }
+    read_header_whole(dir, name)
+}
+
+/// A slot's header from its file read and parsed whole.
+fn read_header_whole(dir: &Path, name: &str) -> Result<Header, String> {
     let bytes = std::fs::read(dir.join(format!("{name}.json"))).map_err(|e| e.to_string())?;
     if !is_valid_slot_name(name) {
         return Err("not a valid slot name".into());
@@ -510,6 +540,102 @@ fn read_header(dir: &Path, name: &str) -> Result<Header, String> {
         return Err(format!("envelope {}", version.envelope));
     }
     Header::deserialize(&value).map_err(|e| e.to_string())
+}
+
+/// The header of an envelope of this build's format whose `schema`,
+/// `engine_version` and `saved_at_ms` all come before its `data`, as
+/// [`SaveSlots::save`] writes them: read through a buffer up to the `data`
+/// key and no further, so a slot costs its header whatever its data weighs.
+/// `None` for anything else: another envelope, a key missing or of another
+/// type, no `data`, or no JSON object at all.
+fn header_before_data(file: impl std::io::Read) -> Option<Header> {
+    /// The envelope's keys this read tells apart.
+    enum Key {
+        Envelope,
+        Schema,
+        EngineVersion,
+        SavedAtMs,
+        Data,
+        Other,
+    }
+
+    impl<'de> Deserialize<'de> for Key {
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            struct Name;
+            impl Visitor<'_> for Name {
+                type Value = Key;
+
+                fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    f.write_str("an envelope key")
+                }
+
+                fn visit_str<E>(self, name: &str) -> Result<Key, E> {
+                    Ok(match name {
+                        "envelope" => Key::Envelope,
+                        "schema" => Key::Schema,
+                        "engine_version" => Key::EngineVersion,
+                        "saved_at_ms" => Key::SavedAtMs,
+                        "data" => Key::Data,
+                        _ => Key::Other,
+                    })
+                }
+            }
+            deserializer.deserialize_identifier(Name)
+        }
+    }
+
+    /// Fills its header at the `data` key, then stops the read with an
+    /// error: the only way out of a map that leaves its rest unread.
+    struct UpToData<'a>(&'a mut Option<Header>);
+
+    impl<'de> Visitor<'de> for UpToData<'_> {
+        type Value = ();
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a save envelope")
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+            let (mut envelope, mut schema, mut engine_version, mut saved_at_ms) =
+                (None, None, None, None);
+            // A key given twice keeps its last value, as the whole parse's
+            // map does.
+            while let Some(key) = map.next_key::<Key>()? {
+                match key {
+                    Key::Envelope => envelope = Some(map.next_value::<u32>()?),
+                    Key::Schema => schema = Some(map.next_value::<u32>()?),
+                    Key::EngineVersion => engine_version = Some(map.next_value::<String>()?),
+                    Key::SavedAtMs => saved_at_ms = Some(map.next_value::<u64>()?),
+                    Key::Other => {
+                        map.next_value::<IgnoredAny>()?;
+                    }
+                    Key::Data => {
+                        if let (
+                            Some(ENVELOPE),
+                            Some(schema),
+                            Some(engine_version),
+                            Some(saved_at_ms),
+                        ) = (envelope, schema, engine_version, saved_at_ms)
+                        {
+                            *self.0 = Some(Header {
+                                schema,
+                                engine_version,
+                                saved_at_ms,
+                            });
+                        }
+                        return Err(serde::de::Error::custom("the header ends at the data"));
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    let mut header = None;
+    let mut json = serde_json::Deserializer::from_reader(std::io::BufReader::new(file));
+    // The result is the stop itself or the reason there is no header.
+    let _ = json.deserialize_map(UpToData(&mut header));
+    header
 }
 
 /// Unix milliseconds; 0 for a clock before 1970.
