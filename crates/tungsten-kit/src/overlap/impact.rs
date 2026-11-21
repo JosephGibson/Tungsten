@@ -115,16 +115,56 @@ pub struct ImpactDamage {
     floor: f32,
     mass: Option<f32>,
     amount: Option<f32>,
-    kind: Option<String>,
+    kind: Option<Name>,
     extra: Option<Box<Extra>>,
     push: Option<Push>,
     filter: TagFilter,
     margin: f32,
     now: bool,
-    prepare: Option<String>,
+    prepare: Option<Name>,
     scale: f32,
     /// Who its hits are credited to, ahead of its `Source`.
     credit: Option<Entity>,
+}
+
+/// A rule's name, its damage type's or its preparation's, kept in the rule
+/// itself while it is short, as every name in data is: a rule a body
+/// carries then holds no allocation for it. A crowd spawned from one
+/// prefab laid each body's two names between its other strings, its
+/// sprite's clip name among them, which the animation reads every frame
+/// and found spread over three times the memory.
+#[derive(Debug, Clone, PartialEq)]
+enum Name {
+    Short { len: u8, bytes: [u8; Name::SHORT] },
+    Long(Box<str>),
+}
+
+impl Name {
+    /// The longest name kept in place.
+    const SHORT: usize = 30;
+
+    fn as_str(&self) -> &str {
+        match self {
+            // The bytes are a whole `str`'s, copied in `from`.
+            Self::Short { len, bytes } => {
+                std::str::from_utf8(&bytes[..usize::from(*len)]).unwrap_or_default()
+            }
+            Self::Long(name) => name,
+        }
+    }
+}
+
+impl From<&str> for Name {
+    fn from(name: &str) -> Self {
+        match u8::try_from(name.len()) {
+            Ok(len) if name.len() <= Self::SHORT => {
+                let mut bytes = [0; Self::SHORT];
+                bytes[..name.len()].copy_from_slice(name.as_bytes());
+                Self::Short { len, bytes }
+            }
+            _ => Self::Long(name.into()),
+        }
+    }
 }
 
 /// Parts an impact adds while its holder's tags pass `when`.
@@ -319,7 +359,7 @@ impl TryFrom<ImpactFields> for ImpactDamage {
             floor: fields.floor,
             mass: fields.mass,
             amount: fields.amount,
-            kind: fields.kind,
+            kind: fields.kind.as_deref().map(Name::from),
             extra: fields.extra,
             push: fields
                 .push
@@ -327,7 +367,7 @@ impl TryFrom<ImpactFields> for ImpactDamage {
             filter: fields.filter,
             margin: fields.margin,
             now: fields.land == LandField::Now,
-            prepare: fields.prepare,
+            prepare: fields.prepare.as_deref().map(Name::from),
             scale: fields.scale,
             credit: None,
         })
@@ -343,7 +383,7 @@ impl From<ImpactDamage> for ImpactFields {
             floor: rule.floor,
             mass: rule.mass,
             amount: rule.amount,
-            kind: rule.kind,
+            kind: rule.kind.map(|name| name.as_str().to_owned()),
             extra: rule.extra,
             push: rule.push,
             filter: rule.filter,
@@ -353,7 +393,7 @@ impl From<ImpactDamage> for ImpactFields {
             } else {
                 LandField::Queue
             },
-            prepare: rule.prepare,
+            prepare: rule.prepare.map(|name| name.as_str().to_owned()),
             scale: rule.scale,
         }
     }
@@ -501,7 +541,7 @@ impl ImpactDamage {
             valid_tag(kind),
             "ImpactDamage::with_kind: `{kind}` is not a damage type name"
         );
-        self.kind = Some(kind.to_owned());
+        self.kind = Some(Name::from(kind));
         self
     }
 
@@ -621,7 +661,7 @@ impl ImpactDamage {
             crate::foundation::stats::valid_stat(&name),
             "ImpactDamage::with_prepare: `{name}` is not a preparation name"
         );
-        self.prepare = Some(name);
+        self.prepare = Some(Name::from(name.as_str()));
         self
     }
 
@@ -701,7 +741,7 @@ impl ImpactDamage {
     /// filter's tags and its preparation.
     fn check(&self, world: &World) -> Result<(), MissingAsset> {
         if let Some(kind) = &self.kind {
-            check_type(world, "kind", kind, false)?;
+            check_type(world, "kind", kind.as_str(), false)?;
         }
         if let Some(extra) = &self.extra {
             extra.damage.check(world)?;
@@ -709,7 +749,7 @@ impl ImpactDamage {
         }
         self.filter.check(world, "filter")?;
         if let Some(name) = &self.prepare {
-            check_hit_prep(world, "prepare", name)?;
+            check_hit_prep(world, "prepare", name.as_str())?;
         }
         Ok(())
     }
@@ -1020,7 +1060,7 @@ fn land(world: &mut World, touch: &Touch) {
     if amount <= 0.0 {
         return;
     }
-    let prep: Option<HitPrep> = match rule.prepare.as_deref() {
+    let prep: Option<HitPrep> = match rule.prepare.as_ref().map(Name::as_str) {
         None => None,
         Some(name) => {
             let Some(prep) = hit_prep(world, name) else {
@@ -1108,7 +1148,7 @@ impl Serialize for ImpactDamageDef {
             floor: rule.floor,
             mass: rule.mass,
             amount: rule.amount,
-            kind: rule.kind.as_deref(),
+            kind: rule.kind.as_ref().map(Name::as_str),
             extra: rule.extra.as_deref(),
             push: rule.push,
             filter: &rule.filter,
@@ -1118,7 +1158,7 @@ impl Serialize for ImpactDamageDef {
             } else {
                 LandField::Queue
             },
-            prepare: rule.prepare.as_deref(),
+            prepare: rule.prepare.as_ref().map(Name::as_str),
             scale: rule.scale,
         }
         .serialize(serializer)
