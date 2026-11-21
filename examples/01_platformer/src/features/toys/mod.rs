@@ -301,8 +301,9 @@ pub(crate) fn admit_toy(
 }
 
 /// [`spawn_toy`] for a ball, under a kept identity of the run's next save
-/// ID: 01's own table saves the balls, since a full pit's 12,000 as records
-/// would pass the save's bound.
+/// ID: 01's own table saves the balls, since a full pit's 12,000 as the
+/// engine's records, or as rows of its spawn table (`D-295`), would pass
+/// the save's bound (`save.rs`).
 fn spawn_ball_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> Entity {
     let id = crate::shared::take_id(world);
     prepare_toy(world, prefab, at, scale)
