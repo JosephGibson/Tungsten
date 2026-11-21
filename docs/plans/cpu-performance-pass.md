@@ -1,0 +1,317 @@
+# CPU performance pass (phase-7's step 7.14, first plan) — draft
+
+- **status:** draft
+- **goal:** Phase 7's CPU pass with 01 on the new systems as its workload (the [roadmap redo](roadmap-redo.md)'s 7.14 row and §5.8, [phase-7.md](phase-7.md)'s Step 14 and §2.5): take the gate's reading of C1–C6 on their rows, then remove at least half of a kept item's measured time on its row by a structural fix that keeps behaviour bit for bit. Here, the three items such a fix reaches: C4 (a query's collection, `has`), C1 (the sensor pass and the query index) and C2 (chemistry's emission step), with C5's bit-exact capture costs. C3, C5's target and C6 each need a change this plan does not make (a public field, a save format, a pinned loop under a measure of its own): they go to 7.14's second plan with their readings and designs. The whole-frame rows and the GPU rows stay not `regressed`.
+- **non-goals:**
+  - 7.14's second plan (§2.6): C5's target by a prefab's runtime spawns saved as a table, a save format change, with S-35 and S-191; C3's by a clip slot kept in `AnimationState`, a public field narrowed across 14 files; C6's by the extract's row loop, judged by a reading taken with the GPU idle.
+  - Anything the gate does not measure on a row (`phase-7.md` §2.5, "Nothing joins"): the statics staged a build, the tile proxies' interior cells, a worker pool. Each is a line for 9.2 or stays where it is (§2.7).
+  - 01's own code: `ball_look`, the fire emitters' pool and the far foes' hold close as rows without a change (§2.7); PK1's names stay a 01 stop's, unblocked by Step 2.
+  - Any change of motion or of what a system does: no physics hash, row digest, kit pin, save byte, GPU counter or `api/` line moves.
+  - Budgets (9.1), a new row, a decision entry: no step makes a choice that constrains later work.
+- **files to touch:** by step, nothing outside these lists
+  - Step 1: this plan, `docs/plans/phase-7.md`, `docs/perf/benchmarks.md`; `crates/tungsten-core/src/physics/step/mod.rs` for the gate's build alone, restored before the commit
+  - Step 2: `crates/tungsten-core/src/ecs/world.rs`, `crates/tungsten-core/src/tests/ecs/query.rs`, `crates/tungsten/src/testing/guard.rs`, `DESIGN.md`, `docs/known-issues.md`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/02_bench/src/tests/guards/*.json`
+  - Step 3: `crates/tungsten-core/src/ecs/archetype.rs`, `crates/tungsten-core/src/tests/ecs/archetype.rs`, `docs/known-issues.md`
+  - Step 4: `crates/tungsten-core/src/physics/query.rs`, `crates/tungsten-core/src/physics/step/mod.rs`, `crates/tungsten-core/src/tests/physics/step.rs`, `crates/tungsten-core/src/tests/physics/query.rs`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/02_bench/src/tests/guards/terrain.json`
+  - Step 5: `crates/tungsten-core/src/physics/query.rs`, `crates/tungsten-core/src/physics/step/mod.rs`, `crates/tungsten-core/src/tests/physics/step.rs`, `crates/tungsten-core/src/tests/physics/query.rs`, `DESIGN.md`, `docs/known-issues.md`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/02_bench/src/tests/guards/*.json`
+  - Step 6: `examples/01_platformer/tests/game/frame_time.rs` (deleted), `examples/01_platformer/tests/game/main.rs`, `examples/01_platformer/README.md`, `docs/known-issues.md`
+  - Step 7: `crates/tungsten-core/src/save/world.rs`, `crates/tungsten-core/src/tests/save/world.rs`, `examples/02_bench/src/tests/guards/saves.json`, `docs/perf/benchmarks.md`
+  - Step 8: `crates/tungsten-kit/src/chemistry/grid.rs`, `crates/tungsten-kit/src/tests/chemistry.rs`, `examples/02_bench/src/tests/guards/spread.json`, `examples/01_platformer/tests/game/guards/pit.json`
+  - Step 9: `crates/tungsten-kit/src/chemistry/queue.rs`, `crates/tungsten-kit/src/chemistry/stimuli.rs`, `crates/tungsten-kit/src/chemistry/grid.rs`, `crates/tungsten-kit/src/chemistry/mod.rs`, `crates/tungsten-kit/src/tests/chemistry.rs`, `examples/02_bench/src/tests/guards/spread.json`, `examples/01_platformer/tests/game/guards/pit.json`
+  - Step 10: this plan (deleted), `ROADMAP.md`, `docs/plans/phase-7.md`, `docs/perf/benchmarks.md`, `docs/known-issues.md`
+- **ordered steps:** (1) the gate's readings; (2) C4: a query's collection walks its matches and skips the archetypes with no rows; (3) C4: `has` through the archetype's slot (K12); (4) C1: the sensor pass compares its pairs in visit order and takes its candidates by bit; (5) C1: the index's grid kept for the entries that hold (K14); (6) S-54: 01's ignored frame-time test goes; (7) C5: the capture's bit-exact costs; (8) C2: the receiver grid's cell directory, packed centres and squared test; (9) C2: the queue's first reach by a kept slot, and the run's trims; (10) close
+- **done-when:** every step's done-when passes or the step is skipped by §6, each quoted in the evidence log; in `phase-7.md` §2.5, C1, C2 and C4 each read `done`, `dropped` or `stopped` with the reading that says so, or `open` with what remains named for the second plan, a lever a missed target left or a step of its own that was skipped (§2.2); C3, C5 and C6 read `open` with their gate readings and the second plan named; the close sitting against `v0.118.0` reads no row `regressed`, the GPU rows among them; `just check`, `just physics-release`, `just perf-test`, `just perf counters` and `just repo-check` pass and example 01 runs (`e01-pit`'s and `e01-stress`'s captures valid, their script reports passing); the plan deleted with its citations and the item out of Now.
+
+Item `cpu-performance-pass` in [ROADMAP.md](../../ROADMAP.md), from `phase-7.md`'s Step 14 and §2.5 and the redo's 7.14 row and §5.8. Written 2026-11-21 at `d549d674` (`v0.118.0`). Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md), the [tungsten-perf skill](../../.claude/skills/tungsten-perf/SKILL.md) and the [operating rules](../operating-rules.md); this plan records only where it differs.
+
+## Context digest
+
+- 7.13 closed and 0.118.0 is cut at `d549d674`. Its release sitting (`perf-runs/20261121T011258Z-sitting/`, every row `ok`) ran at `bbd57da4`, whose tree differs from the tag's by the changelog, the version and one known-issues line, so its candidate captures are the gate's captures of 7.13's tree.
+- The list is C1–C6 (`phase-7.md` §2.5). An item under 5 % of its row leaves the list, C4's empty-archetype walk aside; a kept item's target is half its measured time on its row; it ends `done`, `dropped` or `stopped`, and nothing joins.
+- The gate, read in this session (§2.1): every item reaches 5 % on a row its line names, C1, C3 and C4 only just. Three need more than a bit-exact fix. C5's capture can lose a fifth bit for bit; its other 30 points need the table, a format change. C3's lookup goes only when `AnimationState` carries its clip, a public field narrowed. C6's extract is 87 % of `gpu-throughput`, but about half of that reading is a stall that follows the GPU's pass, not the extract, so the item needs a measure of its own before any verdict. Those three are the second plan's.
+- C4's change is prototyped: 01's pit guard reads 60,786 → 40,387 allocations and 60.8 → 5.1 MB, sixteen pins fall, no other test moves, and the item's time more than halves (A5).
+- What reads this pass later: 7.14's second plan takes §2.6; 7.15 takes the extract's finding for G5; 9.2 takes §2.7's levers.
+- Decisions it stands on: `D-226` (a 7.14 item is judged by a full sitting), `D-206` and `D-247` (query shapes, `has_any`), `D-083` (the slot table), `D-203` (tiles kept across steps), `D-131` and `D-067` (no worker), `D-230` (saves), `D-086`, `D-113` and `D-114` (the extract), `D-070` (time rows stay local).
+- Machine-local: the gate's profiles and tools in `perf-runs/20261121-cpu-pass-plan/` (`tools/item_ms.py`, `row_share.py`, `fill_cut.py`, `pins_fell.py`, a README), the prototype's patch and test log in `target/plan-wip/7.14-probes/`, the three audits' notes in §1.
+
+## 1. Audit
+
+Read at `d549d674`. The profiles are this session's, taken with a remote-desktop client connected, so they are diagnostic: Step 1 takes them again on a quiet machine, and those are the gate's.
+
+| # | Finding | Evidence |
+| --- | --- | --- |
+| A1 | The gate's captures exist and are valid: the release sitting's candidate side at `bbd57da4`, ten runs a CPU row | `perf-runs/20261121T011258Z-sitting/`; `git diff --stat bbd57da4 d549d674` → `CHANGELOG.md`, `Cargo.lock`, `Cargo.toml`, `DESIGN.md`, `docs/known-issues.md` |
+| A2 | The items that are telemetry metrics, by those captures (mean of the runs): `spread` `system.chemistry` mean 0.531 of 1.931 ms (27.5 %), p95 5.104 of 6.851; `particles` `system.animate_sprites` mean 0.243 of 4.517 (5.37 %), p50 0.239; `saves` `system.save_snapshot` mean 17.919 of 18.413 (97.3 %), p50 17.867; `gpu-throughput` `stage.extract` mean 11.890 of 13.662 (87.0 %), p50 11.984; on `e01-pit` (mean `total` 19.932, p50 23.928) `extract` 0.451 (2.26 %), `animation_tick` 0.214 (1.07 %), `ball_look` 0.314 (1.57 %) | `tools/row_share.py <sitting> <row> <metric>` |
+| A3 | The items inside a system, by a gated profile of the row's 300 window frames (user cycles at 5 kHz, the capture's own build): on `e01-pit`, whose profiled run's mean `total` is 20.426 ms, C1 is 1.256 ms a frame (6.15 %): the sensor pass 0.756, the index's refresh 0.309, the sensor pairs' sort 0.146, queries 0.045; C4 is 1.095 ms (5.36 %): the archetype walk and collect 0.516, keyed gets 0.314 (0.236 of them 01's `FastBodies::has`), column setup 0.265. On `ecs` C4 is 0.401 ms (3.65 % of samples); on `physics-sparse` C1 is 0, the row running no query and no sensor; on `e01-stress` C1 is 1.513 ms (3.9 %) and C4 1.596 (4.2 %) | `perf-runs/20261121-cpu-pass-plan/profile/*.txt`, `tools/item_ms.py` |
+| A4 | A query collects one `(rows, slices)` entry for every archetype its shape matches, the empty ones too, by walking every archetype and testing its bit, into a `Vec` that grows by doubling; `column_range` scans the type key once an item an archetype | `crates/tungsten-core/src/ecs/world.rs:425-440`, `:479-496`; `ecs/query.rs:451-456`; `docs/known-issues.md` (`query_slices_filtered`) |
+| A5 | The prototype (the two sites walk the shape's set bits, skip an archetype with no rows and size the list exactly): 01's pit guard `allocations` 60,786 → 40,387 and `allocated_bytes` 60,767,705 → 5,094,537, no other field moving; fifteen of 02's sixteen pins fall (table below; `boot.json` holds) and `tungsten`'s two hold; `cargo test --workspace --locked --no-fail-fast` fails those sixteen guards and nothing else; C4 reads 0.487 ms a frame (walk 0.051, setup 0.127, keyed 0.309) in a run whose untouched C1 read 6 % slow | `target/plan-wip/7.14-probes/c4-walk.patch`, `c4-walk-tests.log`; `profile/e01-pit-c4proto.txt` |
+| A6 | `Archetype::has` scans the type key where `get` takes the hashed slot; `Archetypes::has`, `holds` (every `has_any` gate) and `insert_run` call it. No row shows it: under 0.01 ms a frame of `e01-pit` | `ecs/archetype.rs:196-198`, `:219-226`; `ecs/storage.rs:116-120`, `:290`, `:395-400` |
+| A7 | 01's six area zones are sensors of thousands of pixels with the default mask, so the one over the pit pairs with each of its 12,000 balls every step. A pass gathers a sensor's candidates through the grid, sorts them, tests each, pushes each pair and searches the previous pass's sorted pairs for it; then sorts the pairs and walks the previous ones for exits. 82 % of the candidate loop's samples are that search (0.34 ms a frame); the pass also allocates two lists a step | `examples/01_platformer/assets/prefabs/ex10_area_0.json`; `physics/query.rs:305-354`; `physics/step/mod.rs:1946-2163` (`:1956`, `:2004`, `:2121-2122`) |
+| A8 | The index rebuilds its bodies' part on the first query after every step, and the sensor pass is that query: 12,100 entries copied and staged (0.24 ms), the grid built (0.14). The window holds 75 frames with the pile asleep (mean `total` 6.3 ms, `physics_step` 2.9), 190 awake and 35 between; the player and six foes move in every one, so no step leaves the entries whole | `physics/query.rs:420-459`; `physics/step/mod.rs:781-814`, `:1131-1137`; `profile/e01-pit.log` |
+| A9 | Two tests pin when the index builds; the first ends on a count of 2 after two steps of a World of statics | `crates/tungsten-core/src/tests/physics/query.rs:714-757`, `:759-810` |
+| A10 | The capture formats a label once a registered component a spawn record, read only by the error path (120,000 strings a frame of `saves`, 2.55 ms); asks each of the registry's components for each record by a keyed get, six of ten absent in the row (0.90 ms); clones the area's name a record; builds the ID map and probes the waiting references with none waiting (0.58 ms). A record is 25 allocations and 15 JSON nodes; `to_vec` is 4.95 ms and the drop 3.05. `Erased::has` exists | `crates/tungsten-core/src/save/world.rs:335-361` (`:347`), `:419-424`, `:278-279`; `save/registry.rs:250-251` |
+| A11 | Chemistry's emission step: an emitter takes two binary searches a grid column over the sorted cells (63,056 a step, 0.97 ms), an exact distance with a square root for every candidate in its cells (568,885, 1.09 ms), and its receivers' first reach in a pass probes the queue's index (12,000, 1.28 ms, a cache miss each); later reaches reuse the slot (0.65 ms). The run clones its rules each step, one rule in this row | `crates/tungsten-kit/src/chemistry/grid.rs:147-175`; `chemistry/queue.rs:377-413`; `chemistry/stimuli.rs:203-281`; `chemistry/rules.rs:165-175`; `profile/spread.txt` |
+| A12 | `particles`' `animate_sprites` is the bench's own system: each sprite calls `AnimationState::advance`, which finds its clip in a `HashMap<String, AnimationData>` on the default hasher: the hash 37 % of its samples, the probe and compare 34 %, the advance 19 %. Its eight clips interleave by row, so the kit's last-clip memo would not help. `AnimationState` is 40 bytes, pinned, with no spare byte; `frame_index` has 48 uses in 14 files. Four systems take the registry out of the World and put it back each frame, a box each time | `examples/02_bench/src/particles.rs:470-494`; `crates/tungsten-core/src/assets/animation.rs:93-96`, `:239-247`; `tests/assets/animation.rs:230`; `crates/tungsten-kit/src/present/animation.rs:185-218`, `present/character.rs:1367-1498`; `profile/particles.txt` |
+| A13 | The extract on `gpu-throughput`: its first frame, with no GPU frame in flight, reads 5.52–6.68 ms in all ten runs and the second 12.2–12.9; the GPU's scene pass is 9.45 ms p50. In 9 of 3,000 window frames the extract reads 6.98–7.91 ms and the encode, a plain copy of the same 19,200,128 instance bytes, 6.17–7.11 ms against its 1.33 p50, the frame's `total` unchanged: the stall falls on whatever writes memory during the GPU's pass. Four store instructions hold 56 % of the loop's samples for the first 10 ms of a frame's extract and 8 % for its last 2. The loop runs 217 instructions and 15 stack spills a sprite, reads 57 bytes and writes 64 | `captures/gpu-throughput-B*/run-*/timing.log`; `crates/tungsten/src/sprite_extract.rs:756-881`; `profile/gpu-throughput.data` |
+| A14 | 01's rows: `ball_look` reads each ball's tags and effects and takes a `powf` a hued ball (0.13 of its 0.31 ms in the pit; 1.06 of 1.34 ms in `e01-stress` is the status reads); the far foes' hold (`asleep`, 1,200 px) is 0.02 ms; the fire emitters' pool 0.03 ms | `examples/01_platformer/src/features/toys/systems.rs:1519-1580`; `features/enemies/systems.rs:456-463`; `features/elements/systems.rs:448-521` |
+| A15 | Two known issues and two Later lines name 7.14 for costs no row shows: the statics staged a pair build, the oversize collider, the tile proxies' interior cells, chemistry's rule clone (0.03 ms a frame of 01's rows, 1 sample of 824 in `spread`) | `docs/known-issues.md` (`build_pairs`, `staging`); `ROADMAP.md` Later |
+| A16 | A sitting's base exported from an older commit reuses `target/perf/base-aligned`'s newer build unless the workspace fingerprints are aged; a quick sitting reads `e01-stress` `invalid` | `docs/known-issues.md` Follow-ups; `perf-runs/20261120T192601Z-0118-perf/README.md` |
+| A17 | The disk was at 3.9 GB free; `just clean-target --apply` freed 151.5 GiB this session | `df -h .` → 156 GB free |
+
+A5's pins, as the prototype read them (`allocations`, then `allocated_bytes`; a dash holds):
+
+| Pin | `allocations` | `allocated_bytes` |
+| --- | --- | --- |
+| `pit.json` | 60,786 → 40,387 | 60,767,705 → 5,094,537 |
+| `ecs.json` | 7,920 → 1,860 | 35,646,240 → 11,657,760 |
+| `churn.json` | 600 → 480 | 113,280 → 55,680 |
+| `physics.json` | 1,682 → 1,502 | 12,376,704 → 12,237,024 |
+| `physics-sparse.json` | 1,500 → 1,320 | 12,289,440 → 12,149,760 |
+| `friction.json` | 1,988 → 1,748 | 3,777,632 → 3,477,152 |
+| `slopes.json` | 3,110 → 2,990 | 3,526,764 → 3,391,404 |
+| `terrain.json` | 21,377 → 21,197 | 2,565,740 → 2,398,220 |
+| `saves.json` | 336,780 → 336,660 | 39,062,100 → 38,981,940 |
+| `blast.json` | — | 6,505,864 → 6,442,264 |
+| `generate.json` | — | 6,634,140 → 6,616,860 |
+| `gpu.json` | — | 1,393,680 → 1,350,960 |
+| `gpu-throughput.json` | — | 144,960 → 116,160 |
+| `particles.json` | — | 2,132,008 → 2,062,888 |
+| `rooms.json` | — | 20,314,692 → 20,268,612 |
+| `spread.json` | — | 1,834,900 → 1,817,140 |
+
+## 2. Design
+
+### 2.1 The gate
+
+- **Share.** An item's time over its row's `total`, both over the window. For a telemetry metric: the mean of the runs' means, from the gate's captures (`row_share.py`). For an item inside a system: its samples in a gated profile of the window as ms a frame, over that profiled run's own mean `total` (`item_ms.py <dump> c1|c4 --log <label>.log`). C1 counts a sample whose stack holds a frame of `tungsten_core::physics::query`, one that names `sensor_pass` or `sensor_overlaps`, or the sensor pairs' sort (an unstable sort of `u128`s under the physics step). C4 counts a sample by its leaf: the walk over the archetypes and a query's collect, the matching bits, the column setup (`column_range`, `column_index`, a column's downcast) and `get`, `get_mut`, `has` and `has_any`; row loops, events, resources and structural changes do not count.
+- **Kept** when the share reaches 5 % on a row the item's line names. C4's walk is never dropped (`phase-7.md` §2.5).
+- **Target.** Half the kept reading, as a time on that row, by the statistic the row owns for it: C2 `system.chemistry` p95 (the cpu-stress pass's measure of it), C3 and C5 p50, C1 and C4 by `item_ms.py`.
+- **C1's boundary.** `sensor_pass` is inlined into `physics_step` today, so a profile attributes its sort, but not its merge or its exits' walk, to the item. Step 1 takes C1's gate profiles on a build with `sensor_pass` marked `#[inline(never)]`, the attribute alone, and Step 4 lands the attribute: C1's gate reading and every later one count the whole pass. This session's 1.256 ms read it inlined and is a floor. C4's gate profiles are taken first, on the tree as it stands, which is the build Step 2's candidate differs from: each item's baseline and candidates share their instrumentation.
+
+| Item | Row | Reading | Share | Verdict | Target |
+| --- | --- | --- | --- | --- | --- |
+| C1 | `e01-pit` | 1.256 ms a frame | 6.15 % | kept | at most half of Step 1's reading (0.628 on this one) |
+| C1 | `physics-sparse` | 0 | 0 % | no reading: no query, no sensor | |
+| C2 | `spread` | `system.chemistry` mean 0.531 ms, p95 5.104 | 27.5 % | kept | p95 at most 2.552 ms |
+| C3 | `particles` | `system.animate_sprites` mean 0.243 ms, p50 0.239 | 5.37 % | kept | p50 at most 0.120 ms: the second plan (§2.6) |
+| C3 | `e01-pit` | `animation_tick` 0.214 ms | 1.07 % | under the floor here | |
+| C4 | `e01-pit` | 1.095 ms a frame | 5.36 % | kept; the walk also by the pit guard's allocations | at most half of Step 1's reading (0.548 on this one); `pit.json` `allocations` at most 41,000 and `allocated_bytes` at most 5,200,000 |
+| C4 | `ecs` | 0.401 ms a frame | 3.65 % | under the floor here | |
+| C5 | `saves` | `system.save_snapshot` mean 17.919 ms, p50 17.867 | 97.3 % | kept | p50 at most 8.934 ms: Step 7's fifth here, the rest the second plan's (§2.6) |
+| C6 | `gpu-throughput` | `stage.extract` mean 11.890 ms, p50 11.984, of it about 5.7 the extract's own (A13) | 87.0 % | kept | the second plan's, on a reading it takes with the GPU idle (§2.6) |
+| C6 | `e01-pit` | `extract` 0.451 ms | 2.26 % | under the floor here | |
+
+### 2.2 How a step is judged
+
+- **Before a step:** `just preflight docs/plans/cpu-performance-pass.md --step N`; a hit outside the step's list is read before editing.
+- **Step sitting.** With the step's change in the tree, uncommitted, and nothing beside it: `WGPU_BACKEND=vulkan just perf sitting --base HEAD --rows <the step's rows> --cpu-only --wait-quiet 600`. The owner's remote-desktop client stays disconnected; never `--allow-background` for a judged sitting.
+- **Reading a sitting.** A row's judged pairs are A1→B1 and A2→B2, or A3→B3 and A4→B4 where `sitting.json` marks the row `reran`: the runner's verdict stands on those alone. `just perf compare` of each judged pair: the step's metric reads lower in both, each prints "digests match" on every row the step sat, and the sitting reads no row `regressed`. A B capture named for a target is a judged pair's.
+- **Profile reading** (C1, C4), after the step's sitting has built the tree into `target/perf/tree-aligned`, twice: `python3 -I perf-runs/20261110-cpu-stress/tools/gated_profile.py target/perf/tree-aligned/release/example-01-platformer perf-runs/20261121-cpu-pass-plan/profile/e01-pit-script.json perf-runs/714-cpu-pass/step-N <label> 0-299 5000`, then `perf script -F ip,sym --no-inline -i <label>.data > <label>.txt` and `item_ms.py <label>.txt c1|c4 --log <label>.log`. Both readings count. The script is the row's composed one; no step edits `scripts/perf-rows.json`.
+- **Done-when and target are two things.** A step's done-when is what lets it commit: its tests, the pins it may move, the hashes it may not, and a sitting in which its metric fell and nothing regressed. Its **Target** line is the item's reading against §2.1, quoted in the evidence log. A step whose metric fell under its target is kept.
+- **An item's end** (`phase-7.md` §2.5) is read on the last of its steps that landed: C4's on Step 2, C1's on Step 5, C2's on Step 9. `done` when its target is met. When it is missed, the evidence row holds a profile of what remains, and the item reads `stopped` only when that profile shows the work itself, no behaviour-keeping fix being known for it; where a fix is known and unplanned, or a step of the item's own was skipped, the item stays `open` and what remains is named for the second plan (§2.6 says which lever each item's would be). An item none of whose steps landed stays `open`.
+- **A register row is not its item.** K12, K14 and S-54 read `landed` when their step lands and stay `open` in 7.14 when it is skipped (`phase-7.md` §6: a failed step's rows stay open), whatever their item reads; the close's hand-off names them for the second plan.
+- **Exact means checked.** Each fix keeps its outputs bit for bit, and each step lands a test that runs the old path beside the new (a `#[cfg(test)]` switch, as chemistry's `probe_all` is) over a seeded scene and compares every output, with a negative control that the test fails when the new path drops one case.
+- **Pins.** A pin is in a step's list where the step may move it, and its Moves line says how. `PhysicsBuffers` is boxed again each step, so new step state goes in `StepExtra` or in the index's resource, never inline; rewrite a pin with `TUNGSTEN_GUARDS_WRITE=1` on that test, then run it twice. `pins_fell.py HEAD <pins>` (in the gate's tools) passes when only `allocations` and `allocated_bytes` differ from the last commit's and neither is higher; `--bytes-may-rise` lets the bytes move.
+- **Every commit:** `cargo fmt --all -- --check`, `git diff --check` and `just check` → exit 0; a commit of documents alone (Step 1) takes `just repo-check` in `just check`'s place. Evidence goes under `perf-runs/714-cpu-pass/step-N/`.
+
+### 2.3 C4: the query paths
+
+- **Collection** (Step 2). `query_slices_filtered` and `query_mut_slices_filtered` walk the set bits of the shape's matches in place of every archetype, skip an archetype with no rows, count the live ones first and build the list at that size: one allocation a call that has rows to read, none otherwise, and no setup for an empty archetype. The list is still built before any row is read (`D-206`'s reason: the callers' row loops). Rows come in the same order, since an empty archetype gave none; a `_slices` caller no longer sees `(0, slices)` entries, and no caller in the workspace reads one (the extract takes `first()` of each).
+- **`has`** (Step 3, K12). `Archetype::has` answers through `slot_index` and a compare of the slot's own key entry, as `get` does; an archetype with no separating shift keeps the scan. Identical results, for `World::has`, `has_any` and the flush's `insert_run`.
+- **Not taken:** the column setup's key scan through the slot table, a part list kept between calls, 01's `FastBodies::has`. Step 2's profile says whether a lever remains.
+
+### 2.4 C1: the sensor pass and the query index
+
+All in `physics/query.rs` and `physics/step/mod.rs`; no pair, event or order changes.
+
+- **Pairs compared in visit order** (Step 4). The pass keeps the last pass's body pairs as visited, unsorted, and a cursor into them. A pair equal to the cursor's entry is not new, and the cursor moves on; any other pair takes today's search of the sorted previous pairs, and when that finds it the cursor moves up to it within a short bound. The answer is the search's in every case; only the common case skips it. Entered events are sent where they are today.
+- **An unchanged pass** (Step 4). When every pair matched the cursor in turn, the lists are of one length, no sensor's tile pairs changed and no sensor is swept, this pass's sorted pairs are the last one's: the sort, the merge and the exits' walk are skipped and the kept lists stand. Otherwise today's path runs on a copy.
+- **Candidates in id order by bit** (Step 4). A sensor's grid walk sets a bit a candidate in a kept bitset and the loop reads the set bits upward: the order the sort gave, without the list or the sort. The pass's per-step lists (`fresh`, `order`) are kept in `StepExtra`.
+- **The grid kept for the entries that hold** (Step 5, K14). A refresh builds the step's entries, then compares each, bit for bit, with the entry its grid was staged from. With the same count and at most an eighth of them changed, the grid stays: the changed ids are marked stale, a gather skips a stale id's grid refs and tests the changed entries from a short list. Past an eighth, or on another count, cell size or order, the grid is restaged whole as today. A gather returns a superset either way and the exact tests decide, so answers are the same; the tests' `builds` counts restagings.
+- **Not taken:** the pair grid as the queries' index (a repaired or oversize body is outside it), a mask for 01's zones (data, and the pass would still walk them), a sensor pass skipped whole (01 always has a mover).
+- **Estimate:** the search 0.34, the pairs' sort 0.15 and the candidates' sort 0.08 ms in every frame; the staging and build 0.38 ms in the frames with the pile asleep, 0.10 over the window: 1.26 → about 0.59 ms against 0.63, a thin margin.
+
+### 2.5 C2: chemistry's emission step
+
+Exact in the queue's contents and order, the builds applied, `spread`'s digest and the kit's pin.
+
+- **The grid** (Step 8). After the cells' sort, a dense table of each occupied cell's first entry over the cells' box when it is no larger than a small multiple of the candidates, else today's searches; the centres, with a flag for a shaped candidate, laid out in the cells' order; a bodiless candidate tested by `d² <= t`, `t` the largest `f32` whose square root is at most the radius, a shaped one by `Shape::distance` as today. The rectangle of cells, the finds and their order are today's; the wide-query branch is untouched. Blasts share the grid.
+- **The first reach** (Step 9). A receiver's kept slot outlives the pass as a hint: used when it still holds this receiver's entry for this stimulus with no status list, after the depth cut and the hold, in today's order; cleared when a load rebuilds the queue. Entity keys take compact buckets. Inserts keep today's order, since slot numbers break ties in the take and in a save.
+- **Trims** (Step 9). The cells' order kept between builds while the candidate list is unchanged; `coordinate` without `floorf`; the take keying only the entries at or before the cap's cut-off age.
+- **Not available bit for bit:** skipping a merge (no cap: sums run to `f32::MAX` and are saved), spreading emissions over steps (the kit's pin and the row's digest), the rules' clone (nothing on this row).
+- **Estimate:** 5.10 → about 2.4 ms with all three, range 2.2–3.0; the floor near 2.0 is the 142,000 reaches themselves.
+
+### 2.6 The second plan's items
+
+Written when this plan closes, from the tree of its day; these are this session's readings and audits.
+
+- **C5, the spawn table.** Step 7 takes the capture's bit-exact costs here: the error label built in the error path; a record's area found without cloning its name; the spawn loop reading `(Entity, &Saved)` by archetype and asking each registered component once an archetype whether its rows hold it (`Erased::has` on the first row), so a record visits only its own components; the waiting references' probe run only when some wait. The save's bytes, `bench.bytes` and the row's digest hold; the estimate is 18.83 → about 14.9 ms of the profile, a fifth. The rest is the format's (unmeasured arithmetic on the profile): a table of `Value` cells, one per area, prefab and component set, reads about 9.4 ms, on the target's line; rows written as text from the typed forms about 4 ms, but text does not survive a slot's pass through `Value` and changes float digits and key order. A table makes `FORMAT` 2 with format 1 still read, needs a table for every component set (a missing component means "remove"), spawn order by ID across tables, and reaches kept areas, `Waits`, `migrate_generated` and `RoomGenerator::migrate`'s view of an area; 01's migrations and fourteen `save_stamped` sites walk `prefab` and `components` objects. S-35 moves 01's balls onto it; S-191's smallest change is `read_header` alone, by a bounded prefix read.
+- **C3, the clip's slot.** The lookup is a hash and a probe a sprite (A12). A cheaper hasher on the registry's map takes a third (0.243 → about 0.16 ms) and a last-clip memo nothing, the row's clips interleaving; the target needs the hash gone: the registry keeping its clips in a list with an ID → slot map, and `AnimationState` keeping its clip's slot, checked by one compare of the ID, for which `frame_index` narrows to `u32` so the state stays 40 bytes (48 uses in 14 files, an `api/` line, the registry's size in every guard that puts it back). About 0.10–0.11 ms against 0.120. Saved data holds: the component is unsaved.
+- **C6, the extract's own work.** The row's `stage.extract` is the extract's work, 5.5–6.7 ms with the GPU idle, and a stall of about 6 ms that follows the GPU's pass onto whichever stage writes memory under it (A13). So the stage's reading is not a quantity a CPU fix can halve, and no verdict rests on it here: the second plan first fixes the item's measure (the first frames' extract, or a headless timing of `extract_sprites_default` over the row's scene), then judges the fix on it. The fix on the table: the row loop by archetype (the optional columns' and the flags' branches hoisted, the resolved asset and class kept while the IDs repeat, capacity reserved an archetype), instance bytes identical under `default_extract_output_is_pinned`; no sort keys for a one-class frame in painter order amends `D-086`. The upload's second copy is `render_encode`'s, 7.15's G5.
+- **C1, C2 or C4,** only where a missed target leaves a known fix: C1's would be the pair grid as the queries' index (a repaired or oversize body is outside it today); C4's the column setup through the slot table, or a part list kept between calls; C2's remainder is the 142,000 reaches themselves.
+
+### 2.7 Where each row goes
+
+Written into `phase-7.md` §2.2 at the close:
+
+| Row | Disposition |
+| --- | --- |
+| K12 | `landed` at Step 3; `open` in 7.14 where Step 3 was skipped |
+| K14 | `landed` at Step 5; `9.2` when C1 is dropped at Step 1; `open` in 7.14 where Step 5 was skipped |
+| S-54 | `landed` at Step 6; `open` in 7.14 where Step 6 was skipped |
+| S-24 | `Later`: one emitter fed many points, so 01's pool of 128 fire emitters goes; 0.03 ms a frame, so no cost drives it |
+| S-90 | `9.2`: `ball_look`, 1.6 % of `e01-pit` and 3.6 % of `e01-stress`, 01's own; its known issue keeps the tint table |
+| S-184 | `Later`: a kit activity radius that holds far machines and movers; 0.02 ms a frame |
+| EV-41 | `9.2`: no profile puts it in the query paths, its fixture being the evaluation's workspace |
+| S-35, S-191 | stay `open` in 7.14 for the second plan |
+
+- **Levers for 9.2** ([benchmarks.md](../perf/benchmarks.md#levers-for-92)), added or amended at the close with this pass's numbers: the default extract's stall behind the GPU's pass; the statics staged a build and the oversize collider (their known issues' next work, which names 7.14 today); S-90 and EV-41; an item's remainder where it read `stopped`.
+- **Later:** S-24's and S-184's lines; a row that times the extract with the GPU idle, for 9.1, unless the second plan adds it; the tile proxies' interior cells line reworded to name 9.2.
+
+## 3. Steps
+
+Each step: the preflight, the change, its tests, its pins, its sitting and profiles where it has them, then one commit of its own paths, pushed (`git push origin 0.119`, the whole command). A step's files are its line in the header's list. Register rows and §2.5's statuses in `phase-7.md` are written at Step 1 (the gate) and at the close, not by the step that lands a row.
+
+### Step 1: The gate's readings
+
+- **Files:** this plan, `docs/plans/phase-7.md`, `docs/perf/benchmarks.md`; `crates/tungsten-core/src/physics/step/mod.rs` for the gate's build alone, restored before the commit
+- **Change:** set `status: in progress`. On a quiet machine: `df -h .` (under 60 GB free: `just clean-target --apply`). C4 first, on the tree as it stands: `WGPU_BACKEND=vulkan just perf run e01-pit --repeat 1`, which builds it, then two profile readings of C4 (§2.2). Then C1: mark `sensor_pass` `#[inline(never)]` in `crates/tungsten-core/src/physics/step/mod.rs`, the attribute alone and uncommitted (§2.1), run the capture again so the tree rebuilds (its log prints `Compiling tungsten-core`), take two profile readings of C1, and restore the file (`git show HEAD:crates/tungsten-core/src/physics/step/mod.rs > crates/tungsten-core/src/physics/step/mod.rs`). Each item's mean of two is its gate reading and half of it its target. For C6's record, no verdict resting on it: `WGPU_BACKEND=vulkan just perf run gpu-throughput --repeat 1`, then `python3 -B perf-runs/20261121-cpu-pass-plan/tools/fill_cut.py target/perf/tree-aligned/release/example-02-bench`. Write §2.5 of `phase-7.md`: each item's evidence cell gains its reading, share and target; C1, C2 and C4's status cells read `open; kept at the gate`, and C3's, C5's and C6's add the second plan. Add the extract's finding (A13, with `fill_cut.py`'s ratios) to `benchmarks.md`'s `gpu-throughput` section.
+- **Done-when:** the three captures → exit 0; each `item_ms.py` reading printed with its share, C1's at least 5.00 % in the mean of its two (else Q2); `git status --short crates/` → prints nothing; `rg -n '^\| C[1-6] \|.*\| open \|$' docs/plans/phase-7.md; test $? -eq 1` → exit 0, no item left at a bare `open`; `just repo-check` → exit 0
+- **Commit:** `docs(plans): record the CPU pass's gate`
+- **Moves:** none.
+
+### Step 2: C4, a query's collection walks its matches and skips empty archetypes
+
+- **Files:** `crates/tungsten-core/src/ecs/world.rs`, `crates/tungsten-core/src/tests/ecs/query.rs`, `crates/tungsten/src/testing/guard.rs`, `DESIGN.md`, `docs/known-issues.md`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/02_bench/src/tests/guards/*.json`
+- **Change:** §2.3's collection, from the prototype (`patch -p1 < target/plan-wip/7.14-probes/c4-walk.patch`, or the same by hand). Tests: in core, rows and their order over a World whose matching archetypes are emptied and refilled, for the four `_slices` forms and `query`, against the rows a walk of every archetype gives; in `guard.rs`'s tests, after the shape's first call, a query whose every matching archetype is empty allocates nothing, and one with rows allocates once. `DESIGN.md`'s Queries paragraph and the rustdoc of the `_slices` forms say an archetype with no rows gives no entry. In known issues, the `query_slices_filtered` row goes and the loose props' row says the walk's cost is gone and its names are a 01 stop's.
+- **Done-when:** `cargo test -p tungsten-core --locked` → exit 0; `cargo test -p tungsten --locked --lib testing::guard` → exit 0, the two new tests among those it names; the sixteen pins rewritten, then `cargo test -p example-02-bench --locked guards_` and `cargo test -p example-01-platformer --locked --test game guards::` → exit 0 twice; `jq -e '.allocations <= 41000 and .allocated_bytes <= 5200000' examples/01_platformer/tests/game/guards/pit.json` → exit 0; `python3 -B perf-runs/20261121-cpu-pass-plan/tools/pins_fell.py HEAD examples/01_platformer/tests/game/guards/pit.json examples/02_bench/src/tests/guards/*.json` → exit 0; the sitting over every CPU row (`--cpu-only`, no `--rows`) → no row `regressed`, "digests match" on each; both C4 profile readings lower than Step 1's
+- **Target:** both C4 readings at most half of Step 1's, and the pit pin's two bounds (§2.1) → C4 reads `done`, whatever Step 3 does (K12 is its own row, §2.2); a missed time target by §2.2's end rule, the profile's remainder against §2.6's levers.
+- **Commit:** `perf(ecs): walk a query's matches and skip archetypes with no rows`
+- **Moves:** the sixteen pins of A5's table, to its lines or lower; `boot.json` and `tungsten`'s two hold. Nothing rises.
+
+### Step 3: C4, `has` through the archetype's slot
+
+- **Files:** `crates/tungsten-core/src/ecs/archetype.rs`, `crates/tungsten-core/src/tests/ecs/archetype.rs`, `docs/known-issues.md`
+- **Change:** §2.3's `has`. A test over archetypes with and without a separating shift (a key long enough to force the scan), each type asked present and absent, against the key's own `contains`. The `has` row leaves known issues.
+- **Done-when:** `cargo test -p tungsten-core --locked` → exit 0; `just check` → exit 0 with no pin rewritten. No sitting: no row runs `has` in a loop (A6), and the close's holds it.
+- **Commit:** `perf(ecs): answer has through the archetype's slot`
+- **Moves:** none.
+
+### Step 4: C1, the sensor pass compares pairs in visit order and takes candidates by bit
+
+- **Files:** `crates/tungsten-core/src/physics/query.rs`, `crates/tungsten-core/src/physics/step/mod.rs`, `crates/tungsten-core/src/tests/physics/step.rs`, `crates/tungsten-core/src/tests/physics/query.rs`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/02_bench/src/tests/guards/terrain.json`
+- **Change:** §2.4's first three, and `sensor_pass` marked `#[inline(never)]` for good, the boundary Step 1's readings were taken on. The test: a seeded World of sensors (resting, moving, swept, overlapping each other's boxes, one spanning everything) and bodies that spawn, despawn, teleport, sleep and cross them, over tile edits, stepped 600 times with the old path and the new on twin Worlds; the `SensorEntered` and `SensorExited` streams and the kept pairs equal each step. Its negative control: the cursor trusted without the search fails it.
+- **Done-when:** `cargo test -p tungsten-core --locked` → exit 0; `just physics-release` → exit 0, its hashes unedited; `cargo test -p tungsten-kit --locked` and `cargo test -p example-01-platformer --locked` → exit 0 with no test edited; `python3 -B perf-runs/20261121-cpu-pass-plan/tools/pins_fell.py HEAD --bytes-may-rise examples/01_platformer/tests/game/guards/pit.json examples/02_bench/src/tests/guards/*.json` → exit 0, `terrain.json` and `pit.json` the only pins it names; the sitting on `e01-pit,e01-stress,terrain,blast,physics` → no row `regressed`, "digests match" on each, `e01-pit` `system.physics_step` p50 lower in both judged pairs; both C1 profile readings at least 0.30 ms under Step 1's
+- **Target:** quoted; C1 is judged at Step 5.
+- **Commit:** `perf(physics): compare a sensor's pairs in visit order`
+- **Moves:** `pit.json` and `terrain.json`: `allocations` may fall by the pass's two lists a step, `allocated_bytes` may move once by the kept lists. No rise in `allocations`.
+
+### Step 5: C1, the index's grid kept for the entries that hold
+
+- **Files:** `crates/tungsten-core/src/physics/query.rs`, `crates/tungsten-core/src/physics/step/mod.rs`, `crates/tungsten-core/src/tests/physics/step.rs`, `crates/tungsten-core/src/tests/physics/query.rs`, `DESIGN.md`, `docs/known-issues.md`, `examples/01_platformer/tests/game/guards/pit.json`, `examples/02_bench/src/tests/guards/*.json`
+- **Change:** §2.4's kept grid. The test: Step 4's Worlds with `cast_ray`, `cast_shape`, `overlap` and `nearest` asked after each step at seeded points, the kept index against one restaged whole every step, every answer equal bit for bit; its negative control: a changed entry left unmarked fails it. `index_is_built_at_most_once_per_step` gains a moved body for its last count and a case where a World of statics restages once. `DESIGN.md`'s queries sentence and the `refresh` row in known issues say what is kept.
+- **Done-when:** as Step 4's first three; `cargo test -p example-02-bench --locked guards_` and 01's `guards::` → exit 0 twice after any rewrite; `python3 -B perf-runs/20261121-cpu-pass-plan/tools/pins_fell.py HEAD --bytes-may-rise examples/01_platformer/tests/game/guards/pit.json examples/02_bench/src/tests/guards/*.json` → exit 0; the sitting on `e01-pit,e01-stress,terrain,blast,physics` → no row `regressed`, "digests match" on each; both C1 profile readings lower than Step 4's
+- **Target:** both C1 readings at most half of Step 1's → `done`; else by §2.2's end rule: the profile's remainder is an awake pile's staging and build, for which §2.6 names a fix, so C1 stays `open` with it for the second plan unless the profile shows the sensor's own tests alone.
+- **Commit:** `perf(physics): keep the query index's grid while its entries hold`
+- **Moves:** a guard whose window refreshes the index may move `allocated_bytes` once by the staged entries' list; `allocations` holds or falls. `index_is_built_at_most_once_per_step`'s last count.
+
+### Step 6: S-54, 01's ignored frame-time test goes
+
+- **Files:** `examples/01_platformer/tests/game/frame_time.rs` (deleted), `examples/01_platformer/tests/game/main.rs`, `examples/01_platformer/README.md`, `docs/known-issues.md`
+- **Change:** delete the test (`python3 -c "import os; os.remove('examples/01_platformer/tests/game/frame_time.rs')"`, then `git add` it), its `mod` line, any helper only it used, the README's clause and the two known-issues rows on it: the `e01-pit` row is that reading.
+- **Done-when:** `rg -q 'frame_time' examples/01_platformer docs/known-issues.md; test $? -eq 1` → exit 0; `cargo test -p example-01-platformer --locked` → exit 0
+- **Commit:** `test(example-01): drop the frame-time test the e01-pit row replaced`
+- **Moves:** none.
+
+### Step 7: C5, the capture's bit-exact costs
+
+- **Files:** `crates/tungsten-core/src/save/world.rs`, `crates/tungsten-core/src/tests/save/world.rs`, `examples/02_bench/src/tests/guards/saves.json`, `docs/perf/benchmarks.md`
+- **Change:** §2.6's four for the capture. A test that a World of spawns across several archetypes, areas and component sets, with references waiting and without, captures to the bytes the old loop gave (the old loop kept behind a `#[cfg(test)]` switch); the error path's label unchanged. `benchmarks.md`'s `saves` cost line takes the new reading.
+- **Done-when:** `cargo test -p tungsten-core --locked` → exit 0, the save oracle among it; `python3 -B perf-runs/20261121-cpu-pass-plan/tools/pins_fell.py HEAD examples/01_platformer/tests/game/guards/pit.json examples/02_bench/src/tests/guards/*.json` → exit 0, `saves.json` the only pin it names, its `allocations` lower; the sitting on `saves` → not `regressed`, "digests match", `system.save_snapshot` p50 at least 2.0 ms lower in both judged pairs
+- **Target:** quoted against 8.934 ms; C5 stays `open` for the second plan.
+- **Commit:** `perf(save): drop the capture's per-record label, clone and absent reads`
+- **Moves:** `saves.json`'s `allocations` and `allocated_bytes` fall.
+
+### Step 8: C2, the receiver grid's cell directory, packed centres and squared test
+
+- **Files:** `crates/tungsten-kit/src/chemistry/grid.rs`, `crates/tungsten-kit/src/tests/chemistry.rs`, `examples/02_bench/src/tests/guards/spread.json`, `examples/01_platformer/tests/game/guards/pit.json`
+- **Change:** §2.5's grid. Tests: `Grid::within` against the current code kept under `#[cfg(test)]`, over seeded candidates (shaped and bodiless, clustered and sparse, a cell box past the table's bound, centres at the clamp's ends, radii at each side of a candidate's exact distance), the finds equal in content and order; `t` against a scan of the `f32`s about a radius' square.
+- **Done-when:** `cargo test -p tungsten-kit --locked` → exit 0; `cargo test -p tungsten --locked --lib kit_recipes::determinism` → exit 0, the pin unedited; `cargo test -p example-02-bench --locked guards_` → exit 0 twice after any rewrite; `python3 -B perf-runs/20261121-cpu-pass-plan/tools/pins_fell.py HEAD --bytes-may-rise examples/01_platformer/tests/game/guards/pit.json examples/02_bench/src/tests/guards/*.json` → exit 0, `spread.json` and `pit.json` the only pins it may name; `cargo test -p example-01-platformer --locked` → exit 0; the sitting on `spread,e01-stress` → no row `regressed`, "digests match" on each, `spread` `system.chemistry` p95 at least 0.9 ms lower in both judged pairs
+- **Target:** quoted; C2 is judged at Step 9.
+- **Commit:** `perf(kit): find an emission's receivers by a cell table`
+- **Moves:** `spread.json` and `pit.json`, the two guards that run chemistry: `allocated_bytes` may move by the table and the packed centres, once where they are filled and once a run by their headers where the struct that holds them is boxed again each run (keep them behind a box if that is so); `allocations` holds or falls.
+
+### Step 9: C2, the queue's first reach by a kept slot, and the run's trims
+
+- **Files:** `crates/tungsten-kit/src/chemistry/queue.rs`, `crates/tungsten-kit/src/chemistry/stimuli.rs`, `crates/tungsten-kit/src/chemistry/grid.rs`, `crates/tungsten-kit/src/chemistry/mod.rs`, `crates/tungsten-kit/src/tests/chemistry.rs`, `examples/02_bench/src/tests/guards/spread.json`, `examples/01_platformer/tests/game/guards/pit.json`
+- **Change:** §2.5's first reach and trims. Tests: a seeded run of emissions, holds, depth cuts, takes, despawned receivers, a save and a load between runs, with every reach probed and with the hint, the queue's entries, slots, `cut` and saved form equal each run; `a_pass_that_keeps_its_slots_queues_what_a_probe_a_candidate_does` takes its new `skipped` count.
+- **Done-when:** as Step 8's first five; the sitting on `spread,e01-stress` → no row `regressed`, "digests match" on each, `spread` `system.chemistry` p95 at least 0.8 ms lower in both judged pairs
+- **Target:** `spread` `system.chemistry` p95 at most 2.552 ms in both judged B captures → `done`; else by §2.2's end rule, the evidence row holding the emission step's profile: `stopped` when it shows the reaches themselves (the merges, the packed scan, the entries' loads), `open` when a part §2.5 planned is what remains.
+- **Commit:** `perf(kit): reuse a receiver's queue slot across runs`
+- **Moves:** `spread.json` and `pit.json` as Step 8; that test's `skipped` count.
+
+### Step 10: Close
+
+- **Files:** this plan (deleted), `ROADMAP.md`, `docs/plans/phase-7.md`, `docs/perf/benchmarks.md`, `docs/known-issues.md`
+- **Change:** age the base build (`fd -t f . $(fd -t d -d 1 '^(tungsten|example-0)' target/perf/base-aligned/release/.fingerprint) -x touch -d 2001-01-01 {}`), then the close sitting, `WGPU_BACKEND=vulkan just perf sitting --wait-quiet 900`, every row against `v0.118.0`, its log showing the base's crates `Compiling`. `phase-7.md`: §2.5's statuses with each item's last reading, G5's evidence cell with the extract's finding, §2.7's rows, Step 14's part 1 note and evidence row. `benchmarks.md`: §2.7's levers and each landed fix's numbers. Known issues: the `refresh` row as Step 5 left it, the statics' and the oversize collider's next work naming 9.2, `ball_look`'s too. `ROADMAP.md`: this item out of Now, the `phase-7` line saying what landed and that 7.14's second plan is next, §2.7's Later lines.
+- **Done-when:** the close sitting → exit 0, no row `regressed`, `e01-pit`'s and `e01-stress`'s captures valid with their script reports passing; `just check`, `just physics-release`, `just perf-test`, `just perf counters` → exit 0; `rg -n '^\| [^|]+ \| [^|]+ \| 7\.14 \| open \|' docs/plans/phase-7.md` → S-35 and S-191, and beside them only a row whose own step was skipped (K12, K14, S-54; §2.7); `rg -c '^\| C[1-6] \|' docs/plans/phase-7.md` → 6, C1, C2 and C4 each reading `done`, `dropped`, `stopped` or `open` with what remains named (§2.2), C3, C5 and C6 `open` with the second plan; `just repo-check` → exit 0 after the deletion
+- **Ends with:** the commits, the evidence, what the owner should try (01's pit under `F4`, and a `tungsten new` game's frame), and the plan prompt for 7.14's second plan: tungsten-next's `step` shape over `phase-7.md`'s Step 14 and §2.5 and the redo's 7.14 row, §5.5 and §5.8, naming the items §2.5 leaves `open` (C3, C5 and C6, and any of C1, C2 and C4 with what remains of it), the rows a skipped step left `open`, and this plan's §2.6 and audit as they stood at the last commit that held it.
+
+## 4. Open questions
+
+| # | Question | Default |
+| --- | --- | --- |
+| Q1 | The gate's statistic: the window's mean, or the p50 the phase plan's old evidence quotes? | The mean: a profile gives only a mean, and one rule serves every item. By p50 over p50, C1 reads 5.25 % with its sort and C4 4.6 %, which the walk's exemption keeps |
+| Q2 | Step 1's quiet reading puts C1 under 5 % | C1 reads `dropped` with the number, Steps 4 and 5 are skipped, K14 goes to `9.2` with §2.4 as its lever |
+| Q3 | C6 and C3 are kept at the gate and get no step here | Yes: no item is stopped on a fix the plan chose not to make (`phase-7.md` §2.5's `stopped` is the work itself). Each goes to the second plan with its reading, its fix and, for C6, the measure to fix first (§2.6) |
+| Q4 | 7.14 in two plans | Yes: recorded in `phase-7.md` §2.8 on 2026-11-21. The first holds the bit-exact fixes, C5's fifth among them; the second the three items that change a format, a public type or a pinned loop |
+| Q5 | A cheaper hasher on the animation registry's map, a third of C3 for one file | Not here: the clip's slot makes the hash rare, so the second plan decides whether it still pays |
+| Q6 | K12 lands though no row measures `has` | Yes: it is the register's row as written, identical in behaviour, in a file the pass has open; no sitting of its own |
+| Q7 | Known issues and Later lines that name 7.14 for costs no row shows (A15) | Nothing joins (`phase-7.md` Q4): each is reworded to name 9.2 at the close |
+| Q8 | A step's metric falls under its target | The step is kept; the item ends by §2.2's rule, `stopped` only on a profile of the work itself, else `open` with what remains for the second plan |
+| Q9 | A sitting reads a row `regressed` that the step's code cannot reach | One rerun of that row's sitting; `regressed` again is a failed done-when |
+| Q10 | The run outgrows a session | The next resumes at the first step without an evidence row |
+
+Each question takes its stated default; the owner reviews the plan on their own time.
+
+## 5. Invariants
+
+- **May move:** the sixteen pins at Step 2, to A5's lines or lower; `pit.json` and `terrain.json` at Step 4, any index-refreshing guard's `allocated_bytes` at Step 5, `saves.json` at Step 7, `spread.json` and `pit.json` at Steps 8 and 9, each as its Moves line says and never a rise in `allocations`; `index_is_built_at_most_once_per_step`'s last count (Step 5); one kit test's `skipped` count (Step 9).
+- **Must not move:** the determinism and containment tests' `EXPECTED` values and `KIT_RECIPES_HASH`; every row's digest, in every pair of every step sitting; a save's bytes (`bench.bytes`, the save oracle); the GPU counter pins and `gpu-visual.png`; 01's tests, unedited but for Step 6's deletion; `scripts/perf-rows.json`, the rows' `workload_version`s; every `api/` snapshot; `D-067` and `D-131`: no landed change spawns a worker.
+
+## 6. Stop conditions
+
+- A done-when check fails, or a file outside the step's list is needed: the skill's restore, the step skipped with its reason, the pass carrying on. Step 5 needs Step 4 and Step 9 needs Step 8. Steps 2, 4 and 5 need Step 1's readings, C4's for Step 2 and C1's for the other two: this session's diagnostic readings do not stand in for them. Steps 3, 6, 7, 8 and 9 take nothing from Step 1 (their targets are the gate's captures', which exist) and need no other step.
+- A step's metric does not fall, or its sitting reads a row `regressed` (after Q9's rerun): one revision, then the same.
+- An exactness test or a digest differs: the mechanism is wrong, not the test. The step stops; no test of 01, the kit or core is edited to pass, beyond the two counts §5 names.
+- A sitting refuses to start (an encoder, a busy process): wait for quiet.
+- Step 1 finds a reading that changes the list (Q2): the default applies and the steps it names are skipped.
+- Step 1 cannot take a reading (a capture or a profile fails after one retry on a quiet machine): it records what it has, the item whose reading is missing stays `open` with its steps not run, and the first commit of the run sets `status: in progress`.
+- The close sitting reads a row `regressed`: the plan is not deleted and stays `in progress`; the evidence row names the row and metric, and a commit scan of the pass's code commits (`perf-runs/20261120T192601Z-0118-perf/tools/commit_scan.py`) finds the step, which is then fixed or reverted by a commit of its own before a second close sitting.
+
+## 7. Critique
+
+Round 1: gpt-6-astra through `critique --model gpt-6-astra --raw --repo`, 2026-11-21, at xhigh, on the tree at `d549d674` with this plan and `phase-7.md`'s note of the two plans uncommitted. Footer: `critique: model gpt-6-astra, effort xhigh, context 872000, mode repo (output cap 4000), 279.9 s, tokens in 1822495 (cached 1710720), out 9611 (reasoning 4708), commands 35, output 467.1 KB (largest 97.3 KB), usage 5h 0% → 33%, week 85% → 90%`. Five findings, all accepted; they removed a step and changed done-when checks, so a second round runs.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 1 | [MEDIUM] Step 4's `#[inline(never)]` changes what C1's profile counts after the gate's reading is frozen | `tools/item_ms.py` counts C1 by frame names; `profile/e01-pit.txt` has no `sensor_pass` frame, its pairs' sort sitting under `physics_step`, and the merge and the exits' walk (`physics/step/mod.rs:2118-2157`) are in `physics_step`'s own samples | accepted | §2.1's boundary: Step 1 profiles a build with `sensor_pass` out of line, the attribute alone and restored; Step 4 lands it, so every reading counts the whole pass |
+| 2 | [MEDIUM] The acceptance checks compare A1/B1 and A2/B2, which a rerun discards | `scripts/perf.py:761-770` replaces the four captures with A3–B4 and judges those alone; the profiling workflow's Sittings, item 5 | accepted | §2.2: a row's judged pairs follow `sitting.json`'s `reran`; the steps' checks and targets name judged pairs |
+| 3 | [MEDIUM] C6's fill experiment shows the extract follows the GPU's fill, not a floor above the target | `tools/fill_cut.py` prints a ratio of two stage timings; the gate's captures hold 9 frames where the stall sits on the encode's copy instead (6.17–7.11 ms against 1.33), so it is the frame's; nothing measures the extract's own floor | accepted | No verdict on C6 here. A13 and Step 1 record the finding; C6 goes to the second plan, which fixes the item's measure before its fix (§2.6) |
+| 4 | [MEDIUM] `stopped` is widened to an item whose structural fix the plan chose not to make (C3) | `phase-7.md:428`: `stopped` is a profile showing the work itself; C3's remainder after a hasher is a lookup a clip slot removes (A12) | accepted | §2.2's end rule: `stopped` only on a profile of the work itself, else `open` with the lever for the second plan. The hasher's step is gone; C3 goes to the second plan with the slot's design (§2.6, Q5) |
+| 5 | [MEDIUM] Q3's default left C6 `open` while the done-when and the close required an end state | The header's done-when and Step 11 as drafted | accepted | The header's done-when, the close's check and its hand-off name the items that stay `open` for the second plan; Q3 rewritten |
+
+Round 2: the same reviewer at xhigh, 2026-11-21, on the same tree with this section and the log cut and a focus note on round 1's changes. Footer: `critique: model gpt-6-astra, effort xhigh, context 872000, mode repo (output cap 4000), 192.1 s, tokens in 571052 (cached 493824), out 7358 (reasoning 4407), commands 28, output 369.8 KB (largest 150 KB), usage 5h 33% → 49%, week 90% → 92%`. Three findings, each a gap a round-1 fix or the stop rules left, all accepted; no third round.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 2.1 | [MEDIUM] C4's baseline came from the build with `sensor_pass` out of line and its candidate from one without | Round 1's fix took both items' gate profiles on the attribute build; `tools/item_ms.py` counts C4 by leaf symbols, and the profiling workflow's Profiling section records inlining moving a hot function | accepted | Step 1 takes C4's two profiles first, on the tree as it stands, and C1's on the attribute build after a rebuild (§2.1's boundary) |
+| 2.2 | [MEDIUM] A skipped step left no close state: S-54 was `landed` unconditionally, and C4 waited on Step 3 for `done` | `phase-7.md` §6: a failed step's rows stay open; §2.7's table and the close's check as drafted | accepted | §2.2: an item ends on the last of its steps that landed, and a register row is not its item; §2.7's rows, Step 2's target and the close's check and hand-off carry the skipped-step branch |
+| 2.3 | [MEDIUM] §6 let Steps 2, 4 and 5 run after a failed gate, with no readings to compare against | §2.1 makes Step 1's readings their baselines and targets; `phase-7.md` §2.5's gate | accepted | §6: those three need Step 1's readings; the other steps take nothing from it; a reading Step 1 cannot take leaves its item `open` |
+
+## Evidence log
+
+| Step | Date | Verdict | Key numbers | Paths |
+| --- | --- | --- | --- | --- |
+
+## Follow-ups
