@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::f32::consts::TAU;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
@@ -138,6 +139,34 @@ fn cell(at: Vec2, size: f32) -> (i32, i32) {
     ((at.x / size).floor() as i32, (at.y / size).floor() as i32)
 }
 
+/// A grid cell's hash, its two coordinates each mixed in by a rotate, an
+/// xor and a multiply: the fire passes look a cell up six to nine times a
+/// burning ball, 100,000 times a step in a burning pit, where the
+/// default's keyed hash was their largest cost. The maps are read by key
+/// alone, so their order shows nowhere.
+#[derive(Default)]
+struct CellHasher(u64);
+
+impl Hasher for CellHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.write_i32(i32::from(byte));
+        }
+    }
+
+    fn write_i32(&mut self, coordinate: i32) {
+        self.0 = (self.0.rotate_left(5) ^ u64::from(coordinate as u32))
+            .wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+}
+
+/// The fire passes' cells, each with what it holds.
+type Cells<T> = HashMap<(i32, i32), T, BuildHasherDefault<CellHasher>>;
+
 /// A step's set of live entities, a bit an entity index, the few past the
 /// bits listed: a pass that asks of every contact's two bodies whether a
 /// crowd holds them reads two bits a contact, where a hash set hashed both.
@@ -226,7 +255,7 @@ pub fn spread_fire(world: &mut World) {
         .iter()
         .map(|&p| (p, p))
         .reduce(|(a, b), (c, d)| (a.min(c), b.max(d)));
-    let mut cells: HashMap<(i32, i32), Vec<(Entity, Vec2)>> = HashMap::new();
+    let mut cells: Cells<Vec<(Entity, Vec2)>> = Cells::default();
     if let Some((min, max)) = bounds {
         let (min, max) = (min - Vec2::splat(contact), max + Vec2::splat(contact));
         for (entity, _, at, collider, flame) in
@@ -292,7 +321,7 @@ pub fn flame_exposure(world: &mut World) {
     let (bowling, small) = ball_radii(world);
     let cover = bowling + small + 1.0;
     let (min, max) = (min - Vec2::splat(cover), max + Vec2::splat(cover));
-    let mut cells: HashMap<(i32, i32), Vec<Vec2>> = HashMap::new();
+    let mut cells: Cells<Vec<Vec2>> = Cells::default();
     for (_, at, collider) in world.query::<(&Ball, &Position, &Collider)>() {
         let p = at.0 + collider.offset;
         if p.cmpge(min).all() && p.cmple(max).all() {
