@@ -3,8 +3,9 @@
 //! of collision layers.
 //!
 //! Every query reads one index of the last step's final positions: the exact
-//! boxes of its proxies and sensors in a grid, built by the step when it has
-//! sensors and otherwise by the first query after it. A body moved since the
+//! boxes of its proxies and sensors in a grid, refreshed by the step when it
+//! has sensors and otherwise by the first query after it; the grid is kept
+//! from step to step while most of the boxes hold. A body moved since the
 //! step is found where the step left it, one spawned since is not found and
 //! one despawned since is skipped; before the first step nothing is found.
 //! Ties go to the lower index (proxies in gather order, then sensors), so
@@ -278,18 +279,50 @@ impl IndexEntry {
 
 /// The index every query reads, a `World` resource holding its state in a
 /// `RefCell` so queries take `&World` (`D-086`'s pattern). `physics_step`
-/// inserts it and marks it stale; the first query after a step rebuilds it
-/// from the step's proxies.
+/// inserts it and marks it stale; the first query after a step refreshes it
+/// from the step's proxies, keeping the bodies' grid while their boxes hold
+/// ([`IndexState::refresh`]).
 #[derive(Debug, Default)]
 pub(super) struct SpatialIndex(RefCell<IndexState>);
 
 impl SpatialIndex {
-    /// Called by every step: the next query sees its final positions.
-    pub(super) fn mark_stale(world: &mut World) {
-        if let Some(index) = world.get_resource_mut::<Self>() {
-            index.0.get_mut().fresh = false;
-        } else {
+    /// Tests: an index whose refreshes take `path`.
+    #[cfg(test)]
+    pub(super) fn with_path(path: IndexPath) -> Self {
+        let index = Self::default();
+        index.0.borrow_mut().path = path;
+        index
+    }
+
+    /// Tests: the times the bodies' grid was staged whole, the refreshes
+    /// that kept it and the moved proxies those listed.
+    #[cfg(test)]
+    pub(super) fn grid_counts(world: &World) -> (usize, usize, usize) {
+        let state = world.resource::<Self>().0.borrow();
+        (state.builds, state.kept.0, state.kept.1)
+    }
+
+    /// Called by every step, with its entity proxy count: the next query
+    /// sees its final positions. The lists a kept grid needs are sized here,
+    /// so the refresh that fills them, the first query's after any step,
+    /// allocates none of them.
+    pub(super) fn mark_stale(world: &mut World, bodies: usize) {
+        if world.get_resource::<Self>().is_none() {
             world.insert_resource(Self::default());
+        }
+        let state = world.resource_mut::<Self>().0.get_mut();
+        state.fresh = false;
+        let reserve =
+            |len: usize, capacity: usize, want: usize| (capacity < want).then(|| want - len);
+        if let Some(more) = reserve(state.staged.len(), state.staged.capacity(), bodies) {
+            state.staged.reserve(more);
+        }
+        let words = bodies.div_ceil(64);
+        if let Some(more) = reserve(state.stale.len(), state.stale.capacity(), words) {
+            state.stale.reserve(more);
+        }
+        if let Some(more) = reserve(state.moved.len(), state.moved.capacity(), bodies / 8) {
+            state.moved.reserve(more);
         }
     }
 
@@ -389,9 +422,22 @@ struct IndexState {
     bodies: Vec<IndexEntry>,
     /// The entity proxy count: the first tile's id.
     tile_base: usize,
-    /// The entity proxies' exact boxes, by id. Sensors are tested against a
-    /// query's box directly: a few, often large.
+    /// The entity proxies' exact boxes, by id, as `staged` holds them: kept
+    /// from step to step while the proxies' count holds and at most an
+    /// eighth of their boxes differ from the staged ones. Sensors are tested
+    /// against a query's box directly: a few, often large.
     grid: SpatialGrid,
+    /// The box each entity proxy had when `grid` was staged, its centre's
+    /// and half extents' bits.
+    staged: Vec<[u32; 4]>,
+    /// `grid` has been staged: `staged` is its record, an empty one too.
+    staged_once: bool,
+    /// The entity proxies whose box is not the staged one any more: their
+    /// refs in `grid` are stale, so a gather passes those over and tests
+    /// these boxes itself.
+    moved: Vec<ProxyId>,
+    /// A bit an entity proxy, set for each of `moved`.
+    stale: Vec<u64>,
     /// The tiles' entries and grid, kept while the step's tiles are.
     tiles: TileIndex,
     /// The exact corners of the entries' union; queries are clamped to it.
@@ -400,8 +446,44 @@ struct IndexState {
     /// [`Self::bodies_near`]'s candidates, a bit an entity proxy, every
     /// word zero between its calls.
     near: Vec<u64>,
+    /// Tests: the times the bodies' grid was staged whole.
     #[cfg(test)]
     builds: usize,
+    /// Tests: the refreshes that kept the grid, and the moved proxies they
+    /// listed.
+    #[cfg(test)]
+    kept: (usize, usize),
+    #[cfg(test)]
+    path: IndexPath,
+}
+
+/// Tests: how a refresh treats the bodies' grid. `Restage` stages it whole
+/// at every refresh, the index as it stood before the grid was kept.
+/// `Unmarked` is broken on purpose, for a negative control: it keeps the
+/// grid and leaves the moved proxies out of the list a gather tests.
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum IndexPath {
+    #[default]
+    Kept,
+    Restage,
+    Unmarked,
+}
+
+/// The bits of `aabb`'s centre and half extents: what a grid's refs to it
+/// were staged from.
+fn box_bits(aabb: &Aabb) -> [u32; 4] {
+    [
+        aabb.center.x.to_bits(),
+        aabb.center.y.to_bits(),
+        aabb.half_extents.x.to_bits(),
+        aabb.half_extents.y.to_bits(),
+    ]
+}
+
+/// Whether `aabb` meets the box from `min` to `max`, edges included.
+fn meets_box(aabb: &Aabb, min: Vec2, max: Vec2) -> bool {
+    aabb.min().cmple(max).all() && min.cmple(aabb.max()).all()
 }
 
 /// The index's tile entries, the outline's runs, and the runs, in their
@@ -444,8 +526,14 @@ impl IndexState {
         }
     }
 
-    /// Rebuild from the last step's proxies unless already built; the tile
-    /// part only when the step's tiles or the cell size changed.
+    /// Refresh from the last step's proxies unless already done: the
+    /// entries, always; the tile part only when the step's tiles or the cell
+    /// size changed; the bodies' grid only when it cannot be kept (the
+    /// proxies' count or the cell size changed, or more than an eighth of
+    /// their boxes differ from the ones staged). A kept grid's moved
+    /// proxies are listed for the gathers, which give a superset of the
+    /// boxes that meet a query either way, so every answer is the one a
+    /// grid staged whole gives.
     fn refresh(&mut self, buffers: &PhysicsBuffers, cell_size: f32) {
         if self.fresh {
             return;
@@ -467,24 +555,72 @@ impl IndexState {
             }
             tiles.staged = Some(key);
         }
-        if (self.grid.cell_size() - cell_size).abs() > f32::EPSILON {
+        let resized = (self.grid.cell_size() - cell_size).abs() > f32::EPSILON;
+        if resized {
             self.grid.set_cell_size(cell_size);
         }
-        self.grid.clear();
+        // The bodies' grid stays while it was staged for this many proxies
+        // at this cell size and at most an eighth of their boxes differ, bit
+        // for bit, from the staged ones: those are listed and marked stale.
+        let base = self.tile_base;
+        for &id in &self.moved {
+            self.stale[id as usize / 64] = 0;
+        }
+        self.moved.clear();
+        self.stale.resize(base.div_ceil(64), 0);
         let mut bounds = self.tiles.bounds;
-        for (id, entry) in self.bodies.iter().enumerate() {
-            let aabb = entry.aabb();
-            if id < self.tile_base {
-                self.grid.insert(id as ProxyId, &aabb);
+        let mut keep = self.staged_once && !resized && self.staged.len() == base;
+        #[cfg(test)]
+        {
+            keep &= self.path != IndexPath::Restage;
+        }
+        if keep {
+            let limit = base / 8;
+            for (id, entry) in self.bodies[..base].iter().enumerate() {
+                let aabb = entry.aabb();
+                if box_bits(&aabb) != self.staged[id] {
+                    if self.moved.len() == limit {
+                        keep = false;
+                        break;
+                    }
+                    self.moved.push(id as ProxyId);
+                }
+                bounds = Some(grow(bounds, &aabb));
             }
-            bounds = Some(grow(bounds, &aabb));
+        }
+        if keep {
+            #[cfg(test)]
+            {
+                self.kept.0 += 1;
+                self.kept.1 += self.moved.len();
+                if self.path == IndexPath::Unmarked {
+                    self.moved.clear();
+                }
+            }
+            for &id in &self.moved {
+                self.stale[id as usize / 64] |= 1 << (id % 64);
+            }
+        } else {
+            self.moved.clear();
+            self.grid.clear();
+            self.staged.clear();
+            for (id, entry) in self.bodies[..base].iter().enumerate() {
+                let aabb = entry.aabb();
+                self.grid.insert(id as ProxyId, &aabb);
+                self.staged.push(box_bits(&aabb));
+                bounds = Some(grow(bounds, &aabb));
+            }
+            self.staged_once = true;
+            #[cfg(test)]
+            {
+                self.builds += 1;
+            }
+        }
+        for sensor in &self.bodies[base..] {
+            bounds = Some(grow(bounds, &sensor.aabb()));
         }
         self.bounds = bounds;
         self.fresh = true;
-        #[cfg(test)]
-        {
-            self.builds += 1;
-        }
     }
 
     /// Calls `visit` with each entity proxy whose box may meet `query`, in
@@ -506,7 +642,12 @@ impl IndexState {
         let base = self.tile_base;
         let words = base.div_ceil(64);
         let Self {
-            grid, bodies, near, ..
+            grid,
+            bodies,
+            near,
+            stale,
+            moved,
+            ..
         } = self;
         near.resize(words, 0);
         // The words that hold a set bit: `from..to`.
@@ -520,12 +661,22 @@ impl IndexState {
             }
             (from, to) = (0, words);
         } else {
-            grid.for_each_in(&Aabb::from_min_max(min, max), None, |id| {
+            let mut mark = |id: ProxyId| {
                 let word = id as usize / 64;
                 near[word] |= 1 << (id % 64);
                 from = from.min(word);
                 to = to.max(word + 1);
+            };
+            grid.for_each_in(&Aabb::from_min_max(min, max), None, |id| {
+                if stale[id as usize / 64] >> (id % 64) & 1 == 0 {
+                    mark(id);
+                }
             });
+            for &id in moved.iter() {
+                if meets_box(&bodies[id as usize].aabb(), min, max) {
+                    mark(id);
+                }
+            }
         }
         for word in from..to {
             let mut bits = std::mem::take(&mut near[word]);
@@ -572,12 +723,25 @@ impl IndexState {
             tiles: tile_index,
             bodies,
             candidates,
+            stale,
+            moved,
             ..
         } = self;
         if wide(base) {
             candidates.extend(0..base as ProxyId);
         } else {
-            grid.for_each_in(&clamped, None, |id| candidates.push(id));
+            // The grid's refs but the stale ones, then the moved proxies by
+            // their own boxes: each id once.
+            grid.for_each_in(&clamped, None, |id| {
+                if stale[id as usize / 64] >> (id % 64) & 1 == 0 {
+                    candidates.push(id);
+                }
+            });
+            for &id in moved.iter() {
+                if meets_box(&bodies[id as usize].aabb(), min, max) {
+                    candidates.push(id);
+                }
+            }
         }
         if tiles {
             if wide(tile_count) {

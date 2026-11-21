@@ -1151,7 +1151,7 @@ pub fn physics_step(world: &mut World) {
         dt,
     );
     // Queries see this step's final positions from here on.
-    SpatialIndex::mark_stale(world);
+    SpatialIndex::mark_stale(world, buffers.bodies);
     // A step without sensors keeps no pair, its last ones exiting.
     if buffers.sensors.is_empty() && buffers.sensor_pairs.is_empty() {
         buffers.sensor_tiles.clear();

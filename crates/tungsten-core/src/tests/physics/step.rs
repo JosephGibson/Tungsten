@@ -10176,6 +10176,20 @@ fn supports_that_go_and_come_wake_the_sleepers_beside_them_alone() {
 // an unchanged pass kept whole and its candidates read by bit, against the
 // pass as it stood (`SensorPath::Search`).
 
+/// splitmix64 over `stream`.
+fn splitmix(stream: &mut u64) -> u64 {
+    *stream = stream.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = *stream;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// A draw of `stream` in `[0, 1)`.
+fn unit_draw(stream: &mut u64) -> f32 {
+    (splitmix(stream) >> 40) as f32 / (1_u64 << 24) as f32
+}
+
 /// A seeded scene for the sensor pass: a pit of tiles under gravity, resting
 /// sensors (one over everything, two whose boxes overlap), a moving and a
 /// swept one for the run's first and last thirds, a static box, a kinematic
@@ -10193,6 +10207,9 @@ struct SensorScene {
     sweeper: Option<Entity>,
     guest: Option<Entity>,
     steps: u32,
+    /// How many times rarer than one in 6, 8 and 10 steps a body spawns,
+    /// despawns and teleports: 1, or more for a pile that sleeps.
+    calm: u64,
 }
 
 /// What a step's sensor pass sent and kept, and where the bodies are.
@@ -10276,6 +10293,7 @@ impl SensorScene {
             sweeper: None,
             guest: None,
             steps: 0,
+            calm: 1,
         };
         scene.spawn_movers();
         for _ in 0..40 {
@@ -10284,18 +10302,13 @@ impl SensorScene {
         scene
     }
 
-    /// splitmix64.
     fn draw(&mut self) -> u64 {
-        self.stream = self.stream.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.stream;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
+        splitmix(&mut self.stream)
     }
 
     /// A draw in `[0, 1)`.
     fn unit(&mut self) -> f32 {
-        (self.draw() >> 40) as f32 / (1_u64 << 24) as f32
+        unit_draw(&mut self.stream)
     }
 
     fn spawn_body(&mut self) {
@@ -10336,15 +10349,15 @@ impl SensorScene {
     fn step(&mut self) {
         let step = self.steps;
         self.steps += 1;
-        if self.draw().is_multiple_of(6) && self.bodies.len() < 80 {
+        if self.draw().is_multiple_of(6 * self.calm) && self.bodies.len() < 80 {
             self.spawn_body();
         }
-        if self.draw().is_multiple_of(8) && !self.bodies.is_empty() {
+        if self.draw().is_multiple_of(8 * self.calm) && !self.bodies.is_empty() {
             let at = (self.draw() % self.bodies.len() as u64) as usize;
             let body = self.bodies.swap_remove(at);
             self.world.despawn(body);
         }
-        if self.draw().is_multiple_of(10) && !self.bodies.is_empty() {
+        if self.draw().is_multiple_of(10 * self.calm) && !self.bodies.is_empty() {
             let at = (self.draw() % self.bodies.len() as u64) as usize;
             let to = Vec2::new(30.0 + 320.0 * self.unit(), 10.0 + 90.0 * self.unit());
             self.world.get_mut::<Position>(self.bodies[at]).unwrap().0 = to;
@@ -10487,5 +10500,144 @@ fn the_sensor_pass_in_visit_order_sends_what_a_search_of_every_pair_does() {
         assert!(entered > 200 && exited > 200, "{seen}");
         assert!(asleep > 100, "{seen}");
         assert!(wrong > 20, "{seen}");
+    }
+}
+
+// The query index's grid kept while its entries hold (phase 7's C1, K14),
+// against an index staged whole at every refresh (`IndexPath::Restage`).
+
+/// A round of seeded queries of `world`'s last step, each answer printed:
+/// rays and shape casts with and without a predicate, overlaps and nearest
+/// surfaces, over bodies and tiles, with the sensors and without the tiles
+/// by turns; then an overlap and a ray at `mover`, a body that moves every
+/// step.
+fn query_answers(world: &World, stream: &mut u64, mover: Entity) -> Vec<String> {
+    use crate::physics::query::{
+        SpatialFilter, cast_ray, cast_ray_where, cast_shape, cast_shape_where, nearest, overlap,
+    };
+    let mut answers = Vec::new();
+    let mut out = Vec::new();
+    for round in 0..6 {
+        let origin = Vec2::new(
+            400.0 * unit_draw(stream) - 8.0,
+            170.0 * unit_draw(stream) - 5.0,
+        );
+        let angle = std::f32::consts::TAU * unit_draw(stream);
+        let direction = Vec2::new(angle.cos(), angle.sin());
+        let reach = [6.0, 40.0, 150.0, 500.0][(splitmix(stream) % 4) as usize] * unit_draw(stream);
+        let filter = match round % 3 {
+            0 => SpatialFilter::new(),
+            1 => SpatialFilter::new().with_sensors(true),
+            _ => SpatialFilter::new().with_tiles(false),
+        };
+        let circle = Shape::Circle { radius: 4.0 };
+        let wide = Shape::Aabb {
+            half_extents: Vec2::new(12.0, 3.0),
+        };
+        answers.push(format!(
+            "{:?}",
+            cast_ray(world, origin, direction, reach, &filter)
+        ));
+        answers.push(format!(
+            "{:?}",
+            cast_ray_where(world, origin, direction, reach, &filter, |hit| {
+                hit.entity.is_some()
+            })
+        ));
+        answers.push(format!(
+            "{:?}",
+            cast_shape(world, circle, origin, direction, reach, &filter)
+        ));
+        answers.push(format!(
+            "{:?}",
+            cast_shape_where(world, wide, origin, direction, reach, &filter, |hit| {
+                hit.distance > 1.0
+            })
+        ));
+        overlap(world, wide, origin, &filter, &mut out);
+        answers.push(format!("{out:?}"));
+        overlap(
+            world,
+            Shape::Circle { radius: reach },
+            origin,
+            &filter,
+            &mut out,
+        );
+        answers.push(format!("{out:?}"));
+        answers.push(format!("{:?}", nearest(world, origin, reach, &filter)));
+    }
+    let at = world.get::<Position>(mover).unwrap().0;
+    let all = SpatialFilter::new();
+    overlap(world, Shape::Circle { radius: 3.0 }, at, &all, &mut out);
+    answers.push(format!("{out:?}"));
+    let above = at - Vec2::Y * 30.0;
+    answers.push(format!("{:?}", cast_ray(world, above, Vec2::Y, 60.0, &all)));
+    answers
+}
+
+#[test]
+fn a_kept_query_grid_answers_as_one_staged_every_step() {
+    use crate::physics::query::{IndexPath, SpatialIndex};
+    for seed in [5_u64, 21] {
+        // The sensor scene three times under one script and one stream of
+        // queries: `whole` stages its grid at every refresh, as the index
+        // did; `kept` keeps it while the boxes hold; `broken` keeps it and
+        // leaves the moved proxies out of its gathers.
+        // A calmer pit, so most of its bodies sleep, beside 120 static boxes
+        // outside its walls: the boxes that hold from step to step.
+        let scene = |path| {
+            let mut scene = SensorScene::new(SensorPath::InOrder, seed);
+            scene.calm = 8;
+            for _ in 0..120 {
+                let side = if scene.draw().is_multiple_of(2) {
+                    400.0
+                } else {
+                    -90.0
+                };
+                let at = Vec2::new(side + 70.0 * scene.unit(), 150.0 * scene.unit());
+                spawn_static(&mut scene.world, Collider::aabb(Vec2::splat(3.0)), at);
+            }
+            scene.world.insert_resource(SpatialIndex::with_path(path));
+            scene
+        };
+        let mut whole = scene(IndexPath::Restage);
+        let mut kept = scene(IndexPath::Kept);
+        let mut broken = scene(IndexPath::Unmarked);
+        let (mut found, mut wrong) = (0, 0);
+        for step in 0..600_u32 {
+            whole.step();
+            kept.step();
+            broken.step();
+            assert_eq!(kept.outputs(), whole.outputs(), "seed {seed}, step {step}");
+            broken.outputs();
+            let mut stream = seed ^ (u64::from(step) << 20);
+            let mover = whole.kinematic;
+            let want = query_answers(&whole.world, &mut stream.clone(), mover);
+            let got = query_answers(&kept.world, &mut stream.clone(), mover);
+            assert_eq!(got, want, "seed {seed}, step {step}");
+            found += want
+                .iter()
+                .filter(|answer| answer.starts_with("Some") || answer.contains("[Some"))
+                .count();
+            wrong += usize::from(query_answers(&broken.world, &mut stream, mover) != want);
+        }
+        // The kept index staged its grid whole some steps and kept it with
+        // moved proxies listed in others, the queries found bodies, and the
+        // index that leaves moved proxies unlisted answered wrongly.
+        let (builds, kept_refreshes, moved) = SpatialIndex::grid_counts(&kept.world);
+        let seen = format!(
+            "seed {seed}: staged {builds}, kept {kept_refreshes} with {moved} moved, found \
+             {found}, wrong {wrong}"
+        );
+        assert_eq!(
+            SpatialIndex::grid_counts(&whole.world),
+            (600, 0, 0),
+            "{seen}"
+        );
+        assert_eq!(builds + kept_refreshes, 600, "{seen}");
+        assert!(builds > 20 && kept_refreshes > 100, "{seen}");
+        assert!(moved > 200, "{seen}");
+        assert!(found > 5_000, "{seen}");
+        assert!(wrong > 30, "{seen}");
     }
 }

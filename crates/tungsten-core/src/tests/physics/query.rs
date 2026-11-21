@@ -722,7 +722,7 @@ fn index_is_built_at_most_once_per_step() {
             .builds
     };
     let mut world = world();
-    wall(&mut world, Vec2::new(100.0, 0.0), Vec2::splat(10.0));
+    let block = wall(&mut world, Vec2::new(100.0, 0.0), Vec2::splat(10.0));
     floor(&mut world, 4);
     physics_step(&mut world);
     assert_eq!(builds(&world), 0, "a step without sensors builds nothing");
@@ -751,6 +751,22 @@ fn index_is_built_at_most_once_per_step() {
     physics_step(&mut world);
     physics_step(&mut world);
     let _ = cast_ray(&world, Vec2::ZERO, Vec2::X, 500.0, &all());
+    let _ = cast_ray(&world, Vec2::ZERO, Vec2::X, 500.0, &all());
+    assert_eq!(
+        builds(&world),
+        1,
+        "a World of statics stages its grid once: the boxes hold"
+    );
+    assert_eq!(
+        cast_ray(&world, Vec2::ZERO, Vec2::X, 500.0, &all()).map(|hit| hit.entity),
+        Some(Some(block))
+    );
+    // A body that moved has another box, so the next refresh stages again:
+    // one proxy is past an eighth of one.
+    world.get_mut::<Position>(block).unwrap().0.x = 200.0;
+    physics_step(&mut world);
+    let hit = cast_ray(&world, Vec2::ZERO, Vec2::X, 500.0, &all()).unwrap();
+    assert_eq!((hit.entity, hit.distance), (Some(block), 190.0));
     let _ = cast_ray(&world, Vec2::ZERO, Vec2::X, 500.0, &all());
     assert_eq!(builds(&world), 2);
 }
