@@ -263,6 +263,30 @@ impl RestoreReport {
 /// commands, since a queued spawn's cost is already paid;
 /// [`CaptureError::Serialize`] when a value's own `Serialize` fails.
 pub fn capture_world(world: &World) -> Result<WorldSave, CaptureError> {
+    capture(world, SpawnWalk::ByArchetype)
+}
+
+/// How a capture reads the run's spawns.
+#[derive(Clone, Copy)]
+enum SpawnWalk {
+    /// An archetype at a time ([`capture_spawns`]).
+    ByArchetype,
+    /// Tests: every registered component asked of every spawn, the walk as
+    /// it stood ([`capture_spawns_asking_every_component`]).
+    #[cfg(test)]
+    EveryComponent,
+}
+
+/// Tests: [`capture_world`] with the spawns read as they were before the
+/// walk by archetype, for comparing the two captures' bytes.
+#[cfg(test)]
+pub(crate) fn capture_world_asking_every_component(
+    world: &World,
+) -> Result<WorldSave, CaptureError> {
+    capture(world, SpawnWalk::EveryComponent)
+}
+
+fn capture(world: &World, spawns: SpawnWalk) -> Result<WorldSave, CaptureError> {
     if let Some(buffer) = world.get_resource::<CommandBuffer>()
         && !buffer.is_empty()
     {
@@ -332,32 +356,18 @@ pub fn capture_world(world: &World) -> Result<WorldSave, CaptureError> {
         }
     }
 
-    for (entity, saved) in world.query::<(Entity, &Saved)>() {
-        let Some(prefab) = &saved.prefab else {
-            continue;
-        };
-        let at = Holder::Entity(entity);
-        let mut record = SpawnRecord {
-            id: saved.id,
-            prefab: prefab.clone(),
-            components: BTreeMap::new(),
-            refs: BTreeMap::new(),
-        };
-        for (name, entry) in &registry.components.entries {
-            let what = format!("spawn {}", saved.id.0);
-            if let Some(value) = entry.saved.to_value(world, at) {
-                let value = value.map_err(|err| serialize_error(&what, name, &err))?;
-                record.components.insert(name.clone(), value);
-            }
-            if let Some((refs, dropped)) = entry.saved.save_refs(world, at, &ids) {
-                capture.dropped += dropped;
-                if !refs.is_empty() {
-                    record.refs.insert(name.clone(), refs);
-                }
-            }
+    match spawns {
+        SpawnWalk::ByArchetype => {
+            capture_spawns(world, registry, &ids, &mut waiting, &mut capture)?;
         }
-        add_refs(&mut record.refs, waiting.remove(&Some(saved.id)));
-        capture.area(saved.area.as_deref()).spawns.push(record);
+        #[cfg(test)]
+        SpawnWalk::EveryComponent => capture_spawns_asking_every_component(
+            world,
+            registry,
+            &ids,
+            &mut waiting,
+            &mut capture,
+        )?,
     }
     capture.global.spawns.sort_by_key(|spawn| spawn.id);
     for area in capture.areas.values_mut() {
@@ -416,12 +426,135 @@ struct Capture {
 }
 
 impl Capture {
+    /// The record of `area`, the global one for `None`, made when the
+    /// capture has none yet: its name is cloned only then.
     fn area(&mut self, area: Option<&str>) -> &mut AreaSave {
+        let Some(area) = area else {
+            return &mut self.global;
+        };
+        if !self.areas.contains_key(area) {
+            self.areas.insert(area.to_owned(), AreaSave::default());
+        }
+        self.areas
+            .get_mut(area)
+            .expect("the area's record was found or just made")
+    }
+
+    /// Tests: [`Self::area`] as it stood, the name cloned at every call.
+    #[cfg(test)]
+    fn area_cloning_its_name(&mut self, area: Option<&str>) -> &mut AreaSave {
         match area {
             None => &mut self.global,
             Some(area) => self.areas.entry(area.to_owned()).or_default(),
         }
     }
+}
+
+/// The references waiting on a holder, as a capture adds them to its
+/// record: nothing is looked up while none wait.
+type Waiting = HashMap<Option<SaveId>, BTreeMap<String, Refs>>;
+
+/// The run's spawns as records, each pushed onto its area's list: the saved
+/// entities an archetype at a time, each registered component asked once an
+/// archetype whether its rows hold it, so a record reads its own components
+/// alone, in the registry's order. The records are the ones a walk that
+/// asks every component of every spawn writes.
+fn capture_spawns(
+    world: &World,
+    registry: &SaveRegistry,
+    ids: &dyn Fn(Entity) -> Option<SaveId>,
+    waiting: &mut Waiting,
+    capture: &mut Capture,
+) -> Result<(), CaptureError> {
+    let mut held: Vec<(&String, &Entry)> = Vec::new();
+    for (_, (entities, saveds)) in world.query_slices::<(Entity, &Saved)>() {
+        // Every row of an archetype holds the same components.
+        let first = Holder::Entity(entities[0]);
+        held.clear();
+        held.extend(
+            registry
+                .components
+                .entries
+                .iter()
+                .filter(|(_, entry)| entry.saved.has(world, first)),
+        );
+        for (&entity, saved) in entities.iter().zip(saveds) {
+            let Some(prefab) = &saved.prefab else {
+                continue;
+            };
+            let at = Holder::Entity(entity);
+            let mut record = SpawnRecord {
+                id: saved.id,
+                prefab: prefab.clone(),
+                components: BTreeMap::new(),
+                refs: BTreeMap::new(),
+            };
+            for &(name, entry) in &held {
+                if let Some(value) = entry.saved.to_value(world, at) {
+                    let value = value.map_err(|err| {
+                        serialize_error(&format!("spawn {}", saved.id.0), name, &err)
+                    })?;
+                    record.components.insert(name.clone(), value);
+                }
+                if let Some((refs, dropped)) = entry.saved.save_refs(world, at, ids) {
+                    capture.dropped += dropped;
+                    if !refs.is_empty() {
+                        record.refs.insert(name.clone(), refs);
+                    }
+                }
+            }
+            if !waiting.is_empty() {
+                add_refs(&mut record.refs, waiting.remove(&Some(saved.id)));
+            }
+            capture.area(saved.area.as_deref()).spawns.push(record);
+        }
+    }
+    Ok(())
+}
+
+/// Tests: [`capture_spawns`] as it stood: every registered component asked
+/// of every spawn by a keyed read, the error's label built for each, the
+/// waiting references looked up for each and the area's name cloned for
+/// each.
+#[cfg(test)]
+fn capture_spawns_asking_every_component(
+    world: &World,
+    registry: &SaveRegistry,
+    ids: &dyn Fn(Entity) -> Option<SaveId>,
+    waiting: &mut Waiting,
+    capture: &mut Capture,
+) -> Result<(), CaptureError> {
+    for (entity, saved) in world.query::<(Entity, &Saved)>() {
+        let Some(prefab) = &saved.prefab else {
+            continue;
+        };
+        let at = Holder::Entity(entity);
+        let mut record = SpawnRecord {
+            id: saved.id,
+            prefab: prefab.clone(),
+            components: BTreeMap::new(),
+            refs: BTreeMap::new(),
+        };
+        for (name, entry) in &registry.components.entries {
+            let what = format!("spawn {}", saved.id.0);
+            if let Some(value) = entry.saved.to_value(world, at) {
+                let value = value.map_err(|err| serialize_error(&what, name, &err))?;
+                record.components.insert(name.clone(), value);
+            }
+            if let Some((refs, dropped)) = entry.saved.save_refs(world, at, ids) {
+                capture.dropped += dropped;
+                if !refs.is_empty() {
+                    record.refs.insert(name.clone(), refs);
+                }
+            }
+        }
+        add_refs(&mut record.refs, waiting.remove(&Some(saved.id)));
+        capture
+            .area_cloning_its_name(saved.area.as_deref())
+            .spawns
+            .push(record);
+    }
+    Ok(())
 }
 
 /// Each live saved entity by its ID.
@@ -439,8 +572,8 @@ fn waiting_refs(
     registry: &SaveRegistry,
     state: &SaveState,
     by_id: &HashMap<SaveId, Entity>,
-) -> HashMap<Option<SaveId>, BTreeMap<String, Refs>> {
-    let mut waiting: HashMap<Option<SaveId>, BTreeMap<String, Refs>> = HashMap::new();
+) -> Waiting {
+    let mut waiting = Waiting::new();
     for pending in &state.pending {
         let Some((holder, entry)) = holder_of(registry, by_id, pending) else {
             continue;

@@ -2245,3 +2245,219 @@ fn check_world_refuses_what_restore_world_refuses_and_changes_nothing() {
     assert_eq!(restore_world(&mut b, &saved, &(Scene,)), Ok(report));
     assert_eq!(b.resource::<Weather>().wind, 4.0);
 }
+
+// The capture's spawns read an archetype at a time (phase 7's C5), against
+// the walk that asks every registered component of every spawn.
+
+/// `world`'s capture as text, its spawns read both ways: the saves are
+/// equal, their bytes and the references they counted as dropped.
+fn captured_both_ways(world: &World) -> (String, usize) {
+    let by_archetype = capture_world(world).unwrap();
+    let asked = capture_world_asking_every_component(world).unwrap();
+    assert_eq!(text(&by_archetype), text(&asked));
+    assert_eq!(by_archetype.dropped_refs(), asked.dropped_refs());
+    assert_eq!(by_archetype, asked);
+    (text(&by_archetype), by_archetype.dropped_refs())
+}
+
+/// A run whose spawns differ: the level, a second turret in area `tower`,
+/// and 60 bolts shot from the hero (global), the cave's turret and the
+/// tower's by seeded turns, each then losing its brain or its health,
+/// gaining ammo, or chasing the hero, the cave's bat, another bolt or an
+/// entity no save holds, by seeded picks. Returns the bolts.
+fn varied_run(world: &mut World, seed: u64) -> Vec<Entity> {
+    let level = level(world);
+    let tower = world.spawn_prefab("turret", [300.0, 40.0]).unwrap();
+    name(world, tower, Some("tower"), "tower_turret").unwrap();
+    let mut stream = seed;
+    let mut draw = move || {
+        stream = stream.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = stream;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    };
+    for shot in 0..60_u8 {
+        let source = [level.hero, level.turret, tower][(draw() % 3) as usize];
+        shoot(world, source, 10.0 * f32::from(shot));
+    }
+    flush(world);
+    let stray = world.spawn();
+    let bolts: Vec<Entity> = spawns(world).into_iter().map(|(_, bolt)| bolt).collect();
+    assert_eq!(bolts.len(), 60);
+    for (at, &bolt) in bolts.iter().enumerate() {
+        let pick = draw();
+        if pick & 1 != 0 {
+            world.remove_component::<Brain>(bolt);
+        }
+        if pick & 2 != 0 {
+            world.insert(bolt, Ammo((pick >> 8) as u32 % 9));
+        }
+        if pick & 4 != 0 {
+            world.remove_component::<Health>(bolt);
+        }
+        if pick & 0b1_1000 != 0 {
+            let target = match (pick >> 5) % 4 {
+                0 => level.hero,
+                1 => level.bat_1,
+                2 => bolts[(at + 7) % bolts.len()],
+                _ => stray,
+            };
+            world.insert(
+                bolt,
+                Chase {
+                    target,
+                    speed: at as f32,
+                },
+            );
+        }
+    }
+    bolts
+}
+
+#[test]
+fn a_capture_by_archetype_writes_the_bytes_asking_every_component_does() {
+    for seed in [1_u64, 2, 3] {
+        let mut world = world();
+        let bolts = varied_run(&mut world, seed);
+        // The spawns are spread over component sets, each an archetype.
+        let sets: BTreeSet<Vec<&str>> = bolts
+            .iter()
+            .map(|&bolt| {
+                let types = world.component_types(bolt);
+                types.into_iter().map(|(_, name)| name).collect()
+            })
+            .collect();
+        assert!(
+            sets.len() >= 8,
+            "seed {seed}: {} component sets",
+            sets.len()
+        );
+        let (saved, dropped) = captured_both_ways(&world);
+        let saved: Value = serde_json::from_str(&saved).unwrap();
+        // Three areas' records hold them, and the references to the entity
+        // no save holds were dropped and counted.
+        let held = |area: &Value| area["spawns"].as_array().map_or(0, Vec::len);
+        let (global, cave, tower) = (
+            held(&saved["global"]),
+            held(&saved["areas"]["cave"]),
+            held(&saved["areas"]["tower"]),
+        );
+        assert_eq!(global + cave + tower, 60, "seed {seed}");
+        assert!(global > 5 && cave > 5 && tower > 5, "seed {seed}");
+        assert!(dropped > 0, "seed {seed}");
+        // The run goes on: bolts despawn, a bolt changes its set, others
+        // move to a set no spawn had, and the walks still agree.
+        for &bolt in bolts.iter().step_by(4) {
+            world.despawn(bolt);
+        }
+        world.remove_component::<Chase>(bolts[1]);
+        struct Marked;
+        world.insert(bolts[2], Marked);
+        world.insert(bolts[3], Marked);
+        let later: Value = serde_json::from_str(&captured_both_ways(&world).0).unwrap();
+        let spawned = held(&later["global"]) + held(&later["areas"]["cave"]);
+        assert_eq!(spawned + held(&later["areas"]["tower"]), 45, "seed {seed}");
+    }
+}
+
+#[test]
+fn a_capture_by_archetype_writes_its_spawns_waiting_references() {
+    // Two bolts shot from the hero, global spawns: one chases the cave's
+    // bat, one the hero. The restoring World has not loaded the cave, so
+    // the cave is kept and the first bolt's reference waits; a capture adds
+    // it to that bolt's record, by either walk.
+    let mut a = world();
+    let (hero, _, bat) = hero_dog(&mut a, true);
+    shoot(&mut a, hero, 10.0);
+    shoot(&mut a, hero, 20.0);
+    flush(&mut a);
+    let bolts = spawns(&a);
+    let (waits, speed) = (bolts[0].0, 3.0);
+    a.insert(
+        bolts[0].1,
+        Chase {
+            target: bat.unwrap(),
+            speed,
+        },
+    );
+    a.insert(
+        bolts[1].1,
+        Chase {
+            target: hero,
+            speed: 4.0,
+        },
+    );
+    let (first, _) = captured_both_ways(&a);
+
+    let mut b = world();
+    hero_dog(&mut b, false);
+    restore_world(&mut b, &serde_json::from_str(&first).unwrap(), &(Scene,)).unwrap();
+    let state = b.resource::<SaveState>();
+    assert!(state.is_kept("cave"));
+    let waiting: Vec<_> = state
+        .pending
+        .iter()
+        .filter(|pending| pending.holder == Some(waits))
+        .collect();
+    assert_eq!(waiting.len(), 1, "the bolt's reference waits");
+    let second: Value = serde_json::from_str(&captured_both_ways(&b).0).unwrap();
+    let records = second["global"]["spawns"].as_array().unwrap();
+    assert_eq!(records.len(), 2);
+    let record = records
+        .iter()
+        .find(|record| record["id"] == json!(waits.0))
+        .unwrap();
+    assert_eq!(record["components"]["chase"]["speed"], json!(speed));
+    assert_eq!(
+        record["refs"]["chase"]["target"],
+        json!(waiting[0].ids),
+        "the waiting reference is written with the record"
+    );
+}
+
+/// A saved value whose `Serialize` fails on a NaN.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct Brittle {
+    load: f32,
+}
+
+impl Serialize for Brittle {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        if self.load.is_nan() {
+            return Err(serde::ser::Error::custom("the load is not a number"));
+        }
+        let mut fields = serializer.serialize_struct("Brittle", 1)?;
+        fields.serialize_field("load", &self.load)?;
+        fields.end()
+    }
+}
+
+#[test]
+fn a_spawn_that_fails_to_serialize_is_named_by_either_walk() {
+    // Three bolts carry a `Brittle`; the second's fails. Both walks stop at
+    // it with one error, which names the spawn by its ID and the component.
+    let mut world = world();
+    world.register_saved::<Brittle>("brittle");
+    let level = level(&mut world);
+    for shot in 0..3_u8 {
+        shoot(&mut world, level.turret, 10.0 * f32::from(shot));
+    }
+    flush(&mut world);
+    let bolts = spawns(&world);
+    for (at, &(_, bolt)) in bolts.iter().enumerate() {
+        let load = if at == 1 { f32::NAN } else { 2.0 };
+        world.insert(bolt, Brittle { load });
+    }
+    let by_archetype = capture_world(&world).unwrap_err();
+    let asked = capture_world_asking_every_component(&world).unwrap_err();
+    assert_eq!(by_archetype, asked);
+    assert_eq!(
+        by_archetype,
+        CaptureError::Serialize {
+            what: format!("`spawn {}`'s `brittle`", bolts[1].0.0),
+            message: "the load is not a number".into(),
+        }
+    );
+}
