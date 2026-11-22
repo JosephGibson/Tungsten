@@ -1033,7 +1033,7 @@ fn the_umbrella_components_spawn_with_their_values() {
                 "particle_emitter": { "config": "embers" }
             } },
             { "transform": { "position": [0.0, 0.0] }, "components": {
-                "light": { "kind": "point", "radius": 40.0, "color": [1.0, 0.5, 0.0], "intensity": 2.0 },
+                "light": { "kind": "point", "radius": 40.0, "color": [1.0, 0.5, 0.0], "intensity": 2.0, "priority": 3 },
                 "parallax_layer": { "scroll_factor": [0.5, 0.25] },
                 "squash_stretch": { "on": "on_land", "amount": [1.3, 0.7], "duration": 0.2, "easing": "cubic_out" }
             } },
@@ -1071,11 +1071,13 @@ fn the_umbrella_components_spawn_with_their_values() {
                 kind: LightKind::Directional { angle: 1.5 },
                 color: glam::Vec3::new(0.2, 0.2, 0.2),
                 intensity: 1.0,
+                priority: 0,
             },
             Light {
                 kind: LightKind::Point { radius: 40.0 },
                 color: glam::Vec3::new(1.0, 0.5, 0.0),
                 intensity: 2.0,
+                priority: 3,
             },
         ]
     );
@@ -1141,6 +1143,21 @@ fn the_umbrella_components_reject_bad_values() {
             "light",
             r#"{ "kind": "point", "radius": 4.0 }"#,
             "missing field `color`",
+        ),
+        (
+            "light",
+            r#"{ "kind": "point", "radius": 4.0, "color": [1.0, 1.0, 1.0], "priority": 256 }"#,
+            "invalid value: integer `256`, expected u8",
+        ),
+        (
+            "light",
+            r#"{ "kind": "directional", "angle": 0.0, "color": [1.0, 1.0, 1.0], "priority": -1 }"#,
+            "invalid value: integer `-1`, expected u8",
+        ),
+        (
+            "light",
+            r#"{ "kind": "point", "radius": 4.0, "color": [1.0, 1.0, 1.0], "priority": 1.5 }"#,
+            "invalid type: floating point `1.5`, expected u8",
         ),
         (
             "parallax_layer",

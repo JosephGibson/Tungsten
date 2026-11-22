@@ -13,11 +13,11 @@ use std::path::PathBuf;
 use example_01_platformer::features::combat::draw::overlays;
 use example_01_platformer::features::level::components::{Glow, GlowParts};
 use example_01_platformer::features::level::draw;
-use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
+use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL, PLAYER_LIGHT_PRIORITY};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{BURST_CAP, Burst, Saved, despawn_tree, spawn_burst};
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use tungsten::core::assets::{LayerKind, ResolvedManifest, TilemapData, TilemapLayer};
 use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::ui::contrast_ratio;
@@ -595,6 +595,82 @@ fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
     let world = harness.world();
     assert!(!world.get::<Glow>(player).unwrap().hidden);
     assert!(world.query::<&Light>().all(|light| light.intensity > 0.0));
+}
+
+#[test]
+fn the_lantern_keeps_its_slot_among_more_lamps_than_the_renderer_packs() {
+    let (mut harness, player) = run();
+    harness.step(5);
+    // A run starts with the lantern dark, and a dark light takes no slot.
+    harness.harness_mut().press_action("lantern");
+    harness.step(1);
+    harness.harness_mut().release_action("lantern");
+    // The view's corner a little up and left of the wizard, so he stands at
+    // its edge, far from its centre.
+    let stand = centre(&harness, player);
+    pin_camera(&mut harness, stand - Vec2::splat(96.0));
+    harness.step(2);
+    let world = harness.world();
+    let lantern = world
+        .get::<GlowParts>(player)
+        .unwrap()
+        .light
+        .expect("the lantern's light");
+    assert_eq!(
+        world.get::<Light>(lantern).unwrap().priority,
+        PLAYER_LIGHT_PRIORITY
+    );
+    assert_eq!(
+        world
+            .query::<&Light>()
+            .filter(|light| light.priority != 0)
+            .count(),
+        1,
+        "the map's lamps and the moon stay at 0"
+    );
+    let window = world.resource::<WindowSize>();
+    let (min, max) = world
+        .resource::<CameraState>()
+        .visible_world_aabb(window.width as f32, window.height as f32);
+    let middle = (min + max) * 0.5;
+    let hung = world.get::<Transform>(lantern).unwrap().position;
+    assert!(
+        hung.cmpge(min).all() && hung.cmple(max).all(),
+        "the lantern is in view: {hung} in {min}..{max}"
+    );
+    // Twenty lamps, lit, each nearer the view's centre than the lantern.
+    let world = harness.world_mut();
+    for i in 0..20 {
+        let lamp = middle + Vec2::new(i as f32 * 3.0 - 30.0, 0.0);
+        assert!(lamp.distance(middle) < hung.distance(middle));
+        world.spawn_with((
+            Transform::from_position(lamp),
+            Light::point(Vec3::ONE, 60.0),
+            SceneEntity { state_id: GAMEPLAY },
+        ));
+    }
+    let packs_the_lantern = |harness: &UiHarness| {
+        let hung = harness.world().get::<Transform>(lantern).unwrap().position;
+        let lights = harness.harness().draw().expect("a frame").light_ubo;
+        assert_eq!(lights.count_pad[0], 16, "more lights reach the view");
+        lights.lights.iter().any(|light| {
+            Vec2::new(light.position_radius[0], light.position_radius[1]).distance(hung) < 0.01
+        })
+    };
+    harness.step(1);
+    assert!(
+        packs_the_lantern(&harness),
+        "the lantern's light is among the sixteen"
+    );
+    // The control: at the lamps' priority the twenty nearer the centre
+    // take its slot.
+    harness
+        .world_mut()
+        .get_mut::<Light>(lantern)
+        .unwrap()
+        .priority = 0;
+    harness.step(1);
+    assert!(!packs_the_lantern(&harness));
 }
 
 #[test]

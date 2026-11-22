@@ -166,10 +166,14 @@ pub fn lights_view(camera_aabb: (Vec2, Vec2), position: Vec2, light: &Light) -> 
 /// directional-first then nearest to the AABB rectangle, truncate to
 /// `LIT_LIGHT_CAP`. Stable: ties keep input order.
 ///
-/// Past the cap, the lights kept are chosen first: among lights the same
-/// distance from the view, all those inside it, the one nearer the view's
-/// centre wins, so a crowd at the view's edges cannot push out the light the
-/// player stands in. The kept lights then sort as above.
+/// Past the cap, the lights kept are chosen first: by [`Light::priority`],
+/// the higher kept first, so the light a game must never lose, a player's
+/// lantern, keeps its slot while it lights the view; then directional before
+/// point, then nearer the view, and among lights the same distance from it,
+/// all those inside it, the one nearer the view's centre, so a crowd at the
+/// view's edges cannot push out the light the player stands in. The kept
+/// lights then sort as above: a priority chooses which lights are packed,
+/// never their order, and changes nothing while the cap holds them all.
 #[must_use]
 pub fn cull_to_cap(camera_aabb: (Vec2, Vec2), entries: &[(Vec2, Light)]) -> Vec<GpuLight> {
     let (min, max) = camera_aabb;
@@ -186,6 +190,7 @@ pub fn cull_to_cap(camera_aabb: (Vec2, Vec2), entries: &[(Vec2, Light)]) -> Vec<
         let centre = (min + max) * 0.5;
         let rank = |(pos, light): &(Vec2, Light)| {
             (
+                u8::MAX - light.priority,
                 !directional(light),
                 distance_to_aabb_sq(*pos, min, max),
                 pos.distance_squared(centre),

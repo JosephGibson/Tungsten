@@ -7385,9 +7385,11 @@ pub struct tungsten_core::components::Light
 pub tungsten_core::components::Light::color: glam::f32::vec3::Vec3
 pub tungsten_core::components::Light::intensity: f32
 pub tungsten_core::components::Light::kind: tungsten_core::components::LightKind
+pub tungsten_core::components::Light::priority: u8
 impl tungsten_core::components::Light
 pub fn tungsten_core::components::Light::directional(glam::f32::vec3::Vec3, f32) -> Self
 pub fn tungsten_core::components::Light::point(glam::f32::vec3::Vec3, f32) -> Self
+pub fn tungsten_core::components::Light::with_priority(self, u8) -> Self
 impl core::clone::Clone for tungsten_core::components::Light
 pub fn tungsten_core::components::Light::clone(&self) -> tungsten_core::components::Light
 impl core::cmp::PartialEq for tungsten_core::components::Light
@@ -22122,9 +22124,11 @@ pub struct tungsten_core::Light
 pub tungsten_core::Light::color: glam::f32::vec3::Vec3
 pub tungsten_core::Light::intensity: f32
 pub tungsten_core::Light::kind: tungsten_core::components::LightKind
+pub tungsten_core::Light::priority: u8
 impl tungsten_core::components::Light
 pub fn tungsten_core::components::Light::directional(glam::f32::vec3::Vec3, f32) -> Self
 pub fn tungsten_core::components::Light::point(glam::f32::vec3::Vec3, f32) -> Self
+pub fn tungsten_core::components::Light::with_priority(self, u8) -> Self
 impl core::clone::Clone for tungsten_core::components::Light
 pub fn tungsten_core::components::Light::clone(&self) -> tungsten_core::components::Light
 impl core::cmp::PartialEq for tungsten_core::components::Light

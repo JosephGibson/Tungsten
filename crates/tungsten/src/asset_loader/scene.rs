@@ -236,12 +236,16 @@ enum LightFields {
         color: [f32; 3],
         #[serde(default = "unit")]
         intensity: f32,
+        #[serde(default)]
+        priority: u8,
     },
     Directional {
         angle: f32,
         color: [f32; 3],
         #[serde(default = "unit")]
         intensity: f32,
+        #[serde(default)]
+        priority: u8,
     },
 }
 
@@ -254,26 +258,28 @@ impl TryFrom<LightFields> for LightDef {
     type Error = String;
 
     fn try_from(fields: LightFields) -> Result<Self, String> {
-        let (kind, color, intensity) = match fields {
+        let (kind, color, intensity, priority) = match fields {
             LightFields::Point {
                 radius,
                 color,
                 intensity,
+                priority,
             } => {
                 if !(radius.is_finite() && radius > 0.0) {
                     return Err(format!("`radius` must be finite and > 0 (got {radius})"));
                 }
-                (LightKind::Point { radius }, color, intensity)
+                (LightKind::Point { radius }, color, intensity, priority)
             }
             LightFields::Directional {
                 angle,
                 color,
                 intensity,
+                priority,
             } => {
                 if !angle.is_finite() {
                     return Err(format!("`angle` must be finite (got {angle})"));
                 }
-                (LightKind::Directional { angle }, color, intensity)
+                (LightKind::Directional { angle }, color, intensity, priority)
             }
         };
         if !color.iter().all(|c| c.is_finite() && *c >= 0.0) {
@@ -291,6 +297,7 @@ impl TryFrom<LightFields> for LightDef {
             kind,
             color: Vec3::from(color),
             intensity,
+            priority,
         }))
     }
 }

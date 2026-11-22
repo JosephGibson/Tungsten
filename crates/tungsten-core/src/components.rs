@@ -300,6 +300,11 @@ pub struct Light {
     pub kind: LightKind,
     pub color: Vec3,
     pub intensity: f32,
+    /// Its claim on a slot when more lights reach the view than the
+    /// renderer packs (`LIGHT_CAP`): a higher priority is kept first, so a
+    /// game gives the light it must never lose, a player's lantern, a
+    /// priority above its lamps'. 0 by default.
+    pub priority: u8,
 }
 
 /// Light shape (M29). `Point` carries world-space radius driving attenuation;
@@ -318,6 +323,7 @@ impl Light {
             kind: LightKind::Point { radius },
             color,
             intensity: 1.0,
+            priority: 0,
         }
     }
 
@@ -328,7 +334,15 @@ impl Light {
             kind: LightKind::Directional { angle },
             color,
             intensity: 1.0,
+            priority: 0,
         }
+    }
+
+    /// This light at `priority`: its claim on a slot past the cap.
+    #[must_use]
+    pub fn with_priority(mut self, priority: u8) -> Self {
+        self.priority = priority;
+        self
     }
 }
 

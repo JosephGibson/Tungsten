@@ -110,3 +110,45 @@ fn extract_lights_leads_with_the_directional_among_lights_out_of_reach() {
     assert_eq!(ubo.lights[0].color_intensity[3], 1.0, "directional first");
     assert_eq!(ubo.lights[1].position_radius[..2], [400.0, 300.0]);
 }
+
+#[test]
+fn extract_lights_keeps_a_priority_light_past_the_cap() {
+    // The view is (0, 0) to (800, 600), its centre (400, 300).
+    let (mut world, camera) = world_with_camera();
+    for i in 0..40 {
+        world.spawn_with((
+            Transform::from_position(Vec2::new(380.0 + i as f32, 300.0)),
+            Light::point(Vec3::ONE, 50.0),
+        ));
+    }
+    let lantern = world.spawn_with((
+        Transform::from_position(Vec2::new(10.0, 10.0)),
+        Light::point(Vec3::new(1.0, 0.0, 0.0), 50.0).with_priority(1),
+    ));
+    let packed = |world: &World| {
+        let ubo = extract_lights(world, &camera, 800.0, 600.0);
+        assert_eq!(ubo.count_pad[0], 16);
+        ubo.lights
+            .iter()
+            .any(|light| light.position_radius[..2] == [10.0, 10.0])
+    };
+    assert!(packed(&world), "the priority light keeps its slot");
+    // The control: at the lamps' priority the forty nearer the centre win.
+    world.get_mut::<Light>(lantern).unwrap().priority = 0;
+    assert!(!packed(&world));
+}
+
+#[test]
+fn extract_lights_gives_a_dark_light_no_slot() {
+    let (mut world, camera) = world_with_camera();
+    let mut dark = Light::point(Vec3::ONE, 200.0).with_priority(5);
+    dark.intensity = 0.0;
+    world.spawn_with((Transform::from_position(Vec2::new(400.0, 300.0)), dark));
+    world.spawn_with((
+        Transform::from_position(Vec2::new(100.0, 100.0)),
+        Light::point(Vec3::ONE, 50.0),
+    ));
+    let ubo = extract_lights(&world, &camera, 800.0, 600.0);
+    assert_eq!(ubo.count_pad[0], 1, "under the cap too");
+    assert_eq!(ubo.lights[0].position_radius[..2], [100.0, 100.0]);
+}

@@ -469,3 +469,146 @@ fn past_the_cap_a_far_lamp_that_reaches_the_view_is_kept() {
     assert_eq!(lit_sum(&before, point), Vec3::ZERO);
     assert!(lit_sum(&out, point).x > 0.0);
 }
+
+// A light's priority past the cap (redo 7.15, G6, `D-296`).
+
+/// Twenty lit lamps in a row through the centre of a 100 px view, each
+/// within 10 px of it, and `extra` after them.
+fn crowd(extra: (Vec2, Light)) -> Vec<(Vec2, Light)> {
+    let mut entries: Vec<(Vec2, Light)> = (0..20)
+        .map(|i| {
+            (
+                Vec2::new(40.0 + i as f32, 50.0),
+                Light::point(Vec3::ONE, 5.0),
+            )
+        })
+        .collect();
+    entries.push(extra);
+    entries
+}
+
+fn holds(out: &[GpuLight], at: Vec2) -> bool {
+    out.iter()
+        .any(|light| light.position_radius[..2] == [at.x, at.y])
+}
+
+#[test]
+fn past_the_cap_a_priority_light_at_the_views_edge_keeps_its_slot() {
+    let aabb = (Vec2::ZERO, Vec2::splat(100.0));
+    let edge = Vec2::new(1.0, 1.0);
+    let lantern = Light::point(Vec3::new(1.0, 0.0, 0.0), 5.0);
+    let out = cull_to_cap(aabb, &crowd((edge, lantern.with_priority(1))));
+    assert_eq!(out.len(), LIT_LIGHT_CAP);
+    assert!(holds(&out, edge), "the priority light keeps its slot");
+    // The control: at the lamps' priority it ranks last, the farthest from
+    // the view's centre.
+    let out = cull_to_cap(aabb, &crowd((edge, lantern)));
+    assert_eq!(out.len(), LIT_LIGHT_CAP);
+    assert!(
+        !holds(&out, edge),
+        "at priority 0 the twenty nearer the centre push it out"
+    );
+}
+
+#[test]
+fn a_dark_light_takes_no_slot_under_the_cap_or_past_it() {
+    let aabb = (Vec2::ZERO, Vec2::splat(100.0));
+    let mut dark = Light::point(Vec3::ONE, 50.0).with_priority(9);
+    dark.intensity = 0.0;
+    let middle = Vec2::splat(50.0);
+    // Under the cap, where every light once took a slot.
+    let lit = Vec2::splat(20.0);
+    let out = cull_to_cap(aabb, &[(middle, dark), (lit, Light::point(Vec3::ONE, 5.0))]);
+    assert_eq!(out.len(), 1);
+    assert!(holds(&out, lit));
+    // Past it, whatever its priority.
+    let out = cull_to_cap(aabb, &crowd((middle, dark)));
+    assert_eq!(out.len(), LIT_LIGHT_CAP);
+    assert!(out.iter().all(|light| light.color_intensity[0] > 0.0));
+}
+
+#[test]
+fn a_priority_light_out_of_reach_takes_no_slot() {
+    let aabb = (Vec2::ZERO, Vec2::splat(100.0));
+    let far = Vec2::new(-500.0, 50.0);
+    let lantern = Light::point(Vec3::ONE, 100.0).with_priority(u8::MAX);
+    assert!(
+        !lights_view(aabb, far, &lantern),
+        "the filter reads no priority"
+    );
+    assert!(cull_to_cap(aabb, &[(far, lantern)]).is_empty());
+    let out = cull_to_cap(aabb, &crowd((far, lantern)));
+    assert_eq!(out.len(), LIT_LIGHT_CAP);
+    assert!(!holds(&out, far));
+}
+
+#[test]
+fn a_priority_chooses_the_lights_packed_and_never_their_order() {
+    let aabb = (Vec2::ZERO, Vec2::splat(100.0));
+    let bytes = |lights: &[GpuLight]| bytemuck::cast_slice::<GpuLight, u8>(lights).to_vec();
+    // Under the cap: the list is the one every priority at 0 packs.
+    let mut plain: Vec<(Vec2, Light)> = (0..15)
+        .map(|i| {
+            let at = Vec2::new(-20.0 + i as f32 * 9.0, 130.0 - i as f32 * 7.0);
+            (at, Light::point(Vec3::ONE, 80.0))
+        })
+        .collect();
+    plain.push((Vec2::splat(9999.0), Light::directional(Vec3::ONE, 0.4)));
+    let ranked: Vec<(Vec2, Light)> = plain
+        .iter()
+        .enumerate()
+        .map(|(i, (at, light))| (*at, light.with_priority((i * 37 % 256) as u8)))
+        .collect();
+    let out = cull_to_cap(aabb, &plain);
+    assert_eq!(out.len(), LIT_LIGHT_CAP);
+    assert_eq!(bytes(&cull_to_cap(aabb, &ranked)), bytes(&out));
+
+    // Past it: lamps off the view's left edge, the farther the higher its
+    // priority. The sixteen farthest are kept, and packed nearest first.
+    let lamps: Vec<(Vec2, Light)> = (0..20)
+        .map(|i| {
+            let gap = 10.0 + i as f32 * 5.0;
+            (
+                Vec2::new(-gap, 50.0),
+                Light::point(Vec3::ONE, 200.0).with_priority(i as u8),
+            )
+        })
+        .collect();
+    let out = cull_to_cap(aabb, &lamps);
+    let xs: Vec<f32> = out.iter().map(|light| light.position_radius[0]).collect();
+    let expected: Vec<f32> = (4..20).map(|i| -(10.0 + i as f32 * 5.0)).collect();
+    assert_eq!(xs, expected);
+}
+
+#[test]
+fn past_the_cap_one_priority_ranks_among_itself_and_over_a_lower_directional() {
+    let aabb = (Vec2::ZERO, Vec2::splat(100.0));
+    // Twenty lamps at one priority: the sixteen nearest the view's centre
+    // are kept, as at priority 0.
+    let mut entries: Vec<(Vec2, Light)> = (0..20)
+        .map(|i| {
+            (
+                Vec2::new(50.0 + i as f32 * 2.0, 50.0),
+                Light::point(Vec3::ONE, 5.0).with_priority(7),
+            )
+        })
+        .collect();
+    let out = cull_to_cap(aabb, &entries);
+    let mut xs: Vec<f32> = out.iter().map(|light| light.position_radius[0]).collect();
+    xs.sort_by(f32::total_cmp);
+    let nearest: Vec<f32> = (0..16).map(|i| 50.0 + i as f32 * 2.0).collect();
+    assert_eq!(xs, nearest);
+
+    // A directional light leads its own priority, not a higher one's
+    // lights: under sixteen of those it keeps no slot.
+    let sun = Light::directional(Vec3::splat(0.5), 0.0);
+    entries.push((Vec2::ZERO, sun));
+    let out = cull_to_cap(aabb, &entries);
+    assert!(out.iter().all(|light| light.color_intensity[3] == 0.0));
+    // At their priority it is kept, and packed first.
+    let last = entries.len() - 1;
+    entries[last].1 = sun.with_priority(7);
+    let out = cull_to_cap(aabb, &entries);
+    assert_eq!(out.len(), LIT_LIGHT_CAP);
+    assert_eq!(out[0].color_intensity[3], 1.0, "directional first");
+}
