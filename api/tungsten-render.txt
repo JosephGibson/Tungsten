@@ -138,6 +138,7 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::Lighti
 pub const tungsten_render::lighting::LIT_LIGHT_CAP: usize
 pub fn tungsten_render::lighting::cull_to_cap((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), &[(glam::f32::vec2::Vec2, tungsten_core::components::Light)]) -> alloc::vec::Vec<tungsten_render::lighting::GpuLight>
 pub fn tungsten_render::lighting::distance_to_aabb_sq(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_render::lighting::lights_view((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> bool
 pub fn tungsten_render::lighting::pack_lights(&[tungsten_render::lighting::GpuLight], glam::f32::vec3::Vec3) -> tungsten_render::lighting::LightUbo
 pub fn tungsten_render::lighting::pack_one_light(glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> tungsten_render::lighting::GpuLight
 pub mod tungsten_render::lit_sprite
@@ -2361,6 +2362,7 @@ pub fn tungsten_render::compare_png(&std::path::Path, &std::path::Path, u8) -> c
 pub fn tungsten_render::cull_to_cap((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), &[(glam::f32::vec2::Vec2, tungsten_core::components::Light)]) -> alloc::vec::Vec<tungsten_render::lighting::GpuLight>
 pub fn tungsten_render::default_pass_order(u32, tungsten_core::config::DepthSortMode, bool, usize, tungsten_core::config::PostAaMode, tungsten_render::passes::order::PresentPath) -> tungsten_render::passes::order::PassOrder
 pub fn tungsten_render::distance_to_aabb_sq(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_render::lights_view((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> bool
 pub fn tungsten_render::pack_lights(&[tungsten_render::lighting::GpuLight], glam::f32::vec3::Vec3) -> tungsten_render::lighting::LightUbo
 pub fn tungsten_render::pack_one_light(glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> tungsten_render::lighting::GpuLight
 pub fn tungsten_render::validate_wgsl_source(&str, &str) -> core::result::Result<(), tungsten_render::shader_hot_reload::ShaderError>

@@ -25,6 +25,7 @@ use std::cmp::Ordering;
 use crate::counters::{self, Counts};
 use bytemuck::{Pod, Zeroable};
 use glam::{Vec2, Vec3};
+use tungsten_core::lighting::MIN_LIGHT_RADIUS;
 use tungsten_core::{LIGHT_CAP, Light, LightKind};
 
 /// Mirrors `tungsten_core::LIGHT_CAP` for render-side static asserts.
@@ -118,22 +119,69 @@ pub fn distance_to_aabb_sq(p: Vec2, min: Vec2, max: Vec2) -> f32 {
     dx * dx + dy * dy
 }
 
-/// Sort directional-first then nearest to the AABB rectangle, truncate to
+/// How far past its radius a point light is still taken to reach the view:
+/// the test runs on the CPU and the shader's attenuation on the GPU, so a
+/// light is dropped only when it clears the view by more than their rounding.
+const REACH_MARGIN: f32 = 1.0001;
+
+/// Whether `light` at `position` can change a pixel of the view
+/// `camera_aabb`, as the lit shader draws it: a dark light (intensity 0)
+/// adds nothing anywhere, and a point light adds nothing to a fragment its
+/// radius, taken as at least `MIN_LIGHT_RADIUS`, does not reach, so one
+/// whose radius ends short of the view lights no fragment in it. A
+/// directional light that is not dark always can.
+///
+/// What is not a number is kept: a light whose colour times its intensity
+/// is not finite, since the shader's product with it is no zero, and a
+/// point light whose radius is a NaN. A NaN coordinate, the light's or the
+/// view's, counts as inside the view on its axis.
+#[must_use]
+pub fn lights_view(camera_aabb: (Vec2, Vec2), position: Vec2, light: &Light) -> bool {
+    if !(light.color * light.intensity).is_finite() {
+        return true;
+    }
+    if light.intensity == 0.0 {
+        return false;
+    }
+    match light.kind {
+        LightKind::Directional { .. } => true,
+        LightKind::Point { radius } => {
+            let (min, max) = camera_aabb;
+            // Not `f32::max`, which would take a NaN radius for the minimum.
+            let radius = if radius < MIN_LIGHT_RADIUS {
+                MIN_LIGHT_RADIUS
+            } else {
+                radius
+            };
+            let reach = radius * REACH_MARGIN;
+            // Dropped only when it is farther than its reach: a NaN is
+            // neither farther nor nearer, so a NaN radius is kept.
+            distance_to_aabb_sq(position, min, max).partial_cmp(&(reach * reach))
+                != Some(Ordering::Greater)
+        }
+    }
+}
+
+/// Keep the lights that can light the view ([`lights_view`]), sort
+/// directional-first then nearest to the AABB rectangle, truncate to
 /// `LIT_LIGHT_CAP`. Stable: ties keep input order.
 ///
-/// Past the cap, the lights kept are chosen first: a dark light (intensity 0)
-/// takes no slot, and among lights the same distance from the view, all
-/// those inside it, the one nearer the view's centre wins, so a crowd at the
-/// view's edges cannot push out the light the player stands in. The kept
-/// lights then sort as above.
+/// Past the cap, the lights kept are chosen first: among lights the same
+/// distance from the view, all those inside it, the one nearer the view's
+/// centre wins, so a crowd at the view's edges cannot push out the light the
+/// player stands in. The kept lights then sort as above.
 #[must_use]
 pub fn cull_to_cap(camera_aabb: (Vec2, Vec2), entries: &[(Vec2, Light)]) -> Vec<GpuLight> {
     let (min, max) = camera_aabb;
     let directional = |light: &Light| matches!(light.kind, LightKind::Directional { .. });
-    let mut kept: Vec<&(Vec2, Light)> = entries.iter().collect();
-    if kept.len() > LIT_LIGHT_CAP {
-        kept.retain(|(_, light)| light.intensity != 0.0);
-    }
+    // Sized for every entry, as a list of them all was: a filtered
+    // collect would grow it by doubling.
+    let mut kept: Vec<&(Vec2, Light)> = Vec::with_capacity(entries.len());
+    kept.extend(
+        entries
+            .iter()
+            .filter(|(pos, light)| lights_view(camera_aabb, *pos, light)),
+    );
     if kept.len() > LIT_LIGHT_CAP {
         let centre = (min + max) * 0.5;
         let rank = |(pos, light): &(Vec2, Light)| {

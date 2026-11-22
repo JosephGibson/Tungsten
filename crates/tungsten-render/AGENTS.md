@@ -1,6 +1,6 @@
 # tungsten-render
 
-Scoped rules for this crate, on top of the root `AGENTS.md`. The `tungsten-wgpu` skill has deeper wgpu/WGSL guidance.
+Scoped rules for this crate, on top of the root `AGENTS.md`. The `tungsten-wgpu` skill goes deeper.
 
 ## Shaders (`D-057`, narrows `D-023`)
 
@@ -15,18 +15,18 @@ Scoped rules for this crate, on top of the root `AGENTS.md`. The `tungsten-wgpu`
 
 A capture frame (`Renderer::capture_frame`, `TUNGSTEN_CAPTURE_FRAME`) keeps the blit tail, `… → [SMAA tail → PresentSource] → Overlay → Present Blit → Swapchain`, and the screenshot reads the blit's source. `default_pass_order` takes the `PresentPath`; a new full-screen stage must work on both. `TUNGSTEN_CAPTURE_DIRECT=1` captures the direct path instead, for the pixel test that compares the two.
 
-Surface acquire decisions (reconfigure, recreate, skip, fail) live in the GPU-free `src/surface_acquire.rs` with transition tests; change the policy there, not inline in `renderer.rs`.
+Surface acquire decisions (reconfigure, recreate, skip, fail) live in the GPU-free `src/surface_acquire.rs` with transition tests; change the policy there, not in `renderer.rs`.
 
 ## Features
 
 - **Materials** (`D-058`): manifest `materials` entries get a `MaterialAssetId`; each batch in a frame gets a 256-byte UBO slot matching `UniformOverrideBlock` (`D-101`). `MaterialPipeline` reuses the sprite layout (groups 0/1) and adds group 2. No per-material files; `uniform_defaults` reload with the manifest. `PostStack::default()` is empty and byte-identical to the pre-M26 frame.
 - **SMAA** (`D-059`): three manifest-tracked stage shaders. `area`/`search` LUTs are `include_bytes!` engine content in `src/assets/smaa/` (MIT, not manifest-tracked). `render.post_aa` / `TUNGSTEN_RENDER_POST_AA`; runtime switches go through `tungsten::request_post_aa` at a frame boundary. Changing `msaa` still needs a relaunch.
-- **Bloom** (`D-060`): the 18th `PostPass` variant. It records its own threshold, downsample, upsample and composite passes instead of `PassRecorder::begin`. The `Rgba16Float` pyramid lives on `SceneTarget`, sized by `bloom_mip_count_for_size` (`render.bloom_max_mips`, default 6, 1..=8, startup-only). `SceneColor` stays sRGB.
-- **Lighting** (`D-061`): `LitSpritePipeline` runs inside the scene pass; `LightingResources` owns a 544-byte `LightUbo` at group 2 (`LIGHT_CAP = 16`). Normal/emissive siblings pack into parallel atlas pages keyed by the albedo `TextureHandle`. `emissive_mask` and `rim_light` are validated helpers with no pipeline.
+- **Bloom** (`D-060`): a `PostPass` variant that records its own threshold, downsample, upsample and composite passes instead of `PassRecorder::begin`. The `Rgba16Float` pyramid lives on `SceneTarget`, sized by `bloom_mip_count_for_size` (`render.bloom_max_mips`, default 6, 1..=8, startup-only). `SceneColor` stays sRGB.
+- **Lighting** (`D-061`): `LitSpritePipeline` runs in the scene pass; `LightingResources` owns a 544-byte `LightUbo` at group 2 (`LIGHT_CAP = 16`; `lights_view` drops lights lighting no pixel). Normal/emissive siblings pack into parallel atlas pages keyed by the albedo `TextureHandle`. `emissive_mask` and `rim_light` are validated helpers, no pipeline.
 - **Screenshots/debug** (`D-047`): offscreen `RENDER_ATTACHMENT | COPY_SRC` texture read back through a row-padded `MAP_READ` buffer; debug groups and labels always on.
 
 ## Checks
 
-- `cargo test -p tungsten-render`: layout tests plus `tests/shader_coverage.rs`, which Naga-validates every `.wgsl` in both trees and checks each mirror pair byte for byte. A new LYGIA fragment that calls a sibling needs a `FRAGMENT_DEPS` entry.
+- `cargo test -p tungsten-render`: layout tests plus `tests/shader_coverage.rs`, which Naga-validates every `.wgsl` in both trees and compares each mirror pair's bytes. A new LYGIA fragment that calls a sibling needs a `FRAGMENT_DEPS` entry.
 - GPU changes: `just smoke` and `just visual` ([validation](../../docs/validation.md)). Naga success doesn't prove pixels; Vulkan success doesn't certify Metal or DX12.
 - Don't replace golden images to make a test pass; explain the pixel difference first.
