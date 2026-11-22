@@ -155,6 +155,9 @@ fn the_query_follows_the_lit_shaders_light_lines() {
         "let to_light_3d = vec3<f32>(to_light_xy, radius * 0.5);",
         "let dist_xy = length(to_light_xy);",
         "let attenuation = clamp(1.0 - dist_xy / radius, 0.0, 1.0);",
+        // A fragment out of the light's reach skips its term: the one this
+        // attenuation of 0 multiplied, which `light_from` reads as zero.
+        "if (attenuation > 0.0) {",
         "let l_dir = normalize(to_light_3d);",
         "let n_dot_l = max(0.0, dot(n, l_dir));",
         "rgb = rgb + albedo.rgb * l.color_intensity.rgb * n_dot_l * attenuation * attenuation;",

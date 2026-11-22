@@ -130,12 +130,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             // and N·L hits zero a few pixels away.
             let radius = max(l.position_radius.z, 0.0001);
             let to_light_xy = l.position_radius.xy - in.world_pos;
-            let to_light_3d = vec3<f32>(to_light_xy, radius * 0.5);
             let dist_xy = length(to_light_xy);
             let attenuation = clamp(1.0 - dist_xy / radius, 0.0, 1.0);
-            let l_dir = normalize(to_light_3d);
-            let n_dot_l = max(0.0, dot(n, l_dir));
-            rgb = rgb + albedo.rgb * l.color_intensity.rgb * n_dot_l * attenuation * attenuation;
+            // A fragment out of the light's reach takes nothing from it.
+            if (attenuation > 0.0) {
+                let to_light_3d = vec3<f32>(to_light_xy, radius * 0.5);
+                let l_dir = normalize(to_light_3d);
+                let n_dot_l = max(0.0, dot(n, l_dir));
+                rgb = rgb + albedo.rgb * l.color_intensity.rgb * n_dot_l * attenuation * attenuation;
+            }
         }
     }
 
