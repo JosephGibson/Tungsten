@@ -1,5 +1,6 @@
 use super::*;
 use glam::{Vec2, Vec3};
+use std::f32::consts::{FRAC_PI_2, PI};
 use tungsten_core::lighting::light_from;
 use tungsten_core::{Light, Pcg32};
 
@@ -611,4 +612,352 @@ fn past_the_cap_one_priority_ranks_among_itself_and_over_a_lower_directional() {
     let out = cull_to_cap(aabb, &entries);
     assert_eq!(out.len(), LIT_LIGHT_CAP);
     assert_eq!(out[0].color_intensity[3], 1.0, "directional first");
+}
+
+/// The loosest floor a backend sets a shader's `sin` and `cos`: Direct3D's
+/// absolute error of 0.0008 each, past Vulkan's 2^-11.
+const TRIG_FLOOR: f32 = 0.0008;
+
+/// A quad as `lit_sprite.wgsl`'s vertex stage places it: its centre, its
+/// size, and its turn's sine and cosine as that stage computed them.
+#[derive(Clone, Copy)]
+struct Quad {
+    centre: Vec2,
+    size: Vec2,
+    sin_cos: (f32, f32),
+}
+
+impl Quad {
+    /// A quad that is not turned.
+    fn flat(centre: Vec2, size: Vec2) -> Self {
+        Self {
+            centre,
+            size,
+            sin_cos: (0.0, 1.0),
+        }
+    }
+
+    /// `along` the quad's own axes, turned as the stage turns a corner.
+    fn turned(&self, along: Vec2) -> Vec2 {
+        let (s, c) = self.sin_cos;
+        Vec2::new(along.x * c - along.y * s, along.x * s + along.y * c)
+    }
+
+    /// The quad's point at `at`, each axis -0.5..=0.5 across it: the stage's
+    /// `centre + rotated` at a corner, and between the corners what a
+    /// fragment reads as its position.
+    fn point(&self, at: Vec2) -> Vec2 {
+        self.centre + self.turned(at * self.size)
+    }
+}
+
+/// The vertex stage's distance from a point light to a quad's box, line for
+/// line (`the_quad_skip_follows_the_lit_shaders_lines` holds the lines).
+fn quad_gap(quad: &Quad, light_at: Vec2) -> f32 {
+    let (s, c) = quad.sin_cos;
+    let half = quad.size.abs() * 0.5;
+    let rel = light_at - quad.centre;
+    let unturned = Vec2::new(rel.x * c + rel.y * s, rel.y * c - rel.x * s);
+    (unturned.abs() - half).max(Vec2::ZERO).length()
+}
+
+/// The vertex stage's test of one point light, line for line: whether it
+/// lies farther from the quad's box than its radius and the slack.
+fn quad_marks(quad: &Quad, light_at: Vec2, light_radius: f32) -> bool {
+    let centre = quad.centre;
+    let half = quad.size.abs() * 0.5;
+    let radius = light_radius.max(0.0001);
+    let gap = quad_gap(quad, light_at);
+    let rounding = (centre.x.abs() + centre.y.abs()) * 0.0001;
+    let slack = rounding + (half.x + half.y + radius) * 0.004;
+    gap > radius + slack
+}
+
+/// Whether the vertex stage marks at all: its sine and cosine scale the
+/// quad by a `unit` within 0.3 % of 1.
+fn quad_turn_holds(quad: &Quad) -> bool {
+    let (s, c) = quad.sin_cos;
+    let unit = c * c + s * s;
+    (unit - 1.0).abs() < 0.003
+}
+
+/// The vertex stage's mark: whether a quad's vertices find the point light
+/// at `light_at` out of reach of every fragment of it.
+fn quad_skips(quad: &Quad, light_at: Vec2, light_radius: f32) -> bool {
+    quad_turn_holds(quad) && quad_marks(quad, light_at, light_radius)
+}
+
+/// The control's mark, a fiftieth too eager and with no slack: it also marks
+/// a light whose reach just enters the quad.
+fn eager_skips(quad: &Quad, light_at: Vec2, light_radius: f32) -> bool {
+    quad_gap(quad, light_at) > light_radius.max(0.0001) * 0.98
+}
+
+/// Whether the point light at `light_at` lights `point`, by the fragment
+/// stage's CPU mirror.
+fn lights(light_at: Vec2, light_radius: f32, point: Vec2) -> bool {
+    light_from(&Light::point(Vec3::ONE, light_radius), light_at, point) != Vec3::ZERO
+}
+
+/// A quad and a point light about it, over the scales a game can hold:
+/// centres out to 1e5, sides from a hundredth to 2e4, a quarter of them
+/// mirrored, half the quads turned. Half keep the sine and cosine a CPU
+/// computes; the rest move each by up to Vulkan's floor, Direct3D's, or
+/// 0.002, which is past what the stage's `unit` allows. The light lies
+/// inside the quad's box or off its sides and corners, most with a reach
+/// that ends near the box's edge. Returns the quad, the light's position
+/// and radius, and the quad's point nearest the light as [`Quad::point`]
+/// takes it.
+fn random_quad_and_light(rng: &mut Pcg32) -> (Quad, Vec2, f32, Vec2) {
+    let scale = |rng: &mut Pcg32, lo: f32, hi: f32| 10.0_f32.powf(rng.next_range(lo, hi));
+    let far = scale(rng, 0.0, 5.0);
+    let centre = Vec2::new(rng.next_range(-far, far), rng.next_range(-far, far));
+    let mut size = Vec2::new(scale(rng, -2.0, 4.3), scale(rng, -2.0, 4.3));
+    if rng.next_u32().is_multiple_of(4) {
+        size.x = -size.x;
+    }
+    let turn = if rng.next_u32().is_multiple_of(2) {
+        0.0
+    } else {
+        rng.next_range(-PI, PI)
+    };
+    let (mut s, mut c) = turn.sin_cos();
+    let off = match rng.next_u32() % 6 {
+        0 => 1.0 / 2048.0,
+        1 => TRIG_FLOOR,
+        2 => 0.002,
+        _ => 0.0,
+    };
+    if off > 0.0 {
+        s += rng.next_range(-off, off);
+        c += rng.next_range(-off, off);
+    }
+    let quad = Quad {
+        centre,
+        size,
+        sin_cos: (s, c),
+    };
+    // The light along the quad's own axes: each inside the box, or off one
+    // of its two sides.
+    let half = size.abs() * 0.5;
+    let mut gap = Vec2::ZERO;
+    let mut along = Vec2::ZERO;
+    for axis in 0..2 {
+        match rng.next_u32() % 3 {
+            0 => along[axis] = rng.next_range(-half[axis], half[axis]),
+            side => {
+                gap[axis] = scale(rng, -3.0, 4.0);
+                let sign = if side == 1 { -1.0 } else { 1.0 };
+                along[axis] = sign * (half[axis] + gap[axis]);
+            }
+        }
+    }
+    let away = gap.length();
+    let radius = match rng.next_u32() % 8 {
+        // A reach that ends within a hundredth, or a twentieth, of the box.
+        0..=2 => away * rng.next_range(0.99, 1.01),
+        3 | 4 => away * rng.next_range(0.95, 1.0),
+        5 => away * rng.next_range(0.2, 1.0),
+        _ => scale(rng, -3.0, 4.0),
+    };
+    let nearest = (along / size).clamp(Vec2::splat(-0.5), Vec2::splat(0.5));
+    (quad, centre + quad.turned(along), radius, nearest)
+}
+
+/// Positions a fragment of `quad` can read: its corners, its point nearest
+/// the light, points along its edges and inside it; and each again moved by
+/// more than interpolation rounds, a fifty-thousandth of the quad's
+/// coordinates and size an axis (some 170 float steps).
+fn quad_points(rng: &mut Pcg32, quad: &Quad, nearest: Vec2) -> Vec<Vec2> {
+    let mut at = vec![
+        Vec2::new(-0.5, -0.5),
+        Vec2::new(0.5, -0.5),
+        Vec2::new(-0.5, 0.5),
+        Vec2::new(0.5, 0.5),
+        nearest,
+    ];
+    for _ in 0..8 {
+        let along = rng.next_range(-0.5, 0.5);
+        let side = if rng.next_u32().is_multiple_of(2) {
+            -0.5
+        } else {
+            0.5
+        };
+        at.push(if rng.next_u32().is_multiple_of(2) {
+            Vec2::new(along, side)
+        } else {
+            Vec2::new(side, along)
+        });
+    }
+    at.extend((0..16).map(|_| Vec2::new(rng.next_range(-0.5, 0.5), rng.next_range(-0.5, 0.5))));
+    let rounds = (quad.centre.abs().element_sum() + quad.size.abs().element_sum()) * 2e-5;
+    let mut points = Vec::with_capacity(at.len() * 2);
+    for at in at {
+        let point = quad.point(at);
+        points.push(point);
+        points.push(
+            point
+                + Vec2::new(
+                    rng.next_range(-rounds, rounds),
+                    rng.next_range(-rounds, rounds),
+                ),
+        );
+    }
+    points
+}
+
+/// The lines of `lit_sprite.wgsl` that `quad_skips` and [`Quad`] mirror: a
+/// change to any of them changes which lights a quad's fragments skip, so
+/// the mirror and the tests on it must follow.
+#[test]
+fn the_quad_skip_follows_the_lit_shaders_lines() {
+    let lines: Vec<&str> = crate::LIT_SPRITE_SHADER_SOURCE
+        .lines()
+        .map(str::trim)
+        .collect();
+    for expected in [
+        // Where the stage puts the quad.
+        "let c = cos(instance.inst_rot);",
+        "let s = sin(instance.inst_rot);",
+        "scaled.x * c - scaled.y * s,",
+        "scaled.x * s + scaled.y * c,",
+        "let centre = instance.inst_pos + instance.inst_size * 0.5;",
+        "let world_pos = centre + rotated;",
+        // The mark: point lights alone, by their distance from the box,
+        // where the turn's own scale holds.
+        "let unit = c * c + s * s;",
+        "if (skip_lights && abs(unit - 1.0) < 0.003) {",
+        "let half = abs(instance.inst_size) * 0.5;",
+        "if (l.color_intensity.w != 1.0) {",
+        "let radius = max(l.position_radius.z, 0.0001);",
+        "let rel = l.position_radius.xy - centre;",
+        "let unturned = vec2<f32>(rel.x * c + rel.y * s, rel.y * c - rel.x * s);",
+        "let gap = length(max(abs(unturned) - half, vec2<f32>(0.0)));",
+        "let rounding = (abs(centre.x) + abs(centre.y)) * 0.0001;",
+        "let slack = rounding + (half.x + half.y + radius) * 0.004;",
+        "if (gap > radius + slack) {",
+        "skip = skip | (1u << i);",
+        // A marked light takes no term.
+        "if (((in.skip >> i) & 1u) == 1u) {",
+    ] {
+        assert!(
+            lines.contains(&expected),
+            "lit_sprite.wgsl no longer reads `{expected}`: update `quad_skips` to match"
+        );
+    }
+}
+
+#[test]
+fn a_light_a_quad_skips_lights_no_fragment_of_it() {
+    let mut rng = Pcg32::seeded(0x0715_0002);
+    let (mut skipped, mut skipped_near, mut kept_lit) = (0, 0, 0);
+    let (mut eager_lit, mut unheld) = (0, 0);
+    for case in 0..32_768 {
+        let (quad, light_at, radius, nearest) = random_quad_and_light(&mut rng);
+        let points = quad_points(&mut rng, &quad, nearest);
+        let lit = points.iter().any(|&point| lights(light_at, radius, point));
+        if quad_skips(&quad, light_at, radius) {
+            for &point in &points {
+                assert!(
+                    !lights(light_at, radius, point),
+                    "case {case}: a skipped light of radius {radius} at {light_at} lights \
+                     {point} of the quad at {} sized {} turned {:?}",
+                    quad.centre,
+                    quad.size,
+                    quad.sin_cos,
+                );
+            }
+            skipped += 1;
+            // A reach that ends within a fiftieth of the nearest point.
+            if light_at.distance(quad.point(nearest)) < radius * 1.02 {
+                skipped_near += 1;
+            }
+        } else if lit {
+            kept_lit += 1;
+        }
+        // The control: a mark a fiftieth too eager skips a light that
+        // lights a fragment, so the points above can tell.
+        if eager_skips(&quad, light_at, radius) && lit {
+            eager_lit += 1;
+        }
+        if !quad_turn_holds(&quad) {
+            unheld += 1;
+        }
+    }
+    assert!(skipped > 8_000, "{skipped} lights skipped");
+    assert!(skipped_near > 1_000, "{skipped_near} skipped near the edge");
+    assert!(
+        kept_lit > 4_000,
+        "{kept_lit} lights kept that light a point"
+    );
+    assert!(
+        eager_lit > 1_000,
+        "the control skipped {eager_lit} lit lights"
+    );
+    assert!(unheld > 500, "{unheld} quads past the turn's bound");
+}
+
+#[test]
+fn the_quad_skip_takes_the_box_and_rounds_safely() {
+    // Coordinates that round: a 20,000 px quad about the origin and a light
+    // 0.0028 px wide two float steps past its corner on each axis, 0.00276 px
+    // off it. The corner is lit; a margin that is a share of the radius
+    // alone rounds away at this size, and a slack that grows with it does
+    // not.
+    let quad = Quad::flat(Vec2::ZERO, Vec2::splat(20_000.0));
+    let light_at = Vec2::splat(10_000.002);
+    assert_eq!(light_at.x, 10_000.0 + 2.0 / 1_024.0);
+    assert!(lights(light_at, 0.0028, quad.point(Vec2::splat(0.5))));
+    assert!(!quad_skips(&quad, light_at, 0.0028));
+
+    // The box, not its circle: a light of radius 0.1 beside a square of side
+    // 2 is 0.3 off its edge and inside the circle through its corners; and a
+    // lamp 100 px off a long strip's side with a 90 px reach is skipped,
+    // though it lies well inside the strip's circle.
+    let square = Quad::flat(Vec2::ZERO, Vec2::splat(2.0));
+    assert!(quad_skips(&square, Vec2::new(1.3, 0.0), 0.1));
+    let strip = Quad::flat(Vec2::new(4_000.0, 300.0), Vec2::new(2_000.0, 16.0));
+    let beside = Vec2::new(4_000.0, 408.0);
+    assert!(quad_skips(&strip, beside, 90.0));
+    assert!(
+        !quad_skips(&strip, beside, 100.0),
+        "its reach meets the edge"
+    );
+    assert!(
+        !quad_skips(&strip, strip.centre, 1.0),
+        "a light on the quad"
+    );
+    // A size's sign mirrors the quad and moves no edge.
+    let mirrored = Quad::flat(strip.centre, -strip.size);
+    assert!(quad_skips(&mirrored, beside, 90.0));
+    assert!(!quad_skips(&mirrored, beside, 100.0));
+
+    // Turned a quarter, the strip stands: the same lamp is over its length.
+    let stood = Quad {
+        sin_cos: FRAC_PI_2.sin_cos(),
+        ..strip
+    };
+    assert!(!quad_skips(&stood, beside, 90.0));
+    assert!(quad_skips(&stood, Vec2::new(4_108.0, 300.0), 90.0));
+
+    // A cosine 0.4 % long draws the strip 0.4 % longer: a lamp 5 px off
+    // that longer end with a 6 px reach lights it, the test by the box
+    // would mark it, and the turn's bound marks nothing.
+    let long = Quad {
+        sin_cos: (0.0, 1.004),
+        ..strip
+    };
+    let end = long.point(Vec2::new(0.5, 0.0));
+    assert_eq!(end, Vec2::new(5_004.0, 300.0));
+    let off_the_end = end + Vec2::new(5.0, 0.0);
+    assert!(lights(off_the_end, 6.0, end));
+    assert!(quad_marks(&long, off_the_end, 6.0));
+    assert!(!quad_skips(&long, off_the_end, 6.0));
+
+    // The slack is small beside a reach: a lamp is kept only while it ends
+    // within a few pixels of a sprite.
+    let sprite = Quad::flat(Vec2::new(3_000.0, 500.0), Vec2::splat(64.0));
+    let lamp = Vec2::new(3_332.0, 500.0);
+    assert!(quad_skips(&sprite, lamp, 297.0), "3 px short of the sprite");
+    assert!(!quad_skips(&sprite, lamp, 299.0), "a pixel short");
 }

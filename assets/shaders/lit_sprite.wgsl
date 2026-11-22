@@ -57,6 +57,12 @@ struct Flash {
 @group(3) @binding(0)
 var<uniform> flash: Flash;
 
+// Whether a quad's vertices mark the lights that cannot reach it (redo
+// 7.15). The pipeline turns it off under MSAA, where a fragment's position
+// is its pixel's centre, which can lie outside the quad the pixel's samples
+// cover, so that a light just short of the quad could still reach it.
+override skip_lights: bool = true;
+
 struct VertexInput {
     @location(0) position: vec2<f32>,
     @location(1) uv: vec2<f32>,
@@ -79,6 +85,10 @@ struct VertexOutput {
     @location(2) world_pos: vec2<f32>,
     // -1 for a flipped sprite (a negative UV width), whose normals mirror.
     @location(3) @interpolate(flat) mirror: f32,
+    // A bit a packed light that cannot reach the quad (redo 7.15): the point
+    // lights whose radius ends short of the quad's box, so that their term
+    // is exactly zero at every fragment of it.
+    @location(4) @interpolate(flat) skip: u32,
 };
 
 @vertex
@@ -101,6 +111,35 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     out.tint = instance.inst_tint;
     out.world_pos = world_pos;
     out.mirror = select(1.0, -1.0, instance.inst_uv_size.x < 0.0);
+    // The lights that cannot reach the quad. A light's distance from the
+    // quad's box, taken in the quad's own axes with its turn undone, bounds
+    // its distance from every fragment of it; where that passes the light's
+    // radius by more than the two stages can round, the light's attenuation
+    // is exactly 0 at each of them, as the fragment's own range test would
+    // find. The slack is that rounding's bound: positions round with the
+    // coordinates' size, and a `c` and `s` that are off scale the box and
+    // the reach by `unit`, which lies within 0.3 % of 1 or nothing is marked.
+    var skip = 0u;
+    let unit = c * c + s * s;
+    if (skip_lights && abs(unit - 1.0) < 0.003) {
+        let half = abs(instance.inst_size) * 0.5;
+        let count = lighting.count_pad.x;
+        for (var i: u32 = 0u; i < count; i = i + 1u) {
+            let l = lighting.lights[i];
+            if (l.color_intensity.w != 1.0) {
+                let radius = max(l.position_radius.z, 0.0001);
+                let rel = l.position_radius.xy - centre;
+                let unturned = vec2<f32>(rel.x * c + rel.y * s, rel.y * c - rel.x * s);
+                let gap = length(max(abs(unturned) - half, vec2<f32>(0.0)));
+                let rounding = (abs(centre.x) + abs(centre.y)) * 0.0001;
+                let slack = rounding + (half.x + half.y + radius) * 0.004;
+                if (gap > radius + slack) {
+                    skip = skip | (1u << i);
+                }
+            }
+        }
+    }
+    out.skip = skip;
     return out;
 }
 
@@ -116,6 +155,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var rgb = albedo.rgb * lighting.ambient.rgb;
     let count = lighting.count_pad.x;
     for (var i: u32 = 0u; i < count; i = i + 1u) {
+        // A light the vertex stage found out of the quad's reach.
+        if (((in.skip >> i) & 1u) == 1u) {
+            continue;
+        }
         let l = lighting.lights[i];
         if (l.color_intensity.w == 1.0) {
             // Directional: position_radius.xy = (cos, sin) of the angle.

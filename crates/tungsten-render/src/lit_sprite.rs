@@ -114,6 +114,14 @@ fn build_lit_sprite_pipeline(
     depth_write: bool,
 ) -> wgpu::RenderPipeline {
     let vertex_layouts = SpritePipeline::vertex_layouts();
+    // A quad's vertices mark the lights that cannot reach it, which holds
+    // while a fragment's position lies inside its quad: without MSAA (redo
+    // 7.15; the shader's `skip_lights`).
+    let constants = [("skip_lights", if sample_count == 1 { 1.0 } else { 0.0 })];
+    let compilation_options = wgpu::PipelineCompilationOptions {
+        constants: &constants,
+        ..Default::default()
+    };
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("lit_sprite_pipeline"),
         layout: Some(layout),
@@ -121,7 +129,7 @@ fn build_lit_sprite_pipeline(
             module,
             entry_point: Some("vs_main"),
             buffers: &vertex_layouts,
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            compilation_options: compilation_options.clone(),
         },
         fragment: Some(wgpu::FragmentState {
             module,
@@ -131,7 +139,7 @@ fn build_lit_sprite_pipeline(
                 blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            compilation_options,
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
