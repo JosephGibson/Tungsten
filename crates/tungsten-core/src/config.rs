@@ -183,11 +183,18 @@ impl FromStr for PresentModeConfig {
     }
 }
 
+/// How the scene pass orders its sprites (`render.depth_sort`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DepthSortMode {
+    /// The painter's order alone: every batch draws in the frame's order
+    /// and no depth is tested.
     #[default]
     CpuStable,
+    /// The same picture under a depth test (redo 7.15): each batch's depth
+    /// is its place in the frame's order, the batches marked solid draw
+    /// first and write it, and every fragment an opaque texel of theirs
+    /// covers is skipped. Needs `depth_enabled`.
     GpuDepth,
 }
 

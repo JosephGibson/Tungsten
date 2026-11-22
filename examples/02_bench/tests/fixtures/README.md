@@ -54,6 +54,16 @@ five knob variants of the preset twice, once through the capture path and
 once with `TUNGSTEN_CAPTURE_DIRECT=1`, and asserts that the two images are
 equal with `tolerance = 0`.
 
+It runs `the_depth_sort_draws_the_painters_image` (`D-297`) too, behind the
+same gate and with no fixture: it captures frame 5 of the preset and of three
+knob variants (the scene alone, MSAA 4, SMAA) under
+`TUNGSTEN_RENDER_DEPTH_SORT=cpu_stable` and again under `gpu_depth`, and
+asserts that each pair is equal with `tolerance = 0`. The preset's sprites
+interleave classes within a z-run over three tile layers, and its generated
+sprites are never measured, so none of its batches is solid: the test holds
+the tested path, and the fixtures' `seams` sheet
+(`the_depth_sort_draws_the_painters_sheet`) the solid batches' order.
+
 The comparison uses `tungsten::render::compare_png` with `tolerance = 2`
 (per-channel delta) and asserts `pixels_above_tolerance == 0`. If the Linux
 Vulkan path jitters at that floor in a future driver update, see `D-047` for

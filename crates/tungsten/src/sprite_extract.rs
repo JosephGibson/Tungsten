@@ -3,8 +3,11 @@
 //! tilemaps, then this.
 //!
 //! D-042: explicit `Visibility` required. Order: `(z_order, entity.id)`,
-//! batched within z-runs. `z_norm` is derived from the same painter ordering
-//! so `DepthSortMode::GpuDepth` reproduces the CPU-visible order.
+//! batched within z-runs. `z_norm` is derived from the same painter ordering;
+//! no stock pipeline's depth reads it, a batch's depth under
+//! `DepthSortMode::GpuDepth` being its place in the frame's list (redo
+//! 7.15). The `Sprite` entities' batches are never marked solid: only the
+//! tile layers' and the backdrops' are.
 //!
 //! M26: batch key extends with `(material_id, uniform_overrides_hash)` so
 //! per-entity material animations never alias through one UBO upload. Same-
@@ -390,7 +393,10 @@ const BACKDROP_COPIES: usize = 1 << 16;
 
 /// The default base's backdrops ([`Backdrop`]), by `z_order` then entity:
 /// their copies over the camera's view, on the stock pipeline at the far
-/// plane. Empty, and no buffer touched, without a backdrop.
+/// plane. Empty, and no buffer touched, without a backdrop. Backdrops that
+/// follow one another on one page share a batch while they agree on being
+/// solid (redo 7.15): a sprite whose alpha is two-level under a nearest
+/// sampler, tinted with an alpha of 255.
 pub(crate) fn extract_backdrops(world: &World) -> Vec<SpriteBatch> {
     let mut found: Vec<(i32, u32, Backdrop, Transform)> = world
         .query::<(Entity, &Backdrop, &Transform, Option<&Visibility>)>()
@@ -429,12 +435,19 @@ pub(crate) fn extract_backdrops(world: &World) -> Vec<SpriteBatch> {
             }
             let uv_min = Vec2::from(asset.uv.min);
             let uv_size = Vec2::from(asset.uv.max) - uv_min;
+            let solid = asset.alpha.solid(asset.filter) && backdrop.tint[3] == 255;
             let batch = match out.last_mut() {
-                Some(batch) if batch.texture == asset.atlas && batch.filter == asset.filter => {
+                Some(batch)
+                    if batch.texture == asset.atlas
+                        && batch.filter == asset.filter
+                        && batch.solid == solid =>
+                {
                     batch
                 }
                 _ => {
-                    out.push(SpriteBatch::new(asset.atlas, asset.filter));
+                    let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+                    batch.solid = solid;
+                    out.push(batch);
                     out.last_mut().unwrap()
                 }
             };
@@ -1262,6 +1275,7 @@ fn extract_into(
                 material_id: class.material_id,
                 uniform_overrides: class.uniform_overrides,
                 lit: class.lit,
+                solid: false,
             });
         }
     } else {
@@ -1314,6 +1328,7 @@ fn extract_into(
                     material_id: class.material_id,
                     uniform_overrides: class.uniform_overrides,
                     lit: class.lit,
+                    solid: false,
                 });
             }
             let batch = class.batch as usize;

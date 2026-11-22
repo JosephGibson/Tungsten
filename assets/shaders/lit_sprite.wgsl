@@ -145,8 +145,31 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let albedo = textureSample(t_albedo, s_lit, in.tex_coord) * in.tint;
-    let n_sample = textureSample(t_normal, s_lit, in.tex_coord).xyz * 2.0 - vec3<f32>(1.0);
+    let texel = textureSample(t_albedo, s_lit, in.tex_coord);
+    let normal = textureSample(t_normal, s_lit, in.tex_coord);
+    let glow = textureSample(t_emissive, s_lit, in.tex_coord);
+    return lit(in, texel, normal, glow);
+}
+
+// A solid batch's fragment under the depth test (redo 7.15): every texel
+// the batch samples is clear or opaque and its tint's alpha is 1, so a
+// clear texel, which blends to nothing, is dropped before it writes depth
+// or is lit, and an opaque one draws what `fs_main` draws.
+@fragment
+fn fs_solid(in: VertexOutput) -> @location(0) vec4<f32> {
+    let texel = textureSample(t_albedo, s_lit, in.tex_coord);
+    let normal = textureSample(t_normal, s_lit, in.tex_coord);
+    let glow = textureSample(t_emissive, s_lit, in.tex_coord);
+    if (texel.a < 0.5) {
+        discard;
+    }
+    return lit(in, texel, normal, glow);
+}
+
+// The lit colour of a fragment from its three samples.
+fn lit(in: VertexOutput, texel: vec4<f32>, normal: vec4<f32>, glow: vec4<f32>) -> vec4<f32> {
+    let albedo = texel * in.tint;
+    let n_sample = normal.xyz * 2.0 - vec3<f32>(1.0);
     // 2D shader treats `(n.xy, n.z)` as world-axis normals; sprite plane is
     // assumed parallel to the world plane (no per-fragment tangent frame).
     // A flipped sprite's texels run right to left, so its normals' x turns.
@@ -185,7 +208,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    let emissive = textureSample(t_emissive, s_lit, in.tex_coord).rgb;
+    let emissive = glow.rgb;
     rgb = rgb + emissive;
     // The flash mixes the lit colour toward v0's, as the stock flash mixes
     // the sprite's; uniform per batch, so no amount leaves today's pixel.

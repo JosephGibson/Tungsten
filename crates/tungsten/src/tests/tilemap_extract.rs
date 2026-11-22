@@ -702,3 +702,91 @@ fn a_tile_without_whole_draws_at_its_cells_size() {
     let world = whole_world(Vec2::new(640.0, 0.0), false, &[(1, 38, 10)]);
     assert!(drawn(&world).is_empty());
 }
+
+/// Sets what `id`'s alpha channel holds, as a load's measure would.
+fn set_alpha(world: &mut World, id: &str, alpha: tungsten_core::SpriteAlpha) {
+    world
+        .resource_mut::<AssetRegistry>()
+        .set_sprite_alpha(id, alpha);
+}
+
+#[test]
+fn a_layers_batch_is_solid_while_every_tile_in_it_is() {
+    use tungsten_core::SpriteAlpha;
+    use tungsten_core::assets::tilemap::LayerDraw;
+    let solids = |world: &World| -> Vec<bool> {
+        extract_tilemaps(world)
+            .iter()
+            .map(|batch| batch.solid)
+            .collect()
+    };
+    let build = || {
+        let mut world = world_with_map(
+            Vec2::ZERO,
+            &["rock", "moss", "mist"],
+            2,
+            vec![
+                layer("ground", LayerKind::Render, vec![0, 1]),
+                layer("air", LayerKind::Render, vec![2, -1]),
+            ],
+        );
+        for id in ["rock", "moss", "mist"] {
+            register(&mut world, id, 0, FilterMode::Nearest, UvRect::FULL);
+        }
+        world
+    };
+    // Unmeasured sprites, as a headless load's: nothing is solid.
+    let mut world = build();
+    assert_eq!(solids(&world), [false, false]);
+    // An opaque and a cutout tile make a solid batch; a blend one does not.
+    set_alpha(&mut world, "rock", SpriteAlpha::Opaque);
+    set_alpha(&mut world, "moss", SpriteAlpha::Cutout);
+    assert_eq!(solids(&world), [true, false]);
+    // One tile that is not solid takes its batch with it, whichever comes
+    // first.
+    let mut mixed = build();
+    set_alpha(&mut mixed, "rock", SpriteAlpha::Opaque);
+    assert_eq!(solids(&mixed), [false, false]);
+    let mut mixed = build();
+    set_alpha(&mut mixed, "moss", SpriteAlpha::Opaque);
+    assert_eq!(solids(&mixed), [false, false]);
+    // A layer's tint below an alpha of 255 fades every tile of it.
+    set_alpha(&mut world, "mist", SpriteAlpha::Cutout);
+    assert_eq!(solids(&world), [true, true]);
+    set_draw(
+        &mut world,
+        1,
+        LayerDraw {
+            tint: [255, 255, 255, 254],
+            ..LayerDraw::DEFAULT
+        },
+    );
+    assert_eq!(solids(&world), [true, false]);
+    // A tint that keeps its alpha keeps the mark, and so does an unlit layer.
+    set_draw(
+        &mut world,
+        1,
+        LayerDraw {
+            tint: [10, 20, 30, 255],
+            unlit: true,
+            ..LayerDraw::DEFAULT
+        },
+    );
+    assert_eq!(solids(&world), [true, true]);
+}
+
+#[test]
+fn a_linear_sampled_tile_is_never_solid() {
+    use tungsten_core::SpriteAlpha;
+    let mut world = world_with_map(
+        Vec2::ZERO,
+        &["rock"],
+        1,
+        vec![layer("ground", LayerKind::Render, vec![0])],
+    );
+    register(&mut world, "rock", 0, FilterMode::Linear, UvRect::FULL);
+    set_alpha(&mut world, "rock", SpriteAlpha::Opaque);
+    let batches = extract_tilemaps(&world);
+    assert_eq!(batches.len(), 1);
+    assert!(!batches[0].solid);
+}

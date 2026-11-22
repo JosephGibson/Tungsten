@@ -7,6 +7,9 @@
 //!   tolerance 2.
 //! - `direct_and_capture_paths_draw_the_same_image` compares the two present
 //!   paths of `D-087` with each other, tolerance 0.
+//! - `the_depth_sort_draws_the_painters_image` compares the frame under
+//!   `render.depth_sort = gpu_depth` with the one under `cpu_stable`,
+//!   tolerance 0 (redo 7.15).
 //! - `capture_past_the_last_frame_fails_the_run` and
 //!   `unwritable_capture_path_fails_the_run` check that a capture that writes
 //!   no file fails the run (`D-142`).
@@ -31,6 +34,7 @@ fn visual_command(frame: u32, path: &Path, sets: Option<&str>, direct: bool) -> 
         .env_remove("TUNGSTEN_BENCH_SET")
         .env_remove("TUNGSTEN_BENCH_DESCRIBE")
         .env_remove("TUNGSTEN_CAPTURE_DIRECT")
+        .env_remove("TUNGSTEN_RENDER_DEPTH_SORT")
         .env("TUNGSTEN_SMOKE_FRAMES", "8")
         .env("TUNGSTEN_CAPTURE_FRAME", frame.to_string())
         .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")
@@ -112,6 +116,44 @@ fn direct_and_capture_paths_draw_the_same_image() {
         assert_eq!(
             report.pixels_above_tolerance, 0,
             "{name} ({sets}): the direct path differs from the capture path: {report:?}"
+        );
+    }
+}
+
+/// Under the `gpu_depth` sort every batch is depth-tested at its place in
+/// the frame's list and a solid batch draws first and writes depth (redo
+/// 7.15); the frame is the painter's, pixel for pixel, whatever ends it. The
+/// preset's sprites interleave classes within a z-run over three tile
+/// layers, the case the sort's first form drew wrong (M43).
+#[test]
+fn the_depth_sort_draws_the_painters_image() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let sorted = |name: &str, sets: Option<&str>, sort: &str| {
+        let actual = capture_path(name);
+        let status = visual_command(5, &actual, sets, false)
+            .env("TUNGSTEN_RENDER_DEPTH_SORT", sort)
+            .status()
+            .expect("run example-02-bench");
+        assert!(status.success(), "example-02-bench exited with {status:?}");
+        actual
+    };
+    let cases = [
+        ("preset", None),
+        ("scene", Some("post=none,aa=off")),
+        // The depth target is multisampled with the colour.
+        ("msaa", Some("post=none,aa=msaa4")),
+        ("smaa", Some("aa=smaa_high")),
+    ];
+    for (name, sets) in cases {
+        let painter = sorted(&format!("{name}-cpu-stable"), sets, "cpu_stable");
+        let depth = sorted(&format!("{name}-gpu-depth"), sets, "gpu_depth");
+        let report = compare_png(&painter, &depth, 0).expect("compare the two sorts");
+        assert_eq!(
+            report.pixels_above_tolerance, 0,
+            "{name} ({sets:?}): gpu_depth differs from cpu_stable: {report:?}"
         );
     }
 }

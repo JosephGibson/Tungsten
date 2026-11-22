@@ -351,7 +351,8 @@ impl Renderer {
         // Every pipeline that renders into the scene pass must agree with
         // the pass attachments. Under GpuDepth the pass has a depth buffer,
         // so quad/debug_line/text get a read-only `Always` depth state and
-        // sprite gets the writing `LessEqual` variant.
+        // the sprite pipelines the `LessEqual` test, written by a solid
+        // batch's variant alone (redo 7.15).
         let depth_attached = matches!(depth_sort, DepthSortMode::GpuDepth);
 
         let quad_pipeline = QuadPipeline::new(&device, format, sample_count, depth_attached);
@@ -2081,6 +2082,7 @@ impl Renderer {
                     &self.materials,
                     &self.lit_sprite_pipeline,
                     &self.lighting,
+                    (self.surface_config.width, self.surface_config.height),
                 );
             } else if is_smaa_edge {
                 if let Some(smaa) = self.smaa.as_mut() {
@@ -2213,6 +2215,7 @@ fn record_main_draws<'a>(
     materials: &'a HashMap<MaterialAssetId, MaterialPipeline>,
     lit_sprite_pipeline: &'a LitSpritePipeline,
     lighting: &'a LightingResources,
+    target: (u32, u32),
 ) {
     render_pass.push_debug_group("quads");
     quad_pipeline.draw(device, render_pass, quads);
@@ -2227,6 +2230,7 @@ fn record_main_draws<'a>(
         materials,
         Some(lit_sprite_pipeline),
         Some(&lighting.bind_group),
+        target,
     );
     render_pass.pop_debug_group();
 

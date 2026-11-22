@@ -59,15 +59,13 @@ impl<T> Channel<T> {
 /// before a game's. Replacing a base keeps the contributions; a game that
 /// wants none of them leaves out the plugin that adds them.
 ///
-/// Depth: a contribution's instances keep the `z_norm` its closure wrote.
-/// Under the CPU sort, the channel's order is what draws on top. Under the
-/// `gpu_depth` sort, an instance at `z_norm` 0, which hand-written extracts
-/// usually write, passes the depth test against everything drawn before it,
-/// so a contribution draws over the default. A nonzero `z_norm` is the
-/// caller's depth and is tested against the default's: its backdrops,
-/// under- and over-tile contributions and bottom tiles sit at 1.0, the far
-/// plane, where a later draw wins, and its sprites and raised layers in
-/// [0, 1), the last drawn at 0.
+/// Depth: the channel's order is what draws on top, under either depth
+/// sort. Under `gpu_depth` a batch's depth is its place in the frame's list
+/// (redo 7.15), so a contribution draws over the default as it does under
+/// the CPU sort, whatever `z_norm` its closure wrote; the value stays in
+/// the instance, within 0..=1, and no stock pipeline's depth reads it. A
+/// batch a closure marks solid (`SpriteBatch::solid`) hides what its opaque
+/// texels cover of the batches before it.
 ///
 /// Without the resource, which only its removal causes, the channels draw
 /// nothing.

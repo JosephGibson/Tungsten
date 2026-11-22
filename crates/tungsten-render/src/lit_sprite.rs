@@ -24,6 +24,9 @@ pub const LIT_SPRITE_SHADER_SOURCE: &str = include_str!("../../../assets/shaders
 /// is replaced.
 pub struct LitSpritePipeline {
     pub pipeline: wgpu::RenderPipeline,
+    /// Under `DepthSortMode::GpuDepth`, the pipeline a solid batch draws
+    /// with: `fs_solid`, writing depth (redo 7.15).
+    pub(crate) pipeline_solid: Option<wgpu::RenderPipeline>,
     pub pipeline_layout: wgpu::PipelineLayout,
     /// Group 3: a batch's `UniformOverrideBlock`, 256 bytes (`D-101`).
     pub flash_bind_group_layout: wgpu::BindGroupLayout,
@@ -72,17 +75,29 @@ impl LitSpritePipeline {
             &pipeline_layout,
             surface_format,
             sample_count,
-            depth_write,
+            depth_write.then_some(false),
         );
+        let pipeline_solid = depth_write.then(|| {
+            build_lit_sprite_pipeline(
+                device,
+                module,
+                &pipeline_layout,
+                surface_format,
+                sample_count,
+                Some(true),
+            )
+        });
         Self {
             pipeline,
+            pipeline_solid,
             pipeline_layout,
             flash_bind_group_layout,
         }
     }
 
-    /// Rebuild only the pipeline against `module`, preserving the layout. A
-    /// pipeline that fails validation is not swapped in (`Err`).
+    /// Rebuild only the pipelines against `module`, preserving the layout:
+    /// under `depth_write` the tested one and the solid one. A pipeline that
+    /// fails validation is not swapped in (`Err`), and neither is its pair.
     pub fn rebuild_with_shader(
         &mut self,
         device: &wgpu::Device,
@@ -91,16 +106,26 @@ impl LitSpritePipeline {
         sample_count: u32,
         depth_write: bool,
     ) -> Result<(), String> {
-        self.pipeline = crate::shader_hot_reload::build_validated(device, || {
-            build_lit_sprite_pipeline(
-                device,
-                module,
-                &self.pipeline_layout,
-                surface_format,
-                sample_count,
-                depth_write,
-            )
-        })?;
+        let build = |write: Option<bool>| {
+            crate::shader_hot_reload::build_validated(device, || {
+                build_lit_sprite_pipeline(
+                    device,
+                    module,
+                    &self.pipeline_layout,
+                    surface_format,
+                    sample_count,
+                    write,
+                )
+            })
+        };
+        let pipeline = build(depth_write.then_some(false))?;
+        let pipeline_solid = if depth_write {
+            Some(build(Some(true))?)
+        } else {
+            None
+        };
+        self.pipeline = pipeline;
+        self.pipeline_solid = pipeline_solid;
         Ok(())
     }
 }
@@ -111,8 +136,11 @@ fn build_lit_sprite_pipeline(
     layout: &wgpu::PipelineLayout,
     surface_format: wgpu::TextureFormat,
     sample_count: u32,
-    depth_write: bool,
+    depth: Option<bool>,
 ) -> wgpu::RenderPipeline {
+    // `depth` as the sprite pipeline's: none, tested, or tested and written
+    // by a solid batch's `fs_solid`.
+    let solid = depth == Some(true);
     let vertex_layouts = SpritePipeline::vertex_layouts();
     // A quad's vertices mark the lights that cannot reach it, which holds
     // while a fragment's position lies inside its quad: without MSAA (redo
@@ -123,7 +151,11 @@ fn build_lit_sprite_pipeline(
         ..Default::default()
     };
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("lit_sprite_pipeline"),
+        label: Some(if solid {
+            "lit_sprite_solid_pipeline"
+        } else {
+            "lit_sprite_pipeline"
+        }),
         layout: Some(layout),
         vertex: wgpu::VertexState {
             module,
@@ -133,7 +165,7 @@ fn build_lit_sprite_pipeline(
         },
         fragment: Some(wgpu::FragmentState {
             module,
-            entry_point: Some("fs_main"),
+            entry_point: Some(if solid { "fs_solid" } else { "fs_main" }),
             targets: &[Some(wgpu::ColorTargetState {
                 format: surface_format,
                 blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -147,17 +179,13 @@ fn build_lit_sprite_pipeline(
             cull_mode: None,
             ..Default::default()
         },
-        depth_stencil: if depth_write {
-            Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            })
-        } else {
-            None
-        },
+        depth_stencil: depth.map(|write| wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(write),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
         multisample: wgpu::MultisampleState {
             count: sample_count,
             mask: !0,

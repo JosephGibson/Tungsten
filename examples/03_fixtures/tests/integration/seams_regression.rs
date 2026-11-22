@@ -32,29 +32,55 @@ fn gated() -> bool {
 /// The scene's frame 5, captured on first use.
 fn capture() -> &'static Rgba {
     static CAPTURE: OnceLock<Rgba> = OnceLock::new();
-    CAPTURE.get_or_init(|| {
-        let path = std::env::temp_dir().join("tungsten-seams-regression.png");
-        if path.exists() {
-            let _ = std::fs::remove_file(&path);
-        }
-        let status = std::process::Command::new(env!("CARGO_BIN_EXE_example-03-fixtures"))
-            .current_dir(workspace_root())
-            .env("TUNGSTEN_FIXTURE", "seams")
-            .env_remove("TUNGSTEN_CAPTURE_DIRECT")
-            .env("TUNGSTEN_SMOKE_FRAMES", "8")
-            .env("TUNGSTEN_CAPTURE_FRAME", "5")
-            .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")
-            .env("TUNGSTEN_CAPTURE_PATH", &path)
-            .status()
-            .expect("run example-03-fixtures");
-        assert!(
-            status.success(),
-            "example-03-fixtures exited with {status:?}"
-        );
-        let image = Rgba::read(&path);
-        assert_eq!((image.width, image.height), (1280, 720));
-        image
-    })
+    CAPTURE.get_or_init(|| capture_sorted("cpu_stable", "tungsten-seams-regression.png"))
+}
+
+/// The scene's frame 5 under depth sort `sort`, written to `file` in the
+/// temporary folder.
+fn capture_sorted(sort: &str, file: &str) -> Rgba {
+    let path = std::env::temp_dir().join(file);
+    if path.exists() {
+        let _ = std::fs::remove_file(&path);
+    }
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_example-03-fixtures"))
+        .current_dir(workspace_root())
+        .env("TUNGSTEN_FIXTURE", "seams")
+        .env_remove("TUNGSTEN_CAPTURE_DIRECT")
+        .env("TUNGSTEN_RENDER_DEPTH_SORT", sort)
+        .env("TUNGSTEN_SMOKE_FRAMES", "8")
+        .env("TUNGSTEN_CAPTURE_FRAME", "5")
+        .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")
+        .env("TUNGSTEN_CAPTURE_PATH", &path)
+        .status()
+        .expect("run example-03-fixtures");
+    assert!(
+        status.success(),
+        "example-03-fixtures exited with {status:?}"
+    );
+    let image = Rgba::read(&path);
+    assert_eq!((image.width, image.height), (1280, 720));
+    image
+}
+
+/// Under the `gpu_depth` sort the scene's solid batches, its backdrop and
+/// its white strip between the two sprites, draw first and write depth
+/// (redo 7.15): the sheet is the painter's, pixel for pixel.
+#[test]
+fn the_depth_sort_draws_the_painters_sheet() {
+    if !gated() {
+        return;
+    }
+    let painter = capture();
+    let depth = capture_sorted("gpu_depth", "tungsten-seams-regression-gpu-depth.png");
+    let differing = painter
+        .pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(depth.pixels.as_chunks::<4>().0)
+        .filter(|(a, b)| a != b)
+        .count();
+    assert_eq!(differing, 0, "pixels that differ under gpu_depth");
 }
 
 /// The pixels of the piece at `centre` over its quad's columns `xs` and

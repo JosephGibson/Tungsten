@@ -673,6 +673,7 @@ impl FrameDraw {
                     material_id: batch.material_id,
                     uniform_overrides: batch.uniform_overrides,
                     lit: batch.lit,
+                    solid: batch.solid,
                 })
                 .collect(),
             text: extract.text.clone(),
