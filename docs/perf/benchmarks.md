@@ -338,6 +338,12 @@ Six rows of example 01 at 3840×2160, GPU runs only, three repeats: `e01-area-cl
 
 - **Owned:** the scene pass and `render_span` p50/p95; `post0_bloom_threshold`, `post0_bloom_composite` and `post1_vignette` p50.
 - **GPU counters:** `e01-area-clearing` is pinned in `just perf counters`.
+- **The scene pass, split at 7.15's gate** (2026-11-21, `65d82c00`, `perf-runs/715-gpu-pass/step-1/`). A GPU pass is timed whole, so the gate read the scene pass's parts as differences of captures under knock-out switches, applied to the tree for the measurement and restored (`perf-runs/20261121-gpu-pass-plan/tools/`, its `README.md`), three GPU runs a label through the runner on a quiet machine. Clearing / aqueduct / ravine / hollow / mine / bridge:
+  - **The scene pass** 16.105 / 20.207 / 7.980 / 28.068 / 19.446 / 12.431 ms of a 22.160 / 26.278 / 13.936 / 34.213 / 25.487 / 18.398 ms `render_span`.
+  - **The lit path,** the pass less itself with lit batches drawn through the plain pipeline: 12.858 / 16.899 / 5.269 / 24.691 / 16.080 / 9.378 ms. 01's World holds 23 lights and every area packs 16, one of them dark (two in the hollow); a lit fragment loops over all sixteen.
+  - **The backdrops and tile layers,** under the plain draw: 2.664 / 2.873 / 2.358 / 2.629 / 2.777 / 2.507 ms; with both out the pass reads 0.582 / 0.435 / 0.353 / 0.748 / 0.589 / 0.545, the `Sprite` entities and an empty pass.
+  - **Particles:** knocking emission out moves no area by 0.01 ms.
+  - **The post passes** sum to 5.43–5.56 ms in every area, bloom's chain 3.73–3.83 and the vignette 1.69–1.73, each pass's time following its target's pixels and taps (`step-1/areas/passes.txt`); the stack reads 5.34 ms on `gpu` at 3840x2160 with nothing drawn.
 
 ## Counter guards
 
@@ -399,7 +405,7 @@ Each bench guard runs its row's warm-up and a 60-frame window at the configurati
 - **Below the calibration band:** open. `physics` (6.07 ms `total` p95 against 14.58 at calibration), `physics-sparse` (3.73 against 10.11), `churn` (4.06 against 11.3) and `particles` (4.92 on 2026-10-04 against 11.6) run under the 8–16 ms band; recalibrating is a workload change; Open proposals. `integrated`'s line is closed: the row is retired (redo 7.3).
 - **RSS growth threshold:** open. Judge growth for `churn` only (32 KiB/s median, 16 KiB/s every run); Open proposals.
 - **`ecs`'s per-run mode:** open. Seven system rows take a second value in some runs with the same digest; cause not looked for; `ecs`.
-- **The scene pass's two values in the GPU run:** open, to recheck. They followed the blocking readback's timing; redo 7.3's ring reads timestamps without blocking, so 7.15 checks whether they remain; `gpu`.
+- **The scene pass's two values in the GPU run:** closed (7.15's gate, 2026-11-21). They followed the blocking readback's timing, and redo 7.3's ring reads timestamps without blocking: the five GPU runs of a `gpu` capture read the scene pass p50 6.94, 6.93, 6.94, 6.94 and 6.94 ms (`perf-runs/20261122T022830Z-gpu/`), and the twenty of 7.14's close sitting 6.93–6.96 (`perf-runs/20261121T224015Z-sitting/`).
 - **`integrated`'s row note naming the old text cache:** closed (the row is retired, redo 7.3).
 - **Compositor-bypass hint on X11:** open. KWin's acquire stall sets `gpu`'s tail at `min`; Session B's list.
 - **Shape-run cache for text shaping:** open; Session B's list.
