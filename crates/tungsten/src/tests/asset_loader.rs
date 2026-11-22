@@ -1691,6 +1691,84 @@ fn a_plan_run_in_slices_registers_and_packs_what_load_all_does() {
 }
 
 #[test]
+fn a_load_measures_each_sprites_alpha_from_its_pixels() {
+    use tungsten_core::SpriteAlpha;
+    // `plan_game`'s sprites: an opaque file, a wholly clear one, and a sheet
+    // whose fourth cell is half clear.
+    let manifest_path = plan_game("");
+    let dir = manifest_path.parent().unwrap().to_path_buf();
+    // A cutout beside them: one clear texel in an opaque image.
+    let mut hill = image::RgbaImage::from_pixel(4, 4, image::Rgba([5, 5, 5, 255]));
+    hill.put_pixel(0, 0, image::Rgba([0, 0, 0, 0]));
+    hill.save(dir.join("hero.png")).unwrap();
+    let manifest = ResolvedManifest::load(&manifest_path).unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest, &mut world);
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    let sprites = world.resource::<AssetRegistry>();
+    let alpha = |name: &str| sprites.get_sprite(name).unwrap().alpha;
+    assert_eq!(alpha("hero"), SpriteAlpha::Cutout);
+    assert_eq!(alpha("panel"), SpriteAlpha::Cutout, "every texel clear");
+    // A sheet's frames are measured a frame, not a file.
+    for frame in ["walk_0", "walk_1", "walk_2"] {
+        assert_eq!(alpha(frame), SpriteAlpha::Opaque, "{frame}");
+    }
+    assert_eq!(alpha("walk_3"), SpriteAlpha::Blend);
+    // The engine's white texel.
+    assert_eq!(alpha(ENGINE_WHITE), SpriteAlpha::Opaque);
+}
+
+#[test]
+fn a_reloads_cut_measures_as_the_edited_pixels() {
+    use tungsten_core::SpriteAlpha;
+    let dir = tempdir();
+    write_walk_frames(&dir, 200);
+    let rects: Vec<_> = (0..4)
+        .map(|n| Some([n % 2 * 16, n / 2 * 16, 16, 16]))
+        .collect();
+    let cut = |dir: &Path| {
+        super::atlas::reload_cuts(&dir.join("walk.png"), None, None, &rects, |_, why| {
+            panic!("no sibling: {why}")
+        })
+        .unwrap()
+    };
+    let measured = |cuts: &[Option<super::atlas::Cut>]| -> Vec<SpriteAlpha> {
+        cuts.iter()
+            .map(|cut| SpriteAlpha::measure(&cut.as_ref().unwrap().rgba))
+            .collect()
+    };
+    let before = measured(&cut(&dir));
+    assert_eq!(
+        before,
+        [
+            SpriteAlpha::Opaque,
+            SpriteAlpha::Opaque,
+            SpriteAlpha::Opaque,
+            SpriteAlpha::Blend
+        ]
+    );
+    // The edit: the first cell gains a clear texel, the fourth turns opaque.
+    let mut sheet = image::open(dir.join("walk.png")).unwrap().to_rgba8();
+    sheet.put_pixel(3, 3, image::Rgba([0, 0, 0, 0]));
+    for y in 16..32 {
+        for x in 16..32 {
+            sheet.put_pixel(x, y, image::Rgba([7, 7, 7, 255]));
+        }
+    }
+    sheet.save(dir.join("walk.png")).unwrap();
+    assert_eq!(
+        measured(&cut(&dir)),
+        [
+            SpriteAlpha::Cutout,
+            SpriteAlpha::Opaque,
+            SpriteAlpha::Opaque,
+            SpriteAlpha::Opaque
+        ]
+    );
+}
+
+#[test]
 fn the_boot_group_loads_first() {
     let with_group = ResolvedManifest::load(plan_game(
         r#", "boot": {"logo": "hero", "bar": "walk_1", "font": "sans"}"#,

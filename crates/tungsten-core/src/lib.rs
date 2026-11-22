@@ -40,7 +40,7 @@ pub use assets::{
     ResolvedSound, ResolvedUiTheme, Room, RoomCommand, RoomError, RoomGenerator, RoomGenerators,
     RoomJournal, RoomRegistry, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform,
     SceneTween, SceneTweenChannel, SceneTweenRepeat, Slope, SlopeCorner, SlopeRise, SoundData,
-    SoundEntry, SoundRegistry, SpawnedRoom, SpriteAsset, SpriteAssetId, StagedLoad,
+    SoundEntry, SoundRegistry, SpawnedRoom, SpriteAlpha, SpriteAsset, SpriteAssetId, StagedLoad,
     StagedLoadError, TextureHandle, TileChanges, TileDamage, TileIndex, TileProps, TilemapData,
     TilemapInstance, TilemapLayer, TilemapRegistry, Tileset, UiThemeEntry, WorldRngSeed,
 };

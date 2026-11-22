@@ -198,6 +198,70 @@ fn path_lookup_survives_interning_before_registration() {
 }
 
 #[test]
+fn a_sprites_alpha_measures_as_opaque_cutout_or_blend() {
+    let image =
+        |alphas: &[u8]| -> Vec<u8> { alphas.iter().flat_map(|&a| [10, 20, 30, a]).collect() };
+    let measure = |alphas: &[u8]| SpriteAlpha::measure(&image(alphas));
+    assert_eq!(measure(&[255, 255, 255]), SpriteAlpha::Opaque);
+    assert_eq!(measure(&[255, 0, 255]), SpriteAlpha::Cutout);
+    // A wholly clear image holds no texel between the two levels.
+    assert_eq!(measure(&[0, 0]), SpriteAlpha::Cutout);
+    // One texel between them is enough, wherever it sits.
+    for between in 1..255u8 {
+        assert_eq!(measure(&[255, between, 0]), SpriteAlpha::Blend, "{between}");
+        assert_eq!(measure(&[between, 255]), SpriteAlpha::Blend, "{between}");
+        assert_eq!(measure(&[0, 255, between]), SpriteAlpha::Blend, "{between}");
+    }
+    // Colour never counts, and no pixels measure as unmeasured.
+    assert_eq!(
+        SpriteAlpha::measure(&[0, 0, 0, 255, 255, 255, 255, 255]),
+        SpriteAlpha::Opaque
+    );
+    assert_eq!(SpriteAlpha::measure(&[]), SpriteAlpha::Blend);
+    assert_eq!(SpriteAlpha::default(), SpriteAlpha::Blend);
+}
+
+#[test]
+fn only_a_two_level_sprite_under_a_nearest_sampler_is_solid() {
+    for alpha in [SpriteAlpha::Opaque, SpriteAlpha::Cutout] {
+        assert!(alpha.solid(FilterMode::Nearest), "{alpha:?}");
+        // A linear sampler mixes a cutout's edge, and the rule is one rule.
+        assert!(!alpha.solid(FilterMode::Linear), "{alpha:?}");
+    }
+    assert!(!SpriteAlpha::Blend.solid(FilterMode::Nearest));
+    assert!(!SpriteAlpha::Blend.solid(FilterMode::Linear));
+}
+
+#[test]
+fn a_sprite_is_blend_until_its_alpha_is_set_and_a_change_moves_the_epoch() {
+    let mut reg = AssetRegistry::new();
+    register(&mut reg, "hill", FilterMode::Nearest, 16, 16, "hill.png");
+    assert_eq!(reg.get_sprite("hill").unwrap().alpha, SpriteAlpha::Blend);
+    let epoch = reg.sprite_epoch();
+    reg.set_sprite_alpha("hill", SpriteAlpha::Cutout);
+    assert_eq!(reg.get_sprite("hill").unwrap().alpha, SpriteAlpha::Cutout);
+    assert_eq!(reg.sprite_epoch(), epoch + 1);
+    // The class it holds, an interned name and an unknown one change nothing.
+    reg.set_sprite_alpha("hill", SpriteAlpha::Cutout);
+    reg.intern_sprite("later");
+    reg.set_sprite_alpha("later", SpriteAlpha::Opaque);
+    reg.set_sprite_alpha("missing", SpriteAlpha::Opaque);
+    assert_eq!(reg.sprite_epoch(), epoch + 1);
+    reg.set_sprite_alpha("hill", SpriteAlpha::Opaque);
+    assert_eq!(reg.sprite_epoch(), epoch + 2);
+    // New pixels under the entry: what the old ones measured as is gone, so
+    // a caller that replaces an entry and measures nothing marks nothing.
+    reg.update_sprite_entry("hill", TextureHandle(0), UvRect::FULL, 16, 16);
+    assert_eq!(reg.get_sprite("hill").unwrap().alpha, SpriteAlpha::Blend);
+    assert!(
+        !reg.get_sprite("hill")
+            .unwrap()
+            .alpha
+            .solid(FilterMode::Nearest)
+    );
+}
+
+#[test]
 fn the_sprite_epoch_rises_on_every_change_and_never_on_interning() {
     let mut reg = AssetRegistry::new();
     assert_eq!(reg.sprite_epoch(), 0);

@@ -34,7 +34,9 @@ pub use particle::{
     ParticleMeshRegistry, ParticleRender, Range, WorldRngSeed,
 };
 pub use prefab::{PrefabData, PrefabError, PrefabRegistry, PreparedPrefab};
-pub use registry::{AssetRegistry, FontRegistry, SpriteAsset, SpriteAssetId, TextureHandle};
+pub use registry::{
+    AssetRegistry, FontRegistry, SpriteAlpha, SpriteAsset, SpriteAssetId, TextureHandle,
+};
 pub use room::{
     AuthoredRoom, AuthoredRooms, CompiledPlace, CompiledRoom, Generate, GenerateError,
     GeneratedRooms, Generation, PlaceShape, Room, RoomBudget, RoomCommand, RoomCommandError,

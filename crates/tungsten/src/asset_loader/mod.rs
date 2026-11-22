@@ -16,7 +16,7 @@ use tungsten_core::assets::{
 };
 use tungsten_core::physics::{PhysicsLayers, PhysicsMaterials};
 use tungsten_core::ui::{ScreenFile, Theme, ThemeFile, UiScreenRegistry, UiThemeRegistry};
-use tungsten_core::{AssetRegistry, World};
+use tungsten_core::{AssetRegistry, SpriteAlpha, World};
 use tungsten_render::Renderer;
 use tungsten_render::sprite::TextureHandles;
 
@@ -139,6 +139,8 @@ fn register_engine_white(world: &mut World, target: &mut dyn LoadTarget) {
         None,
         None,
     );
+    // One white texel (redo 7.15).
+    registry.set_sprite_alpha(ENGINE_WHITE, SpriteAlpha::Opaque);
 }
 
 /// Theme file paths by `ui_themes` ID (M46, `D-148`): the hot reload's

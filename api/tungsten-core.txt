@@ -1829,6 +1829,31 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PreparedPrefab
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PreparedPrefab
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PreparedPrefab
 pub mod tungsten_core::assets::registry
+pub enum tungsten_core::assets::registry::SpriteAlpha
+pub tungsten_core::assets::registry::SpriteAlpha::Blend
+pub tungsten_core::assets::registry::SpriteAlpha::Cutout
+pub tungsten_core::assets::registry::SpriteAlpha::Opaque
+impl tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::measure(&[u8]) -> Self
+pub fn tungsten_core::assets::registry::SpriteAlpha::solid(self, tungsten_core::assets::manifest::FilterMode) -> bool
+impl core::clone::Clone for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::clone(&self) -> tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::Eq for tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::PartialEq for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::eq(&self, &tungsten_core::assets::registry::SpriteAlpha) -> bool
+impl core::default::Default for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::default() -> tungsten_core::assets::registry::SpriteAlpha
+impl core::fmt::Debug for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::StructuralPartialEq for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Freeze for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Send for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Sync for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Unpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::SpriteAlpha
 pub struct tungsten_core::assets::registry::AssetRegistry
 impl tungsten_core::assets::registry::AssetRegistry
 pub fn tungsten_core::assets::registry::AssetRegistry::get_sprite(&self, &str) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
@@ -1837,6 +1862,7 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut s
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_alpha(&mut self, &str, tungsten_core::assets::registry::SpriteAlpha)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
@@ -1880,6 +1906,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::FontRegistry
 pub struct tungsten_core::assets::registry::SpriteAsset
+pub tungsten_core::assets::registry::SpriteAsset::alpha: tungsten_core::assets::registry::SpriteAlpha
 pub tungsten_core::assets::registry::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::assets::registry::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
 pub tungsten_core::assets::registry::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
@@ -4499,6 +4526,31 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::SlopeRise
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::SlopeRise
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::SlopeRise
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::SlopeRise
+pub enum tungsten_core::assets::SpriteAlpha
+pub tungsten_core::assets::SpriteAlpha::Blend
+pub tungsten_core::assets::SpriteAlpha::Cutout
+pub tungsten_core::assets::SpriteAlpha::Opaque
+impl tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::measure(&[u8]) -> Self
+pub fn tungsten_core::assets::registry::SpriteAlpha::solid(self, tungsten_core::assets::manifest::FilterMode) -> bool
+impl core::clone::Clone for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::clone(&self) -> tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::Eq for tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::PartialEq for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::eq(&self, &tungsten_core::assets::registry::SpriteAlpha) -> bool
+impl core::default::Default for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::default() -> tungsten_core::assets::registry::SpriteAlpha
+impl core::fmt::Debug for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::StructuralPartialEq for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Freeze for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Send for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Sync for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Unpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::SpriteAlpha
 #[non_exhaustive] pub enum tungsten_core::assets::StagedLoadError
 pub tungsten_core::assets::StagedLoadError::Data
 pub tungsten_core::assets::StagedLoadError::Data::id: alloc::string::String
@@ -4707,6 +4759,7 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut s
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_alpha(&mut self, &str, tungsten_core::assets::registry::SpriteAlpha)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
@@ -6383,6 +6436,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::SpawnedRoom
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SpawnedRoom
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SpawnedRoom
 pub struct tungsten_core::assets::SpriteAsset
+pub tungsten_core::assets::SpriteAsset::alpha: tungsten_core::assets::registry::SpriteAlpha
 pub tungsten_core::assets::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::assets::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
 pub tungsten_core::assets::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
@@ -19998,6 +20052,31 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::SlopeRise
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::SlopeRise
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::SlopeRise
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::SlopeRise
+pub enum tungsten_core::SpriteAlpha
+pub tungsten_core::SpriteAlpha::Blend
+pub tungsten_core::SpriteAlpha::Cutout
+pub tungsten_core::SpriteAlpha::Opaque
+impl tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::measure(&[u8]) -> Self
+pub fn tungsten_core::assets::registry::SpriteAlpha::solid(self, tungsten_core::assets::manifest::FilterMode) -> bool
+impl core::clone::Clone for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::clone(&self) -> tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::Eq for tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::PartialEq for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::eq(&self, &tungsten_core::assets::registry::SpriteAlpha) -> bool
+impl core::default::Default for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::default() -> tungsten_core::assets::registry::SpriteAlpha
+impl core::fmt::Debug for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::StructuralPartialEq for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Freeze for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Send for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Sync for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Unpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::SpriteAlpha
 pub enum tungsten_core::SquashTrigger
 pub tungsten_core::SquashTrigger::Manual
 pub tungsten_core::SquashTrigger::OnHit
@@ -20728,6 +20807,7 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut s
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_alpha(&mut self, &str, tungsten_core::assets::registry::SpriteAlpha)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
@@ -24240,6 +24320,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::components::Sprite
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Sprite
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Sprite
 pub struct tungsten_core::SpriteAsset
+pub tungsten_core::SpriteAsset::alpha: tungsten_core::assets::registry::SpriteAlpha
 pub tungsten_core::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
 pub tungsten_core::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
