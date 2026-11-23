@@ -1059,6 +1059,58 @@ fn the_backdrop_skips_quads_opaque_tiles_cover() {
 }
 
 #[test]
+fn the_backdrop_marks_the_batches_that_hide() {
+    // Under the depth test a solid batch hides what its opaque texels
+    // cover: the sky and the two-level strips, tinted whole, never the
+    // clouds, whose alpha lies between, nor any sprite nothing measured.
+    use example_01_platformer::features::level::TILE;
+    use tungsten::core::SpriteAlpha;
+    let (mut harness, _) = run();
+    let world = harness.world_mut();
+    let names = [
+        ("ex10_sky", SpriteAlpha::Opaque),
+        ("ex10_clouds_far", SpriteAlpha::Blend),
+        ("ex10_clouds_near", SpriteAlpha::Blend),
+        ("ex10_distant_ridges", SpriteAlpha::Cutout),
+        ("ex10_near_woodland", SpriteAlpha::Cutout),
+    ];
+    let assets = world.resource_mut::<AssetRegistry>();
+    for (i, (name, _)) in names.iter().enumerate() {
+        mock_sprite(assets, name, 800 + i as u32, false);
+    }
+    world.insert_resource(WindowSize {
+        width: 1920,
+        height: 1080,
+    });
+    // The clearing's sky, where every strip draws at its full share.
+    world.resource_mut::<CameraState>().position = Vec2::new(10.0, 0.0) * TILE;
+    let marks = |world: &tungsten::core::World| -> Vec<(u32, bool)> {
+        draw::backdrop(world)
+            .iter()
+            .filter(|batch| (800..805).contains(&batch.texture.0))
+            .map(|batch| (batch.texture.0, batch.solid))
+            .collect()
+    };
+    let unmeasured = marks(world);
+    assert!(!unmeasured.is_empty());
+    assert!(
+        unmeasured.iter().all(|&(_, solid)| !solid),
+        "{unmeasured:?}"
+    );
+    let assets = world.resource_mut::<AssetRegistry>();
+    for (name, alpha) in names {
+        assets.set_sprite_alpha(name, alpha);
+    }
+    let measured = marks(world);
+    assert_eq!(measured.len(), unmeasured.len(), "the same batches");
+    for &(page, solid) in &measured {
+        let (name, alpha) = names[(page - 800) as usize];
+        assert_eq!(solid, alpha != SpriteAlpha::Blend, "{name}");
+    }
+    assert!(measured.contains(&(800, true)), "the sky: {measured:?}");
+}
+
+#[test]
 fn spray_particles_draw_over_the_enemies() {
     use example_01_platformer::features::toys::components::Spray;
     use example_01_platformer::features::toys::systems::SPRAY_Z;

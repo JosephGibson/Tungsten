@@ -160,7 +160,10 @@ pub fn instance(asset: &SpriteAsset, position: Vec2, size: Vec2, color: [u8; 4])
 }
 
 /// The sky and its strips, with the moon over the sky, while the level's
-/// clock runs: a run is live. The areas the view stands in set the night
+/// clock runs: a run is live. A batch whose sprite's alpha is two-level and
+/// whose tint keeps an alpha of 255 is marked solid, so under the depth
+/// test (`tungsten.json`'s `gpu_depth`) the sky, the moon and the strips
+/// hide what they cover of the layers behind them, as the map's tiles do. The areas the view stands in set the night
 /// sky's share over the midnight one, the clouds' darkening under it, and
 /// each far strip's share, drawn after the ridges, with the ravine's mist.
 /// While no run is live and the title's sky runs, the title's night in
@@ -242,6 +245,7 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
             // The sky fills the view rather than stretching a strip of it.
             let size = max - min + overhang * 2.0;
             let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+            batch.solid = asset.alpha.solid(asset.filter);
             // The black night sky, drawn over it at full night, hides it.
             let hidden =
                 alpha(night) == 255 && opaque(SKY_BLACK) && assets.get_sprite(SKY_BLACK).is_some();
@@ -254,6 +258,7 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
             if let (Some(black), true) = (assets.get_sprite(SKY_BLACK), night > 0.0) {
                 let mut batch = SpriteBatch::new(black.atlas, black.filter);
                 let color = [255, 255, 255, alpha(night)];
+                batch.solid = black.alpha.solid(black.filter) && color[3] == 255;
                 batch
                     .instances
                     .push(instance(black, min - overhang, size, color));
@@ -341,7 +346,10 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
 
 /// A strip of `asset` across the view at `top`, scrolling by `scroll`,
 /// `scale` times its size, tinted `color`: a cloud bank drifting, a ridge
-/// or far strip with its last row of pixels run on to the view's foot.
+/// or far strip with its last row of pixels run on to the view's foot. Its
+/// batch is solid when the sprite's alpha is two-level and the tint keeps
+/// an alpha of 255, a foot's row being the sprite's own texels: under the
+/// depth test it hides what its opaque texels cover of the layers behind.
 fn strip(
     asset: &SpriteAsset,
     id: &str,
@@ -351,6 +359,7 @@ fn strip(
 ) -> SpriteBatch {
     let overhang = Vec2::splat(OVERHANG);
     let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+    batch.solid = asset.alpha.solid(asset.filter) && color[3] == 255;
     let size = Vec2::new(asset.width as f32, asset.height as f32) * scale;
     let cloud = id.starts_with("ex10_clouds");
     // Mist bands are translucent all through: no foot runs on below them.
@@ -413,6 +422,8 @@ fn moon(
         let size = diameter * size;
         let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
         batch.material_id = material(id);
+        batch.solid =
+            batch.material_id.is_none() && color[3] == 255 && asset.alpha.solid(asset.filter);
         batch.instances.push(instance(
             asset,
             centre - Vec2::splat(size * 0.5),
