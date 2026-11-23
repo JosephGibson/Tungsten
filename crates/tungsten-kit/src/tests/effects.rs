@@ -634,6 +634,91 @@ fn only_counting_effects_end_as_ticking_ones_do(crowd: usize) {
 }
 
 #[test]
+fn a_counted_instance_moved_to_another_world_is_read_by_its_id_there() {
+    // An instance the counting pass has read carries its entry's place in
+    // that pass. Another World's pass keeps its own entries, in its own
+    // order, so it must not trust the place: there `plain` has a period and
+    // damage, and the entry at the place the instance carries only counts.
+    let (mut home, mut home_schedule) = rig();
+    let plain = insert(&mut home, "plain", Effect::new().with_duration(2.0));
+    let holder = home.spawn_with((Health::new(10.0),));
+    EffectRequest::new(holder, plain).apply(&mut home);
+    steps(&mut home, &mut home_schedule, 3);
+    let carried = home.get::<Effects>(holder).unwrap().clone();
+    assert!(
+        carried.instances[0].counted.0.is_some(),
+        "the home World's pass read the instance"
+    );
+    assert_eq!(carried.instances[0].slot.0, 0);
+
+    let (mut away, mut away_schedule) = rig();
+    // The away World's first known entry is another effect, one that only
+    // counts; `plain` ticks there.
+    let other = insert(&mut away, "other", Effect::new().with_duration(9.0));
+    insert(
+        &mut away,
+        "plain",
+        Effect::new()
+            .with_duration(2.0)
+            .with_period(STEP)
+            .with_damage(1.0),
+    );
+    let bystander = away.spawn();
+    EffectRequest::new(bystander, other).apply(&mut away);
+    steps(&mut away, &mut away_schedule, 2);
+    let guest = away.spawn_with((Health::new(10.0),));
+    away.insert(guest, carried.clone());
+    steps(&mut away, &mut away_schedule, 4);
+    assert!(
+        away.get::<Health>(guest).unwrap().current() < 10.0,
+        "the moved instance's period ran: the away pass read its ID"
+    );
+
+    // A clone keeps the mark, and at home it still only counts: its time
+    // runs down with no payload.
+    let twin = home.spawn_with((Health::new(10.0),));
+    home.insert(twin, carried);
+    let left = |world: &World, entity| instances(world, entity).first().map(|instance| instance.2);
+    let before = left(&home, twin);
+    steps(&mut home, &mut home_schedule, 2);
+    assert!(left(&home, twin) < before);
+    assert_eq!(left(&home, twin), left(&home, holder));
+    assert_eq!(home.get::<Health>(twin).unwrap().current(), 10.0);
+}
+
+#[test]
+fn the_counting_passes_mark_is_no_part_of_an_instance() {
+    // Two instances that differ only in the mark are equal and print the
+    // same, as they did before the mark: a save, a test's comparison and a
+    // trace read an instance, not which pass last looked at it.
+    let (mut world, mut schedule) = rig();
+    let plain = insert(&mut world, "plain", Effect::new().with_duration(2.0));
+    let holder = world.spawn();
+    EffectRequest::new(holder, plain).apply(&mut world);
+    let fresh = world.get::<Effects>(holder).unwrap().instances[0].clone();
+    assert!(fresh.counted.0.is_none());
+    step(&mut world, &mut schedule, 0.0);
+    let marked = world.get::<Effects>(holder).unwrap().instances[0].clone();
+    assert!(marked.counted.0.is_some());
+    assert_eq!(marked, fresh);
+    let printed = format!("{marked:?}");
+    assert_eq!(printed, format!("{fresh:?}"));
+    assert!(
+        printed.starts_with("EffectInstance { effect: ") && printed.ends_with("emit_left: None }"),
+        "{printed}"
+    );
+    assert!(
+        !printed.contains("counted") && !printed.contains("slot"),
+        "{printed}"
+    );
+    // A save writes no mark, and what it reads back carries none.
+    let saved = serde_json::to_string(&marked).unwrap();
+    assert_eq!(saved, serde_json::to_string(&fresh).unwrap());
+    let read: EffectInstance = serde_json::from_str(&saved).unwrap();
+    assert!(read.counted.0.is_none());
+}
+
+#[test]
 fn a_blocking_tag_refuses_the_effect() {
     let (mut world, _) = rig();
     let frost = DataRef::inline(
