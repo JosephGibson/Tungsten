@@ -708,6 +708,22 @@ def export_tree(ref, dest, repo=REPO_ROOT):
     return tree_state(dest, ref=ref, repo=repo)
 
 
+def changed_scripts(rows, base_registry):
+    """The scripted rows whose script the base's registry holds otherwise at
+    the same `workload_version`: a row's script is frozen with its version.
+    A row the base lacks, or one at another version, is the candidate's to
+    drive on both sides, as a new row is."""
+    base = {row.get("name"): row for row in base_registry.get("rows", [])}
+    return sorted(
+        row["name"]
+        for row in rows
+        if "script" in row["launch"]
+        and row["name"] in base
+        and base[row["name"]].get("workload_version") == row["workload_version"]
+        and script_sha256({"launch": base[row["name"]].get("launch", {})}) != script_sha256(row)
+    )
+
+
 def verdict_map(report):
     return {f"{result['metric']} {result['stat']}": result["verdict"] for result in report["owned"]}
 
@@ -826,6 +842,17 @@ def cmd_sitting(args, root=REPO_ROOT):
     base_ref = args.base or last_tag()
     base_dir = Path(root) / "target" / "perf" / "base-tree"
     base_tree = export_tree(base_ref, base_dir)
+    try:
+        frozen = changed_scripts(rows, load_registry(base_dir / "scripts" / "perf-rows.json"))
+    except (OSError, ValueError):
+        frozen = []  # a base from before the registry holds no script to compare
+    if frozen:
+        if not args.keep:
+            shutil.rmtree(base_dir, ignore_errors=True)
+        raise PerfError(
+            f"the sitting refuses: {', '.join(frozen)} changed its script since {base_ref} at one workload_version; "
+            "a change to a row's work bumps its version"
+        )
     cand_tree = tree_state(root)
     flags = PLAIN_FLAGS if args.plain else ALIGNED_FLAGS
     machine_info = machine()

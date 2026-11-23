@@ -418,20 +418,35 @@ impl Harness {
     /// `exit` or on the game's own exit; [`step`](Self::step) after it runs
     /// the game on, unscripted. A `resolution` sets [`WindowSize`] first.
     pub fn run_script(&mut self, script: &Script) -> Report {
+        self.begin_script(script);
+        loop {
+            if let Some(ending) = self.step_script() {
+                break self.end_script(ending);
+            }
+        }
+    }
+
+    /// Starts `script` from the next frame: its `resolution` as the
+    /// [`WindowSize`], its runner on the app.
+    fn begin_script(&mut self, script: &Script) {
         if let Some([width, height]) = script.resolution {
             self.world_mut()
                 .insert_resource(WindowSize { width, height });
         }
         self.app.script = Some(ScriptRunner::new(script.clone(), "harness", true));
-        let ending = loop {
-            let ran = self.step(1);
-            if let Some(ended) = self.app.script.as_ref().and_then(ScriptRunner::ended) {
-                break ended;
-            }
-            if ran == 0 || self.exit_requested {
-                break Ending::GameExit;
-            }
-        };
+    }
+
+    /// Runs the script's next frame; how the run ended, once it has.
+    fn step_script(&mut self) -> Option<Ending> {
+        let ran = self.step(1);
+        if let Some(ended) = self.app.script.as_ref().and_then(ScriptRunner::ended) {
+            return Some(ended);
+        }
+        (ran == 0 || self.exit_requested).then_some(Ending::GameExit)
+    }
+
+    /// Takes the ended script's runner off the app for its report.
+    fn end_script(&mut self, ending: Ending) -> Report {
         let runner = self
             .app
             .script

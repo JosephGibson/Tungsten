@@ -560,6 +560,18 @@ class Sittings(unittest.TestCase):
         outcome, _ = sitting({}, valid={"B2": False})
         self.assertEqual(outcome["verdict"], "invalid")
 
+    def test_a_script_changed_at_one_workload_version_is_named(self):
+        steps = [{"frame": 2, "action": "start_run"}]
+        scripted = lambda name, steps=steps, version=1: row(name=name, launch={"script": {"steps": steps}}, workload_version=version)  # noqa: E731
+        moved = [{"frame": 3, "action": "start_run"}]
+        base = {"rows": [scripted("same"), scripted("moved"), scripted("bumped"), row(name="bench"), row(name="was-bench")]}
+        rows = [scripted("same"), scripted("moved", moved), scripted("bumped", moved, 2), scripted("new", moved), row(name="bench"),
+                scripted("was-bench")]  # fmt: skip
+        self.assertEqual(perf.changed_scripts(rows, base), ["moved", "was-bench"])
+        self.assertEqual(perf.changed_scripts(rows, {}), [], "a base with no rows freezes nothing")
+        registry = perf.load_registry()
+        self.assertEqual(perf.changed_scripts(registry["rows"], registry), [])
+
     def test_quick_runs_cpu_rows_a1_b1_a2_without_a_rerun(self):
         outcome, order = sitting({"A2": SLOW}, quick=True)
         self.assertEqual(order, ["A1", "B1", "A2"])

@@ -14,7 +14,7 @@ Compare two captures only when they measure the same row with the same workload 
 | Backend | `WGPU_BACKEND=vulkan` on Linux |
 | Resolution | the row's: 1920×1080, the area rows 3840×2160 |
 | Present | the checked-in `tungsten.json`'s `display` pacing; `immediate` / 1 on the reference machine |
-| Frames | the row's warm-up, setup frames included, then 300 measured frames |
+| Frames | the row's warm-up, setup frames included, then 300 measured frames, `e01-play` 1,200 |
 | Repeats | the row's (5, the area rows 3) |
 | GPU timing | only in a GPU run, beside each timing run or alone, never in a timing run |
 | Machine | governor `performance`; nothing else using the CPU, the GPU or the screen |
@@ -151,13 +151,13 @@ An invalid capture stays on disk with `valid: false` and its reasons; `run` exit
 `just perf sitting [--base REF] [--rows LIST] [--quick] [--cpu-only] [--wait-quiet S] [--allow-background] [--plain] [--keep]` judges the working tree (B, the candidate) against `REF` (A, the base), by default the highest `vX.Y.Z` tag on `HEAD`'s history, the last release; rehearsal and other prerelease tags don't count. The candidate's runner and registry drive both sides.
 
 1. **Start check.** The sitting refuses, exit 2, on the encoder or a build outside the runner; on a process other than the runner and its ancestors above 20 % of a core over a 5 s sample; or on the tree's dirty state changing meanwhile. It records the 1-minute load, the governor, AC power and the five busiest processes. `--wait-quiet S` polls every 10 s until 60 s run quiet, giving up at S. An idle agent session passes; a working one shows as busy. `--allow-background` starts despite a refusal and records it.
-2. **Base export.** `git archive REF` into `target/perf/base-tree/`, deleted at the end unless `--keep`; both trees build before anything is measured, the base into `target/perf/base-aligned/`. A package the base cannot build makes its rows `new`.
+2. **Base export.** `git archive REF` into `target/perf/base-tree/`, deleted at the end unless `--keep`; both trees build before anything is measured, the base into `target/perf/base-aligned/`. A package the base cannot build makes its rows `new`. A row's script is frozen with its `workload_version`: the sitting refuses, exit 2, when the base's registry holds a scripted row's script otherwise at the same version, while a row the base lacks or one at another version runs the candidate's script on both sides.
 3. **Interleaving.** Per row, captures run A1 B1 A2 B2, each at the row's repeats and sharing the sitting's id. A1↔A2 is the A/A; A1→B1 and A2→B2 are the direct pairs. A capture that only background load invalidated is taken again once, after a wait for quiet.
 4. **Verdict.** An owned metric is `regressed` when both direct pairs read it `regressed` and the A/A reads it `unchanged` or `noisy`.
 5. **One rerun.** A row runs A3 B3 A4 B4, replacing the first set, when its A/A reads an owned metric `regressed` or `improved`, or when one of its known-drift metrics reads `regressed` in a direct pair. The rerun stands alone: with a stable A/A, a metric `regressed` in both of its pairs reads `regressed`, a known-drift one included; a rerun whose own A/A fails reads `unresolved`.
 6. **Row verdicts:** `ok`, `regressed` (with the metrics), `unresolved`, `invalid`, or `new` (a row the base cannot build or run while the candidate can, measured on the candidate alone).
 7. **Output.** `perf-runs/<UTC>-sitting[-quick]/sitting.json` (`{schema:2, kind:"sitting", id, base{ref,commit}, cand{commit,dirty}, quick, wall_s, wait_s, start, rows[{name, verdict, regressed[], reran, aa, pairs, budgets}]}`; `wall_s` runs from the end of the start check, `wait_s` is the wait for quiet before it), a README table and the captures under `captures/`. Exit 0, 1 on a `regressed` or `unresolved` row, 3 on an `invalid` one.
-8. **Quick** (`--quick`): CPU rows only, A1 B1 A2 at 3 repeats and 150 frames, no rerun, always exit 0. Informational: never a release's evidence.
+8. **Quick** (`--quick`): CPU rows only, A1 B1 A2 at 3 repeats and 150 frames, no rerun, always exit 0. Informational: never a release's evidence. A scripted row whose steps or asserts need more than 150 window frames (`e01-stress`, `e01-play`) reads `invalid` there.
 9. **`--cpu-only`** skips GPU runs and GPU-only rows, for a base whose GPU timing differs in kind.
 
 ## Counter guards and GPU counters

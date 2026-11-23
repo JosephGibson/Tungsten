@@ -1316,6 +1316,945 @@
       "workload_version": 1
     },
     {
+      "name": "e01-play",
+      "package": "example-01-platformer",
+      "folder": "examples/01_platformer",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            },
+            {
+              "frame": 91,
+              "action": "place_player",
+              "args": {
+                "at": [
+                  464.0,
+                  2210.5
+                ]
+              }
+            },
+            {
+              "frame": 99,
+              "cursor": {
+                "world": [
+                  932.0,
+                  2235.5
+                ]
+              }
+            },
+            {
+              "frame": 101,
+              "press": "move_right"
+            },
+            {
+              "frame": 105,
+              "press": "jump"
+            },
+            {
+              "frame": 111,
+              "release": "jump"
+            },
+            {
+              "frame": 125,
+              "release": "move_right"
+            },
+            {
+              "frame": 129,
+              "press": "spell_1"
+            },
+            {
+              "frame": 131,
+              "release": "spell_1"
+            },
+            {
+              "frame": 135,
+              "press": "cast"
+            },
+            {
+              "frame": 137,
+              "release": "cast"
+            },
+            {
+              "frame": 151,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  857.6,
+                  2265.6
+                ]
+              }
+            },
+            {
+              "frame": 161,
+              "press": "shoot"
+            },
+            {
+              "frame": 175,
+              "cursor": {
+                "world": [
+                  132.0,
+                  2215.5
+                ]
+              }
+            },
+            {
+              "frame": 191,
+              "release": "shoot"
+            },
+            {
+              "frame": 195,
+              "press": "spell_4"
+            },
+            {
+              "frame": 197,
+              "release": "spell_4"
+            },
+            {
+              "frame": 201,
+              "press": "cast"
+            },
+            {
+              "frame": 203,
+              "release": "cast"
+            },
+            {
+              "frame": 215,
+              "action": "cast_at",
+              "args": {
+                "spell": "lightning",
+                "at": [
+                  960.0,
+                  2240.0
+                ]
+              }
+            },
+            {
+              "frame": 221,
+              "press": "move_left"
+            },
+            {
+              "frame": 225,
+              "press": "jump"
+            },
+            {
+              "frame": 231,
+              "release": "jump"
+            },
+            {
+              "frame": 245,
+              "release": "move_left"
+            },
+            {
+              "frame": 251,
+              "action": "cast_at",
+              "args": {
+                "spell": "force_push",
+                "at": [
+                  857.6,
+                  2265.6
+                ]
+              }
+            },
+            {
+              "frame": 267,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  960.0,
+                  2240.0
+                ]
+              }
+            },
+            {
+              "frame": 291,
+              "action": "place_player",
+              "args": {
+                "at": [
+                  8048.0,
+                  2466.5
+                ]
+              }
+            },
+            {
+              "frame": 299,
+              "cursor": {
+                "world": [
+                  8516.0,
+                  2491.5
+                ]
+              }
+            },
+            {
+              "frame": 301,
+              "press": "move_right"
+            },
+            {
+              "frame": 305,
+              "press": "jump"
+            },
+            {
+              "frame": 311,
+              "release": "jump"
+            },
+            {
+              "frame": 325,
+              "release": "move_right"
+            },
+            {
+              "frame": 329,
+              "press": "spell_1"
+            },
+            {
+              "frame": 331,
+              "release": "spell_1"
+            },
+            {
+              "frame": 335,
+              "press": "cast"
+            },
+            {
+              "frame": 337,
+              "release": "cast"
+            },
+            {
+              "frame": 351,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  8800.0,
+                  2496.0
+                ]
+              }
+            },
+            {
+              "frame": 361,
+              "press": "shoot"
+            },
+            {
+              "frame": 375,
+              "cursor": {
+                "world": [
+                  7716.0,
+                  2471.5
+                ]
+              }
+            },
+            {
+              "frame": 391,
+              "release": "shoot"
+            },
+            {
+              "frame": 395,
+              "press": "spell_4"
+            },
+            {
+              "frame": 397,
+              "release": "spell_4"
+            },
+            {
+              "frame": 401,
+              "press": "cast"
+            },
+            {
+              "frame": 403,
+              "release": "cast"
+            },
+            {
+              "frame": 415,
+              "action": "cast_at",
+              "args": {
+                "spell": "lightning",
+                "at": [
+                  9024.0,
+                  1856.0
+                ]
+              }
+            },
+            {
+              "frame": 421,
+              "press": "move_left"
+            },
+            {
+              "frame": 425,
+              "press": "jump"
+            },
+            {
+              "frame": 431,
+              "release": "jump"
+            },
+            {
+              "frame": 445,
+              "release": "move_left"
+            },
+            {
+              "frame": 451,
+              "action": "cast_at",
+              "args": {
+                "spell": "force_push",
+                "at": [
+                  8800.0,
+                  2496.0
+                ]
+              }
+            },
+            {
+              "frame": 467,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  9024.0,
+                  1856.0
+                ]
+              }
+            },
+            {
+              "frame": 491,
+              "action": "place_player",
+              "args": {
+                "at": [
+                  12048.0,
+                  2210.5
+                ]
+              }
+            },
+            {
+              "frame": 499,
+              "cursor": {
+                "world": [
+                  12516.0,
+                  2235.5
+                ]
+              }
+            },
+            {
+              "frame": 501,
+              "press": "move_right"
+            },
+            {
+              "frame": 505,
+              "press": "jump"
+            },
+            {
+              "frame": 509,
+              "release": "move_right"
+            },
+            {
+              "frame": 511,
+              "release": "jump"
+            },
+            {
+              "frame": 529,
+              "press": "spell_1"
+            },
+            {
+              "frame": 531,
+              "release": "spell_1"
+            },
+            {
+              "frame": 535,
+              "press": "cast"
+            },
+            {
+              "frame": 537,
+              "release": "cast"
+            },
+            {
+              "frame": 551,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  12096.0,
+                  2944.0
+                ]
+              }
+            },
+            {
+              "frame": 561,
+              "press": "shoot"
+            },
+            {
+              "frame": 575,
+              "cursor": {
+                "world": [
+                  11716.0,
+                  2215.5
+                ]
+              }
+            },
+            {
+              "frame": 591,
+              "release": "shoot"
+            },
+            {
+              "frame": 595,
+              "press": "spell_4"
+            },
+            {
+              "frame": 597,
+              "release": "spell_4"
+            },
+            {
+              "frame": 601,
+              "press": "cast"
+            },
+            {
+              "frame": 603,
+              "release": "cast"
+            },
+            {
+              "frame": 615,
+              "action": "cast_at",
+              "args": {
+                "spell": "lightning",
+                "at": [
+                  10976.0,
+                  2176.0
+                ]
+              }
+            },
+            {
+              "frame": 621,
+              "press": "move_left"
+            },
+            {
+              "frame": 625,
+              "press": "jump"
+            },
+            {
+              "frame": 629,
+              "release": "move_left"
+            },
+            {
+              "frame": 631,
+              "release": "jump"
+            },
+            {
+              "frame": 651,
+              "action": "cast_at",
+              "args": {
+                "spell": "force_push",
+                "at": [
+                  12096.0,
+                  2944.0
+                ]
+              }
+            },
+            {
+              "frame": 667,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  10976.0,
+                  2176.0
+                ]
+              }
+            },
+            {
+              "frame": 691,
+              "action": "place_player",
+              "args": {
+                "at": [
+                  14224.0,
+                  3938.5
+                ]
+              }
+            },
+            {
+              "frame": 699,
+              "cursor": {
+                "world": [
+                  14692.0,
+                  3963.5
+                ]
+              }
+            },
+            {
+              "frame": 701,
+              "press": "move_right"
+            },
+            {
+              "frame": 705,
+              "press": "jump"
+            },
+            {
+              "frame": 711,
+              "release": "jump"
+            },
+            {
+              "frame": 725,
+              "release": "move_right"
+            },
+            {
+              "frame": 729,
+              "press": "spell_1"
+            },
+            {
+              "frame": 731,
+              "release": "spell_1"
+            },
+            {
+              "frame": 735,
+              "press": "cast"
+            },
+            {
+              "frame": 737,
+              "release": "cast"
+            },
+            {
+              "frame": 751,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  14368.0,
+                  3744.0
+                ]
+              }
+            },
+            {
+              "frame": 761,
+              "press": "shoot"
+            },
+            {
+              "frame": 775,
+              "cursor": {
+                "world": [
+                  13892.0,
+                  3943.5
+                ]
+              }
+            },
+            {
+              "frame": 791,
+              "release": "shoot"
+            },
+            {
+              "frame": 795,
+              "press": "spell_4"
+            },
+            {
+              "frame": 797,
+              "release": "spell_4"
+            },
+            {
+              "frame": 801,
+              "press": "cast"
+            },
+            {
+              "frame": 803,
+              "release": "cast"
+            },
+            {
+              "frame": 815,
+              "action": "cast_at",
+              "args": {
+                "spell": "lightning",
+                "at": [
+                  15200.0,
+                  3680.0
+                ]
+              }
+            },
+            {
+              "frame": 821,
+              "press": "move_left"
+            },
+            {
+              "frame": 825,
+              "press": "jump"
+            },
+            {
+              "frame": 831,
+              "release": "jump"
+            },
+            {
+              "frame": 845,
+              "release": "move_left"
+            },
+            {
+              "frame": 851,
+              "action": "cast_at",
+              "args": {
+                "spell": "force_push",
+                "at": [
+                  14368.0,
+                  3744.0
+                ]
+              }
+            },
+            {
+              "frame": 867,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  15200.0,
+                  3680.0
+                ]
+              }
+            },
+            {
+              "frame": 891,
+              "action": "place_player",
+              "args": {
+                "at": [
+                  18800.0,
+                  3490.5
+                ]
+              }
+            },
+            {
+              "frame": 899,
+              "cursor": {
+                "world": [
+                  19268.0,
+                  3515.5
+                ]
+              }
+            },
+            {
+              "frame": 901,
+              "press": "move_right"
+            },
+            {
+              "frame": 905,
+              "press": "jump"
+            },
+            {
+              "frame": 911,
+              "release": "jump"
+            },
+            {
+              "frame": 925,
+              "release": "move_right"
+            },
+            {
+              "frame": 929,
+              "press": "spell_1"
+            },
+            {
+              "frame": 931,
+              "release": "spell_1"
+            },
+            {
+              "frame": 935,
+              "press": "cast"
+            },
+            {
+              "frame": 937,
+              "release": "cast"
+            },
+            {
+              "frame": 951,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  19072.0,
+                  3520.0
+                ]
+              }
+            },
+            {
+              "frame": 961,
+              "press": "shoot"
+            },
+            {
+              "frame": 975,
+              "cursor": {
+                "world": [
+                  18468.0,
+                  3495.5
+                ]
+              }
+            },
+            {
+              "frame": 991,
+              "release": "shoot"
+            },
+            {
+              "frame": 995,
+              "press": "spell_4"
+            },
+            {
+              "frame": 997,
+              "release": "spell_4"
+            },
+            {
+              "frame": 1001,
+              "press": "cast"
+            },
+            {
+              "frame": 1003,
+              "release": "cast"
+            },
+            {
+              "frame": 1015,
+              "action": "cast_at",
+              "args": {
+                "spell": "lightning",
+                "at": [
+                  18528.0,
+                  3520.0
+                ]
+              }
+            },
+            {
+              "frame": 1021,
+              "press": "move_left"
+            },
+            {
+              "frame": 1025,
+              "press": "jump"
+            },
+            {
+              "frame": 1031,
+              "release": "jump"
+            },
+            {
+              "frame": 1045,
+              "release": "move_left"
+            },
+            {
+              "frame": 1051,
+              "action": "cast_at",
+              "args": {
+                "spell": "force_push",
+                "at": [
+                  19072.0,
+                  3520.0
+                ]
+              }
+            },
+            {
+              "frame": 1067,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  18528.0,
+                  3520.0
+                ]
+              }
+            },
+            {
+              "frame": 1091,
+              "action": "place_player",
+              "args": {
+                "at": [
+                  25232.0,
+                  2210.5
+                ]
+              }
+            },
+            {
+              "frame": 1099,
+              "cursor": {
+                "world": [
+                  25700.0,
+                  2235.5
+                ]
+              }
+            },
+            {
+              "frame": 1101,
+              "press": "move_left"
+            },
+            {
+              "frame": 1105,
+              "press": "jump"
+            },
+            {
+              "frame": 1111,
+              "release": "jump"
+            },
+            {
+              "frame": 1125,
+              "release": "move_left"
+            },
+            {
+              "frame": 1129,
+              "press": "spell_1"
+            },
+            {
+              "frame": 1131,
+              "release": "spell_1"
+            },
+            {
+              "frame": 1135,
+              "press": "cast"
+            },
+            {
+              "frame": 1137,
+              "release": "cast"
+            },
+            {
+              "frame": 1151,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  25472.0,
+                  2176.0
+                ]
+              }
+            },
+            {
+              "frame": 1161,
+              "press": "shoot"
+            },
+            {
+              "frame": 1175,
+              "cursor": {
+                "world": [
+                  24900.0,
+                  2215.5
+                ]
+              }
+            },
+            {
+              "frame": 1191,
+              "release": "shoot"
+            },
+            {
+              "frame": 1195,
+              "press": "spell_4"
+            },
+            {
+              "frame": 1197,
+              "release": "spell_4"
+            },
+            {
+              "frame": 1201,
+              "press": "cast"
+            },
+            {
+              "frame": 1203,
+              "release": "cast"
+            },
+            {
+              "frame": 1215,
+              "action": "cast_at",
+              "args": {
+                "spell": "lightning",
+                "at": [
+                  26400.0,
+                  2240.0
+                ]
+              }
+            },
+            {
+              "frame": 1221,
+              "press": "move_right"
+            },
+            {
+              "frame": 1225,
+              "press": "jump"
+            },
+            {
+              "frame": 1231,
+              "release": "jump"
+            },
+            {
+              "frame": 1245,
+              "release": "move_right"
+            },
+            {
+              "frame": 1251,
+              "action": "cast_at",
+              "args": {
+                "spell": "force_push",
+                "at": [
+                  25472.0,
+                  2176.0
+                ]
+              }
+            },
+            {
+              "frame": 1267,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  26400.0,
+                  2240.0
+                ]
+              }
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "area",
+              "op": "==",
+              "value": "Troll bridge"
+            },
+            {
+              "probe": "player",
+              "path": "/health/0",
+              "op": ">",
+              "value": 0
+            },
+            {
+              "probe": "states",
+              "op": "==",
+              "value": [
+                "gameplay"
+              ]
+            }
+          ]
+        }
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 90,
+      "frames": 1200,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "stage.total",
+          "stats": [
+            "p50",
+            "p95",
+            "p99"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "stage.extract",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
       "name": "template",
       "package": "tungsten-template-basic",
       "folder": "templates/basic",

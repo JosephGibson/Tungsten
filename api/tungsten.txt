@@ -1238,6 +1238,7 @@ pub tungsten::testing::CounterGuard::spawned: u64
 impl tungsten::testing::CounterGuard
 pub fn tungsten::testing::CounterGuard::check(&self, impl core::convert::AsRef<std::path::Path>)
 pub fn tungsten::testing::CounterGuard::measure(&mut tungsten::testing::Harness, u32, u32) -> Self
+pub fn tungsten::testing::CounterGuard::measure_script(&mut tungsten::testing::Harness, &tungsten_core::script::Script, u32) -> (Self, tungsten_core::script::Report)
 impl core::clone::Clone for tungsten::testing::CounterGuard
 pub fn tungsten::testing::CounterGuard::clone(&self) -> tungsten::testing::CounterGuard
 impl core::cmp::Eq for tungsten::testing::CounterGuard

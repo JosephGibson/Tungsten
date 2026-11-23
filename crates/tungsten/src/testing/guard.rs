@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use tungsten_core::script::{Report, Script};
+
 use super::Harness;
 use crate::LogConsole;
 use crate::app::FrameExtract;
@@ -160,6 +162,63 @@ impl CounterGuard {
             max_sprite_batches: batches,
             max_sprite_instances: instances,
         }
+    }
+
+    /// Runs `script` on `harness` as [`Harness::run_script`] does and
+    /// counts its frames from frame `from`, the script's own count from 1,
+    /// through its last: a scripted benchmark row's window on the row's own
+    /// script. What the script's steps, probes and asserts do in those
+    /// frames counts too; building the report does not. Returns the
+    /// reading and the script's report, for the test to assert it passed.
+    ///
+    /// # Panics
+    ///
+    /// When the run ends before frame `from`.
+    pub fn measure_script(harness: &mut Harness, script: &Script, from: u32) -> (Self, Report) {
+        // As in `measure`: the window counts without the console's feed.
+        let feed = harness
+            .world_mut()
+            .get_resource_mut::<LogConsole>()
+            .and_then(LogConsole::take_feed);
+        harness.count_only = true;
+        harness.begin_script(script);
+        let mut start = None;
+        let (mut batches, mut instances) = (0, 0);
+        let mut frame = 0;
+        let ending = loop {
+            frame += 1;
+            if frame == from {
+                start = Some((harness.world().counters(), allocations()));
+            }
+            let ended = harness.step_script();
+            if start.is_some() {
+                batches = harness.sprite_counts.0.max(batches);
+                instances = harness.sprite_counts.1.max(instances);
+            }
+            if let Some(ending) = ended {
+                break ending;
+            }
+        };
+        let allocated_after = allocations();
+        let world_after = harness.world().counters();
+        harness.count_only = false;
+        if let Some(console) = harness.world_mut().get_resource_mut::<LogConsole>() {
+            console.restore_feed(feed);
+        }
+        let report = harness.end_script(ending);
+        let (world, allocated) =
+            start.expect("CounterGuard::measure_script: the run ended before its window");
+        let reading = Self {
+            allocations: allocated_after.count - allocated.count,
+            allocated_bytes: allocated_after.bytes - allocated.bytes,
+            archetype_moves: world_after.archetype_moves - world.archetype_moves,
+            spawned: world_after.spawned - world.spawned,
+            despawned: world_after.despawned - world.despawned,
+            events_sent: world_after.events_sent - world.events_sent,
+            max_sprite_batches: batches,
+            max_sprite_instances: instances,
+        };
+        (reading, report)
     }
 
     /// Compares the reading with its pin file at `pin`, one file per guard,
@@ -392,6 +451,51 @@ mod tests {
         if let Some(console) = harness.world_mut().get_resource_mut::<LogConsole>() {
             console.restore_feed(feed);
         }
+    }
+
+    fn frames_script(frames: u32) -> Script {
+        Script::parse(&format!(
+            r#"{{ "version": 1, "frames": {frames}, "steps": [
+                {{ "frame": {frames}, "assert": {{ "probe": "frame", "op": "==", "value": {frames} }} }}
+            ] }}"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn counter_guard_counts_a_scripts_frames_from_its_window_to_its_end() {
+        let mut scripted = Harness::new(busy_app());
+        let (reading, report) = CounterGuard::measure_script(&mut scripted, &frames_script(40), 11);
+        assert!(report.passed, "{report:?}");
+        assert_eq!(report.frames, 40);
+        // Frames 11 to 40: what a stepped window of 30 reads after 10.
+        let mut stepped = Harness::new(busy_app());
+        let window = CounterGuard::measure(&mut stepped, 10, 30);
+        assert_eq!(
+            (
+                reading.spawned,
+                reading.despawned,
+                reading.archetype_moves,
+                reading.events_sent
+            ),
+            (30, 30, 30, 30)
+        );
+        assert_eq!(
+            (reading.max_sprite_batches, reading.max_sprite_instances),
+            (window.max_sprite_batches, window.max_sprite_instances)
+        );
+        assert!(reading.allocations >= window.allocations, "{reading:?}");
+        assert!(scripted.draw().is_none(), "a counted frame copies no draw");
+        // The script's runner is gone and the harness steps on, uncounted.
+        assert_eq!(scripted.step(1), 1);
+        assert!(scripted.draw().is_some());
+    }
+
+    #[test]
+    #[should_panic(expected = "the run ended before its window")]
+    fn counter_guard_refuses_a_script_that_ends_before_its_window() {
+        let mut harness = Harness::new(busy_app());
+        let _ = CounterGuard::measure_script(&mut harness, &frames_script(5), 6);
     }
 
     #[test]

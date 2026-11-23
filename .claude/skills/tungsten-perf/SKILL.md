@@ -9,7 +9,7 @@ description: Tungsten performance work — benchmark rows (just perf), sittings 
 
 ## Entry points
 
-`just perf` runs `scripts/perf.py`; `scripts/perf_stats.py` holds parsing, statistics and verdicts. Rows: `example-02-bench`'s benchmarks, `e01-pit`, `e01-stress`, `template` and the `e01-areas` group.
+`just perf` runs `scripts/perf.py`; `scripts/perf_stats.py` holds parsing, statistics and verdicts. Rows: `example-02-bench`'s benchmarks, `e01-pit`, `e01-stress`, `e01-play`, `template` and the `e01-areas` group.
 
 ```bash
 just perf list
