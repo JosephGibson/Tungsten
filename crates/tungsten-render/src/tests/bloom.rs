@@ -161,6 +161,10 @@ fn stage_payloads_follow_recording_order() {
     // And the pass is timed under a label of its own.
     assert_eq!(composite_label(0, false), "post0_bloom_composite");
     assert_eq!(composite_label(2, true), "post2_bloom_composite_vignette");
+    // So is a quarter-size pyramid's threshold, which reads the first
+    // downsample's footprint as well (`D-301`).
+    assert_eq!(threshold_label(0, 1), "post0_bloom_threshold");
+    assert_eq!(threshold_label(1, 2), "post1_bloom_threshold_quarter");
 
     // One mip: threshold and composite only. The vector is reused.
     stage_payloads(&mut payloads, &params, (4, 4), 1, 1, None, |_| (2, 2));

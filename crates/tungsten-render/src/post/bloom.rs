@@ -417,7 +417,7 @@ impl BloomPipeline {
                 depth_stencil_attachment: None,
                 timestamp_writes: timing
                     .as_deref_mut()
-                    .map(|t| t.next(format!("post{slot}_bloom_threshold"))),
+                    .map(|t| t.next(threshold_label(slot, halvings))),
                 ..Default::default()
             });
             pass.push_debug_group("bloom_threshold");
@@ -579,6 +579,19 @@ fn stage_payloads(
         composite.vec4[3] = [vignette.inner, vignette.outer, vignette.strength, 0.0];
     }
     payloads.push(composite.to_bytes());
+}
+
+/// The threshold pass's timing label in post-stack slot `slot`: its own
+/// where the pyramid starts at a quarter of its target (`D-301`). The pass
+/// then reads each texel's 4x4 footprint, the half-size pyramid's first
+/// downsample with its threshold, and its time is no measure of the
+/// half-size threshold's.
+pub(crate) fn threshold_label(slot: usize, halvings: u32) -> String {
+    if halvings >= 2 {
+        format!("post{slot}_bloom_threshold_quarter")
+    } else {
+        format!("post{slot}_bloom_threshold")
+    }
 }
 
 /// The composite pass's timing label in post-stack slot `slot`: its own
