@@ -362,6 +362,17 @@ impl BloomPipeline {
 
         encoder.push_debug_group("bloom_slot");
 
+        // Each sub-pass's debug group opens inside its pass: a group pushed
+        // or popped on the encoder between two passes makes wgpu open a
+        // command buffer that holds only the label, twelve a frame here.
+        //
+        // The threshold, the downsamples and an offscreen composite load
+        // their targets where they once cleared them: each draws one
+        // triangle over the whole target with blending off and every
+        // channel written, so no texel of what was there survives, and the
+        // clear was the driver's work for nothing. A stage that came to draw
+        // less than its whole target would need its clear back.
+
         // Stage 1 — threshold: sample slot src, write mip 0.
         {
             let stage = next_stage();
@@ -369,7 +380,6 @@ impl BloomPipeline {
                 .scene
                 .bloom_mip_view(0)
                 .expect("bloom mip 0 must exist");
-            encoder.push_debug_group("bloom_threshold");
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("tungsten_bloom_threshold"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -377,7 +387,7 @@ impl BloomPipeline {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -387,12 +397,13 @@ impl BloomPipeline {
                     .map(|t| t.next(format!("post{slot}_bloom_threshold"))),
                 ..Default::default()
             });
+            pass.push_debug_group("bloom_threshold");
             pass.set_pipeline(&self.threshold);
             pass.set_bind_group(0, &stage.source_bg, &[]);
             pass.set_bind_group(1, &stage.params_bg, &[]);
             counters::draw(counts, &mut pass, 0..3, 0..1);
+            pass.pop_debug_group();
             drop(pass);
-            encoder.pop_debug_group();
         }
 
         // Stage 2 — downsample chain: each level reads (level-1) and writes level.
@@ -402,7 +413,6 @@ impl BloomPipeline {
                 .scene
                 .bloom_mip_view(level)
                 .expect("level mip view must exist");
-            encoder.push_debug_group("bloom_downsample");
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("tungsten_bloom_downsample"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -410,7 +420,7 @@ impl BloomPipeline {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -420,12 +430,13 @@ impl BloomPipeline {
                     .map(|t| t.next(format!("post{slot}_bloom_down{level}"))),
                 ..Default::default()
             });
+            pass.push_debug_group("bloom_downsample");
             pass.set_pipeline(&self.downsample);
             pass.set_bind_group(0, &stage.source_bg, &[]);
             pass.set_bind_group(1, &stage.params_bg, &[]);
             counters::draw(counts, &mut pass, 0..3, 0..1);
+            pass.pop_debug_group();
             drop(pass);
-            encoder.pop_debug_group();
         }
 
         // Stage 3 — upsample chain: each iteration reads (level+1) and adds
@@ -436,7 +447,6 @@ impl BloomPipeline {
                 .scene
                 .bloom_mip_view(level)
                 .expect("level mip view must exist");
-            encoder.push_debug_group("bloom_upsample");
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("tungsten_bloom_upsample"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -457,18 +467,26 @@ impl BloomPipeline {
                     .map(|t| t.next(format!("post{slot}_bloom_up{level}"))),
                 ..Default::default()
             });
+            pass.push_debug_group("bloom_upsample");
             pass.set_pipeline(&self.upsample);
             pass.set_bind_group(0, &stage.source_bg, &[]);
             pass.set_bind_group(1, &stage.params_bg, &[]);
             counters::draw(counts, &mut pass, 0..3, 0..1);
+            pass.pop_debug_group();
             drop(pass);
-            encoder.pop_debug_group();
         }
 
         // Stage 4 — composite: src + bloom * intensity, mixed by radius, into dst.
         {
             let stage = next_stage();
-            encoder.push_debug_group("bloom_composite");
+            // The swapchain keeps its clear: the frame's last full-screen
+            // stage clears it, and a load of a newly acquired surface is a
+            // clear of the backend's own.
+            let load = if matches!(dst, TargetId::Swapchain) {
+                wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+            } else {
+                wgpu::LoadOp::Load
+            };
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("tungsten_bloom_composite"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -476,7 +494,7 @@ impl BloomPipeline {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -484,13 +502,14 @@ impl BloomPipeline {
                 timestamp_writes: timing.map(|t| t.next(format!("post{slot}_bloom_composite"))),
                 ..Default::default()
             });
+            pass.push_debug_group("bloom_composite");
             pass.set_pipeline(&self.composite);
             pass.set_bind_group(0, &stage.source_bg, &[]);
             pass.set_bind_group(1, &stage.params_bg, &[]);
             pass.set_bind_group(2, &objects.composite_bg, &[]);
             counters::draw(counts, &mut pass, 0..3, 0..1);
+            pass.pop_debug_group();
             drop(pass);
-            encoder.pop_debug_group();
         }
 
         encoder.pop_debug_group();
