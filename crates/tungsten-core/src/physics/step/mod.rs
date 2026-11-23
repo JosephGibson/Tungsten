@@ -621,6 +621,8 @@ struct StepExtra {
     fork: pool::Fork,
     /// Scratch for the carry's remap by index (`D-299`).
     carry_remap: pairs::CarryRemap,
+    /// What the sleep passes keep beside their table.
+    sleep_kept: sleep::SleepKept,
 }
 
 /// A swept sensor of the step ([`RigidBody::swept`]): its place among the
@@ -1127,9 +1129,7 @@ pub fn physics_step(world: &mut World) {
     }
     // Island union-find over this frame's touching contacts (D-065).
     buffers.island_parent.clear();
-    buffers
-        .island_parent
-        .extend(0..buffers.proxies.len() as u32);
+    buffers.island_parent.extend(0..buffers.bodies as u32);
     buffers.kept.clear();
     buffers.events.clear();
     buffers.extra.sent.begin_step(buffers.proxies.len());

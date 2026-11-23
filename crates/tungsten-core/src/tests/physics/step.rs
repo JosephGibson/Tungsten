@@ -9854,6 +9854,116 @@ fn a_sleep_table_rebuilt_by_cursor_equals_one_rebuilt_by_key() {
     assert_eq!(hits(&by_key), 0);
 }
 
+#[test]
+fn supports_compared_without_the_tiles_wake_what_a_full_comparison_wakes() {
+    // While the tile cache's version holds and the entity supports keep
+    // their count, the frame start's comparison leaves the tiles' supports
+    // out: they are the record's. Two worlds take the same changes under a
+    // heap that sleeps, one of them comparing every tile every frame as
+    // before: a tile cut under the heap while another is placed elsewhere
+    // (the tiles keep their count, so only the version tells), the two put
+    // back, a static box spawned on the heap and taken away, the map
+    // reloaded, and a kinematic bar pushed through. Their bodies and their
+    // sleepers must stay the same.
+    let world_of = |walk_tiles: bool| {
+        let (mut world, bodies) = carry_heap(1);
+        world.resource_mut::<PhysicsBuffers>().sleep.walk_tiles = walk_tiles;
+        (world, bodies)
+    };
+    let (mut skipping, skip_bodies) = world_of(false);
+    let (mut walking, walk_bodies) = world_of(true);
+    let mut boxes: [Option<Entity>; 2] = [None; 2];
+    let (mut most_asleep, mut woken) = (0, 0);
+    let mut asleep_before = 0;
+    for step in 0..520 {
+        for (at, world) in [&mut skipping, &mut walking].into_iter().enumerate() {
+            match step {
+                // The heap lies between columns 12 and 24 on row 2.
+                200 => {
+                    let maps = world.resource_mut::<TilemapRegistry>();
+                    assert!(maps.set_tile("floor", 0, 16, 2, EMPTY_TILE));
+                    assert!(maps.set_tile("floor", 0, 5, 1, 0));
+                }
+                260 => {
+                    let maps = world.resource_mut::<TilemapRegistry>();
+                    assert!(maps.set_tile("floor", 0, 16, 2, 0));
+                    assert!(maps.set_tile("floor", 0, 5, 1, EMPTY_TILE));
+                }
+                320 => {
+                    let static_box = world.spawn();
+                    world.insert(static_box, Position(Vec2::new(250.0, 150.0)));
+                    world.insert(static_box, Collider::aabb(Vec2::new(20.0, 4.0)));
+                    world.insert(static_box, RigidBody::r#static());
+                    boxes[at] = Some(static_box);
+                }
+                380 => {
+                    world.despawn(boxes[at].take().unwrap());
+                }
+                420 => {
+                    // The same map again: every tile proxy is rebuilt.
+                    let data = world
+                        .resource::<TilemapRegistry>()
+                        .get("floor")
+                        .unwrap()
+                        .clone();
+                    world
+                        .resource_mut::<TilemapRegistry>()
+                        .insert("floor".into(), data);
+                }
+                460 => {
+                    let bar = world.spawn();
+                    world.insert(bar, Position(Vec2::new(150.0, 222.0)));
+                    world.insert(bar, Velocity(Vec2::new(120.0, 0.0)));
+                    world.insert(bar, Collider::aabb(Vec2::new(8.0, 8.0)));
+                    world.insert(bar, RigidBody::kinematic());
+                }
+                _ => {}
+            }
+            physics_step(world);
+            drain_events(world);
+        }
+        let state = |world: &World, bodies: &[Entity]| -> Vec<([u32; 4], bool)> {
+            let buffers = world.resource::<PhysicsBuffers>();
+            bodies
+                .iter()
+                .map(|&body| {
+                    let (at, velocity) = (
+                        world.get::<Position>(body).unwrap().0,
+                        world.get::<Velocity>(body).unwrap().0,
+                    );
+                    (
+                        [
+                            at.x.to_bits(),
+                            at.y.to_bits(),
+                            velocity.x.to_bits(),
+                            velocity.y.to_bits(),
+                        ],
+                        buffers.is_sleeping(body),
+                    )
+                })
+                .collect()
+        };
+        let (skip_state, walk_state) = (
+            state(&skipping, &skip_bodies),
+            state(&walking, &walk_bodies),
+        );
+        assert_eq!(skip_state, walk_state, "step {step}");
+        let asleep = skip_state.iter().filter(|(_, asleep)| *asleep).count();
+        most_asleep = most_asleep.max(asleep);
+        woken += usize::from(asleep < asleep_before);
+        asleep_before = asleep;
+    }
+    assert!(most_asleep >= 30, "{most_asleep} bodies slept at most");
+    assert!(woken >= 2, "the changes woke sleepers {woken} times");
+    let skipped = |world: &World| world.resource::<PhysicsBuffers>().sleep.tiles_skipped;
+    assert!(
+        skipped(&skipping) > 200,
+        "{} frames left the tiles out",
+        skipped(&skipping)
+    );
+    assert_eq!(skipped(&walking), 0);
+}
+
 /// A step's collision events and the distinct pairs among them, a tile side
 /// told by its cell.
 fn events_and_pairs(events: &[CollisionEvent]) -> (usize, usize) {
