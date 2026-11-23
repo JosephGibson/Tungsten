@@ -9571,16 +9571,13 @@ fn a_blasted_piles_arrival_rounds_keep_the_stable_sorts_order() {
     assert!(in_place > 0, "no large round of many masses");
 }
 
-#[test]
-fn seeds_by_proxy_index_equal_the_keyed_carry_through_every_change() {
-    // D-269: a build's first substep seeds each contact from the last
-    // synchronized contacts by proxy index while the proxies are the ones
-    // those were taken from, and by key in the frame they changed. The
-    // reference model compares every seed, normal and tangent, with a map
-    // by key; here over a heap of boxes and balls with friction on a tile
-    // floor, while nothing changes, when a body leaves and another comes
-    // (every later index shifts), and when a tile is cut (the tiles'
-    // version moves).
+/// A heap of boxes and balls with friction on a tile floor, stepped once
+/// with the reference model of warm starts switched on after it: the world
+/// of the carry's tests. `maps` instances of the floor's map lie on each
+/// other, so two give every tile proxy a twin with its key; the reference
+/// model keys its impulses, so it cannot tell twins apart and stays off
+/// there.
+fn carry_heap(maps: usize) -> (World, Vec<Entity>) {
     let mut world = seed_world();
     world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
     const W: u32 = 40;
@@ -9611,68 +9608,250 @@ fn seeds_by_proxy_index_equal_the_keyed_carry_through_every_change() {
             }],
         },
     );
-    let map = world.spawn();
-    world.insert(map, TilemapInstance::new("floor", Vec2::new(0.0, 200.0)));
-    let body = |world: &mut World, index: usize| {
-        let at = Vec2::new(
-            200.0 + 13.0 * (index % 12) as f32,
-            210.0 - 13.0 * (index / 12) as f32,
-        );
-        let collider = if index.is_multiple_of(3) {
-            Collider::circle(6.0)
-        } else {
-            Collider::aabb(Vec2::splat(6.0))
-        };
-        // Thrown sideways, so the heap slides and rubs as it lands.
-        let thrown = Vec2::new(if index.is_multiple_of(2) { 90.0 } else { -90.0 }, 0.0);
-        let friction = RigidBody::dynamic().with_friction(0.6);
-        spawn_body(world, friction, collider, at, thrown)
-    };
-    let mut bodies: Vec<Entity> = (0..60).map(|index| body(&mut world, index)).collect();
+    for _ in 0..maps {
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("floor", Vec2::new(0.0, 200.0)));
+    }
+    let bodies = (0..60).map(|index| carry_body(&mut world, index)).collect();
     physics_step(&mut world);
-    world.resource_mut::<PhysicsBuffers>().check_warm_starts();
-    let counts = |world: &World| {
+    if maps == 1 {
+        world.resource_mut::<PhysicsBuffers>().check_warm_starts();
+    }
+    (world, bodies)
+}
+
+/// The `index`-th body of [`carry_heap`]'s heap, thrown sideways, so the
+/// heap slides and rubs as it lands.
+fn carry_body(world: &mut World, index: usize) -> Entity {
+    let at = Vec2::new(
+        200.0 + 13.0 * (index % 12) as f32,
+        210.0 - 13.0 * (index / 12) as f32,
+    );
+    let collider = if index.is_multiple_of(3) {
+        Collider::circle(6.0)
+    } else {
+        Collider::aabb(Vec2::splat(6.0))
+    };
+    let thrown = Vec2::new(if index.is_multiple_of(2) { 90.0 } else { -90.0 }, 0.0);
+    let friction = RigidBody::dynamic().with_friction(0.6);
+    spawn_body(world, friction, collider, at, thrown)
+}
+
+/// The carry's pair builds so far: those that found the proxies as they
+/// were, those that moved the entries to the keyed maps, and those that
+/// rewrote their indices.
+fn carry_counts(world: &World) -> (usize, usize, usize) {
+    let carry = &world.resource::<PhysicsBuffers>().extra.carry;
+    (carry.kept, carry.rekeyed, carry.remapped)
+}
+
+/// Steps the carry's world; returns the most tangent impulses a step carried.
+fn carry_run(world: &mut World, steps: usize) -> usize {
+    let mut tangents = 0;
+    for _ in 0..steps {
+        physics_step(world);
+        drain_events(world);
         let carry = &world.resource::<PhysicsBuffers>().extra.carry;
-        (carry.kept, carry.rekeyed)
-    };
-    // Steps the world; returns the most tangent impulses a step carried.
-    let run = |world: &mut World, steps: usize| {
-        let mut tangents = 0;
-        for _ in 0..steps {
-            physics_step(world);
-            drain_events(world);
-            let carry = &world.resource::<PhysicsBuffers>().extra.carry;
-            tangents = tangents.max(carry.tangents());
-        }
-        tangents
-    };
+        tangents = tangents.max(carry.tangents());
+    }
+    tangents
+}
+
+#[test]
+fn seeds_by_proxy_index_equal_the_keyed_carry_through_every_change() {
+    // D-269, D-299: a build's first substep seeds each contact from the last
+    // synchronized contacts by proxy index: as they are while the proxies
+    // are the ones those were taken from, with their indices rewritten when
+    // the bodies changed, and by key in the frame the tiles changed. The
+    // reference model compares every seed, normal and tangent, with a map
+    // by key; here over a heap of boxes and balls with friction on a tile
+    // floor, while nothing changes, when a body leaves and another comes
+    // (every later index shifts), and when a tile is cut (the tiles'
+    // version moves).
+    let (mut world, mut bodies) = carry_heap(1);
 
     // The first frame took the proxies' keys; from there nothing changes.
-    assert_eq!(counts(&world).1, 1);
-    let tangents = run(&mut world, 40);
-    let (kept, rekeyed) = counts(&world);
-    assert!(kept >= 40 && rekeyed == 1, "{kept} kept, {rekeyed} rekeyed");
+    assert_eq!(carry_counts(&world), (0, 1, 0));
+    let tangents = carry_run(&mut world, 40);
+    let (kept, rekeyed, remapped) = carry_counts(&world);
+    assert!(
+        kept >= 40 && rekeyed == 1 && remapped == 0,
+        "{kept} kept, {rekeyed} rekeyed, {remapped} remapped"
+    );
     assert!(tangents > 0, "the heap carried no tangent impulse");
 
-    // A body leaves the heap's middle and another lands on it.
+    // A body leaves the heap's middle and another lands on it: the entries
+    // follow their bodies to their new indices.
     world.despawn(bodies.remove(17));
-    bodies.push(body(&mut world, 64));
-    run(&mut world, 1);
-    assert_eq!(counts(&world).1, 2, "the changed bodies were not seen");
-    run(&mut world, 20);
-    assert_eq!(counts(&world).1, 2);
+    bodies.push(carry_body(&mut world, 64));
+    carry_run(&mut world, 1);
+    let (_, rekeyed, remapped) = carry_counts(&world);
+    assert_eq!(
+        (rekeyed, remapped),
+        (1, 1),
+        "the changed bodies were not seen"
+    );
+    carry_run(&mut world, 20);
+    let (_, rekeyed, remapped) = carry_counts(&world);
+    assert_eq!((rekeyed, remapped), (1, 1));
 
-    // A tile under no body is cut: the tile proxies after it shift.
+    // A tile under no body is cut: the tile proxies after it shift, and the
+    // entries go through the keyed maps.
     assert!(
         world
             .resource_mut::<TilemapRegistry>()
             .set_tile("floor", 0, 3, 2, EMPTY_TILE)
     );
-    run(&mut world, 1);
-    assert_eq!(counts(&world).1, 3, "the changed tiles were not seen");
-    run(&mut world, 20);
-    let (kept_after, rekeyed) = counts(&world);
-    assert!(kept_after >= kept + 40 && rekeyed == 3);
+    carry_run(&mut world, 1);
+    let (_, rekeyed, remapped) = carry_counts(&world);
+    assert_eq!(
+        (rekeyed, remapped),
+        (2, 1),
+        "the changed tiles were not seen"
+    );
+    carry_run(&mut world, 20);
+    let (kept_after, rekeyed, remapped) = carry_counts(&world);
+    assert!(kept_after >= kept + 40 && rekeyed == 2 && remapped == 1);
+}
+
+/// A marker whose insert and removal move a body between archetypes, and
+/// with that between places in the gathered proxies.
+#[derive(Debug, Clone, Copy)]
+struct CarryMarker;
+
+#[test]
+fn the_carry_follows_bodies_that_leave_come_and_change_archetype_every_frame() {
+    // D-299 under the churn `e01-stress` runs every frame: a body despawned,
+    // one spawned and one moved to another archetype, each step, for 60
+    // steps. The reference model compares every seed, normal and tangent,
+    // with a map by key, so one entry sent to a wrong proxy fails the step
+    // (the next test); the entries never go through the keyed maps.
+    let (mut world, mut bodies) = carry_heap(1);
+    carry_run(&mut world, 30);
+    let mut tangents = 0;
+    for step in 0..60 {
+        world.despawn(bodies.remove((step * 7) % bodies.len()));
+        bodies.push(carry_body(&mut world, 60 + step));
+        let moved = bodies[(step * 11) % bodies.len()];
+        if world.get::<CarryMarker>(moved).is_some() {
+            world.remove_component::<CarryMarker>(moved);
+        } else {
+            world.insert(moved, CarryMarker);
+        }
+        tangents += carry_run(&mut world, 1);
+    }
+    let (_, rekeyed, remapped) = carry_counts(&world);
+    assert_eq!((rekeyed, remapped), (1, 60));
+    assert!(tangents > 0, "the churned heap carried no tangent impulse");
+}
+
+#[test]
+#[should_panic(expected = "warm-start diverged")]
+fn an_entry_remapped_to_the_wrong_proxy_fails_the_reference_model() {
+    // The negative control of the test above: the remap's first surviving
+    // entry lands one proxy off, and the reference model sees its seed.
+    let (mut world, mut bodies) = carry_heap(1);
+    carry_run(&mut world, 30);
+    world
+        .resource_mut::<PhysicsBuffers>()
+        .extra
+        .carry
+        .remap_wrong = true;
+    for step in 0..60 {
+        world.despawn(bodies.remove((step * 7) % bodies.len()));
+        bodies.push(carry_body(&mut world, 60 + step));
+        world
+            .resource_mut::<PhysicsBuffers>()
+            .extra
+            .carry
+            .remap_wrong = true;
+        carry_run(&mut world, 1);
+    }
+}
+
+#[test]
+fn tiles_that_share_a_key_keep_the_carry_on_the_keyed_maps() {
+    // Two instances of the floor's map on each other give every tile proxy
+    // a twin with its key, which the keyed maps fold into one entry: a seed
+    // by index would read each twin its own impulse, so the changed bodies
+    // go through the keyed maps as before D-299.
+    let (mut world, mut bodies) = carry_heap(2);
+    carry_run(&mut world, 30);
+    for step in 0..10 {
+        world.despawn(bodies.remove((step * 7) % bodies.len()));
+        bodies.push(carry_body(&mut world, 60 + step));
+        carry_run(&mut world, 1);
+    }
+    let (_, rekeyed, remapped) = carry_counts(&world);
+    assert_eq!((rekeyed, remapped), (11, 0));
+}
+
+#[test]
+fn a_sleep_table_rebuilt_by_cursor_equals_one_rebuilt_by_key() {
+    // The rebuild carries an entry over where the one after the last found
+    // sat, and probes the key index only where another key sits there. Two
+    // worlds take the same churn, one of them probing every body as before
+    // the cursor: a pile that sleeps in places while bodies leave from its
+    // middle, others land on it and one changes archetype, every third step.
+    // Their bodies and their sleepers must stay the same at every step.
+    let world_of = |probe_only: bool| {
+        let (mut world, bodies) = carry_heap(1);
+        world.resource_mut::<PhysicsBuffers>().sleep.probe_only = probe_only;
+        (world, bodies)
+    };
+    let (mut by_cursor, mut cursor_bodies) = world_of(false);
+    let (mut by_key, mut key_bodies) = world_of(true);
+    let mut slept = 0;
+    for step in 0..240 {
+        for (world, bodies) in [
+            (&mut by_cursor, &mut cursor_bodies),
+            (&mut by_key, &mut key_bodies),
+        ] {
+            if step > 60 && step % 3 == 0 {
+                world.despawn(bodies.remove((step * 7) % bodies.len()));
+                bodies.push(carry_body(world, 60 + step));
+                let moved = bodies[(step * 11) % bodies.len()];
+                if world.get::<CarryMarker>(moved).is_some() {
+                    world.remove_component::<CarryMarker>(moved);
+                } else {
+                    world.insert(moved, CarryMarker);
+                }
+            }
+            physics_step(world);
+            drain_events(world);
+        }
+        let state = |world: &World, bodies: &[Entity]| -> Vec<([u32; 4], bool)> {
+            let buffers = world.resource::<PhysicsBuffers>();
+            bodies
+                .iter()
+                .map(|&body| {
+                    let (at, velocity) = (
+                        world.get::<Position>(body).unwrap().0,
+                        world.get::<Velocity>(body).unwrap().0,
+                    );
+                    (
+                        [
+                            at.x.to_bits(),
+                            at.y.to_bits(),
+                            velocity.x.to_bits(),
+                            velocity.y.to_bits(),
+                        ],
+                        buffers.is_sleeping(body),
+                    )
+                })
+                .collect()
+        };
+        let (cursor_state, key_state) = (
+            state(&by_cursor, &cursor_bodies),
+            state(&by_key, &key_bodies),
+        );
+        assert_eq!(cursor_state, key_state, "step {step}");
+        slept = slept.max(cursor_state.iter().filter(|(_, asleep)| *asleep).count());
+    }
+    assert!(slept > 0, "no body slept through the churn");
+    let hits = |world: &World| world.resource::<PhysicsBuffers>().sleep.cursor_hits;
+    assert!(hits(&by_cursor) > 1_000, "{} cursor hits", hits(&by_cursor));
+    assert_eq!(hits(&by_key), 0);
 }
 
 /// A step's collision events and the distinct pairs among them, a tile side

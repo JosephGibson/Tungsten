@@ -525,13 +525,33 @@ struct Carried {
     tangent: f32,
 }
 
+/// Scratch for [`ImpulseCarry::remap`] (`D-299`), and whether the tile
+/// proxies' keys are distinct, found once a tile version.
+#[derive(Debug, Default)]
+pub(super) struct CarryRemap {
+    /// By entity index: the proxy that entity's body is now, plus one; 0
+    /// where no gathered body has the index.
+    new_of: Vec<u32>,
+    /// The carry's next run bounds and entries, swapped with its own.
+    starts: Vec<u32>,
+    entries: Vec<Carried>,
+    /// The tile proxies' keys, sorted to find a repeated one.
+    tile_keys: Vec<u64>,
+    /// The tile version `distinct` was found for.
+    checked: Option<u64>,
+    distinct: bool,
+}
+
 /// The last synchronized contacts' impulses by proxy index (D-076's carry,
 /// D-269): each contact with a positive normal impulse or a tangent impulse,
 /// in a run under its lower proxy index, which a seed scans for its higher
 /// one. A proxy keeps its index while the gathered bodies and the tiles stay
-/// as they were, which the frame's first pair build checks key by key; when
-/// they changed, the entries move to the keyed maps under the keys they were
-/// taken with, and that build seeds from those.
+/// as they were, which the frame's first pair build checks key by key. When
+/// the bodies changed and the tiles did not, the entries' indices are
+/// rewritten to the new proxies' and seeds go on reading by index (`D-299`);
+/// when the tiles changed, or two of them share a key, the entries move to
+/// the keyed maps under the keys they were taken with, and that build seeds
+/// from those.
 #[derive(Debug, Default)]
 pub(super) struct ImpulseCarry {
     /// `starts[lo]..starts[lo + 1]` bounds proxy `lo`'s run in `entries`.
@@ -546,12 +566,19 @@ pub(super) struct ImpulseCarry {
     /// The proxies changed and no synchronization followed yet: the entries
     /// are in the keyed maps, and seeds read those.
     keyed: bool,
-    /// Tests: the pair builds that found the proxies as they were, and
-    /// those that moved the entries to the keyed maps.
+    /// Tests: the pair builds that found the proxies as they were, those
+    /// that moved the entries to the keyed maps, and those that rewrote
+    /// their indices.
     #[cfg(test)]
     pub(super) kept: usize,
     #[cfg(test)]
     pub(super) rekeyed: usize,
+    #[cfg(test)]
+    pub(super) remapped: usize,
+    /// Tests: `remap` sends its first surviving entry to the wrong proxy,
+    /// which the reference model must catch.
+    #[cfg(test)]
+    pub(super) remap_wrong: bool,
 }
 
 impl ImpulseCarry {
@@ -656,9 +683,136 @@ impl ImpulseCarry {
         self.keys.len() == proxies && self.bodies == bodies && self.tile_version == tile_version
     }
 
-    /// The proxies changed: move the entries to `impulses` and `tangents`
-    /// under the keys they were taken with, as a synchronization by key
-    /// leaves them, and take `proxies`' keys for the next ones.
+    /// The entity proxies changed and the tiles did not: rewrite the
+    /// entries' indices from the proxies they were taken from to `proxies`,
+    /// dropping each entry a side of which left, and take `proxies`' keys,
+    /// so that seeds go on reading by index (`D-299`). An entity proxy is
+    /// found by its key through a table by entity index; a tile proxy keeps
+    /// its place after the entity proxies. A seed then reads what a seed by
+    /// key reads: entity keys are unique among the gathered bodies and never
+    /// a tile's, and a pair whose side left reads 0 either way.
+    ///
+    /// Returns false, having changed nothing, where a seed by key could read
+    /// otherwise, which [`Self::rekey`] then serves: the tiles changed, or
+    /// two tile proxies share a key, which the keyed maps fold into one
+    /// entry. Out of line: it runs at most once a frame.
+    #[inline(never)]
+    fn remap(
+        &mut self,
+        proxies: &[super::Proxy],
+        bodies: usize,
+        tile_version: u64,
+        scratch: &mut CarryRemap,
+    ) -> bool {
+        let old_bodies = self.bodies;
+        let tiles = proxies.len() - bodies;
+        if self.tile_version != tile_version || self.keys.len() != old_bodies + tiles {
+            return false;
+        }
+        if scratch.checked != Some(tile_version) {
+            scratch.tile_keys.clear();
+            scratch
+                .tile_keys
+                .extend(proxies[bodies..].iter().map(|proxy| proxy.key));
+            scratch.tile_keys.sort_unstable();
+            scratch.distinct = scratch.tile_keys.windows(2).all(|pair| pair[0] != pair[1]);
+            scratch.checked = Some(tile_version);
+        }
+        if !scratch.distinct {
+            return false;
+        }
+        // An entity key's low half is the entity's index (`gather::entity_key`).
+        scratch.new_of.clear();
+        for (index, proxy) in proxies[..bodies].iter().enumerate() {
+            let entity = proxy.key as u32 as usize;
+            if scratch.new_of.len() <= entity {
+                scratch.new_of.resize(entity + 1, 0);
+            }
+            scratch.new_of[entity] = index as u32 + 1;
+        }
+        let (keys, new_of) = (&self.keys, &scratch.new_of);
+        let moved = |old: usize| -> Option<u32> {
+            if old >= old_bodies {
+                return Some((bodies + (old - old_bodies)) as u32);
+            }
+            let key = keys[old];
+            let new = new_of.get(key as u32 as usize)?.checked_sub(1)?;
+            (proxies[new as usize].key == key).then_some(new)
+        };
+        // A counting sort by the new lower index, as `take`'s: the counts
+        // become each run's end, which the fill walks back to its start.
+        scratch.starts.clear();
+        scratch.starts.resize(proxies.len() + 1, 0);
+        let mut kept = 0;
+        for (lo, bounds) in self.starts.windows(2).enumerate() {
+            if bounds[0] == bounds[1] {
+                continue;
+            }
+            let Some(new_lo) = moved(lo) else {
+                continue;
+            };
+            for entry in &self.entries[bounds[0] as usize..bounds[1] as usize] {
+                if let Some(new_hi) = moved(entry.other as usize) {
+                    scratch.starts[new_lo.min(new_hi) as usize] += 1;
+                    kept += 1;
+                }
+            }
+        }
+        let mut end = 0;
+        for count in &mut scratch.starts {
+            end += *count;
+            *count = end;
+        }
+        scratch.entries.clear();
+        scratch.entries.resize(kept, Carried::default());
+        #[cfg(test)]
+        let mut wrong = self.remap_wrong;
+        for (lo, bounds) in self.starts.windows(2).enumerate().rev() {
+            if bounds[0] == bounds[1] {
+                continue;
+            }
+            let Some(new_lo) = moved(lo) else {
+                continue;
+            };
+            for entry in self.entries[bounds[0] as usize..bounds[1] as usize]
+                .iter()
+                .rev()
+            {
+                let Some(new_hi) = moved(entry.other as usize) else {
+                    continue;
+                };
+                let start = &mut scratch.starts[new_lo.min(new_hi) as usize];
+                *start -= 1;
+                #[allow(unused_mut)]
+                let mut other = new_lo.max(new_hi);
+                #[cfg(test)]
+                if std::mem::take(&mut wrong) {
+                    other = other.wrapping_add(1);
+                }
+                scratch.entries[*start as usize] = Carried {
+                    other,
+                    normal: entry.normal,
+                    tangent: entry.tangent,
+                };
+            }
+        }
+        std::mem::swap(&mut self.starts, &mut scratch.starts);
+        std::mem::swap(&mut self.entries, &mut scratch.entries);
+        self.keys.clear();
+        self.keys.extend(proxies.iter().map(|proxy| proxy.key));
+        self.bodies = bodies;
+        self.keyed = false;
+        #[cfg(test)]
+        {
+            self.remapped += 1;
+        }
+        true
+    }
+
+    /// The tiles changed, or two share a key: move the entries to
+    /// `impulses` and `tangents` under the keys they were taken with, as a
+    /// synchronization by key leaves them, and take `proxies`' keys for the
+    /// next ones.
     fn rekey(
         &mut self,
         proxies: &[super::Proxy],
@@ -894,6 +1048,7 @@ pub(super) fn build_pairs(
         tile_bounds,
         oversize,
         carry,
+        carry_remap,
         tangents,
         sent,
         fork,
@@ -970,7 +1125,7 @@ pub(super) fn build_pairs(
             {
                 carry.kept += 1;
             }
-        } else {
+        } else if !carry.remap(proxies, bodies, tiles.version(), carry_remap) {
             carry.rekey(proxies, bodies, tiles.version(), impulses, tangents);
         }
     }

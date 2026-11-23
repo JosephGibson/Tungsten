@@ -616,9 +616,11 @@ struct StepExtra {
     static_join_checks: usize,
     /// How the step forks (`D-298`): the World's [`PhysicsWorkers`] as this
     /// step read it, and the worker threads, made at the first stage that
-    /// forks. It sits last so the fields above keep the places they had
-    /// before the pool.
+    /// forks. It and the fields after it sit last, so the fields above keep
+    /// the places they had before them.
     fork: pool::Fork,
+    /// Scratch for the carry's remap by index (`D-299`).
+    carry_remap: pairs::CarryRemap,
 }
 
 /// A swept sensor of the step ([`RigidBody::swept`]): its place among the

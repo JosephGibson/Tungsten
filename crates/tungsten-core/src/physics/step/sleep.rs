@@ -85,6 +85,12 @@ pub(super) struct SleepTable {
     /// Tests: the supports the comparison has sorted.
     #[cfg(test)]
     pub(super) sorted: usize,
+    /// Tests: a rebuild looks every body up through the key index, as it
+    /// did before its cursor; and the bodies the cursor found.
+    #[cfg(test)]
+    pub(super) probe_only: bool,
+    #[cfg(test)]
+    pub(super) cursor_hits: usize,
 }
 
 /// A proxy sleepers can rest on that holds no sleep entry: a static entity,
@@ -248,21 +254,51 @@ impl SleepTable {
         true
     }
 
-    /// Carry entries over by entity key into the order of `proxies`. Sleeping
-    /// entries that do not carry over (despawn or component removal) wake
-    /// their island: bodies above a removed support must fall.
-    fn rebuild(&mut self, proxies: &[Proxy], layers: &[Layers], wake_islands: &mut Vec<u64>) {
+    /// Carry entries over by entity key into the order of `proxies`, whose
+    /// first `bodies` are the entity proxies. Sleeping entries that do not
+    /// carry over (despawn or component removal) wake their island: bodies
+    /// above a removed support must fall.
+    ///
+    /// The World swap-removes rows, so the new bodies are mostly the old
+    /// ones in the old order: a body's entry is looked for first where the
+    /// one after the last found sat, and through the key index only when
+    /// another key sits there. A key names one old entry, so both find the
+    /// same one. Out of line: it runs in a frame whose bodies changed, and
+    /// the step's own function holds it as a call.
+    #[inline(never)]
+    fn rebuild(
+        &mut self,
+        proxies: &[Proxy],
+        bodies: usize,
+        layers: &[Layers],
+        wake_islands: &mut Vec<u64>,
+    ) {
         self.next_keys.clear();
         self.next_entries.clear();
         self.carried.clear();
         self.carried.resize(self.entries.len(), false);
         let mut members = 0_usize;
-        for (proxy, &proxy_layers) in proxies.iter().zip(layers) {
+        let mut cursor = 0_usize;
+        for (proxy, &proxy_layers) in proxies[..bodies].iter().zip(layers) {
             let key = Self::key_of(proxy);
             let mut entry = SleepEntry::default();
             if key != EMPTY_SLEEP {
                 members += 1;
-                if let Some(old) = self.index_of(key) {
+                #[cfg(test)]
+                if self.probe_only {
+                    cursor = usize::MAX - 1;
+                }
+                let old = if self.keys.get(cursor) == Some(&key) {
+                    #[cfg(test)]
+                    {
+                        self.cursor_hits += 1;
+                    }
+                    Some(cursor)
+                } else {
+                    self.index_of(key)
+                };
+                if let Some(old) = old {
+                    cursor = old;
                     self.carried[old] = true;
                     entry = self.entries[old];
                     if entry.sleeping && written(proxy, proxy_layers, &entry) {
@@ -270,9 +306,14 @@ impl SleepTable {
                     }
                 }
             }
+            cursor = cursor.wrapping_add(1);
             self.next_keys.push(key);
             self.next_entries.push(entry);
         }
+        // The tile proxies follow the entity proxies, and none sleeps.
+        self.next_keys.resize(proxies.len(), EMPTY_SLEEP);
+        self.next_entries
+            .resize(proxies.len(), SleepEntry::default());
         for (entry, &carried) in self.entries.iter().zip(&self.carried) {
             if entry.sleeping && !carried {
                 wake_islands.push(entry.island);
@@ -568,6 +609,7 @@ pub(super) fn uf_union(parent: &mut [u32], a: u32, b: u32) {
 pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers, margin: f32) {
     let PhysicsBuffers {
         proxies,
+        bodies,
         layers,
         sleep,
         wake_islands,
@@ -578,7 +620,7 @@ pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers, margin: f32) {
     wake_islands.clear();
     if !sleep.same_bodies(proxies, layers, wake_islands) {
         wake_islands.clear();
-        sleep.rebuild(proxies, layers, wake_islands);
+        sleep.rebuild(proxies, *bodies, layers, wake_islands);
     }
     if sleep.supports_valid {
         sleep.diff_supports(proxies, layers);
