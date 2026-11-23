@@ -507,6 +507,14 @@ impl StepExtra {
         let workers = world.get_resource::<PhysicsWorkers>().copied();
         self.fork.participants = workers.map_or(1, |workers| workers.participants() as u32);
         self.fork.any = workers.is_some_and(PhysicsWorkers::forks_any);
+        self.fork.spin_us = workers.map_or(0, PhysicsWorkers::spin_us);
+    }
+
+    /// Lets the pool's workers park (`D-300`): the step has run its last
+    /// fork. Out of line, like [`Self::read_workers`].
+    #[inline(never)]
+    fn rest_workers(&mut self) {
+        self.fork.rest();
     }
 }
 
@@ -1167,6 +1175,7 @@ pub fn physics_step(world: &mut World) {
             buffers.substeps_run += 1;
         }
     }
+    buffers.extra.rest_workers();
 
     sync_impulses(&mut buffers);
     if buffers.extra.record_on {

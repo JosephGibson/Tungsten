@@ -19,6 +19,10 @@ use glam::Vec2;
 /// The participant counts every lockstep runs beside the serial step.
 const COUNTS: [usize; 5] = [2, 3, 4, 6, 12];
 
+/// The spins every lockstep runs each count at: parked workers, and workers
+/// that spin for their step's next fork (`D-300`).
+const SPINS: [Duration; 2] = [Duration::ZERO, Duration::from_millis(1)];
+
 fn seed_world(gravity: f32) -> World {
     let mut world = World::new();
     let mut time = Time::new();
@@ -79,22 +83,26 @@ fn flush(world: &mut World) {
         .flush();
 }
 
-/// Steps one serial world and one forced world a count of [`COUNTS`] side by
-/// side, each built by `build` and driven by `drive` before every step, and
-/// compares them after every step. Returns the forks each forced world ran,
-/// and the arrival rounds and the narrow phases among them.
+/// Steps one serial world and one forced world a count of [`COUNTS`] and a
+/// spin of [`SPINS`] side by side, each built by `build` and driven by `drive`
+/// before every step, and compares them after every step. Returns the forks
+/// each forced world ran, and the arrival rounds and the narrow phases among
+/// them.
 fn lockstep(
     name: &str,
     steps: usize,
     build: impl Fn(&mut World) -> Vec<Entity>,
     drive: impl Fn(&mut World, usize, &mut Vec<Entity>),
 ) -> Vec<(usize, usize, usize)> {
-    let mut worlds: Vec<(usize, World, Vec<Entity>)> = std::iter::once(1)
-        .chain(COUNTS)
-        .map(|count| {
+    let forced = SPINS
+        .into_iter()
+        .flat_map(|spin| COUNTS.map(|count| (count, Some(spin))));
+    let mut worlds: Vec<(usize, World, Vec<Entity>)> = std::iter::once((1, None))
+        .chain(forced)
+        .map(|(count, spin)| {
             let mut world = seed_world(900.0);
-            if count > 1 {
-                world.insert_resource(PhysicsWorkers::forced(count));
+            if let Some(spin) = spin {
+                world.insert_resource(PhysicsWorkers::forced(count).with_spin(spin));
             }
             let bodies = build(&mut world);
             (count, world, bodies)
@@ -418,9 +426,122 @@ fn a_changed_participant_count_remakes_the_pool() {
     assert_eq!(scratches(&world), Some(5));
 }
 
+/// Waits up to two seconds for `done`; a spinning worker parks within
+/// microseconds of its step's end.
+fn wait_for(done: impl Fn() -> bool) -> bool {
+    let started = Instant::now();
+    while !done() {
+        if started.elapsed() > Duration::from_secs(2) {
+            return false;
+        }
+        std::thread::yield_now();
+    }
+    true
+}
+
+#[test]
+fn a_changed_spin_remakes_the_pool() {
+    let mut world = seed_world(900.0);
+    world.insert_resource(PhysicsWorkers::forced(2));
+    spawn_pit(&mut world, 0);
+    spawn_mixed(&mut world, &mut Pcg32::seeded(7), 60);
+    physics_step(&mut world);
+    let spin = |world: &World| {
+        let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+        buffers.extra.fork.pool().map(|pool| pool.spin)
+    };
+    assert_eq!(spin(&world), Some(Duration::ZERO));
+    let millisecond = Duration::from_millis(1);
+    world.insert_resource(PhysicsWorkers::forced(2).with_spin(millisecond));
+    physics_step(&mut world);
+    assert_eq!(spin(&world), Some(millisecond));
+}
+
+#[test]
+fn a_spinning_worker_takes_its_steps_next_fork_and_parks_when_the_step_ends() {
+    let idle = ForkData::default;
+    // Far longer than the test: only the step's end parks these workers.
+    let mut fork = Fork {
+        participants: 3,
+        ..Fork::default()
+    };
+    let long = Duration::from_secs(30);
+    let workers = Workers::of(&mut fork.workers, 3, long);
+    let shared = Arc::clone(&workers.shared);
+    let (spun, parked) = (
+        || shared.spun.load(Ordering::Relaxed),
+        || shared.parked.load(Ordering::Relaxed),
+    );
+    workers.fork(idle());
+    assert_eq!(
+        (spun(), parked()),
+        (0, 0),
+        "the first fork wakes parked workers"
+    );
+    let workers = Workers::of(&mut fork.workers, 3, long);
+    workers.fork(idle());
+    workers.fork(idle());
+    assert_eq!(spun(), 4, "two workers took two forks out of their spin");
+    assert_eq!(parked(), 0, "and none parked while the step ran");
+    // The step ends: both park, long before their spin time is up.
+    fork.rest();
+    assert!(wait_for(|| parked() == 2), "{} parked", parked());
+    // The next step's first fork finds them parked, and they spin again.
+    let workers = Workers::of(&mut fork.workers, 3, long);
+    workers.fork(idle());
+    assert_eq!(spun(), 4);
+    workers.fork(idle());
+    assert_eq!(spun(), 6);
+    fork.rest();
+    assert!(wait_for(|| parked() == 4), "{} parked", parked());
+}
+
+#[test]
+fn a_worker_past_its_spin_time_parks_inside_the_step() {
+    let mut workers = Workers::new(3, Duration::from_millis(1));
+    let shared = Arc::clone(&workers.shared);
+    workers.fork(ForkData::default());
+    // No step end: the spin time alone parks them.
+    assert!(
+        wait_for(|| shared.parked.load(Ordering::Relaxed) == 2),
+        "{} parked",
+        shared.parked.load(Ordering::Relaxed)
+    );
+    workers.fork(ForkData::default());
+    assert_eq!(shared.spun.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn workers_without_a_spin_never_spin() {
+    let mut workers = Workers::new(3, Duration::ZERO);
+    let shared = Arc::clone(&workers.shared);
+    for _ in 0..4 {
+        workers.fork(ForkData::default());
+    }
+    assert_eq!(shared.spun.load(Ordering::Relaxed), 0);
+    assert_eq!(shared.parked.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn the_step_rests_its_workers_when_its_last_fork_has_run() {
+    let mut world = seed_world(900.0);
+    world.insert_resource(PhysicsWorkers::forced(3).with_spin(PhysicsWorkers::SPIN_MAX));
+    spawn_pit(&mut world, 0);
+    spawn_mixed(&mut world, &mut Pcg32::seeded(7), 60);
+    physics_step(&mut world);
+    let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+    let pool = buffers.extra.fork.pool().expect("the forced step forked");
+    assert!(pool.forks > 1, "{} forks", pool.forks);
+    // Each fork set the flag its workers spin under; the step's end cleared
+    // it, so they park now and not when their spin time is up.
+    assert!(!pool.shared.stepping.load(Ordering::Acquire));
+    let shared = Arc::clone(&pool.shared);
+    assert!(wait_for(|| shared.parked.load(Ordering::Relaxed) >= 2));
+}
+
 #[test]
 fn a_share_that_panics_fails_the_fork_instead_of_hanging_it() {
-    let mut workers = Workers::new(3);
+    let mut workers = Workers::new(3, Duration::ZERO);
     let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         workers.fork(ForkData {
             stage: Stage::Fail { participant: 2 },

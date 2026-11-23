@@ -8105,6 +8105,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::ParticlesSe
 #[non_exhaustive] pub struct tungsten_core::config::PhysicsSection
 pub tungsten_core::config::PhysicsSection::broadphase_cell: f32
 pub tungsten_core::config::PhysicsSection::gravity: [f32; 2]
+pub tungsten_core::config::PhysicsSection::worker_spin_ms: u32
 pub tungsten_core::config::PhysicsSection::workers: u32
 impl tungsten_core::config::PhysicsSection
 pub fn tungsten_core::config::PhysicsSection::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
@@ -11011,10 +11012,13 @@ impl tungsten_core::physics::PhysicsWorkers
 pub const tungsten_core::physics::PhysicsWorkers::AUTO_MAX: usize
 pub const tungsten_core::physics::PhysicsWorkers::MAX: usize
 pub const tungsten_core::physics::PhysicsWorkers::SERIAL: Self
+pub const tungsten_core::physics::PhysicsWorkers::SPIN_MAX: core::time::Duration
 pub fn tungsten_core::physics::PhysicsWorkers::auto() -> Self
 pub fn tungsten_core::physics::PhysicsWorkers::from_setting(u32) -> Self
 pub fn tungsten_core::physics::PhysicsWorkers::new(usize) -> Self
 pub fn tungsten_core::physics::PhysicsWorkers::participants(self) -> usize
+pub fn tungsten_core::physics::PhysicsWorkers::spin(self) -> core::time::Duration
+pub fn tungsten_core::physics::PhysicsWorkers::with_spin(self, core::time::Duration) -> Self
 impl core::clone::Clone for tungsten_core::physics::PhysicsWorkers
 pub fn tungsten_core::physics::PhysicsWorkers::clone(&self) -> tungsten_core::physics::PhysicsWorkers
 impl core::cmp::Eq for tungsten_core::physics::PhysicsWorkers
@@ -22984,10 +22988,13 @@ impl tungsten_core::physics::PhysicsWorkers
 pub const tungsten_core::physics::PhysicsWorkers::AUTO_MAX: usize
 pub const tungsten_core::physics::PhysicsWorkers::MAX: usize
 pub const tungsten_core::physics::PhysicsWorkers::SERIAL: Self
+pub const tungsten_core::physics::PhysicsWorkers::SPIN_MAX: core::time::Duration
 pub fn tungsten_core::physics::PhysicsWorkers::auto() -> Self
 pub fn tungsten_core::physics::PhysicsWorkers::from_setting(u32) -> Self
 pub fn tungsten_core::physics::PhysicsWorkers::new(usize) -> Self
 pub fn tungsten_core::physics::PhysicsWorkers::participants(self) -> usize
+pub fn tungsten_core::physics::PhysicsWorkers::spin(self) -> core::time::Duration
+pub fn tungsten_core::physics::PhysicsWorkers::with_spin(self, core::time::Duration) -> Self
 impl core::clone::Clone for tungsten_core::physics::PhysicsWorkers
 pub fn tungsten_core::physics::PhysicsWorkers::clone(&self) -> tungsten_core::physics::PhysicsWorkers
 impl core::cmp::Eq for tungsten_core::physics::PhysicsWorkers

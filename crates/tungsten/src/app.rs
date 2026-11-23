@@ -1618,7 +1618,8 @@ impl App {
     }
 
     /// Gives the World its [`PhysicsWorkers`] from `physics.workers`
-    /// (`D-298`), unless the game inserted its own. Only a window's run
+    /// (`D-298`), spinning `physics.worker_spin_ms` for a step's next fork
+    /// (`D-300`), unless the game inserted its own. Only a window's run
     /// does: `App::new` inserts none, so the harness, the checks and every
     /// counter guard step on the calling thread. The step starts its
     /// threads at the first stage large enough to fork, not here.
@@ -1626,11 +1627,13 @@ impl App {
         if self.world.has_resource::<PhysicsWorkers>() {
             return;
         }
-        let workers = PhysicsWorkers::from_setting(self.config.physics.workers);
+        let spin = Duration::from_millis(u64::from(self.config.physics.worker_spin_ms));
+        let workers = PhysicsWorkers::from_setting(self.config.physics.workers).with_spin(spin);
         log::debug!(
-            "physics step: {} participants (physics.workers {})",
+            "physics step: {} participants (physics.workers {}), spinning {} ms for a step's next fork",
             workers.participants(),
-            self.config.physics.workers
+            self.config.physics.workers,
+            self.config.physics.worker_spin_ms
         );
         self.world.insert_resource(workers);
     }

@@ -28,9 +28,12 @@ fn a_windows_run_gives_the_world_its_physics_workers_and_new_gives_none() {
         "App::new steps on the calling thread, as the harness and the guards do"
     );
     app.start_physics_workers();
+    // The workers spin `physics.worker_spin_ms` for a step's next fork: 3 ms
+    // unless the file says otherwise (`D-300`).
+    let spin = Duration::from_millis(3);
     assert_eq!(
         app.world().get_resource::<PhysicsWorkers>(),
-        Some(&PhysicsWorkers::new(3))
+        Some(&PhysicsWorkers::new(3).with_spin(spin))
     );
 
     // 0, the default, is automatic; 1 is the serial step.
@@ -38,15 +41,28 @@ fn a_windows_run_gives_the_world_its_physics_workers_and_new_gives_none() {
     app.start_physics_workers();
     assert_eq!(
         app.world().get_resource::<PhysicsWorkers>(),
-        Some(&PhysicsWorkers::auto())
+        Some(&PhysicsWorkers::auto().with_spin(spin))
     );
     let config: Config = serde_json::from_str(r#"{ "physics": { "workers": 1 } }"#).unwrap();
     let mut app = App::new(config).expect("App::new failed");
     app.start_physics_workers();
     assert_eq!(
         app.world().get_resource::<PhysicsWorkers>(),
-        Some(&PhysicsWorkers::SERIAL)
+        Some(&PhysicsWorkers::SERIAL.with_spin(spin))
     );
+
+    // A spin of 0 parks a worker at once, and the key's own time is kept.
+    for (millis, json) in [
+        (0, r#"{ "physics": { "workers": 4, "worker_spin_ms": 0 } }"#),
+        (7, r#"{ "physics": { "workers": 4, "worker_spin_ms": 7 } }"#),
+    ] {
+        let config: Config = serde_json::from_str(json).unwrap();
+        let mut app = App::new(config).expect("App::new failed");
+        app.start_physics_workers();
+        let workers = *app.world().get_resource::<PhysicsWorkers>().unwrap();
+        assert_eq!(workers.participants(), 4);
+        assert_eq!(workers.spin(), Duration::from_millis(millis));
+    }
 
     // A game's own resource stands.
     let mut app = App::new(Config::default()).expect("App::new failed");
@@ -62,6 +78,10 @@ fn a_windows_run_gives_the_world_its_physics_workers_and_new_gives_none() {
     bad.physics.workers = 65;
     let error = App::new(bad).err().expect("refused").to_string();
     assert!(error.contains("physics.workers"), "{error}");
+    let mut bad = Config::default();
+    bad.physics.worker_spin_ms = 51;
+    let error = App::new(bad).err().expect("refused").to_string();
+    assert!(error.contains("physics.worker_spin_ms"), "{error}");
 }
 
 #[test]

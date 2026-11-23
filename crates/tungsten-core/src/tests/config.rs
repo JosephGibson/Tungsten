@@ -1278,6 +1278,41 @@ fn the_physics_section_sets_the_steps_workers() {
 }
 
 #[test]
+fn the_physics_section_sets_the_workers_spin() {
+    assert_eq!(PhysicsSection::default().worker_spin_ms, 3);
+    for (millis, json) in [
+        (0, r#"{ "physics": { "worker_spin_ms": 0 } }"#),
+        (50, r#"{ "physics": { "worker_spin_ms": 50 } }"#),
+    ] {
+        let (_, loaded) = load_json("physics-spin", json);
+        assert_eq!(loaded.unwrap().physics.worker_spin_ms, millis);
+    }
+    let (file, loaded) = load_json(
+        "physics-spin-51",
+        r#"{ "physics": { "worker_spin_ms": 51 } }"#,
+    );
+    match loaded.unwrap_err() {
+        ConfigError::InvalidValue {
+            path,
+            field,
+            value,
+            expected,
+        } => {
+            assert_eq!(field, "physics.worker_spin_ms");
+            assert_eq!(value, "51");
+            assert_eq!(expected, PHYSICS_WORKER_SPIN_EXPECTED);
+            assert_eq!(path, file.display().to_string());
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+    let (_, loaded) = load_json(
+        "physics-spin-neg",
+        r#"{ "physics": { "worker_spin_ms": -1 } }"#,
+    );
+    assert!(matches!(loaded, Err(ConfigError::Parse { .. })));
+}
+
+#[test]
 fn the_physics_workers_variable_overrides_the_file() {
     let mut config = Config::default();
     config.physics.workers = 6;

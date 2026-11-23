@@ -1,6 +1,6 @@
-# The engine perf pass's proposals (`engine-perf-proposals`) — draft
+# The engine perf pass's proposals (`engine-perf-proposals`) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** land the four proposals of the engine performance pass the owner chose on 2026-11-23, each judged: the physics pool's workers spinning for the next fork, bloom's pyramid from a quarter of the target above 1440 rows with a vignette after bloom drawn in bloom's composite, saves staged on the frame and committed on a writer thread, and the arrival pass that clamps a listed body against every pair partner in reach. The compositor-bypass hint stays in Later.
 - **non-goals:** the compositor-bypass hint (an X11 dependency or FFI); any change to example 01's or the template's code or tests, their shells included; the exact levers benchmarks.md lists as left; new `unsafe` or a third-party dependency; a release cut.
 - **files to touch:**
@@ -52,6 +52,8 @@ Item `engine-perf-proposals` in [ROADMAP.md](../../ROADMAP.md), off the roadmap 
 As the pass was (`perf-runs/20261123-engine-perf/README.md`): every sitting takes `--base 3940a739`; Δ(sitting) is the mean over the two judged pairs of candidate − base; a step's own move is Δ(its sitting) − Δ(the sitting before it), by `tools/step_delta.py`. Every step keeps every digest (`tools/judged.py`) until Step 6. Stills (`tools/stills.py`, by bytes) compare a step's binary with its predecessor's, each kept aside under `target/engine-perf2/bin/<step>/` when its step's checks pass: Step 1 against the base's (nine of nine equal), Step 2 by §2.3, Step 3 by §2.4, Step 4 against Step 3's (nine of nine equal). Nothing runs beside a capture or a sitting.
 
 Two sittings before the arrival probe: Step 1's (`--cpu-only`), which reads the spin alone, and Step 5's full one, which reads Steps 2 to 4 on metrics the spin does not touch (`gpu.*`, `stage.render`, the save frames). Step 5's is the close's unless Step 6 lands.
+
+**Timed checks wait for the owner's client (added at Step 1's commit).** The runner refuses a capture beside the remote-desktop encoder, and the owner was connected while the steps were written. So each of Steps 1 to 4 commits on its untimed checks (tests, `just check`, the pixel checks, the counters), and the timed ones run in one batch once the client disconnects: Step 1's sitting on an export of its own commit, which reads the spin alone (`perf-runs/20261101T195322Z-sitting/sit_export.py`, its builds its own), then Steps 2 and 3's by-hand readings on their kept binaries, Step 4's `e01-play` capture, and Step 5. The evidence log marks each timed check not run until it has.
 
 A committed step whose later gate fails (a sitting's, Step 5's) is taken out by a commit of its own that restores that step's files from the commit before it (`git show <commit>^:<path> > <path>`), its decision marked superseded by a new entry.
 
@@ -214,6 +216,7 @@ gpt-6-astra through the critique skill, 2026-11-23, the working tree at `3940a73
 
 | Step | Date | State | Evidence |
 | --- | --- | --- | --- |
+| 1 | 2026-11-23 | landed on its untimed checks; its sitting, `nm -S` and stills not run yet (the encoder running) | `cargo test -p tungsten-core --lib pool::tests` → 14 passed, each lockstep scene at 2, 3, 4, 6 and 12 participants parked and spinning 1 ms; four negative controls each failed their test and were restored (no `rest_workers` call: `the_step_rests_its_workers_when_its_last_fork_has_run`; a worker that ignores the step's end, and one that never spins: `a_spinning_worker_takes_its_steps_next_fork_and_parks_when_the_step_ends`; a pool not remade on a new spin: `a_changed_spin_remakes_the_pool`). `just check` → exit 0, no guard pin rewritten; `just api-check` → exit 0; `just repo-check` → exit 0. `Fork` and `PhysicsWorkers` keep their sizes: the spin time sits in their padding. One call added to `physics_step`, out of line, after the last substep. |
 
 ## Follow-ups
 

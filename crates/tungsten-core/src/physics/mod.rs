@@ -46,6 +46,7 @@ pub use step::{
 };
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use glam::Vec2;
 
@@ -189,18 +190,30 @@ impl PhysicsMaterials {
 /// test harness do not, so tests and counter guards step serially unless
 /// they insert it.
 ///
+/// Between a step's forks a worker may spin for the next one before it
+/// parks ([`Self::with_spin`], `D-300`): it then takes the fork without a
+/// wake-up, at the price of a busy core while the step runs. The
+/// constructors park; `App::run` passes `physics.worker_spin_ms`.
+///
 /// ```
+/// use std::time::Duration;
 /// use tungsten_core::physics::PhysicsWorkers;
 ///
 /// assert_eq!(PhysicsWorkers::new(4).participants(), 4);
 /// assert_eq!(PhysicsWorkers::new(0).participants(), 1);
 /// assert_eq!(PhysicsWorkers::from_setting(1), PhysicsWorkers::SERIAL);
 /// assert!((1..=6).contains(&PhysicsWorkers::auto().participants()));
+/// assert_eq!(PhysicsWorkers::new(4).spin(), Duration::ZERO);
+/// let spinning = PhysicsWorkers::new(4).with_spin(Duration::from_millis(3));
+/// assert_eq!(spinning.spin(), Duration::from_millis(3));
+/// assert_eq!(spinning.with_spin(Duration::from_secs(9)).spin(), PhysicsWorkers::SPIN_MAX);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PhysicsWorkers {
     participants: u32,
     fork_any: bool,
+    /// Microseconds a worker spins for a step's next fork; 0 parks at once.
+    spin_us: u16,
 }
 
 impl PhysicsWorkers {
@@ -213,7 +226,10 @@ impl PhysicsWorkers {
     pub const SERIAL: Self = Self {
         participants: 1,
         fork_any: false,
+        spin_us: 0,
     };
+    /// The longest a worker spins for a step's next fork.
+    pub const SPIN_MAX: Duration = Duration::from_millis(50);
 
     /// `participants` threads, the calling thread among them, clamped to 1
     /// through [`Self::MAX`].
@@ -222,6 +238,7 @@ impl PhysicsWorkers {
         Self {
             participants: participants.clamp(1, Self::MAX) as u32,
             fork_any: false,
+            spin_us: 0,
         }
     }
 
@@ -249,6 +266,30 @@ impl PhysicsWorkers {
     #[must_use]
     pub fn participants(self) -> usize {
         self.participants as usize
+    }
+
+    /// These workers, each spinning up to `spin` for its step's next fork
+    /// before it parks (`D-300`): whole microseconds, at most
+    /// [`Self::SPIN_MAX`]; zero parks at once. A worker spins only while
+    /// its step runs, so the cores it keeps busy are free again when the
+    /// step ends. The step's result is the same either way.
+    #[must_use]
+    pub fn with_spin(self, spin: Duration) -> Self {
+        Self {
+            spin_us: spin.min(Self::SPIN_MAX).as_micros() as u16,
+            ..self
+        }
+    }
+
+    /// How long a worker spins for its step's next fork before it parks.
+    #[must_use]
+    pub fn spin(self) -> Duration {
+        Duration::from_micros(u64::from(self.spin_us))
+    }
+
+    /// [`Self::spin`] in microseconds, as the step keeps it.
+    pub(crate) fn spin_us(self) -> u16 {
+        self.spin_us
     }
 
     /// `participants` threads whose stages fork whatever their size, so a

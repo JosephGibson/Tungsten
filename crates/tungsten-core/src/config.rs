@@ -45,6 +45,10 @@ const PHYSICS_WORKERS_EXPECTED: &str = "a whole number from 0, automatic, to 64"
 /// The most `physics.workers` takes; the step itself clamps to
 /// `PhysicsWorkers::MAX`.
 const PHYSICS_WORKERS_MAX: u32 = 64;
+const PHYSICS_WORKER_SPIN_EXPECTED: &str =
+    "a whole number of milliseconds from 0, which parks at once, to 50";
+/// The most `physics.worker_spin_ms` takes: `PhysicsWorkers::SPIN_MAX`.
+const PHYSICS_WORKER_SPIN_MAX_MS: u32 = 50;
 const GAME_ID_MAX_LEN: usize = 64;
 /// The lowest step rate: a longer step than physics' default
 /// `max_step_dt`, 1/30 s, would run physics slow against the game (`D-094`).
@@ -653,11 +657,12 @@ pub struct UiConfig {
 /// `tungsten.json`'s `physics` (redo 7.12, S-85): the World's gravity and
 /// its broadphase's cell, which `App::new` puts into the World's
 /// `PhysicsConfig`; a game's plugin may set them again after. And the
-/// threads the step's forked stages run on (`D-298`), which `App::run` puts
-/// into the World's `PhysicsWorkers` unless the game inserted its own.
+/// threads the step's forked stages run on (`D-298`) with the time each
+/// spins for a step's next fork (`D-300`), which `App::run` puts into the
+/// World's `PhysicsWorkers` unless the game inserted its own.
 ///
 /// ```json
-/// "physics": { "gravity": [0, 900], "broadphase_cell": 32, "workers": 0 }
+/// "physics": { "gravity": [0, 900], "broadphase_cell": 32, "workers": 0, "worker_spin_ms": 3 }
 /// ```
 ///
 /// A file without the section, or a field left out, keeps the engine's
@@ -678,6 +683,12 @@ pub struct PhysicsSection {
     /// most 16. Every count steps to the same result, bit for bit.
     /// `TUNGSTEN_PHYSICS_WORKERS` overrides the file.
     pub workers: u32,
+    /// `physics.worker_spin_ms`: how long a worker spins for its step's
+    /// next fork before it parks, 0 to 50 ms; 3 unless set. A spinning
+    /// worker takes the fork without a wake-up and keeps a core busy while
+    /// the step runs, never past it; 0 parks at once. A step that never
+    /// forks starts no worker, so a small world pays nothing.
+    pub worker_spin_ms: u32,
 }
 
 impl Default for PhysicsSection {
@@ -687,19 +698,22 @@ impl Default for PhysicsSection {
             gravity: physics.gravity.to_array(),
             broadphase_cell: physics.broadphase_cell_size,
             workers: 0,
+            worker_spin_ms: 3,
         }
     }
 }
 
 impl PhysicsSection {
-    /// Checks the gravity is finite, the cell finite and above 0 and the
-    /// workers at most 64. `Config::load` and `App::new` both call this,
-    /// since a config built in code skips the load.
+    /// Checks the gravity is finite, the cell finite and above 0, the
+    /// workers at most 64 and their spin at most 50 ms. `Config::load` and
+    /// `App::new` both call this, since a config built in code skips the
+    /// load.
     ///
     /// # Errors
     ///
     /// [`ConfigError::InvalidValue`] with an empty `path` for field
-    /// `physics.gravity`, `physics.broadphase_cell` or `physics.workers`.
+    /// `physics.gravity`, `physics.broadphase_cell`, `physics.workers` or
+    /// `physics.worker_spin_ms`.
     pub fn validate(&self) -> Result<(), ConfigError> {
         let [x, y] = self.gravity;
         if !(x.is_finite() && y.is_finite()) {
@@ -725,6 +739,14 @@ impl PhysicsSection {
                 field: "physics.workers",
                 value: self.workers.to_string(),
                 expected: PHYSICS_WORKERS_EXPECTED,
+            });
+        }
+        if self.worker_spin_ms > PHYSICS_WORKER_SPIN_MAX_MS {
+            return Err(ConfigError::InvalidValue {
+                path: String::new(),
+                field: "physics.worker_spin_ms",
+                value: self.worker_spin_ms.to_string(),
+                expected: PHYSICS_WORKER_SPIN_EXPECTED,
             });
         }
         Ok(())

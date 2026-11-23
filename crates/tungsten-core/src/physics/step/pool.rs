@@ -1,5 +1,6 @@
 //! The step's worker pool (`D-298`): threads kept between forks, each parked
-//! on its own channel until the step hands it a stage's share.
+//! on its own channel until the step hands it a stage's share. While its step
+//! runs a worker may spin for the next fork before it parks (`D-300`).
 //!
 //! A fork moves the buffers its stage reads into one [`ForkData`], shares it
 //! with every participant, the calling thread among them, and takes it back
@@ -10,7 +11,7 @@
 //! its serial loop writes, whichever thread took a chunk and however many
 //! there are.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -122,6 +123,10 @@ pub(super) struct Fork {
     pub(super) participants: u32,
     /// Whether a stage forks whatever its size, as the lockstep tests ask.
     pub(super) any: bool,
+    /// How long a worker spins for the step's next fork before it parks, in
+    /// microseconds (`D-300`); 0 parks at once. It sits in the padding the
+    /// two fields above leave.
+    pub(super) spin_us: u16,
 }
 
 impl Fork {
@@ -138,10 +143,19 @@ impl Fork {
         if self.any { forced } else { usual }
     }
 
-    /// The pool, made at the first fork and made again when the count
-    /// changed.
+    /// The pool, made at the first fork and made again when the count or
+    /// the spin time changed.
     pub(super) fn workers(&mut self) -> &mut Workers {
-        Workers::of(&mut self.workers, self.participants as usize)
+        let spin = Duration::from_micros(u64::from(self.spin_us));
+        Workers::of(&mut self.workers, self.participants as usize, spin)
+    }
+
+    /// The step has run its last fork: a worker spinning for another parks
+    /// (`D-300`), so the pool is busy for no longer than its step.
+    pub(super) fn rest(&mut self) {
+        if let Some(workers) = &self.workers {
+            workers.shared.stepping.store(false, Ordering::Release);
+        }
     }
 
     /// The last fork's output, lent out of the pool while the substep's
@@ -216,18 +230,81 @@ impl Drop for Answering<'_> {
     }
 }
 
-fn worker_loop(worker: usize, jobs: &mpsc::Receiver<Job>, answers: &mpsc::Sender<Answer>) {
-    // Parked in `recv` between forks; a closed channel ends the thread.
-    while let Ok(Job { data, mut scratch }) = jobs.recv() {
-        let mut answering = Answering {
-            answers,
-            worker,
-            scratch: None,
-        };
-        work(&data, &mut scratch, worker);
-        // The caller takes the data back once every worker has answered.
-        drop(data);
-        answering.scratch = Some(scratch);
+/// What the step shares with its workers beside their channels.
+#[derive(Debug, Default)]
+pub(super) struct Shared {
+    /// Set by a fork and cleared at the step's end ([`Fork::rest`]): a
+    /// worker spins for the next fork only while its step runs.
+    stepping: AtomicBool,
+    /// Tests: the forks a worker took out of its spin.
+    #[cfg(test)]
+    pub(super) spun: AtomicUsize,
+    /// Tests: the times a worker left its spin without a fork and parked.
+    #[cfg(test)]
+    pub(super) parked: AtomicUsize,
+}
+
+/// The step's next fork, when it comes while `shared`'s step still runs and
+/// within `spin` of the worker's last answer (`D-300`): the worker polls its
+/// channel under `spin_loop` and so takes the fork without a wake-up.
+/// `Ok(None)` once it should park, at once when `spin` is zero; `Err` when
+/// the channel has closed.
+fn spin_for(
+    jobs: &mpsc::Receiver<Job>,
+    spin: Duration,
+    shared: &Shared,
+) -> Result<Option<Job>, ()> {
+    if spin.is_zero() {
+        return Ok(None);
+    }
+    let answered = Instant::now();
+    loop {
+        match jobs.try_recv() {
+            Ok(job) => {
+                #[cfg(test)]
+                shared.spun.fetch_add(1, Ordering::Relaxed);
+                return Ok(Some(job));
+            }
+            Err(mpsc::TryRecvError::Disconnected) => return Err(()),
+            Err(mpsc::TryRecvError::Empty) => {
+                if !shared.stepping.load(Ordering::Acquire) || answered.elapsed() >= spin {
+                    #[cfg(test)]
+                    shared.parked.fetch_add(1, Ordering::Relaxed);
+                    return Ok(None);
+                }
+                std::hint::spin_loop();
+            }
+        }
+    }
+}
+
+fn worker_loop(
+    worker: usize,
+    jobs: &mpsc::Receiver<Job>,
+    answers: &mpsc::Sender<Answer>,
+    spin: Duration,
+    shared: &Shared,
+) {
+    // Parked in `recv` between steps; a closed channel ends the thread.
+    while let Ok(mut job) = jobs.recv() {
+        loop {
+            let Job { data, mut scratch } = job;
+            let mut answering = Answering {
+                answers,
+                worker,
+                scratch: None,
+            };
+            work(&data, &mut scratch, worker);
+            // The caller takes the data back once every worker has answered.
+            drop(data);
+            answering.scratch = Some(scratch);
+            drop(answering);
+            match spin_for(jobs, spin, shared) {
+                Ok(Some(next)) => job = next,
+                Ok(None) => break,
+                Err(()) => return,
+            }
+        }
     }
 }
 
@@ -247,6 +324,10 @@ struct Threads {
 pub(super) struct Workers {
     /// The participants asked for, which a failed spawn can leave unmet.
     wanted: usize,
+    /// How long a worker spins for the step's next fork (`D-300`).
+    pub(super) spin: Duration,
+    /// The step's flag and the tests' counts, shared with every worker.
+    pub(super) shared: Arc<Shared>,
     /// Behind a `Mutex` only for what the lock lends the step's buffers:
     /// `Sync` and unwind safety, which a channel's receiver lacks. The step
     /// reaches the threads through `get_mut` and never locks.
@@ -276,16 +357,18 @@ impl Workers {
     /// line: it runs once a pool, and inlined it would sit in every caller.
     #[cold]
     #[inline(never)]
-    pub(super) fn new(participants: usize) -> Self {
+    pub(super) fn new(participants: usize, spin: Duration) -> Self {
         let (answer_tx, answers) = mpsc::channel();
+        let shared = Arc::new(Shared::default());
         let mut senders = Vec::new();
         let mut handles = Vec::new();
         for worker in 1..participants.max(1) {
             let (tx, rx) = mpsc::channel::<Job>();
             let answer_tx = answer_tx.clone();
+            let shared = Arc::clone(&shared);
             let spawned = std::thread::Builder::new()
                 .name(format!("tungsten-physics-{worker}"))
-                .spawn(move || worker_loop(worker, &rx, &answer_tx));
+                .spawn(move || worker_loop(worker, &rx, &answer_tx, spin, &shared));
             match spawned {
                 Ok(handle) => {
                     senders.push(tx);
@@ -305,6 +388,8 @@ impl Workers {
         scratches.resize_with(senders.len() + 1, WorkerScratch::default);
         Self {
             wanted: participants,
+            spin,
+            shared,
             threads: Mutex::new(Threads {
                 senders,
                 answers,
@@ -322,16 +407,16 @@ impl Workers {
         }
     }
 
-    /// The step's pool for `participants`, made at the first fork and made
-    /// again when the count changed.
-    fn of(slot: &mut Option<Box<Self>>, participants: usize) -> &mut Self {
+    /// The step's pool for `participants` spinning `spin`, made at the first
+    /// fork and made again when either changed.
+    fn of(slot: &mut Option<Box<Self>>, participants: usize, spin: Duration) -> &mut Self {
         if slot
             .as_ref()
-            .is_some_and(|workers| workers.wanted != participants)
+            .is_some_and(|workers| workers.wanted != participants || workers.spin != spin)
         {
             *slot = None;
         }
-        slot.get_or_insert_with(|| Box::new(Self::new(participants)))
+        slot.get_or_insert_with(|| Box::new(Self::new(participants, spin)))
     }
 
     /// Runs `data`'s stage on every participant and gives the data back,
@@ -346,6 +431,8 @@ impl Workers {
             self.forks += 1;
         }
         let data = Arc::new(data);
+        // The step runs: a worker may spin for its next fork.
+        self.shared.stepping.store(true, Ordering::Release);
         let threads = self
             .threads
             .get_mut()
@@ -361,12 +448,14 @@ impl Workers {
         }
         work(&data, &mut self.scratches[0], 0);
         let waited = Instant::now();
+        // Workers that spin answer within their spin time or not at all.
+        let patience = self.spin.max(ANSWER_SPIN);
         let mut panicked = false;
         for _ in 0..threads.senders.len() {
             let (worker, scratch) = loop {
                 match threads.answers.try_recv() {
                     Ok(answer) => break answer,
-                    Err(mpsc::TryRecvError::Empty) if waited.elapsed() < ANSWER_SPIN => {
+                    Err(mpsc::TryRecvError::Empty) if waited.elapsed() < patience => {
                         std::hint::spin_loop();
                     }
                     Err(_) => {
