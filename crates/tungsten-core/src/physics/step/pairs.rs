@@ -618,7 +618,8 @@ impl ImpulseCarry {
             end += *count;
             *count = end;
         }
-        self.entries.clear();
+        // No clear first: the fill below writes every one of the `carried`
+        // slots, so the entries left from the last take need no reset.
         self.entries.resize(carried, Carried::default());
         let mut row = friction.len();
         for (index, contact) in contacts.iter().enumerate().rev() {
@@ -1203,13 +1204,15 @@ pub(super) fn build_pairs(
     }
     *pairs_invalidated = false;
     sent.enter(pairs);
-    buffers.pair_impulses.clear();
+    // No clear first: the first substep after a build replaces every slot
+    // with 0 and seeds from the carry, never from what the slot held.
     buffers.pair_impulses.resize(pairs.len(), 0.0);
     buffers.seed_pair_impulses = true;
     // Tangents ride beside the normal impulses only in a frame with friction.
     let extra = &mut *buffers.extra;
-    extra.pair_tangents.clear();
-    if !extra.frictions.is_empty() {
+    if extra.frictions.is_empty() {
+        extra.pair_tangents.clear();
+    } else {
         extra.pair_tangents.resize(pairs.len(), 0.0);
     }
     #[cfg(test)]
