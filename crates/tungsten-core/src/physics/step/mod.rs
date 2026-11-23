@@ -499,17 +499,19 @@ pub struct PhysicsBuffers {
 /// the step moves the buffers out of the World and back each step, so they
 /// grow by this pointer alone. Its vectors are cleared and refilled, so a
 /// steady world allocates nothing new a step.
+impl StepExtra {
+    /// Reads the World's [`PhysicsWorkers`] for this step. Out of line: the
+    /// step's own function is one large body, and it holds this as a call.
+    #[inline(never)]
+    fn read_workers(&mut self, world: &World) {
+        let workers = world.get_resource::<PhysicsWorkers>().copied();
+        self.fork.participants = workers.map_or(1, |workers| workers.participants() as u32);
+        self.fork.any = workers.is_some_and(PhysicsWorkers::forks_any);
+    }
+}
+
 #[derive(Debug, Default)]
 struct StepExtra {
-    /// The step's worker threads and each participant's scratch (`D-298`),
-    /// made at the first stage that forks.
-    workers: Option<Box<pool::Workers>>,
-    /// The World's [`PhysicsWorkers`] as this step read it: the threads its
-    /// forked stages run on, the calling thread among them; 0 and 1 are the
-    /// serial step.
-    participants: u32,
-    /// Whether a stage forks whatever its size, as the lockstep tests ask.
-    fork_any: bool,
     /// Each entity proxy's gravity scale, in proxy order; empty while every
     /// one is 1.
     gravity_scales: Vec<f32>,
@@ -612,6 +614,11 @@ struct StepExtra {
     /// created.
     #[cfg(test)]
     static_join_checks: usize,
+    /// How the step forks (`D-298`): the World's [`PhysicsWorkers`] as this
+    /// step read it, and the worker threads, made at the first stage that
+    /// forks. It sits last so the fields above keep the places they had
+    /// before the pool.
+    fork: pool::Fork,
 }
 
 /// A swept sensor of the step ([`RigidBody::swept`]): its place among the
@@ -1082,9 +1089,7 @@ pub fn physics_step(world: &mut World) {
     integrate_loose_bodies(world, dt, config.gravity);
     // The contact record runs while a queue reads it.
     let extra = &mut *buffers.extra;
-    let workers = world.get_resource::<PhysicsWorkers>().copied();
-    extra.participants = workers.map_or(1, |workers| workers.participants() as u32);
-    extra.fork_any = workers.is_some_and(PhysicsWorkers::forks_any);
+    extra.read_workers(world);
     extra.swept_meets.clear();
     extra.swept_elapsed = 0.0;
     extra.record_on = world.has_resource::<EventQueue<ContactBegan>>()
@@ -1743,11 +1748,12 @@ fn substep(
             pair_flags,
             layers,
             repaired,
-            &extra.oversize,
+            &mut extra.oversize,
             candidates,
             arrival,
             &mut extra.arrival_reach,
             (record_on || push_on).then_some(&mut extra.touches),
+            &mut extra.fork,
         );
     }
     // The record samples each contact's closing speed after the solve and

@@ -2,7 +2,8 @@
 //! against what that velocity reaches within the substep.
 
 use super::pairs::PAIR_REPAIRED;
-use super::pairs::PairGrid;
+use super::pairs::{PairGrid, WorkerScratch};
+use super::pool::{Fork, ForkData, Stage, Workers};
 use super::solver::narrow_phase_at;
 use super::{Proxy, ProxyLayers, TouchObs};
 use crate::physics::PhysicsConfig;
@@ -22,6 +23,261 @@ const ARRIVAL_ROUNDS: usize = 4;
 /// Closing travel per substep, in px, within which an arrival pair counts as
 /// tight: its mover is pressed on its target.
 const ARRIVAL_TIGHT: f32 = 1.0e-3;
+
+/// The listed bodies a participant takes at a time in a forked round, and in
+/// one the lockstep tests force; and the fewest listed bodies whose round
+/// forks (`D-298`).
+const ARRIVAL_CHUNK: usize = 64;
+const ARRIVAL_CHUNK_FORCED: usize = 4;
+const ARRIVAL_FORK_MIN: usize = 256;
+
+/// A participant's share of a forked round's search.
+#[derive(Debug, Default)]
+pub(super) struct ArrivalWorker {
+    /// The pairs of the bodies it searched, a body after another.
+    out: Vec<ArrivalPair>,
+    /// The pairs each body it searched built, in the order it searched.
+    counts: Vec<u32>,
+    /// Each chunk it took: the chunk, and where its bodies' counts and their
+    /// pairs start.
+    pub(super) spans: Vec<(u32, u32, u32)>,
+}
+
+/// What a forked round's search reads beside the step's buffers.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Round {
+    /// The round's bodies in the list.
+    start: usize,
+    end: usize,
+    /// The bodies a chunk holds, and the round's chunks.
+    chunk: usize,
+    chunks: usize,
+    sub_dt: f32,
+    slack: f32,
+    inv_h: f32,
+    linear_slop: f32,
+    layered: bool,
+}
+
+/// A participant's share of a forked round's search: for each listed body
+/// of the chunks it takes, the pairs [`arrival_pass`]' serial loop builds,
+/// in its order, but for that loop's search for a pair an earlier body of the
+/// round built, which [`search_forked`]'s merge makes. A candidate is read
+/// from its proxy where the serial loop reads its memo of the proxy: within a
+/// round nothing writes a proxy, and between rounds the memo follows every
+/// velocity a clamp changed.
+pub(super) fn search_work(data: &ForkData, scratch: &mut WorkerScratch, round: &Round) {
+    let (grid, repair_grid, proxies) = (&data.grid, &data.repair_grid, &data.proxies[..]);
+    let (pair_flags, layers, repaired, oversize) = (
+        &data.pair_flags[..],
+        &data.layers,
+        &data.repaired[..],
+        &data.oversize[..],
+    );
+    let list = &data.list[round.start..round.end];
+    let Round {
+        chunk: chunk_size,
+        chunks,
+        sub_dt,
+        slack,
+        inv_h,
+        linear_slop,
+        layered,
+        ..
+    } = *round;
+    let WorkerScratch {
+        bodies: body_marks,
+        tiles: tile_marks,
+        repair: repair_marks,
+        candidates,
+        arrival: worker,
+        ..
+    } = scratch;
+    worker.out.clear();
+    worker.counts.clear();
+    worker.spans.clear();
+    while let Some(chunk) = data.take_chunk(chunks) {
+        worker.spans.push((
+            chunk as u32,
+            worker.counts.len() as u32,
+            worker.out.len() as u32,
+        ));
+        let from = chunk * chunk_size;
+        let to = (from + chunk_size).min(list.len());
+        for &body in &list[from..to] {
+            let before = worker.out.len();
+            let body = body as usize;
+            let velocity = proxies[body].velocity;
+            let center = proxies[body].prev_center;
+            let half = proxies[body].half_extents();
+            let mut aabb = Aabb::new(center, half);
+            aabb.half_extents += Vec2::splat(velocity.length() * sub_dt + slack);
+            candidates.clear();
+            grid.for_each_run_in_marks(
+                body_marks,
+                tile_marks,
+                &aabb,
+                #[inline(always)]
+                |mut run| {
+                    run.each(Some(body as ProxyId), |id| {
+                        if pair_flags[id as usize] & PAIR_REPAIRED == 0 {
+                            candidates.push(id);
+                        }
+                    });
+                },
+            );
+            if !repaired.is_empty() {
+                repair_grid.for_each_run_in_shared(
+                    repair_marks,
+                    &aabb,
+                    0,
+                    #[inline(always)]
+                    |mut run| {
+                        run.each(Some(body as ProxyId), |id| candidates.push(id));
+                    },
+                );
+            }
+            candidates.extend(oversize.iter().filter(|&&id| id as usize != body));
+            for &other_id in candidates.iter() {
+                let other = other_id as usize;
+                let target = &proxies[other];
+                let target_center = arrival_center(target);
+                let target_velocity = target.velocity;
+                let relative = velocity - target_velocity;
+                let apart = ((target_center - center).abs() - half - target.half_extents())
+                    .max_element()
+                    - slack;
+                let cut = ((apart > 0.0)
+                    & (apart * apart > relative.length_squared() * sub_dt * sub_dt))
+                    | (layered && !layers.of[body].meets(layers.of[other]));
+                if cut {
+                    continue;
+                }
+                let margin = relative.length() * sub_dt + slack;
+                let Some(contact) =
+                    narrow_phase_at(&proxies[body], center, target, target_center, margin)
+                else {
+                    continue;
+                };
+                let separation = linear_slop - contact.penetration;
+                let y_moved = y_moves(velocity, target_velocity, contact.normal);
+                let target_inv = arrival_inv(if y_moved { &proxies[body] } else { target });
+                let order = (u64::from(inv_rank(target_inv)) << ORDER_RANK_SHIFT)
+                    | if y_moved { ORDER_Y_MOVED } else { 0 };
+                worker.out.push(ArrivalPair {
+                    order_hi: (order >> 32) as u32,
+                    order_lo: order as u32,
+                    x: body as u32,
+                    y: other_id,
+                    normal: contact.normal,
+                    allowance: if separation > 0.0 {
+                        separation * inv_h
+                    } else {
+                        0.0
+                    },
+                });
+            }
+            worker.counts.push((worker.out.len() - before) as u32);
+        }
+    }
+}
+
+/// A round's search on the step's participants (`D-298`): the listed bodies
+/// in chunks, then the merge, which lays the bodies' pairs out in list order
+/// and drops each pair an earlier body of the round built from its own side,
+/// as the serial loop's search does before it builds one. Such a pair is in
+/// the earlier body's pairs whether or not the merge has filtered them: a
+/// body's pairs are only ever dropped for bodies listed before it. Out of
+/// line, so [`arrival_pass`] holds one call for the fork.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn search_forked(
+    fork: &mut Fork,
+    mut round: Round,
+    proxies: &mut Vec<Proxy>,
+    grid: &mut PairGrid,
+    repair_grid: &mut SpatialGrid,
+    pair_flags: &mut Vec<u8>,
+    layers: &mut ProxyLayers,
+    repaired: &mut Vec<u32>,
+    oversize: &mut Vec<u32>,
+    list: &mut Vec<u32>,
+    state: &[u8],
+    slot: &[u32],
+    pairs: &mut Vec<ArrivalPair>,
+    from: &mut Vec<u32>,
+) {
+    let round_len = round.end - round.start;
+    round.chunk = fork.chunk(ARRIVAL_CHUNK, ARRIVAL_CHUNK_FORCED);
+    round.chunks = round_len.div_ceil(round.chunk);
+    // What the serial loop's first walks would build.
+    grid.prepare();
+    if !repaired.is_empty() {
+        repair_grid.prepare();
+    }
+    let workers = fork.workers();
+    let data = workers.fork(ForkData {
+        stage: Stage::Arrival(round),
+        proxies: std::mem::take(proxies),
+        grid: std::mem::take(grid),
+        repair_grid: std::mem::take(repair_grid),
+        pair_flags: std::mem::take(pair_flags),
+        layers: std::mem::take(layers),
+        repaired: std::mem::take(repaired),
+        oversize: std::mem::take(oversize),
+        list: std::mem::take(list),
+        ..Default::default()
+    });
+    *proxies = data.proxies;
+    *grid = data.grid;
+    *repair_grid = data.repair_grid;
+    *pair_flags = data.pair_flags;
+    *layers = data.layers;
+    *repaired = data.repaired;
+    *oversize = data.oversize;
+    *list = data.list;
+    workers.index_chunks(round.chunks, |scratch| &scratch.arrival.spans);
+    #[cfg(test)]
+    {
+        workers.arrival_forks += 1;
+    }
+    let Workers {
+        chunk_at,
+        scratches,
+        body_spans,
+        ..
+    } = workers;
+    body_spans.clear();
+    for (chunk, &(participant, counts_at, out_at)) in chunk_at.iter().enumerate() {
+        let built = &scratches[participant as usize].arrival;
+        let first_body = chunk * round.chunk;
+        let bodies_in = round.chunk.min(round_len - first_body);
+        let mut out_at = out_at;
+        for k in 0..bodies_in {
+            let count = built.counts[counts_at as usize + k];
+            let at = round.start + first_body + k;
+            body_spans.push((participant, out_at, count));
+            from.push(pairs.len() as u32);
+            for pair in &built.out[out_at as usize..(out_at + count) as usize] {
+                let other = pair.y as usize;
+                if state[other] & ARRIVAL_LISTED != 0
+                    && (round.start..at).contains(&(slot[other] as usize))
+                {
+                    let (theirs, start, len) = body_spans[slot[other] as usize - round.start];
+                    if scratches[theirs as usize].arrival.out
+                        [start as usize..(start + len) as usize]
+                        .iter()
+                        .any(|built| built.y == pair.x)
+                    {
+                        continue;
+                    }
+                }
+                pairs.push(*pair);
+            }
+            out_at += count;
+        }
+    }
+}
 
 /// `ArrivalScratch::state` bit: the proxy is on the worklist this substep.
 const ARRIVAL_LISTED: u8 = 1;
@@ -381,17 +637,18 @@ fn arrival_center(proxy: &Proxy) -> Vec2 {
 pub(super) fn arrival_pass(
     config: &PhysicsConfig,
     sub_dt: f32,
-    proxies: &mut [Proxy],
+    proxies_owned: &mut Vec<Proxy>,
     grid: &mut PairGrid,
     repair_grid: &mut SpatialGrid,
-    pair_flags: &[u8],
-    layers: &ProxyLayers,
-    repaired: &[u32],
-    oversize: &[u32],
+    pair_flags_owned: &mut Vec<u8>,
+    layers_owned: &mut ProxyLayers,
+    repaired_owned: &mut Vec<u32>,
+    oversize_owned: &mut Vec<u32>,
     candidates: &mut Vec<ProxyId>,
     arrival: &mut ArrivalScratch,
     reach: &mut ArrivalReach,
     mut touches: Option<&mut Vec<TouchObs>>,
+    fork: &mut Fork,
 ) {
     let mut touch = |pair: &ArrivalPair, proxies: &[Proxy]| {
         if let Some(touches) = touches.as_deref_mut() {
@@ -434,8 +691,8 @@ pub(super) fn arrival_pass(
     let threshold = ARRIVAL_SLOPS * config.linear_slop * inv_h;
     let threshold_sq = threshold * threshold;
     let tight = ARRIVAL_TIGHT * inv_h;
-    let layered = layers.layered;
-    reach.begin(proxies.len());
+    let layered = layers_owned.layered;
+    reach.begin(proxies_owned.len());
     let pass = reach.pass;
 
     for (at, &index) in list.iter().enumerate() {
@@ -457,6 +714,7 @@ pub(super) fn arrival_pass(
         // The cut's entries follow the velocities the earlier rounds' clamps
         // changed.
         if round_start > 0 {
+            let proxies = &proxies_owned[..];
             for &index in touched.iter() {
                 if state[index as usize] & ARRIVAL_MOVED != 0 {
                     reach.of[index as usize].velocity = proxies[index as usize].velocity;
@@ -467,7 +725,46 @@ pub(super) fn arrival_pass(
         // The neighbours each body of this round can reach.
         pairs.clear();
         reach.from.clear();
-        for (at, &body) in list[..round_end].iter().enumerate().skip(round_start) {
+        // A fork takes the buffers whole and gives them back; the serial
+        // loop reads them as the slices it always had.
+        let forked = fork.splits(round_end - round_start, ARRIVAL_FORK_MIN);
+        if forked {
+            search_forked(
+                fork,
+                Round {
+                    start: round_start,
+                    end: round_end,
+                    chunk: 0,
+                    chunks: 0,
+                    sub_dt,
+                    slack,
+                    inv_h,
+                    linear_slop: config.linear_slop,
+                    layered,
+                },
+                proxies_owned,
+                grid,
+                repair_grid,
+                pair_flags_owned,
+                layers_owned,
+                repaired_owned,
+                oversize_owned,
+                list,
+                state,
+                slot,
+                pairs,
+                &mut reach.from,
+            );
+        }
+        let (proxies, pair_flags, layers, repaired, oversize) = (
+            &proxies_owned[..],
+            &pair_flags_owned[..],
+            &*layers_owned,
+            &repaired_owned[..],
+            &oversize_owned[..],
+        );
+        let search_from = if forked { round_end } else { round_start };
+        for (at, &body) in list[..round_end].iter().enumerate().skip(search_from) {
             reach.from.push(pairs.len() as u32);
             let body = body as usize;
             let velocity = proxies[body].velocity;
@@ -600,6 +897,7 @@ pub(super) fn arrival_pass(
         if pairs.is_empty() {
             continue;
         }
+        let proxies = &mut proxies_owned[..];
 
         // Pushers first, walls last. A target sits one level deeper than its
         // mover; the bound on the levels also ends a cycle.
@@ -720,6 +1018,7 @@ pub(super) fn arrival_pass(
     }
 
     // Redo the move of every body the pass slowed or pushed.
+    let proxies = &mut proxies_owned[..];
     for &index in touched.iter() {
         let index = index as usize;
         if state[index] & ARRIVAL_MOVED != 0 {

@@ -17,8 +17,10 @@ use std::time::{Duration, Instant};
 
 use glam::Vec4;
 
-use super::ProxyLayers;
+use super::arrival::Round;
 use super::pairs::{PairGrid, WorkerScratch};
+use super::{Proxy, ProxyLayers};
+use crate::physics::broadphase::SpatialGrid;
 use crate::physics::collision::Aabb;
 
 /// How long the calling thread spins for a worker's answer before it blocks:
@@ -38,6 +40,8 @@ pub(super) enum Stage {
         chunk: usize,
         chunks: usize,
     },
+    /// An arrival round's search for the pairs its listed bodies reach.
+    Arrival(Round),
     /// A share that panics in one participant, for the pool's own test.
     #[cfg(test)]
     Fail { participant: usize },
@@ -55,6 +59,12 @@ pub(super) struct ForkData {
     pub(super) pair_bounds: Vec<Vec4>,
     pub(super) pair_aabbs: Vec<Aabb>,
     pub(super) layers: ProxyLayers,
+    pub(super) proxies: Vec<Proxy>,
+    pub(super) repair_grid: SpatialGrid,
+    pub(super) repaired: Vec<u32>,
+    pub(super) oversize: Vec<u32>,
+    /// The arrival pass's listed bodies.
+    pub(super) list: Vec<u32>,
 }
 
 impl ForkData {
@@ -77,12 +87,52 @@ fn work(data: &ForkData, scratch: &mut WorkerScratch, participant: usize) {
             chunk,
             chunks,
         } => super::pairs::build_work(data, scratch, bodies, chunk, chunks),
+        Stage::Arrival(round) => super::arrival::search_work(data, scratch, &round),
         #[cfg(test)]
         Stage::Fail {
             participant: failing,
         } => {
             assert!(failing != participant, "participant {participant} fails");
         }
+    }
+}
+
+/// How the step forks (`D-298`): the World's worker count as this step read
+/// it, and the pool, made at the first stage that forks.
+#[derive(Debug, Default)]
+pub(super) struct Fork {
+    workers: Option<Box<Workers>>,
+    /// The threads a forked stage runs on, the calling thread among them; 0
+    /// and 1 are the serial step.
+    pub(super) participants: u32,
+    /// Whether a stage forks whatever its size, as the lockstep tests ask.
+    pub(super) any: bool,
+}
+
+impl Fork {
+    /// Whether a stage of `size` forks: with two participants or more, at
+    /// `min` and above.
+    #[inline]
+    pub(super) fn splits(&self, size: usize, min: usize) -> bool {
+        self.participants > 1 && (size >= min || self.any)
+    }
+
+    /// A stage's chunk: `usual`, or `forced` where the lockstep tests fork a
+    /// small world, so that it has chunks enough for every participant.
+    pub(super) fn chunk(&self, usual: usize, forced: usize) -> usize {
+        if self.any { forced } else { usual }
+    }
+
+    /// The pool, made at the first fork and made again when the count
+    /// changed.
+    pub(super) fn workers(&mut self) -> &mut Workers {
+        Workers::of(&mut self.workers, self.participants as usize)
+    }
+
+    /// The pool, once a stage has forked.
+    #[cfg(test)]
+    pub(super) fn pool(&self) -> Option<&Workers> {
+        self.workers.as_deref()
     }
 }
 
@@ -151,6 +201,12 @@ pub(super) struct Workers {
     /// Per chunk of the last fork: the participant that took it and where
     /// its output starts and how long it is, as the stage's merge reads it.
     pub(super) chunk_at: Vec<(u32, u32, u32)>,
+    /// Per body of a forked arrival round, in list order: the participant
+    /// that searched it and where its pairs start and how many they are.
+    pub(super) body_spans: Vec<(u32, u32, u32)>,
+    /// The arrival rounds forked, for the tests that must see one.
+    #[cfg(test)]
+    pub(super) arrival_forks: usize,
     /// The forks run, for the tests that must see a stage fork.
     #[cfg(test)]
     pub(super) forks: usize,
@@ -158,7 +214,10 @@ pub(super) struct Workers {
 
 impl Workers {
     /// `participants - 1` worker threads, fewer where the system refuses a
-    /// thread: the step then forks among those it has.
+    /// thread: the step then forks among those it has. Cold and out of
+    /// line: it runs once a pool, and inlined it would sit in every caller.
+    #[cold]
+    #[inline(never)]
     pub(super) fn new(participants: usize) -> Self {
         let (answer_tx, answers) = mpsc::channel();
         let mut senders = Vec::new();
@@ -195,6 +254,9 @@ impl Workers {
             }),
             scratches,
             chunk_at: Vec::new(),
+            body_spans: Vec::new(),
+            #[cfg(test)]
+            arrival_forks: 0,
             #[cfg(test)]
             forks: 0,
         }
@@ -202,7 +264,7 @@ impl Workers {
 
     /// The step's pool for `participants`, made at the first fork and made
     /// again when the count changed.
-    pub(super) fn of(slot: &mut Option<Box<Self>>, participants: usize) -> &mut Self {
+    fn of(slot: &mut Option<Box<Self>>, participants: usize) -> &mut Self {
         if slot
             .as_ref()
             .is_some_and(|workers| workers.wanted != participants)

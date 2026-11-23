@@ -81,13 +81,14 @@ fn flush(world: &mut World) {
 
 /// Steps one serial world and one forced world a count of [`COUNTS`] side by
 /// side, each built by `build` and driven by `drive` before every step, and
-/// compares them after every step. Returns the forks each forced world ran.
+/// compares them after every step. Returns the forks each forced world ran,
+/// and the arrival rounds among them.
 fn lockstep(
     name: &str,
     steps: usize,
     build: impl Fn(&mut World) -> Vec<Entity>,
     drive: impl Fn(&mut World, usize, &mut Vec<Entity>),
-) -> Vec<usize> {
+) -> Vec<(usize, usize)> {
     let mut worlds: Vec<(usize, World, Vec<Entity>)> = std::iter::once(1)
         .chain(COUNTS)
         .map(|count| {
@@ -131,7 +132,11 @@ fn lockstep(
         .iter()
         .map(|(_, world, _)| {
             let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
-            buffers.extra.workers.as_ref().map_or(0, |pool| pool.forks)
+            buffers
+                .extra
+                .fork
+                .pool()
+                .map_or((0, 0), |pool| (pool.forks, pool.arrival_forks))
         })
         .collect()
 }
@@ -234,7 +239,14 @@ fn a_pile_in_a_tile_pit_steps_alike_at_every_count_split_merged_and_as_built() {
                 }
             },
         );
-        assert!(forks.iter().all(|&forks| forks > 0), "{name}: {forks:?}");
+        // The blast knocks bodies into neighbours no contact admitted, so
+        // the arrival pass lists them and its rounds fork too.
+        assert!(
+            forks
+                .iter()
+                .all(|&(forks, rounds)| forks > rounds && rounds > 0),
+            "{name}: {forks:?}"
+        );
     }
 }
 
@@ -292,7 +304,9 @@ fn bullets_sleepers_spawns_and_despawns_step_alike_at_every_count() {
             },
         );
         assert!(
-            forks.iter().all(|&forks| forks > 0),
+            forks
+                .iter()
+                .all(|&(forks, rounds)| forks > rounds && rounds > 0),
             "seed {seed}: {forks:?}"
         );
     }
@@ -344,7 +358,7 @@ fn layers_sensors_and_a_kinematic_mover_step_alike_at_every_count() {
         },
         |_, _, _| {},
     );
-    assert!(forks.iter().all(|&forks| forks > 0), "{forks:?}");
+    assert!(forks.iter().all(|&(forks, _)| forks > 0), "{forks:?}");
 }
 
 #[test]
@@ -364,7 +378,7 @@ fn a_world_without_the_resource_or_with_one_participant_starts_no_thread() {
             physics_step(&mut world);
         }
         let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
-        assert!(buffers.extra.workers.is_none(), "{workers:?}");
+        assert!(buffers.extra.fork.pool().is_none(), "{workers:?}");
     }
 }
 
@@ -379,7 +393,7 @@ fn a_small_world_under_the_thresholds_never_forks() {
     }
     let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
     assert!(
-        buffers.extra.workers.is_none(),
+        buffers.extra.fork.pool().is_none(),
         "200 bodies are under every stage's threshold"
     );
 }
@@ -393,11 +407,7 @@ fn a_changed_participant_count_remakes_the_pool() {
     physics_step(&mut world);
     let scratches = |world: &World| {
         let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
-        buffers
-            .extra
-            .workers
-            .as_ref()
-            .map(|pool| pool.scratches.len())
+        buffers.extra.fork.pool().map(|pool| pool.scratches.len())
     };
     assert_eq!(scratches(&world), Some(2));
     world.insert_resource(PhysicsWorkers::forced(5));

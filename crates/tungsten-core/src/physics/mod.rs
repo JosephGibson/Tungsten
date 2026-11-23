@@ -177,7 +177,7 @@ impl PhysicsMaterials {
 }
 
 /// How many threads the physics step's forked stages run on, the calling
-/// thread among them (`D-298`): the pair build's candidate walks today.
+/// thread among them (`D-298`): the pair build's walks, an arrival round's search.
 ///
 /// A World without the resource, or with one participant, steps on the
 /// calling thread alone, as before the pool. Any count steps to the same

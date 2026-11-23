@@ -38,16 +38,21 @@ pub(super) struct PairGrid {
 }
 
 /// One participant's scratch for the step's forked stages (`D-298`), kept
-/// across forks: its marks for the pair grid's two grids and what it wrote
-/// for the chunks it took.
+/// across forks: its marks for the pair grid's two grids and the repair
+/// grid, and what it wrote for the chunks it took.
 #[derive(Debug, Default)]
 pub(super) struct WorkerScratch {
-    bodies: QueryMarks,
-    tiles: QueryMarks,
+    pub(super) bodies: QueryMarks,
+    pub(super) tiles: QueryMarks,
+    pub(super) repair: QueryMarks,
+    /// A walk's candidates, for a stage that cuts them after the walk.
+    pub(super) candidates: Vec<ProxyId>,
     /// The pairs of the build chunks it took, a chunk after another.
     pub(super) pairs: Vec<(u32, u32)>,
     /// Each chunk it took: the chunk, and its output's start and length.
     pub(super) spans: Vec<(u32, u32, u32)>,
+    /// Its share of an arrival round's search.
+    pub(super) arrival: super::arrival::ArrivalWorker,
 }
 
 /// The entity proxies a participant takes at a time in a forked build, and
@@ -80,6 +85,7 @@ pub(super) fn build_work(
         tiles: tile_marks,
         pairs: out,
         spans,
+        ..
     } = scratch;
     out.clear();
     spans.clear();
@@ -120,15 +126,15 @@ pub(super) fn build_work(
 }
 
 /// [`build_pairs`]' walks on the step's participants: the entity proxies in
-/// chunks of `chunk`, each chunk's pairs appended to `pairs` in chunk order,
-/// which is the serial loop's order. Out of line, so the serial loop's code
-/// stays where it was.
+/// chunks, each chunk's pairs appended to `pairs` in chunk order, which is
+/// the serial loop's order. Out of line with the pool's start inside it, so
+/// [`build_pairs`] holds one call for the fork and its serial loop's code
+/// stays as it was.
 #[inline(never)]
 #[allow(clippy::too_many_arguments)]
 fn build_walks_forked(
-    workers: &mut super::pool::Workers,
+    fork: &mut super::pool::Fork,
     bodies: usize,
-    chunk: usize,
     grid: &mut PairGrid,
     pair_flags: &mut Vec<u8>,
     pair_bounds: &mut Vec<Vec4>,
@@ -136,6 +142,8 @@ fn build_walks_forked(
     layers: &mut super::ProxyLayers,
     pairs: &mut Vec<(u32, u32)>,
 ) {
+    let chunk = fork.chunk(BUILD_CHUNK, BUILD_CHUNK_FORCED);
+    let workers = fork.workers();
     grid.prepare();
     let chunks = bodies.div_ceil(chunk);
     let data = workers.fork(super::pool::ForkData {
@@ -885,9 +893,7 @@ pub(super) fn build_pairs(
         carry,
         tangents,
         sent,
-        participants,
-        fork_any,
-        workers,
+        fork,
         ..
     } = &mut **extra;
     let bodies = *bodies;
@@ -997,15 +1003,10 @@ pub(super) fn build_pairs(
         },
     );
     pair_flags.resize(proxies.len(), 0);
-    if *participants > 1 && (moving >= BUILD_FORK_MIN || *fork_any) {
+    if fork.splits(moving, BUILD_FORK_MIN) {
         build_walks_forked(
-            super::pool::Workers::of(workers, *participants as usize),
+            fork,
             bodies,
-            if *fork_any {
-                BUILD_CHUNK_FORCED
-            } else {
-                BUILD_CHUNK
-            },
             grid,
             pair_flags,
             pair_bounds,
