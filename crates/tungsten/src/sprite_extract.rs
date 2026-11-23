@@ -1377,14 +1377,39 @@ fn extract_into(
 /// Below this many keys a comparison sort beats the radix passes.
 const RADIX_SORT_MIN: usize = 1024;
 
+/// What the radix passes read of `keys`' orders: a bias they take off every
+/// order first, and the bits two of the biased orders can differ in. An
+/// order's z half sits on either side of the sign bit's flip
+/// ([`painter_order`]), so a z of −20 to 15 differs in all four of its
+/// bytes; less the lowest z half among the keys, the orders keep their
+/// order and that half spans as few bytes as the z's range, one here. The
+/// entity half keeps `varying_bits`' word.
+fn radix_plan(keys: &[SortKey], varying_bits: u64) -> (u64, u64) {
+    let (low, high) = keys.iter().fold((u32::MAX, 0), |(low, high), key| {
+        let z = (key.order >> 32) as u32;
+        (low.min(z), high.max(z))
+    });
+    let span = high.saturating_sub(low);
+    let z_bits = if span == 0 {
+        0
+    } else {
+        u32::MAX >> span.leading_zeros()
+    };
+    (
+        u64::from(low.min(high)) << 32,
+        (u64::from(z_bits) << 32) | (varying_bits & u64::from(u32::MAX)),
+    )
+}
+
 /// Sorts `keys` by `order`. Large inputs take a least-significant-digit radix
-/// sort over the bytes named in `varying_bits`, whose cost does not depend on
+/// sort over the bytes [`radix_plan`] names, whose cost does not depend on
 /// how shuffled the keys arrive.
 fn sort_keys(keys: &mut Vec<SortKey>, swap: &mut Vec<SortKey>, varying_bits: u64) {
     if keys.len() < RADIX_SORT_MIN {
         keys.sort_unstable_by_key(|key| key.order);
         return;
     }
+    let (bias, varying_bits) = radix_plan(keys, varying_bits);
     // Every pass overwrites all of `swap`, so its old content can stay.
     swap.resize(
         keys.len(),
@@ -1399,7 +1424,7 @@ fn sort_keys(keys: &mut Vec<SortKey>, swap: &mut Vec<SortKey>, varying_bits: u64
         if (varying_bits >> shift) as u8 == 0 {
             continue;
         }
-        let digit = |key: &SortKey| ((key.order >> shift) & 0xff) as usize;
+        let digit = |key: &SortKey| (((key.order - bias) >> shift) & 0xff) as usize;
         let mut starts = [0usize; 256];
         for key in keys.iter() {
             starts[digit(key)] += 1;

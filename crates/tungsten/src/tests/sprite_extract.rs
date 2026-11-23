@@ -1023,6 +1023,70 @@ fn sort_keys_orders_like_a_comparison_sort() {
     }
 }
 
+#[test]
+fn the_radix_sort_reads_a_z_range_about_zero_in_one_byte() {
+    // A z of -20 to 15 flips the order's sign bit between its two halves,
+    // so all four bytes of the z half differ; less the lowest z among the
+    // keys they differ in one, and the entity half in the two its IDs span.
+    let mut rng = Pcg32::seeded(9);
+    let mut keys: Vec<SortKey> = (0..6_000u32)
+        .map(|id| SortKey {
+            order: painter_order((rng.next_u32() % 36) as i32 - 20, id),
+            record: id,
+            class: id % 5,
+        })
+        .collect();
+    for index in (1..keys.len()).rev() {
+        keys.swap(index, rng.next_u32() as usize % (index + 1));
+    }
+    let (set_bits, common_bits) = keys.iter().fold((0, u64::MAX), |(set, common), key| {
+        (set | key.order, common & key.order)
+    });
+    let varying = set_bits ^ common_bits;
+    let passes = |bits: u64| {
+        (0..8)
+            .filter(|byte| (bits >> (8 * byte)) as u8 != 0)
+            .count()
+    };
+    assert_eq!(
+        passes(varying),
+        6,
+        "as the orders are: four z bytes, two of the IDs"
+    );
+    let (bias, planned) = radix_plan(&keys, varying);
+    assert_eq!(
+        passes(planned),
+        3,
+        "less the lowest z: one z byte, two of the IDs"
+    );
+    assert_eq!(bias, painter_order(-20, 0), "the lowest z's half");
+    assert!(keys.iter().all(|key| key.order >= bias));
+
+    let mut expected = keys.clone();
+    expected.sort_unstable_by_key(|key| key.order);
+    sort_keys(&mut keys, &mut Vec::new(), varying);
+    let pairs = |keys: &[SortKey]| -> Vec<(u64, u32, u32)> {
+        keys.iter().map(|k| (k.order, k.record, k.class)).collect()
+    };
+    assert_eq!(pairs(&keys), pairs(&expected));
+
+    // One z: no z byte at all. The whole i32 range: all four.
+    let flat: Vec<SortKey> = (0..2_000u32)
+        .map(|id| SortKey {
+            order: painter_order(7, id),
+            record: id,
+            class: 0,
+        })
+        .collect();
+    assert_eq!(radix_plan(&flat, 0x7ff).1 >> 32, 0);
+    let wide = [i32::MIN, 0, i32::MAX].map(|z| SortKey {
+        order: painter_order(z, 1),
+        record: 0,
+        class: 0,
+    });
+    assert_eq!(radix_plan(&wide, u64::MAX).1 >> 32, u64::from(u32::MAX));
+}
+
 /// One texture, one z, spawned in ID order: the whole frame is one batch.
 fn single_batch_world(count: u32) -> World {
     let mut world = world_with_registry();
