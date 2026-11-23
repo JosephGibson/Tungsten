@@ -22,6 +22,34 @@ fn counts_real_passes_and_rejects_query_overflow() {
 }
 
 #[test]
+fn a_folded_vignette_takes_no_pass_of_the_timing_table() {
+    // Bloom then vignette: 2 * 6 bloom passes and the vignette's, with the
+    // scene and the text. Where bloom's composite draws the vignette
+    // (`D-302`) the frame plans the stack without it: one pass, two queries
+    // and one row of the layout fewer.
+    let stack = PostStack(vec![
+        PostPass::Bloom(BloomParams::default()),
+        PostPass::Vignette(VignetteParams::default()),
+    ]);
+    assert_eq!(query_count(&stack, 6, false, false), Some(30));
+    let vignette = crate::post::trailing_vignette(&stack, false, true);
+    assert_eq!(vignette, Some(VignetteParams::default()));
+    let folded = PostStack(stack.0[..1].to_vec());
+    assert_eq!(query_count(&folded, 6, false, false), Some(28));
+    let size = (3840, 2160);
+    assert_eq!(
+        TimingLayout::new(&stack, 6, false, size).post,
+        [true, false]
+    );
+    assert_eq!(TimingLayout::new(&folded, 6, false, size).post, [true]);
+    assert_ne!(
+        TimingLayout::new(&stack, 6, false, size),
+        TimingLayout::new(&folded, 6, false, size),
+        "a stack that starts or stops folding rebuilds the ring"
+    );
+}
+
+#[test]
 fn scene_compatibility_span_gaps_and_stale_data() {
     let labels = ["scene", "post0_bloom_threshold", "present"].map(str::to_string);
     let mut out = GpuFrameTimings::default();

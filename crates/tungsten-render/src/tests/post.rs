@@ -1,7 +1,9 @@
 use super::{
-    InertParam, ParamSlots, PostStackRenderer, STOCK_SHADERS, inert_param, source_slot, stock_index,
+    InertParam, ParamSlots, PostStackRenderer, STOCK_SHADERS, VIGNETTE_SHADER_NAME, inert_param,
+    source_slot, stock_index, trailing_vignette,
 };
 use crate::passes::TargetId;
+use tungsten_core::post::PostStack;
 use tungsten_core::post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
     FilmGrainParams, FogParams, GlitchParams, GodRaysParams, LutParams, PixelOutlineParams,
@@ -247,4 +249,50 @@ fn settings_that_draw_nothing_or_not_as_named_are_found() {
         "the default clear's alpha"
     );
     assert_eq!(inert_param(&outline, 0.0), None);
+}
+
+#[test]
+fn a_vignette_folds_into_bloom_only_as_the_stacks_last_pass_after_a_bloom() {
+    let bloom = PostPass::Bloom(BloomParams::default());
+    let own = VignetteParams {
+        inner: 0.38,
+        outer: 0.78,
+        strength: 0.18,
+        color: [0.015, 0.013, 0.02, 1.0],
+    };
+    let vignette = PostPass::Vignette(own);
+    let other = PostPass::Vignette(VignetteParams::default());
+    let tonemap = PostPass::Tonemap(TonemapParams::default());
+    let dither = PostPass::Dither(DitherParams::default());
+    let folds = |passes: &[PostPass]| trailing_vignette(&PostStack(passes.to_vec()), false, true);
+
+    // Bloom then vignette, ending the stack: the composite draws it, with
+    // its own values.
+    assert_eq!(folds(&[bloom, vignette]), Some(own));
+    assert_eq!(folds(&[tonemap, bloom, vignette]), Some(own));
+    // Of two vignettes after a bloom the last keeps its pass: it does not
+    // follow the bloom. A vignette that does, with a pass after it, keeps
+    // its own too: the pass after could turn one rounding step into more.
+    assert_eq!(folds(&[bloom, vignette, other]), None);
+    assert_eq!(folds(&[bloom, vignette, dither]), None);
+    // Any other order plans as before.
+    assert_eq!(folds(&[vignette, bloom]), None);
+    assert_eq!(folds(&[bloom, tonemap, vignette]), None);
+    assert_eq!(folds(&[vignette]), None);
+    assert_eq!(folds(&[bloom]), None);
+    assert_eq!(folds(&[]), None);
+
+    // SMAA reads the stack's output: its edge test keeps the vignette's own
+    // pass. A game's own vignette or composite shader does as well.
+    let stack = PostStack(vec![bloom, vignette]);
+    assert_eq!(trailing_vignette(&stack, true, true), None);
+    assert_eq!(trailing_vignette(&stack, false, false), None);
+    assert_eq!(trailing_vignette(&stack, false, true), Some(own));
+}
+
+#[test]
+fn the_vignettes_shader_name_is_its_stock_row() {
+    // A reload names the shader it replaced; the fold ends on this name.
+    let index = stock_index(&PostPass::Vignette(VignetteParams::default())).unwrap();
+    assert_eq!(STOCK_SHADERS[index].0, VIGNETTE_SHADER_NAME);
 }

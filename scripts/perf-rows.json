@@ -2387,13 +2387,7 @@
           ]
         },
         {
-          "metric": "gpu.post0_bloom_composite",
-          "stats": [
-            "p50"
-          ]
-        },
-        {
-          "metric": "gpu.post1_vignette",
+          "metric": "gpu.post0_bloom_composite_vignette",
           "stats": [
             "p50"
           ]
@@ -2405,7 +2399,7 @@
       "workload_version": 1,
       "counters": {
         "draw_calls": {
-          "each": 64
+          "each": 63
         },
         "upload_bytes": {
           "sum": 760032
@@ -2481,13 +2475,7 @@
           ]
         },
         {
-          "metric": "gpu.post0_bloom_composite",
-          "stats": [
-            "p50"
-          ]
-        },
-        {
-          "metric": "gpu.post1_vignette",
+          "metric": "gpu.post0_bloom_composite_vignette",
           "stats": [
             "p50"
           ]
@@ -2561,13 +2549,7 @@
           ]
         },
         {
-          "metric": "gpu.post0_bloom_composite",
-          "stats": [
-            "p50"
-          ]
-        },
-        {
-          "metric": "gpu.post1_vignette",
+          "metric": "gpu.post0_bloom_composite_vignette",
           "stats": [
             "p50"
           ]
@@ -2641,13 +2623,7 @@
           ]
         },
         {
-          "metric": "gpu.post0_bloom_composite",
-          "stats": [
-            "p50"
-          ]
-        },
-        {
-          "metric": "gpu.post1_vignette",
+          "metric": "gpu.post0_bloom_composite_vignette",
           "stats": [
             "p50"
           ]
@@ -2721,13 +2697,7 @@
           ]
         },
         {
-          "metric": "gpu.post0_bloom_composite",
-          "stats": [
-            "p50"
-          ]
-        },
-        {
-          "metric": "gpu.post1_vignette",
+          "metric": "gpu.post0_bloom_composite_vignette",
           "stats": [
             "p50"
           ]
@@ -2801,13 +2771,7 @@
           ]
         },
         {
-          "metric": "gpu.post0_bloom_composite",
-          "stats": [
-            "p50"
-          ]
-        },
-        {
-          "metric": "gpu.post1_vignette",
+          "metric": "gpu.post0_bloom_composite_vignette",
           "stats": [
             "p50"
           ]

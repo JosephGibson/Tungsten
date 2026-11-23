@@ -5,7 +5,7 @@
 //! ping-pong ladder of `PostStackRenderer::plan_targets` (`D-058`).
 
 use tungsten_core::assets::ShaderAssetId;
-use tungsten_core::post::PostPass;
+use tungsten_core::post::{PostPass, PostStack, VignetteParams};
 use tungsten_core::tween::UniformOverrideBlock;
 
 use crate::passes::TargetId;
@@ -24,6 +24,9 @@ use bloom::{BloomPipeline, BloomShaderIds};
 /// and its compiled-in source, which `assets/shaders/stock/<id>.wgsl` mirrors.
 /// `Renderer::new` seeds the shader cache from this table, and a reload finds
 /// an effect's pipeline by its ID (`D-091`).
+/// The vignette's row of [`STOCK_SHADERS`], by name.
+const VIGNETTE_SHADER_NAME: &str = "vignette";
+
 pub(crate) const STOCK_SHADERS: [(&str, &str); 17] = [
     ("tonemap", include_str!("../shaders/stock/tonemap.wgsl")),
     ("vignette", include_str!("../shaders/stock/vignette.wgsl")),
@@ -250,7 +253,32 @@ pub struct PostStackRenderer {
     params: ParamSlots<StockParams>,
     /// The [`InertParam`]s already warned about, one bit each.
     inert_warned: u8,
+    /// A reload or the manifest replaced the vignette's module: the game
+    /// draws its own, which bloom's composite cannot (`D-302`).
+    vignette_replaced: bool,
     counts: Box<Counts>,
+}
+
+/// The vignette that bloom's composite draws in its own pass (`D-302`): the
+/// stack's last pass, when it directly follows a bloom, nothing reads the
+/// stack's output after it but the swapchain or a capture (`smaa_tail`
+/// false) and both passes draw with the compiled-in shaders (`stock`). The
+/// frame then plans the stack without it. Anywhere else a vignette keeps its
+/// pass: a pass or an edge test after it could turn the fold's one rounding
+/// step into more.
+#[must_use]
+pub(crate) fn trailing_vignette(
+    stack: &PostStack,
+    smaa_tail: bool,
+    stock: bool,
+) -> Option<VignetteParams> {
+    if smaa_tail || !stock {
+        return None;
+    }
+    match stack.0.as_slice() {
+        [.., PostPass::Bloom(_), PostPass::Vignette(vignette)] => Some(*vignette),
+        _ => None,
+    }
 }
 
 /// A stock effect's setting that draws nothing, or not as named.
@@ -323,8 +351,16 @@ impl PostStackRenderer {
             source_bind_groups: Default::default(),
             params: ParamSlots::default(),
             inert_warned: 0,
+            vignette_replaced: false,
             counts: Counts::boxed(),
         }
+    }
+
+    /// Whether a trailing vignette may be drawn by bloom's composite
+    /// ([`trailing_vignette`]): both passes still draw with the compiled-in
+    /// shaders.
+    pub(crate) fn stock_vignette_and_composite(&self) -> bool {
+        !self.vignette_replaced && !self.bloom.composite_replaced
     }
 
     /// Warns once per kind when `pass` uses a setting that draws nothing
@@ -369,6 +405,7 @@ impl PostStackRenderer {
     ) -> Result<(), String> {
         if let Some(index) = STOCK_SHADERS.iter().position(|(stock, _)| *stock == name) {
             self.stock[index].rebuild_with_module(device, &self.resources, name, module, format)?;
+            self.vignette_replaced |= name == VIGNETTE_SHADER_NAME;
         }
         Ok(())
     }
@@ -580,9 +617,10 @@ impl PostStackRenderer {
         dst: TargetId,
         timing: Option<&mut crate::timing::TimingResources>,
         slot: usize,
+        vignette: Option<&VignetteParams>,
     ) {
         self.bloom.record_pass_timed(
-            device, queue, encoder, pool, swap_view, params, src, dst, timing, slot,
+            device, queue, encoder, pool, swap_view, params, src, dst, timing, slot, vignette,
         );
     }
 }

@@ -8,7 +8,7 @@
 //! directly. See `D-060`.
 
 use tungsten_core::assets::ShaderAssetId;
-use tungsten_core::post::BloomParams;
+use tungsten_core::post::{BloomParams, VignetteParams};
 use tungsten_core::tween::UniformOverrideBlock;
 
 use crate::counters::{self, Counts};
@@ -168,6 +168,13 @@ pub struct BloomPipeline {
     downsample: wgpu::RenderPipeline,
     upsample: wgpu::RenderPipeline,
     composite: wgpu::RenderPipeline,
+    /// The composite's `fs_vignette` entry: the stack's trailing vignette
+    /// drawn in the composite's pass (`D-302`). Built from the compiled-in
+    /// module alone; a replaced composite ends the fold.
+    composite_vignette: wgpu::RenderPipeline,
+    /// A reload or the manifest replaced the composite's module, which may
+    /// hold no `fs_vignette`.
+    pub(crate) composite_replaced: bool,
     layouts: BloomLayouts,
     sampler: wgpu::Sampler,
     target_format: wgpu::TextureFormat,
@@ -225,7 +232,10 @@ impl BloomPipeline {
             "bloom_upsample",
             BlendKind::Additive,
         );
-        let composite = build_composite_pipeline(device, &layouts, composite_module, format);
+        let composite =
+            build_composite_pipeline(device, &layouts, composite_module, format, "fs_main");
+        let composite_vignette =
+            build_composite_pipeline(device, &layouts, composite_module, format, "fs_vignette");
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("bloom_sampler_linear"),
@@ -242,6 +252,8 @@ impl BloomPipeline {
             downsample,
             upsample,
             composite,
+            composite_vignette,
+            composite_replaced: false,
             layouts,
             sampler,
             target_format: format,
@@ -283,8 +295,9 @@ impl BloomPipeline {
             self.upsample = pyramid("bloom_upsample", BlendKind::Additive)?;
         } else if shader_id == self.shader_ids.composite {
             self.composite = build_validated(device, || {
-                build_composite_pipeline(device, layouts, module, format)
+                build_composite_pipeline(device, layouts, module, format, "fs_main")
             })?;
+            self.composite_replaced = true;
         }
         Ok(())
     }
@@ -316,6 +329,7 @@ impl BloomPipeline {
         dst: TargetId,
         mut timing: Option<&mut crate::timing::TimingResources>,
         slot: usize,
+        vignette: Option<&VignetteParams>,
     ) {
         let mip_count = pool.scene.bloom_mip_count();
         if mip_count == 0 {
@@ -330,6 +344,7 @@ impl BloomPipeline {
             pool.scene.size,
             mip_count,
             halvings,
+            vignette,
             |level| {
                 pool.scene
                     .bloom_mip_extent(level)
@@ -507,11 +522,15 @@ impl BloomPipeline {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: timing.map(|t| t.next(format!("post{slot}_bloom_composite"))),
+                timestamp_writes: timing.map(|t| t.next(composite_label(slot, vignette.is_some()))),
                 ..Default::default()
             });
             pass.push_debug_group("bloom_composite");
-            pass.set_pipeline(&self.composite);
+            pass.set_pipeline(if vignette.is_some() {
+                &self.composite_vignette
+            } else {
+                &self.composite
+            });
             pass.set_bind_group(0, &stage.source_bg, &[]);
             pass.set_bind_group(1, &stage.params_bg, &[]);
             pass.set_bind_group(2, &objects.composite_bg, &[]);
@@ -536,6 +555,7 @@ fn stage_payloads(
     scene_size: (u32, u32),
     mip_count: u32,
     halvings: u32,
+    vignette: Option<&VignetteParams>,
     mip_extent: impl Fn(u32) -> (u32, u32),
 ) {
     let inv_scene = inv_size(scene_size);
@@ -553,7 +573,23 @@ fn stage_payloads(
         payloads
             .push(pack_params(params, inv_next, mip_count, level, PASS_KIND_UPSAMPLE).to_bytes());
     }
-    payloads.push(pack_params(params, inv_scene, mip_count, 0, PASS_KIND_COMPOSITE).to_bytes());
+    let mut composite = pack_params(params, inv_scene, mip_count, 0, PASS_KIND_COMPOSITE);
+    if let Some(vignette) = vignette {
+        composite.vec4[2] = vignette.color;
+        composite.vec4[3] = [vignette.inner, vignette.outer, vignette.strength, 0.0];
+    }
+    payloads.push(composite.to_bytes());
+}
+
+/// The composite pass's timing label in post-stack slot `slot`: its own
+/// where it also draws the stack's trailing vignette (`D-302`), so the two
+/// passes' work is not read as the composite's alone.
+pub(crate) fn composite_label(slot: usize, with_vignette: bool) -> String {
+    if with_vignette {
+        format!("post{slot}_bloom_composite_vignette")
+    } else {
+        format!("post{slot}_bloom_composite")
+    }
 }
 
 /// Builds a slot's UBOs, seeded with `payloads`, and its bind groups, in
@@ -763,6 +799,7 @@ fn build_composite_pipeline(
     layouts: &BloomLayouts,
     module: &wgpu::ShaderModule,
     format: wgpu::TextureFormat,
+    fragment_entry: &str,
 ) -> wgpu::RenderPipeline {
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("bloom_composite_layout"),
@@ -784,7 +821,7 @@ fn build_composite_pipeline(
         },
         fragment: Some(wgpu::FragmentState {
             module,
-            entry_point: Some("fs_main"),
+            entry_point: Some(fragment_entry),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
                 blend: None,

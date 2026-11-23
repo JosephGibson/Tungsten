@@ -1,5 +1,5 @@
 use super::*;
-use tungsten_core::post::BloomParams;
+use tungsten_core::post::{BloomParams, VignetteParams};
 
 use crate::targets::{TargetCache, bloom_mip_count_for_size};
 
@@ -76,7 +76,7 @@ fn stage_payloads_follow_recording_order() {
     // 1080p: the pyramid starts at 960 x 540.
     let extent = |level: u32| ((960u32 >> level).max(1), (540u32 >> level).max(1));
     let mut payloads = Vec::new();
-    stage_payloads(&mut payloads, &params, (1920, 1080), 6, 1, extent);
+    stage_payloads(&mut payloads, &params, (1920, 1080), 6, 1, None, extent);
     assert_eq!(payloads.len(), 12);
 
     let expect = |inv_of: (u32, u32), level: u32, kind: i32| {
@@ -123,12 +123,47 @@ fn stage_payloads_follow_recording_order() {
     // A quarter-size pyramid changes the threshold's block and no other
     // stage's, given the same level sizes.
     let mut quarter = Vec::new();
-    stage_payloads(&mut quarter, &params, (1920, 1080), 6, 2, extent);
+    stage_payloads(&mut quarter, &params, (1920, 1080), 6, 2, None, extent);
     assert_eq!(quarter[0], threshold(2));
     assert_eq!(quarter[1..], payloads[1..]);
 
+    // A stack's trailing vignette drawn by the composite (`D-302`): its
+    // colour and its shape ride in the composite's block and no other's.
+    let vignette = VignetteParams {
+        inner: 0.38,
+        outer: 0.78,
+        strength: 0.18,
+        color: [0.015, 0.013, 0.02, 1.0],
+    };
+    let mut folded = Vec::new();
+    stage_payloads(
+        &mut folded,
+        &params,
+        (1920, 1080),
+        6,
+        1,
+        Some(&vignette),
+        extent,
+    );
+    assert_eq!(folded[..11], payloads[..11]);
+    let mut composite = pack_params(
+        &params,
+        (1.0 / 1920.0, 1.0 / 1080.0),
+        6,
+        0,
+        PASS_KIND_COMPOSITE,
+    );
+    assert_eq!(payloads[11], composite.to_bytes());
+    assert_eq!(composite.vec4[2], [0.0; 4], "free until a vignette folds");
+    composite.vec4[2] = vignette.color;
+    composite.vec4[3] = [0.38, 0.78, 0.18, 0.0];
+    assert_eq!(folded[11], composite.to_bytes());
+    // And the pass is timed under a label of its own.
+    assert_eq!(composite_label(0, false), "post0_bloom_composite");
+    assert_eq!(composite_label(2, true), "post2_bloom_composite_vignette");
+
     // One mip: threshold and composite only. The vector is reused.
-    stage_payloads(&mut payloads, &params, (4, 4), 1, 1, |_| (2, 2));
+    stage_payloads(&mut payloads, &params, (4, 4), 1, 1, None, |_| (2, 2));
     assert_eq!(payloads.len(), 2);
     // Other params: every stage's bytes change, so every UBO is rewritten.
     let mut louder = Vec::new();
@@ -136,7 +171,7 @@ fn stage_payloads_follow_recording_order() {
         intensity: 1.5,
         ..params
     };
-    stage_payloads(&mut louder, &boosted, (4, 4), 1, 1, |_| (2, 2));
+    stage_payloads(&mut louder, &boosted, (4, 4), 1, 1, None, |_| (2, 2));
     assert!(payloads.iter().zip(&louder).all(|(a, b)| a != b));
 }
 

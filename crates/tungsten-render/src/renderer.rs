@@ -56,7 +56,7 @@ use tungsten_core::assets::{
 use tungsten_core::config::{
     BloomBase, DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
 };
-use tungsten_core::post::{PostPass, PostStack};
+use tungsten_core::post::{PostPass, PostStack, VignetteParams};
 use tungsten_core::ui::PaintList;
 use winit::window::Window;
 
@@ -161,6 +161,9 @@ pub struct Renderer {
     smaa_shader_ids: SmaaShaderIds,
     bloom_max_mips: u32,
     bloom_base: BloomBase,
+    /// The frame's post stack without its trailing vignette, where bloom's
+    /// composite draws that vignette (`D-302`). Kept for its allocation.
+    folded_stack: PostStack,
     /// M29 lit sprite pipeline; rebuilt on `lit_sprite` shader hot-reload.
     lit_sprite_pipeline: LitSpritePipeline,
     /// M29 per-frame lighting UBO + bind group bound at group 2 of the lit
@@ -660,6 +663,7 @@ impl Renderer {
             smaa_shader_ids,
             bloom_max_mips,
             bloom_base,
+            folded_stack: PostStack::default(),
             lit_sprite_pipeline,
             lighting,
             materials: HashMap::new(),
@@ -1450,8 +1454,10 @@ impl Renderer {
         ui: &PaintList,
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
+        let mut scratch = std::mem::take(&mut self.folded_stack);
+        let (post_stack, vignette) = self.fold_vignette(post_stack, &mut scratch);
         self.gpu_timings.clear_durations();
-        self.render_frame_internal(
+        let result = self.render_frame_internal(
             view_proj,
             quads,
             sprite_batches,
@@ -1460,8 +1466,34 @@ impl Renderer {
             text_sections,
             ui,
             post_stack,
+            vignette,
             None,
-        )
+        );
+        self.folded_stack = scratch;
+        result
+    }
+
+    /// The stack this frame draws and the vignette bloom's composite draws
+    /// with it (`D-302`): the game's own stack, or, where its trailing
+    /// vignette folds ([`crate::post::trailing_vignette`]), that stack
+    /// without it, copied into `scratch`. Everything that plans the frame
+    /// reads the stack this returns: the pass order, the targets, the
+    /// timing table and the counters.
+    fn fold_vignette<'s>(
+        &self,
+        stack: &'s PostStack,
+        scratch: &'s mut PostStack,
+    ) -> (&'s PostStack, Option<VignetteParams>) {
+        let smaa_tail = self.post_aa.is_smaa() && self.smaa.is_some();
+        let stock = self.post_stack.stock_vignette_and_composite();
+        match crate::post::trailing_vignette(stack, smaa_tail, stock) {
+            Some(vignette) => {
+                scratch.0.clear();
+                scratch.0.extend_from_slice(&stack.0[..stack.0.len() - 1]);
+                (scratch, Some(vignette))
+            }
+            None => (stack, None),
+        }
     }
 
     /// The app's number for the frame it renders next, which a timed
@@ -1518,6 +1550,38 @@ impl Renderer {
         ui: &PaintList,
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
+        let mut scratch = std::mem::take(&mut self.folded_stack);
+        let (post_stack, vignette) = self.fold_vignette(post_stack, &mut scratch);
+        let result = self.render_frame_timed_folded(
+            view_proj,
+            quads,
+            sprite_batches,
+            debug_quads,
+            debug_lines,
+            text_sections,
+            ui,
+            post_stack,
+            vignette,
+        );
+        self.folded_stack = scratch;
+        result
+    }
+
+    /// [`Self::render_frame_full_timed`] on the stack the frame draws
+    /// ([`Self::fold_vignette`]).
+    #[allow(clippy::too_many_arguments)]
+    fn render_frame_timed_folded(
+        &mut self,
+        view_proj: &glam::Mat4,
+        quads: &[QuadInstance],
+        sprite_batches: &[SpriteBatch],
+        debug_quads: &[QuadInstance],
+        debug_lines: &[DebugLineInstance],
+        text_sections: &[TextSection],
+        ui: &PaintList,
+        post_stack: &PostStack,
+        vignette: Option<VignetteParams>,
+    ) -> Result<RenderOutcome, RenderError> {
         self.gpu_timings.samples.clear();
         if !self.timestamp_support {
             self.gpu_timings.clear_durations();
@@ -1530,6 +1594,7 @@ impl Renderer {
                 text_sections,
                 ui,
                 post_stack,
+                vignette,
                 None,
             );
         }
@@ -1570,6 +1635,7 @@ impl Renderer {
             text_sections,
             ui,
             post_stack,
+            vignette,
             taken.as_mut().map(|(_, slot)| slot),
         );
         if let Some((index, slot)) = taken {
@@ -1595,6 +1661,7 @@ impl Renderer {
         text_sections: &[TextSection],
         ui: &PaintList,
         post_stack: &PostStack,
+        vignette: Option<VignetteParams>,
         mut timing: Option<&mut TimingResources>,
     ) -> Result<RenderOutcome, RenderError> {
         self.cpu_timings = CpuFrameTimings::default();
@@ -1629,6 +1696,7 @@ impl Renderer {
             debug_lines,
             ui,
             post_stack,
+            vignette,
         };
 
         // Late acquire (`D-145`): the passes before the swapchain stage
@@ -1935,6 +2003,7 @@ impl Renderer {
             debug_quads,
             debug_lines,
             post_stack,
+            vignette,
             ..
         } = draws;
         let post_stack_len = post_stack.len();
@@ -2035,6 +2104,8 @@ impl Renderer {
                     pass_desc.color,
                     timing.as_deref_mut(),
                     pi,
+                    // The folded vignette is the last slot's, a bloom.
+                    vignette.as_ref().filter(|_| pi + 1 == post_stack_len),
                 );
                 continue;
             }
@@ -2202,6 +2273,9 @@ struct FrameDraws<'f> {
     /// The UI paint list (M46).
     ui: &'f PaintList,
     post_stack: &'f PostStack,
+    /// The vignette the stack's last pass, a bloom, draws in its composite
+    /// (`D-302`).
+    vignette: Option<VignetteParams>,
 }
 
 #[allow(clippy::too_many_arguments)]

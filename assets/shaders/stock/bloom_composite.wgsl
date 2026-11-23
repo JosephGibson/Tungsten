@@ -12,8 +12,8 @@
 struct Params {
     inv_src_size: vec4<f32>,
     composite_tint: vec4<f32>,
-    _vec4_2: vec4<f32>,
-    _vec4_3: vec4<f32>,
+    vignette_color: vec4<f32>,
+    vignette_shape: vec4<f32>,
     knobs: vec4<f32>,
     levels: vec4<i32>,
     _reserved: array<vec4<u32>, 10>,
@@ -49,4 +49,27 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let added = scene.rgb + bloom_rgb * intensity;
     let mixed = mix(scene.rgb, added, radius);
     return vec4<f32>(mixed, scene.a);
+}
+
+// The composite with the stack's trailing vignette drawn in the same pass
+// (D-302): `fs_main`'s colour, clamped as the 8-bit target between the two
+// passes clamped it, then `vignette.wgsl`'s tint. `vignette_color` is its
+// colour; `vignette_shape` its inner radius, outer radius and strength.
+@fragment
+fn fs_vignette(in: VsOut) -> @location(0) vec4<f32> {
+    let scene = textureSampleLevel(src, src_sampler, in.uv, 0.0);
+    let bloom_rgb = textureSampleLevel(bloom_mip0, bloom_sampler, in.uv, 0.0).rgb
+                  * params.composite_tint.rgb;
+    let intensity = params.knobs.z;
+    let radius = clamp(params.knobs.w, 0.0, 1.0);
+    let added = scene.rgb + bloom_rgb * intensity;
+    let mixed = clamp(mix(scene.rgb, added, radius), vec3<f32>(0.0), vec3<f32>(1.0));
+
+    let d = distance(in.uv, vec2<f32>(0.5, 0.5));
+    let inner = params.vignette_shape.x;
+    let outer = max(params.vignette_shape.y, inner + 1e-4);
+    let t = clamp((d - inner) / (outer - inner), 0.0, 1.0);
+    let strength = clamp(params.vignette_shape.z, 0.0, 1.0);
+    let tinted = mix(mixed, params.vignette_color.rgb, t * strength);
+    return vec4<f32>(tinted, scene.a);
 }
