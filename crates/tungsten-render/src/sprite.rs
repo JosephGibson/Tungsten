@@ -215,6 +215,14 @@ pub struct SpriteBatch {
     /// fragment. Ignored under `CpuStable`, and on a batch whose material
     /// draws it.
     pub solid: bool,
+    /// A world box, `[min_x, min_y, max_x, max_y]`, outside which the batch
+    /// draws nothing (redo 7.15): its draw is scissored to the pixels the
+    /// box can reach under the frame's camera, a pixel wider each way, under
+    /// either depth sort. A caller that knows where its quads sample only
+    /// clear texels (`SpriteAsset::drawn_span`) skips those fragments, which
+    /// draw nothing, and changes no pixel. `None`, or a box that is not a
+    /// number, clips nothing.
+    pub clip: Option<[f32; 4]>,
 }
 
 impl SpriteBatch {
@@ -229,7 +237,57 @@ impl SpriteBatch {
             uniform_overrides: None,
             lit: false,
             solid: false,
+            clip: None,
         }
+    }
+}
+
+/// What a batch's `clip` leaves of the pass's target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Scissor {
+    /// No clip, or a box that is not a number: the whole target.
+    Whole,
+    /// These pixels, `[x, y, width, height]`.
+    Rect([u32; 4]),
+    /// The box misses the target: the batch draws nothing.
+    Nothing,
+}
+
+/// The scissor of world box `clip` on a `target` sized pass under
+/// `view_proj`: the pixels its four corners span, a pixel wider each way, so
+/// a camera that turns keeps every pixel the box can reach.
+pub(crate) fn clip_scissor(view_proj: &glam::Mat4, clip: [f32; 4], target: (u32, u32)) -> Scissor {
+    let (width, height) = (f64::from(target.0), f64::from(target.1));
+    let m = view_proj.to_cols_array().map(f64::from);
+    let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for (x, y) in [
+        (clip[0], clip[1]),
+        (clip[2], clip[1]),
+        (clip[0], clip[3]),
+        (clip[2], clip[3]),
+    ] {
+        let (x, y) = (f64::from(x), f64::from(y));
+        let w = m[3] * x + m[7] * y + m[15];
+        let ndc_x = (m[0] * x + m[4] * y + m[12]) / w;
+        let ndc_y = (m[1] * x + m[5] * y + m[13]) / w;
+        if !(ndc_x.is_finite() && ndc_y.is_finite()) {
+            return Scissor::Whole;
+        }
+        let px = (ndc_x * 0.5 + 0.5) * width;
+        let py = (0.5 - ndc_y * 0.5) * height;
+        left = left.min(px);
+        right = right.max(px);
+        top = top.min(py);
+        bottom = bottom.max(py);
+    }
+    let low = |edge: f64, size: f64| (edge.floor() - 1.0).clamp(0.0, size) as u32;
+    let high = |edge: f64, size: f64| (edge.ceil() + 1.0).clamp(0.0, size) as u32;
+    let (x0, x1) = (low(left, width), high(right, width));
+    let (y0, y1) = (low(top, height), high(bottom, height));
+    if x1 > x0 && y1 > y0 {
+        Scissor::Rect([x0, y0, x1 - x0, y1 - y0])
+    } else {
+        Scissor::Nothing
     }
 }
 
@@ -360,6 +418,8 @@ pub struct SpritePipeline {
     /// frames.
     turns: Vec<Turn>,
     starts: Vec<u32>,
+    /// The camera last uploaded, which a batch's `clip` is projected with.
+    view_proj: glam::Mat4,
     pipeline_layout: wgpu::PipelineLayout,
     vertex_buffer: wgpu::Buffer,
     instance_buffer: wgpu::Buffer,
@@ -571,6 +631,7 @@ impl SpritePipeline {
             pipeline_solid,
             turns: Vec::new(),
             starts: Vec::new(),
+            view_proj: glam::Mat4::IDENTITY,
             pipeline_layout,
             vertex_buffer,
             instance_buffer,
@@ -1028,8 +1089,10 @@ impl SpritePipeline {
         self.lit_textures.remove(&handle);
     }
 
-    /// Upload caller-owned camera view-projection matrix.
-    pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
+    /// Upload caller-owned camera view-projection matrix; the pipeline keeps
+    /// it for the batches' `clip` boxes.
+    pub fn update_camera(&mut self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
+        self.view_proj = *view_proj;
         let matrix_ref: &[f32; 16] = view_proj.as_ref();
         counters::write_buffer(
             &self.counts,
@@ -1079,8 +1142,9 @@ impl SpritePipeline {
     ///
     /// Redo 7.15: under `DepthSortMode::GpuDepth` the batches draw in
     /// `draw_turns`' order, each at `batch_depth`, which the viewport's
-    /// depth range sets over the pass's `target` size; the range is the
-    /// whole one again when the draw returns.
+    /// depth range sets over the pass's `target` size; a batch with a
+    /// `clip` draws under `clip_scissor`'s rectangle. The range and the
+    /// scissor are the whole target's again when the draw returns.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -1162,6 +1226,8 @@ impl SpritePipeline {
         }
         draw_turns(batches, depth, &mut turns);
         let (width, height) = (target.0 as f32, target.1 as f32);
+        // The scissor in force.
+        let mut scissor = Scissor::Whole;
 
         for turn in &turns {
             let index = turn.batch as usize;
@@ -1169,6 +1235,13 @@ impl SpritePipeline {
             let base_instance = starts[index] as usize;
             let count = batch.instances.len().min(drawn - base_instance);
             if count == 0 {
+                continue;
+            }
+            // A clip that misses the target draws nothing.
+            let wanted = batch.clip.map_or(Scissor::Whole, |clip| {
+                clip_scissor(&self.view_proj, clip, target)
+            });
+            if wanted == Scissor::Nothing {
                 continue;
             }
             let lit = batch.lit;
@@ -1315,11 +1388,22 @@ impl SpritePipeline {
                 let z = batch_depth(index, batches.len());
                 render_pass.set_viewport(0.0, 0.0, width, height, z, z);
             }
+            if wanted != scissor {
+                let [x, y, w, h] = match wanted {
+                    Scissor::Rect(rect) => rect,
+                    Scissor::Whole | Scissor::Nothing => [0, 0, target.0, target.1],
+                };
+                render_pass.set_scissor_rect(x, y, w, h);
+                scissor = wanted;
+            }
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(start..end));
             counters::draw(&self.counts, render_pass, 0..6, 0..count as u32);
         }
         if depth {
             render_pass.set_viewport(0.0, 0.0, width, height, 0.0, 1.0);
+        }
+        if scissor != Scissor::Whole {
+            render_pass.set_scissor_rect(0, 0, target.0, target.1);
         }
         self.starts = starts;
         self.turns = turns;

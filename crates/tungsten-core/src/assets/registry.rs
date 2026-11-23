@@ -61,6 +61,39 @@ impl SpriteAlpha {
     }
 }
 
+/// The box of `rgba`'s texels that are not clear, `[x, y, width, height]`
+/// in a `width` texels wide RGBA8 image (redo 7.15): what a load measures
+/// into [`SpriteAsset::drawn`]. An image with no such texel, or no pixels,
+/// has an empty box at the origin.
+#[must_use]
+pub fn drawn_box(rgba: &[u8], width: u32) -> [u32; 4] {
+    let width = width.max(1) as usize;
+    let (mut left, mut top, mut right, mut bottom) = (usize::MAX, usize::MAX, 0, 0);
+    for (y, row) in rgba.chunks_exact(width * 4).enumerate() {
+        let texels = row.as_chunks::<4>().0;
+        let Some(first) = texels.iter().position(|texel| texel[3] != 0) else {
+            continue;
+        };
+        let last = texels
+            .iter()
+            .rposition(|texel| texel[3] != 0)
+            .unwrap_or(first);
+        left = left.min(first);
+        right = right.max(last + 1);
+        top = top.min(y);
+        bottom = y + 1;
+    }
+    if top == usize::MAX {
+        return [0; 4];
+    }
+    [
+        left as u32,
+        top as u32,
+        (right - left) as u32,
+        (bottom - top) as u32,
+    ]
+}
+
 /// Loaded sprite metadata; atlas handle may be shared.
 #[derive(Debug, Clone)]
 pub struct SpriteAsset {
@@ -94,9 +127,47 @@ pub struct SpriteAsset {
     /// What its alpha channel holds (redo 7.15): [`SpriteAlpha::Blend`]
     /// until a load or a reload measures its pixels.
     pub alpha: SpriteAlpha,
+    /// The box of its texels that are not clear, `[x, y, width, height]`
+    /// in source pixels from its own top-left (redo 7.15): the whole sprite
+    /// until a load or a reload measures its pixels ([`drawn_box`]).
+    pub drawn: [u32; 4],
 }
 
 impl SpriteAsset {
+    /// The part of a quad that draws the whole sprite outside which every
+    /// fragment samples a clear texel (redo 7.15), as `(min, max)` fractions
+    /// of the quad across and down: [`Self::drawn`] under the UVs the
+    /// registry holds, which run from the first texel's centre to the
+    /// last's, a texel wider each way under a linear sampler, which mixes
+    /// neighbours. A wholly clear sprite has an empty part. A batch clipped
+    /// to it (the renderer's `SpriteBatch::clip`) draws the same pixels; a
+    /// mirrored quad's part mirrors with it.
+    #[must_use]
+    pub fn drawn_span(&self) -> ([f32; 2], [f32; 2]) {
+        let reach = if self.filter == FilterMode::Linear {
+            1.0
+        } else {
+            0.0
+        };
+        let axis = |start: u32, len: u32, texels: u32| -> (f32, f32) {
+            if len == 0 {
+                return (0.0, 0.0);
+            }
+            if texels <= 1 {
+                return (0.0, 1.0);
+            }
+            let step = (texels - 1) as f32;
+            (
+                ((start as f32 - 0.5 - reach) / step).max(0.0),
+                (((start + len) as f32 - 0.5 + reach) / step).min(1.0),
+            )
+        };
+        let [x, y, width, height] = self.drawn;
+        let (left, right) = axis(x, width, self.width);
+        let (top, bottom) = axis(y, height, self.height);
+        ([left, top], [right, bottom])
+    }
+
     /// The named point `name`, `[x, y]` in source pixels, if the sprite
     /// has it; [`sprite_point`](crate::sprite_point) reads where it is
     /// drawn.
@@ -296,6 +367,7 @@ impl AssetRegistry {
             anchor: None,
             points: BTreeMap::new(),
             alpha: SpriteAlpha::Blend,
+            drawn: [0, 0, width, height],
         });
         self.sprite_epoch += 1;
         sprite_id
@@ -352,6 +424,7 @@ impl AssetRegistry {
             asset.height = height;
             // The new pixels are unmeasured until the loader says.
             asset.alpha = SpriteAlpha::Blend;
+            asset.drawn = [0, 0, width, height];
             self.sprite_epoch += 1;
         }
     }
@@ -407,11 +480,25 @@ impl AssetRegistry {
         }
     }
 
+    /// Sets the box of a registered sprite's texels that are not clear
+    /// (redo 7.15), as the loader measures it with [`drawn_box`], at a load
+    /// and at every reload. An unregistered ID, or the box it already
+    /// holds, does nothing.
+    pub fn set_sprite_drawn(&mut self, id: &str, drawn: [u32; 4]) {
+        if let Some(asset) = self.get_sprite_mut(id)
+            && asset.drawn != drawn
+        {
+            asset.drawn = drawn;
+            self.sprite_epoch += 1;
+        }
+    }
+
     /// A count that rises whenever a registered sprite changes: on
     /// [`Self::register_sprite`], [`Self::update_sprite_entry`],
     /// [`Self::update_sprite_lit_atlas`], [`Self::set_sprite_nine_slice`],
-    /// [`Self::set_sprite_frame`], [`Self::set_sprite_points`] and
-    /// [`Self::set_sprite_alpha`], never on interning. A retained UI paint list repaints when it moved,
+    /// [`Self::set_sprite_frame`], [`Self::set_sprite_points`],
+    /// [`Self::set_sprite_alpha`] and [`Self::set_sprite_drawn`], never on
+    /// interning. A retained UI paint list repaints when it moved,
     /// since a repack may have moved a UV.
     #[must_use]
     pub fn sprite_epoch(&self) -> u64 {

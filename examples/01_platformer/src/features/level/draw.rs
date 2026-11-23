@@ -350,6 +350,9 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
 /// batch is solid when the sprite's alpha is two-level and the tint keeps
 /// an alpha of 255, a foot's row being the sprite's own texels: under the
 /// depth test it hides what its opaque texels cover of the layers behind.
+/// The batch is clipped to the rows that hold a texel of the sprite, from
+/// its first to its last, or to the view's foot under a footed strip: the
+/// wholly clear rows above and below draw nothing.
 fn strip(
     asset: &SpriteAsset,
     id: &str,
@@ -386,6 +389,20 @@ fn strip(
             batch.instances.push(fill);
         }
     }
+    // Every copy stands on one line, so the rows its sprite draws are the
+    // batch's; a foot runs on below them.
+    let (low, high) = asset.drawn_span();
+    let rows_end = if footed {
+        max.y + overhang.y
+    } else {
+        at.y + size.y * high[1]
+    };
+    batch.clip = Some([
+        min.x - overhang.x,
+        at.y + size.y * low[1],
+        max.x + overhang.x,
+        rows_end,
+    ]);
     batch
 }
 

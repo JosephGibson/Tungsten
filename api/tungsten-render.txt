@@ -874,6 +874,7 @@ pub fn tungsten_render::shader_hot_reload::module_source(&str) -> alloc::borrow:
 pub fn tungsten_render::shader_hot_reload::validate_wgsl_source(&str, &str) -> core::result::Result<(), tungsten_render::shader_hot_reload::ShaderError>
 pub mod tungsten_render::sprite
 pub struct tungsten_render::sprite::SpriteBatch
+pub tungsten_render::sprite::SpriteBatch::clip: core::option::Option<[f32; 4]>
 pub tungsten_render::sprite::SpriteBatch::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_render::sprite::SpriteBatch::instances: alloc::vec::Vec<tungsten_render::sprite::SpriteInstance>
 pub tungsten_render::sprite::SpriteBatch::lit: bool
@@ -932,7 +933,7 @@ pub fn tungsten_render::sprite::SpritePipeline::lit_texture_bind_group_layout(&s
 pub fn tungsten_render::sprite::SpritePipeline::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, u32, bool) -> Self
 pub fn tungsten_render::sprite::SpritePipeline::rebuild_with_shader(&mut self, &wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat, u32, bool) -> core::result::Result<(), alloc::string::String>
 pub fn tungsten_render::sprite::SpritePipeline::texture_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
-pub fn tungsten_render::sprite::SpritePipeline::update_camera(&self, &wgpu::api::queue::Queue, &glam::f32::sse2::mat4::Mat4)
+pub fn tungsten_render::sprite::SpritePipeline::update_camera(&mut self, &wgpu::api::queue::Queue, &glam::f32::sse2::mat4::Mat4)
 pub fn tungsten_render::sprite::SpritePipeline::upload_lit_texture(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
 pub fn tungsten_render::sprite::SpritePipeline::upload_texture(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
 pub fn tungsten_render::sprite::SpritePipeline::vertex_layouts() -> [core::option::Option<wgpu::api::render_pipeline::VertexBufferLayout<'static>>; 2]
@@ -2091,6 +2092,7 @@ impl core::marker::UnsafeUnpin for tungsten_render::post::smaa::SmaaShaderIds
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::smaa::SmaaShaderIds
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::post::smaa::SmaaShaderIds
 pub struct tungsten_render::SpriteBatch
+pub tungsten_render::SpriteBatch::clip: core::option::Option<[f32; 4]>
 pub tungsten_render::SpriteBatch::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_render::SpriteBatch::instances: alloc::vec::Vec<tungsten_render::sprite::SpriteInstance>
 pub tungsten_render::SpriteBatch::lit: bool
@@ -2149,7 +2151,7 @@ pub fn tungsten_render::sprite::SpritePipeline::lit_texture_bind_group_layout(&s
 pub fn tungsten_render::sprite::SpritePipeline::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, u32, bool) -> Self
 pub fn tungsten_render::sprite::SpritePipeline::rebuild_with_shader(&mut self, &wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat, u32, bool) -> core::result::Result<(), alloc::string::String>
 pub fn tungsten_render::sprite::SpritePipeline::texture_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
-pub fn tungsten_render::sprite::SpritePipeline::update_camera(&self, &wgpu::api::queue::Queue, &glam::f32::sse2::mat4::Mat4)
+pub fn tungsten_render::sprite::SpritePipeline::update_camera(&mut self, &wgpu::api::queue::Queue, &glam::f32::sse2::mat4::Mat4)
 pub fn tungsten_render::sprite::SpritePipeline::upload_lit_texture(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
 pub fn tungsten_render::sprite::SpritePipeline::upload_texture(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
 pub fn tungsten_render::sprite::SpritePipeline::vertex_layouts() -> [core::option::Option<wgpu::api::render_pipeline::VertexBufferLayout<'static>>; 2]

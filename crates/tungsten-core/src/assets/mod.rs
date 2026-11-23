@@ -35,7 +35,7 @@ pub use particle::{
 };
 pub use prefab::{PrefabData, PrefabError, PrefabRegistry, PreparedPrefab};
 pub use registry::{
-    AssetRegistry, FontRegistry, SpriteAlpha, SpriteAsset, SpriteAssetId, TextureHandle,
+    AssetRegistry, FontRegistry, SpriteAlpha, SpriteAsset, SpriteAssetId, TextureHandle, drawn_box,
 };
 pub use room::{
     AuthoredRoom, AuthoredRooms, CompiledPlace, CompiledRoom, Generate, GenerateError,

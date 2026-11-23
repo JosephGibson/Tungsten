@@ -1717,6 +1717,41 @@ fn a_load_measures_each_sprites_alpha_from_its_pixels() {
     assert_eq!(alpha("walk_3"), SpriteAlpha::Blend);
     // The engine's white texel.
     assert_eq!(alpha(ENGINE_WHITE), SpriteAlpha::Opaque);
+    // And where each one's texels are not clear: all of the hero but its
+    // corner, so its whole box; none of the panel; all of a frame.
+    let drawn = |name: &str| sprites.get_sprite(name).unwrap().drawn;
+    assert_eq!(drawn("hero"), [0, 0, 4, 4]);
+    assert_eq!(drawn("panel"), [0; 4]);
+    assert_eq!(drawn("walk_3"), [0, 0, 16, 16]);
+}
+
+#[test]
+fn a_load_measures_a_strips_clear_rows() {
+    // Sixteen rows, the top five clear: the box a strip's batch is clipped
+    // to starts at the sixth.
+    let dir = tempdir();
+    let mut strip = image::RgbaImage::new(8, 16);
+    for y in 5..16 {
+        for x in 0..8 {
+            strip.put_pixel(x, y, image::Rgba([40, 60, 80, 255]));
+        }
+    }
+    strip.save(dir.join("ridge.png")).unwrap();
+    let manifest_path = dir.join("manifest.json");
+    write(
+        &manifest_path,
+        r#"{"sprites": {"ridge": {"path": "ridge.png"}}}"#,
+    );
+    let manifest = ResolvedManifest::load(&manifest_path).unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest, &mut world);
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    let sprites = world.resource::<AssetRegistry>();
+    let ridge = sprites.get_sprite("ridge").unwrap();
+    assert_eq!(ridge.alpha, tungsten_core::SpriteAlpha::Cutout);
+    assert_eq!(ridge.drawn, [0, 5, 8, 11]);
+    assert_eq!(ridge.drawn_span(), ([0.0, 4.5 / 15.0], [1.0, 1.0]));
 }
 
 #[test]

@@ -1276,6 +1276,7 @@ fn extract_into(
                 uniform_overrides: class.uniform_overrides,
                 lit: class.lit,
                 solid: false,
+                clip: None,
             });
         }
     } else {
@@ -1329,6 +1330,7 @@ fn extract_into(
                     uniform_overrides: class.uniform_overrides,
                     lit: class.lit,
                     solid: false,
+                    clip: None,
                 });
             }
             let batch = class.batch as usize;

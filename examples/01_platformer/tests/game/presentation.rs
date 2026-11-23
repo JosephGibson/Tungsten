@@ -1111,6 +1111,65 @@ fn the_backdrop_marks_the_batches_that_hide() {
 }
 
 #[test]
+fn a_strips_batch_is_clipped_to_the_rows_its_sprite_draws() {
+    // The ridges' top rows are clear: its batch draws from the first row
+    // that holds a texel, where a quad samples that row, down to the view's
+    // foot, which its own foot runs to; a cloud bank ends at its last row.
+    use example_01_platformer::features::level::TILE;
+    let (mut harness, _) = run();
+    let world = harness.world_mut();
+    let assets = world.resource_mut::<AssetRegistry>();
+    mock_sprite(assets, "ex10_sky", 800, false);
+    mock_sprite(assets, "ex10_clouds_far", 801, false);
+    mock_sprite(assets, "ex10_distant_ridges", 802, false);
+    world.insert_resource(WindowSize {
+        width: 1920,
+        height: 1080,
+    });
+    world.resource_mut::<CameraState>().position = Vec2::new(10.0, 0.0) * TILE;
+    let clip_of = |world: &tungsten::core::World, page: u32| {
+        let batches = draw::backdrop(world);
+        let batch = batches
+            .iter()
+            .find(|batch| batch.texture.0 == page)
+            .expect("the strip draws");
+        let copy = batch
+            .instances
+            .iter()
+            .find(|copy| copy.uv_size[1] != 0.0)
+            .expect("a copy of the sprite");
+        (batch.clip.expect("a clip"), copy.position[1], copy.size[1])
+    };
+    // Unmeasured, the clip holds the whole strip.
+    let (clip, top, _) = clip_of(world, 802);
+    assert_eq!(clip[1], top);
+    let (min, max) = draw::view(world);
+    assert!(
+        clip[0] < min.x && clip[2] > max.x && clip[3] > max.y,
+        "{clip:?}"
+    );
+    // Measured: from row 57 of the ridges' sprite, under the UVs' mapping.
+    let (rows, drawn_from) = {
+        let assets = world.resource_mut::<AssetRegistry>();
+        let rows = assets.get_sprite("ex10_distant_ridges").unwrap().height;
+        assets.set_sprite_drawn("ex10_distant_ridges", [0, 57, 16, rows - 57]);
+        assets.set_sprite_drawn("ex10_clouds_far", [0, 3, 16, 5]);
+        (rows as f32, 57.0)
+    };
+    let (clip, top, height) = clip_of(world, 802);
+    let expected = top + height * (drawn_from - 0.5) / (rows - 1.0);
+    assert!(
+        (clip[1] - expected).abs() < 1e-3,
+        "{} against {expected}",
+        clip[1]
+    );
+    assert!(clip[1] > top && clip[3] > max.y, "{clip:?}");
+    // The clouds, which have no foot, end at their last drawn row.
+    let (clip, top, height) = clip_of(world, 801);
+    assert!(clip[1] > top && clip[3] < top + height, "{clip:?}");
+}
+
+#[test]
 fn spray_particles_draw_over_the_enemies() {
     use example_01_platformer::features::toys::components::Spray;
     use example_01_platformer::features::toys::systems::SPRAY_Z;

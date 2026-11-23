@@ -132,3 +132,115 @@ fn a_later_batch_sits_nearer_and_every_depth_lies_inside_the_range() {
     }
     assert_eq!(batch_depth(0, 1), 0.5);
 }
+
+/// A camera showing world x 100..500 and y 200..400 on a 400 x 200 target,
+/// y down: a pixel a world unit.
+fn clip_camera() -> glam::Mat4 {
+    glam::Mat4::from_cols_array(&[
+        2.0 / 400.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -2.0 / 200.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        -(500.0 + 100.0) / 400.0,
+        (400.0 + 200.0) / 200.0,
+        0.0,
+        1.0,
+    ])
+}
+
+/// Whether `rect` holds pixel columns `xs` and rows `ys` and reaches at
+/// most two pixels past them: the margin, and one for a corner that
+/// projects a hair short of its pixel's edge.
+fn holds(rect: [u32; 4], xs: std::ops::Range<u32>, ys: std::ops::Range<u32>) -> bool {
+    let [x, y, w, h] = rect;
+    let within = |low: u32, high: u32, range: &std::ops::Range<u32>| {
+        low <= range.start && range.start - low <= 2 && high >= range.end && high - range.end <= 2
+    };
+    within(x, x + w, &xs) && within(y, y + h, &ys)
+}
+
+#[test]
+fn a_clip_box_scissors_to_the_pixels_it_reaches_and_a_margin() {
+    let camera = clip_camera();
+    let target = (400, 200);
+    let scissor = |clip| match clip_scissor(&camera, clip, target) {
+        Scissor::Rect(rect) => rect,
+        other => panic!("{clip:?}: {other:?}"),
+    };
+    // World (150, 250)..(300, 380) is pixels (50, 50)..(200, 180).
+    let rect = scissor([150.0, 250.0, 300.0, 380.0]);
+    assert!(holds(rect, 50..200, 50..180), "{rect:?}");
+    assert!(rect[0] < 50 && rect[1] < 50, "a margin: {rect:?}");
+    // A box given corner for corner the other way reaches the same pixels.
+    assert_eq!(scissor([300.0, 380.0, 150.0, 250.0]), rect);
+    // An edge inside a pixel row keeps that row.
+    let rect = scissor([150.0, 250.5, 300.0, 380.0]);
+    assert!(rect[1] <= 50, "{rect:?}");
+    // Past the target: clamped to it; around it: the whole of it.
+    let rect = scissor([-1.0e6, 300.0, 1.0e6, 1.0e6]);
+    assert_eq!((rect[0], rect[2]), (0, 400));
+    assert!(holds(rect, 0..400, 100..200), "{rect:?}");
+    assert_eq!(scissor([-1.0e9, -1.0e9, 1.0e9, 1.0e9]), [0, 0, 400, 200]);
+}
+
+#[test]
+fn a_clip_box_off_the_target_draws_nothing_and_one_that_is_no_number_clips_nothing() {
+    let camera = clip_camera();
+    let target = (400, 200);
+    // Wholly above the view, and more than the margin away; then beside it.
+    assert_eq!(
+        clip_scissor(&camera, [100.0, 0.0, 500.0, 190.0], target),
+        Scissor::Nothing
+    );
+    assert_eq!(
+        clip_scissor(&camera, [600.0, 200.0, 700.0, 400.0], target),
+        Scissor::Nothing
+    );
+    // An empty box on the target still spans its margin: the caller's empty
+    // box is its own to skip.
+    let Scissor::Rect(rect) = clip_scissor(&camera, [200.0, 300.0, 200.0, 300.0], target) else {
+        panic!("on the target");
+    };
+    assert!(holds(rect, 100..100, 100..100), "{rect:?}");
+    for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        assert_eq!(
+            clip_scissor(&camera, [100.0, bad, 500.0, 400.0], target),
+            Scissor::Whole,
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn a_turned_camera_keeps_every_pixel_the_box_reaches() {
+    // A quarter turn about the view's centre: the box's corners still bound
+    // it, so its scissor holds each corner's pixel.
+    let centre = glam::Vec3::new(300.0, 300.0, 0.0);
+    let turned = clip_camera()
+        * glam::Mat4::from_translation(centre)
+        * glam::Mat4::from_rotation_z(0.5)
+        * glam::Mat4::from_translation(-centre);
+    let clip = [250.0, 280.0, 350.0, 320.0];
+    let Scissor::Rect([x, y, w, h]) = clip_scissor(&turned, clip, (400, 200)) else {
+        panic!("on the target");
+    };
+    for corner in [
+        (250.0, 280.0),
+        (350.0, 280.0),
+        (250.0, 320.0),
+        (350.0, 320.0),
+    ] {
+        let ndc = turned.project_point3(glam::Vec3::new(corner.0, corner.1, 0.0));
+        let (px, py) = ((ndc.x * 0.5 + 0.5) * 400.0, (0.5 - ndc.y * 0.5) * 200.0);
+        assert!(px >= x as f32 && px <= (x + w) as f32, "{corner:?}: x {px}");
+        assert!(py >= y as f32 && py <= (y + h) as f32, "{corner:?}: y {py}");
+    }
+}

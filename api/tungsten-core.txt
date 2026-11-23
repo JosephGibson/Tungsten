@@ -1863,6 +1863,7 @@ pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_alpha(&mut self, &str, tungsten_core::assets::registry::SpriteAlpha)
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_drawn(&mut self, &str, [u32; 4])
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
@@ -1909,6 +1910,7 @@ pub struct tungsten_core::assets::registry::SpriteAsset
 pub tungsten_core::assets::registry::SpriteAsset::alpha: tungsten_core::assets::registry::SpriteAlpha
 pub tungsten_core::assets::registry::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::assets::registry::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
+pub tungsten_core::assets::registry::SpriteAsset::drawn: [u32; 4]
 pub tungsten_core::assets::registry::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::registry::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::assets::registry::SpriteAsset::height: u32
@@ -1921,6 +1923,7 @@ pub tungsten_core::assets::registry::SpriteAsset::rect: core::option::Option<[u3
 pub tungsten_core::assets::registry::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::assets::registry::SpriteAsset::width: u32
 impl tungsten_core::assets::registry::SpriteAsset
+pub fn tungsten_core::assets::registry::SpriteAsset::drawn_span(&self) -> ([f32; 2], [f32; 2])
 pub fn tungsten_core::assets::registry::SpriteAsset::point(&self, &str) -> core::option::Option<[f32; 2]>
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
 pub fn tungsten_core::assets::registry::SpriteAsset::clone(&self) -> tungsten_core::assets::registry::SpriteAsset
@@ -1952,6 +1955,7 @@ impl core::marker::Unpin for tungsten_core::assets::registry::TextureHandle
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::TextureHandle
+pub fn tungsten_core::assets::registry::drawn_box(&[u8], u32) -> [u32; 4]
 pub type tungsten_core::assets::registry::SpriteAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::registry::SpriteAsset>
 pub mod tungsten_core::assets::room
 pub mod tungsten_core::assets::room::tileset
@@ -4760,6 +4764,7 @@ pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_alpha(&mut self, &str, tungsten_core::assets::registry::SpriteAlpha)
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_drawn(&mut self, &str, [u32; 4])
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
@@ -6439,6 +6444,7 @@ pub struct tungsten_core::assets::SpriteAsset
 pub tungsten_core::assets::SpriteAsset::alpha: tungsten_core::assets::registry::SpriteAlpha
 pub tungsten_core::assets::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::assets::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
+pub tungsten_core::assets::SpriteAsset::drawn: [u32; 4]
 pub tungsten_core::assets::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::assets::SpriteAsset::height: u32
@@ -6451,6 +6457,7 @@ pub tungsten_core::assets::SpriteAsset::rect: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::assets::SpriteAsset::width: u32
 impl tungsten_core::assets::registry::SpriteAsset
+pub fn tungsten_core::assets::registry::SpriteAsset::drawn_span(&self) -> ([f32; 2], [f32; 2])
 pub fn tungsten_core::assets::registry::SpriteAsset::point(&self, &str) -> core::option::Option<[f32; 2]>
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
 pub fn tungsten_core::assets::registry::SpriteAsset::clone(&self) -> tungsten_core::assets::registry::SpriteAsset
@@ -6796,6 +6803,7 @@ pub fn tungsten_core::assets::RoomGenerator::generate(&self, &mut tungsten_core:
 pub fn tungsten_core::assets::RoomGenerator::migrate(&self, &tungsten_core::Generation, core::option::Option<&tungsten_core::Generation>, &mut serde_json::value::Value) -> bool
 pub fn tungsten_core::assets::RoomGenerator::reproduces(&self, u32) -> bool
 pub fn tungsten_core::assets::RoomGenerator::version(&self) -> u32
+pub fn tungsten_core::assets::drawn_box(&[u8], u32) -> [u32; 4]
 pub fn tungsten_core::assets::oversized<'a, 'b>(&'b [tungsten_core::assets::atlas::PackInput<'a>], u32, u32) -> core::option::Option<&'b tungsten_core::assets::atlas::PackInput<'a>>
 pub fn tungsten_core::assets::pack_shelf(&[tungsten_core::assets::atlas::PackInput<'_>], u32, u32) -> tungsten_core::assets::atlas::PackResult
 pub type tungsten_core::assets::ParticleMeshAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleMesh>
@@ -20808,6 +20816,7 @@ pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_alpha(&mut self, &str, tungsten_core::assets::registry::SpriteAlpha)
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_drawn(&mut self, &str, [u32; 4])
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
@@ -24323,6 +24332,7 @@ pub struct tungsten_core::SpriteAsset
 pub tungsten_core::SpriteAsset::alpha: tungsten_core::assets::registry::SpriteAlpha
 pub tungsten_core::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
+pub tungsten_core::SpriteAsset::drawn: [u32; 4]
 pub tungsten_core::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::SpriteAsset::height: u32
@@ -24335,6 +24345,7 @@ pub tungsten_core::SpriteAsset::rect: core::option::Option<[u32; 4]>
 pub tungsten_core::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::SpriteAsset::width: u32
 impl tungsten_core::assets::registry::SpriteAsset
+pub fn tungsten_core::assets::registry::SpriteAsset::drawn_span(&self) -> ([f32; 2], [f32; 2])
 pub fn tungsten_core::assets::registry::SpriteAsset::point(&self, &str) -> core::option::Option<[f32; 2]>
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
 pub fn tungsten_core::assets::registry::SpriteAsset::clone(&self) -> tungsten_core::assets::registry::SpriteAsset
