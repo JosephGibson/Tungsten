@@ -653,7 +653,7 @@ impl SleepTable {
 }
 
 /// Union-find root with path halving; serial and deterministic (D-065).
-fn uf_find(parent: &mut [u32], mut i: u32) -> u32 {
+pub(super) fn uf_find(parent: &mut [u32], mut i: u32) -> u32 {
     while parent[i as usize] != i {
         let grandparent = parent[parent[i as usize] as usize];
         parent[i as usize] = grandparent;

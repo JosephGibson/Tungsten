@@ -9964,6 +9964,81 @@ fn supports_compared_without_the_tiles_wake_what_a_full_comparison_wakes() {
     assert_eq!(skipped(&walking), 0);
 }
 
+#[test]
+fn a_pair_that_joins_once_builds_the_islands_every_union_builds() {
+    // A touching pair joins its two bodies' islands in its first substep
+    // under a pair list and no more until a build or a repair changes the
+    // list. Two worlds take the same heap and the same disturbances, one of
+    // them joining in every substep as before: fast balls thrown through
+    // the heap trip its bodies' budgets, so the list is repaired while
+    // islands sleep and wake. Their bodies and their sleepers must stay the
+    // same at every step.
+    let world_of = |join_always: bool| {
+        let (mut world, bodies) = carry_heap(1);
+        world.resource_mut::<PhysicsBuffers>().extra.join_always = join_always;
+        (world, bodies)
+    };
+    let (mut once, mut once_bodies) = world_of(false);
+    let (mut always, mut always_bodies) = world_of(true);
+    let skipped = |world: &World| world.resource::<PhysicsBuffers>().extra.joins_skipped;
+    // The heap's first step ran before the switch.
+    let before = skipped(&always);
+    let (mut most_asleep, mut repairs) = (0, 0);
+    for step in 0..420 {
+        for (world, bodies) in [
+            (&mut once, &mut once_bodies),
+            (&mut always, &mut always_bodies),
+        ] {
+            if step >= 120 && step % 45 == 0 {
+                // A fast ball along the heap's top, then one dropped on it.
+                let thrown = RigidBody::dynamic().with_restitution(0.3);
+                bodies.push(spawn_body(
+                    world,
+                    thrown,
+                    Collider::circle(5.0),
+                    Vec2::new(60.0, 175.0),
+                    Vec2::new(1_400.0, 40.0),
+                ));
+            }
+            if step >= 150 && step % 60 == 0 {
+                world.despawn(bodies.remove((step * 7) % 40));
+            }
+            physics_step(world);
+            drain_events(world);
+        }
+        let state = |world: &World, bodies: &[Entity]| -> Vec<([u32; 4], bool)> {
+            let buffers = world.resource::<PhysicsBuffers>();
+            bodies
+                .iter()
+                .map(|&body| {
+                    let (at, velocity) = (
+                        world.get::<Position>(body).unwrap().0,
+                        world.get::<Velocity>(body).unwrap().0,
+                    );
+                    (
+                        [
+                            at.x.to_bits(),
+                            at.y.to_bits(),
+                            velocity.x.to_bits(),
+                            velocity.y.to_bits(),
+                        ],
+                        buffers.is_sleeping(body),
+                    )
+                })
+                .collect()
+        };
+        let (once_state, always_state) =
+            (state(&once, &once_bodies), state(&always, &always_bodies));
+        assert_eq!(once_state, always_state, "step {step}");
+        most_asleep = most_asleep.max(once_state.iter().filter(|(_, asleep)| *asleep).count());
+        repairs = once.resource::<PhysicsBuffers>().pair_repairs;
+    }
+    assert!(most_asleep >= 30, "{most_asleep} bodies slept at most");
+    assert!(repairs >= 20, "{repairs} repairs moved the pair list");
+    assert!(skipped(&once) > 5_000, "{} unions left out", skipped(&once));
+    assert_eq!(skipped(&always), before);
+}
+
 /// A step's collision events and the distinct pairs among them, a tile side
 /// told by its cell.
 fn events_and_pairs(events: &[CollisionEvent]) -> (usize, usize) {

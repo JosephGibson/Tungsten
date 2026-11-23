@@ -619,6 +619,26 @@ struct StepExtra {
     /// forks. It and the fields after it sit last, so the fields above keep
     /// the places they had before them.
     fork: pool::Fork,
+    /// The substep's contacts that can bounce, by index in contact order:
+    /// those with some restitution whose approach passes the threshold.
+    bouncing: Vec<u32>,
+    /// By pair index: the pair has joined its two bodies' islands since the
+    /// pair list was last built or repaired, so its later substeps need no
+    /// union; and whether a build or repair has changed the list since the
+    /// marks were last reset. A frame's first substep always builds, so the
+    /// marks never outlive the frame's islands.
+    joined: Vec<bool>,
+    joined_stale: bool,
+    /// Tests: every touching pair joins its islands in every substep, as
+    /// before the marks; and the unions the marks left out.
+    #[cfg(test)]
+    join_always: bool,
+    #[cfg(test)]
+    joins_skipped: usize,
+    /// Tests: the islands as a union in every substep builds them, which
+    /// every substep's must equal.
+    #[cfg(test)]
+    shadow_parent: Vec<u32>,
     /// Scratch for the carry's remap by index (`D-299`).
     carry_remap: pairs::CarryRemap,
     /// What the sleep passes keep beside their table.
@@ -1130,6 +1150,11 @@ pub fn physics_step(world: &mut World) {
     // Island union-find over this frame's touching contacts (D-065).
     buffers.island_parent.clear();
     buffers.island_parent.extend(0..buffers.bodies as u32);
+    #[cfg(test)]
+    {
+        buffers.extra.shadow_parent.clear();
+        buffers.extra.shadow_parent.extend(0..buffers.bodies as u32);
+    }
     buffers.kept.clear();
     buffers.events.clear();
     buffers.extra.sent.begin_step(buffers.proxies.len());
@@ -1370,6 +1395,36 @@ fn substep(
     }
 }
 
+/// What a pair's warm start reads: whether this substep seeds from the
+/// carry, by key or by index, the impulses the pair's slots held from the
+/// substep before, and its two proxies.
+#[derive(Clone, Copy)]
+struct Seed {
+    carry: bool,
+    keyed: bool,
+    cached: (f32, f32),
+    pair: (u32, u32),
+}
+
+impl Seed {
+    /// The pair's normal and tangent impulses from the substep before, or,
+    /// in the first substep after a build, from the carry. Always inlined:
+    /// as a closure it was compiled out of line, and the pair loop set its
+    /// captures up and called it for every contact of every substep.
+    #[inline(always)]
+    fn impulses(self, proxies: &[Proxy], impulses: &ImpulseMap, extra: &StepExtra) -> (f32, f32) {
+        if !self.carry {
+            self.cached
+        } else if self.keyed {
+            let (a, b) = self.pair;
+            let key = pair_key(proxies[a as usize].key, proxies[b as usize].key);
+            (impulses.get(key), extra.tangents.get(key))
+        } else {
+            extra.carry.get(self.pair.0, self.pair.1)
+        }
+    }
+}
+
 /// [`substep`] after its pairs are refreshed. With `AHEAD`, the pair loop
 /// takes each pair's contact from a narrow phase the step's participants ran
 /// ahead of it (`solver::narrow_ahead`), a contact a pair in pair order: the
@@ -1417,6 +1472,7 @@ fn substep_rest<const AHEAD: bool>(
     } = buffers;
     candidates.clear();
     contacts.clear();
+    extra.bouncing.clear();
     extra.friction.clear();
     extra.rolling.clear();
     extra.contact_closing.clear();
@@ -1441,6 +1497,12 @@ fn substep_rest<const AHEAD: bool>(
     // positive-gap contacts stay silent until touch.
     let speculative_slack = 4.0 * config.linear_slop;
     let wake_threshold = config.sleep_threshold.max(0.0);
+    if sleep_enabled
+        && (std::mem::take(&mut extra.joined_stale) || extra.joined.len() != pairs.len())
+    {
+        extra.joined.clear();
+        extra.joined.resize(pairs.len(), false);
+    }
     let lent = if AHEAD {
         Some(solver::narrow_ahead(
             &mut extra.fork,
@@ -1484,18 +1546,14 @@ fn substep_rest<const AHEAD: bool>(
         // through.
         // The pair's normal and tangent impulses from the substep before,
         // or, in the first substep after a build, from the carry.
-        let carried = |proxies: &[Proxy], extra: &StepExtra| {
-            if !seed_impulses {
-                (cached_impulse, cached_tangent)
-            } else if seed_keyed {
-                let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
-                (impulses.get(key), extra.tangents.get(key))
-            } else {
-                extra.carry.get(a_u, b_u)
-            }
+        let seed = Seed {
+            carry: seed_impulses,
+            keyed: seed_keyed,
+            cached: (cached_impulse, cached_tangent),
+            pair: (a_u, b_u),
         };
         if proxies[b_idx].face_mask & FACE_ONE_WAY != 0 {
-            let held = carried(proxies, extra).0;
+            let held = seed.impulses(proxies, impulses, extra).0;
             let (a, b) = (&proxies[a_idx], &proxies[b_idx]);
             if held <= 0.0
                 && !one_way_holds(a, a.center, b, b.center, contact.normal, speculative_slack)
@@ -1555,7 +1613,7 @@ fn substep_rest<const AHEAD: bool>(
             continue;
         }
         let approach = (proxies[a_idx].velocity - proxies[b_idx].velocity).dot(contact.normal);
-        let (impulse, seeded_tangent) = carried(proxies, extra);
+        let (impulse, seeded_tangent) = seed.impulses(proxies, impulses, extra);
         #[cfg(test)]
         let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
         #[cfg(test)]
@@ -1566,6 +1624,12 @@ fn substep_rest<const AHEAD: bool>(
                 "warm-start diverged"
             );
         }
+        let restitution = proxies[a_idx].restitution.max(proxies[b_idx].restitution);
+        // A contact bounces only with some restitution and an approach past
+        // the threshold, both fixed here: restitution walks these alone.
+        if !(restitution == 0.0 || approach > -config.restitution_threshold) {
+            extra.bouncing.push(contacts.len() as u32);
+        }
         contacts.push(ContactConstraint {
             a: a_u,
             b: b_u,
@@ -1574,7 +1638,7 @@ fn substep_rest<const AHEAD: bool>(
             normal_mass: 1.0 / inv_mass_sum,
             approach,
             impulse,
-            restitution: proxies[a_idx].restitution.max(proxies[b_idx].restitution),
+            restitution,
             inv_a,
             inv_b,
             pair_index: pair_index as u32,
@@ -1661,12 +1725,25 @@ fn substep_rest<const AHEAD: bool>(
             // Touching contacts between awake dynamic bodies join one island;
             // islands sleep and re-sleep as a unit (D-065). Without a
             // kinematic side, `a` is an awake dynamic body.
+            // A pair joins them once: two bodies of one island stay so
+            // until the frame ends, and a union of two such changes no set.
             if sleep_enabled
                 && proxies[b_idx].is_dynamic
                 && !proxies[b_idx].sleeping
                 && proxies[b_idx].entity.is_some()
             {
-                uf_union(island_parent, a_u, b_u);
+                let joined = std::mem::replace(&mut extra.joined[pair_index], true);
+                #[cfg(test)]
+                let joined = {
+                    if extra.shadow_parent.len() == island_parent.len() {
+                        uf_union(&mut extra.shadow_parent, a_u, b_u);
+                    }
+                    extra.joins_skipped += usize::from(joined && !extra.join_always);
+                    joined && !extra.join_always
+                };
+                if !joined {
+                    uf_union(island_parent, a_u, b_u);
+                }
             }
             if send && let Some(a_entity) = proxies[a_idx].entity {
                 events.push(CollisionEvent {
@@ -1684,6 +1761,18 @@ fn substep_rest<const AHEAD: bool>(
     drop(ahead);
     if let Some(lent) = lent {
         extra.fork.take_back(lent);
+    }
+    // Tests: the islands are those a union in every substep builds. A step
+    // run by hand, outside `physics_step`, has no shadow to compare.
+    #[cfg(test)]
+    if sleep_enabled && extra.shadow_parent.len() == island_parent.len() {
+        for body in 0..island_parent.len() as u32 {
+            assert_eq!(
+                sleep::uf_find(island_parent, body),
+                sleep::uf_find(&mut extra.shadow_parent, body),
+                "body {body}'s island left the one every union builds"
+            );
+        }
     }
 
     // The push record samples its pairs' closing speeds at the build.
@@ -1848,7 +1937,24 @@ fn substep_rest<const AHEAD: bool>(
         extra.push.relax(proxies, contacts);
     }
 
-    apply_restitution(proxies, contacts, config.restitution_threshold);
+    // Tests: the list is what a scan of every contact finds now, so no
+    // contact's restitution or approach moved since the pair loop listed it.
+    #[cfg(test)]
+    {
+        let scanned: Vec<u32> = contacts
+            .iter()
+            .enumerate()
+            .filter(|(_, contact)| {
+                !(contact.restitution == 0.0 || contact.approach > -config.restitution_threshold)
+            })
+            .map(|(index, _)| index as u32)
+            .collect();
+        assert_eq!(
+            extra.bouncing, scanned,
+            "restitution's list left the scan of the contacts"
+        );
+    }
+    apply_restitution(proxies, contacts, &extra.bouncing);
 
     // A contact that penetrates or that the solve gave an impulse touches;
     // a touch spends its pair's carried speed.

@@ -233,16 +233,20 @@ fn slope_contact(
 }
 
 /// Restitution from the approach velocity stored at contact build; contacts
-/// slower than the threshold stay inelastic so piles can settle. Always
-/// inlined, as it was while the substep had one compile (`D-298`).
+/// slower than the threshold stay inelastic so piles can settle. `bouncing`
+/// names, in contact order, the contacts with some restitution whose
+/// approach passes the threshold, which the pair loop found as it built
+/// them; the solve has since set their impulses, so that test stays here.
+/// Always inlined, as it was while the substep had one compile (`D-298`).
 #[inline(always)]
 pub(super) fn apply_restitution(
     proxies: &mut [Proxy],
     contacts: &mut [ContactConstraint],
-    threshold: f32,
+    bouncing: &[u32],
 ) {
-    for contact in contacts.iter_mut() {
-        if contact.restitution == 0.0 || contact.approach > -threshold || contact.impulse <= 0.0 {
+    for &index in bouncing {
+        let contact = &mut contacts[index as usize];
+        if contact.impulse <= 0.0 {
             continue;
         }
         let a = contact.a as usize;

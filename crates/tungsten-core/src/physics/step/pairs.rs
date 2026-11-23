@@ -1215,6 +1215,8 @@ pub(super) fn build_pairs(
     } else {
         extra.pair_tangents.resize(pairs.len(), 0.0);
     }
+    // The list is new: no pair of it has joined its two bodies' islands.
+    extra.joined_stale = true;
     #[cfg(test)]
     {
         buffers.pair_builds += 1;
@@ -1515,6 +1517,9 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
     for &member in tripped.iter() {
         pair_flags[member as usize] &= !PAIR_TRIPPED;
     }
+    // The repair moved pairs about in the list: the marks of the joined
+    // ones no longer sit at their pairs.
+    buffers.extra.joined_stale = true;
     #[cfg(test)]
     {
         buffers.pair_repairs += 1;
