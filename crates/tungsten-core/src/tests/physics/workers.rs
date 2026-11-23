@@ -82,13 +82,13 @@ fn flush(world: &mut World) {
 /// Steps one serial world and one forced world a count of [`COUNTS`] side by
 /// side, each built by `build` and driven by `drive` before every step, and
 /// compares them after every step. Returns the forks each forced world ran,
-/// and the arrival rounds among them.
+/// and the arrival rounds and the narrow phases among them.
 fn lockstep(
     name: &str,
     steps: usize,
     build: impl Fn(&mut World) -> Vec<Entity>,
     drive: impl Fn(&mut World, usize, &mut Vec<Entity>),
-) -> Vec<(usize, usize)> {
+) -> Vec<(usize, usize, usize)> {
     let mut worlds: Vec<(usize, World, Vec<Entity>)> = std::iter::once(1)
         .chain(COUNTS)
         .map(|count| {
@@ -132,11 +132,9 @@ fn lockstep(
         .iter()
         .map(|(_, world, _)| {
             let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
-            buffers
-                .extra
-                .fork
-                .pool()
-                .map_or((0, 0), |pool| (pool.forks, pool.arrival_forks))
+            buffers.extra.fork.pool().map_or((0, 0, 0), |pool| {
+                (pool.forks, pool.arrival_forks, pool.narrow_forks)
+            })
         })
         .collect()
 }
@@ -242,9 +240,9 @@ fn a_pile_in_a_tile_pit_steps_alike_at_every_count_split_merged_and_as_built() {
         // The blast knocks bodies into neighbours no contact admitted, so
         // the arrival pass lists them and its rounds fork too.
         assert!(
-            forks
-                .iter()
-                .all(|&(forks, rounds)| forks > rounds && rounds > 0),
+            forks.iter().all(|&(forks, rounds, narrow)| {
+                forks > rounds + narrow && rounds > 0 && narrow > 0
+            }),
             "{name}: {forks:?}"
         );
     }
@@ -304,9 +302,9 @@ fn bullets_sleepers_spawns_and_despawns_step_alike_at_every_count() {
             },
         );
         assert!(
-            forks
-                .iter()
-                .all(|&(forks, rounds)| forks > rounds && rounds > 0),
+            forks.iter().all(|&(forks, rounds, narrow)| {
+                forks > rounds + narrow && rounds > 0 && narrow > 0
+            }),
             "seed {seed}: {forks:?}"
         );
     }
@@ -358,7 +356,12 @@ fn layers_sensors_and_a_kinematic_mover_step_alike_at_every_count() {
         },
         |_, _, _| {},
     );
-    assert!(forks.iter().all(|&(forks, _)| forks > 0), "{forks:?}");
+    assert!(
+        forks
+            .iter()
+            .all(|&(forks, _, narrow)| forks > narrow && narrow > 0),
+        "{forks:?}"
+    );
 }
 
 #[test]

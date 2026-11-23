@@ -1334,7 +1334,9 @@ fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
 /// One solver substep: contacts once, warm-started soft solve, integrate,
 /// arrival pass, relax, restitution, speculative safety net. Runs entirely on the
 /// dense proxy arrays — no `World` access (D-066). Each pair budget reads
-/// its own body's gravity scale (D-081).
+/// its own body's gravity scale (D-081). Never inlined: the step's own
+/// function holds it as the call it always was.
+#[inline(never)]
 fn substep(
     config: &PhysicsConfig,
     sub_dt: f32,
@@ -1352,6 +1354,34 @@ fn substep(
     if buffers.oracle.is_some() {
         oracle::after_refresh(config, sub_dt, time_left, buffers);
     }
+    // A pair list long enough to fork has its narrow phase computed ahead on
+    // the step's participants (`D-298`); the rest of the substep is compiled
+    // once for each, so the serial one holds nothing of the fork.
+    if buffers
+        .extra
+        .fork
+        .splits(buffers.pairs.len(), solver::NARROW_FORK_MIN)
+    {
+        substep_rest::<true>(config, sub_dt, buffers, sleep_enabled);
+    } else {
+        substep_rest::<false>(config, sub_dt, buffers, sleep_enabled);
+    }
+}
+
+/// [`substep`] after its pairs are refreshed. With `AHEAD`, the pair loop
+/// takes each pair's contact from a narrow phase the step's participants ran
+/// ahead of it (`solver::narrow_ahead`), a contact a pair in pair order: the
+/// narrow phase reads a proxy's shape, centre, velocity, face mask and slope,
+/// none of which the loop writes, so they are the contacts the loop computes.
+/// Without it this is the serial substep. Never inlined, so each is one
+/// function of its own.
+#[inline(never)]
+fn substep_rest<const AHEAD: bool>(
+    config: &PhysicsConfig,
+    sub_dt: f32,
+    buffers: &mut PhysicsBuffers,
+    sleep_enabled: bool,
+) {
     let PhysicsBuffers {
         proxies,
         bodies,
@@ -1409,6 +1439,18 @@ fn substep(
     // positive-gap contacts stay silent until touch.
     let speculative_slack = 4.0 * config.linear_slop;
     let wake_threshold = config.sleep_threshold.max(0.0);
+    let lent = if AHEAD {
+        Some(solver::narrow_ahead(
+            &mut extra.fork,
+            proxies,
+            pairs,
+            sub_dt,
+            speculative_slack,
+        ))
+    } else {
+        None
+    };
+    let mut ahead = lent.iter().flat_map(pool::Ahead::contacts);
     for (pair_index, &(a_u, b_u)) in pairs.iter().enumerate() {
         // Forget a disappearing contact immediately, even if it returns
         // later without a broadphase rebuild.
@@ -1420,10 +1462,19 @@ fn substep(
         };
         let a_idx = a_u as usize;
         let b_idx = b_u as usize;
-        let margin = (proxies[a_idx].velocity - proxies[b_idx].velocity).length() * sub_dt
-            + speculative_slack;
-        let Some(contact) = narrow_phase(&proxies[a_idx], &proxies[b_idx], margin) else {
-            continue;
+        let contact = if AHEAD {
+            let computed = ahead.next().expect("the narrow phase ahead ran every pair");
+            let Some(contact) = computed else {
+                continue;
+            };
+            contact
+        } else {
+            let margin = (proxies[a_idx].velocity - proxies[b_idx].velocity).length() * sub_dt
+                + speculative_slack;
+            let Some(contact) = narrow_phase(&proxies[a_idx], &proxies[b_idx], margin) else {
+                continue;
+            };
+            contact
         };
         // A one-way tile's new contact needs the body's bottom within the
         // slack of its top face; one the pair carried last substep keeps the
@@ -1626,6 +1677,11 @@ fn substep(
                 });
             }
         }
+    }
+
+    drop(ahead);
+    if let Some(lent) = lent {
+        extra.fork.take_back(lent);
     }
 
     // The push record samples its pairs' closing speeds at the build.

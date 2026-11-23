@@ -53,6 +53,9 @@ pub(super) struct WorkerScratch {
     pub(super) spans: Vec<(u32, u32, u32)>,
     /// Its share of an arrival round's search.
     pub(super) arrival: super::arrival::ArrivalWorker,
+    /// The contacts of the narrow-phase chunks it took, a chunk after
+    /// another.
+    pub(super) narrow: Vec<Option<crate::physics::collision::Contact>>,
 }
 
 /// The entity proxies a participant takes at a time in a forked build, and

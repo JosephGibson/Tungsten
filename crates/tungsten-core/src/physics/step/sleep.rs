@@ -532,7 +532,9 @@ fn uf_find(parent: &mut [u32], mut i: u32) -> u32 {
 }
 
 /// True when the island of `a`, as this frame's unions have built it so far,
-/// holds one of `members`.
+/// holds one of `members`. Always inlined, as it was while the substep had
+/// one compile: its two (`D-298`) would each turn it into a call a contact.
+#[inline(always)]
 pub(super) fn island_holds_any(parent: &mut [u32], a: u32, members: &[u32]) -> bool {
     let root = uf_find(parent, a);
     members
@@ -540,7 +542,9 @@ pub(super) fn island_holds_any(parent: &mut [u32], a: u32, members: &[u32]) -> b
         .any(|&member| uf_find(parent, member) == root)
 }
 
-/// Min-index root keeps island roots independent of union order.
+/// Min-index root keeps island roots independent of union order. Always
+/// inlined, as [`island_holds_any`] is.
+#[inline(always)]
 pub(super) fn uf_union(parent: &mut [u32], a: u32, b: u32) {
     let root_a = uf_find(parent, a);
     let root_b = uf_find(parent, b);

@@ -21,7 +21,7 @@ use super::arrival::Round;
 use super::pairs::{PairGrid, WorkerScratch};
 use super::{Proxy, ProxyLayers};
 use crate::physics::broadphase::SpatialGrid;
-use crate::physics::collision::Aabb;
+use crate::physics::collision::{Aabb, Contact};
 
 /// How long the calling thread spins for a worker's answer before it blocks:
 /// the workers finish within microseconds of its own share.
@@ -42,6 +42,13 @@ pub(super) enum Stage {
     },
     /// An arrival round's search for the pairs its listed bodies reach.
     Arrival(Round),
+    /// The pair loop's narrow phase, in `chunks` chunks of `chunk` pairs.
+    Narrow {
+        sub_dt: f32,
+        slack: f32,
+        chunk: usize,
+        chunks: usize,
+    },
     /// A share that panics in one participant, for the pool's own test.
     #[cfg(test)]
     Fail { participant: usize },
@@ -65,6 +72,8 @@ pub(super) struct ForkData {
     pub(super) oversize: Vec<u32>,
     /// The arrival pass's listed bodies.
     pub(super) list: Vec<u32>,
+    /// The substep's pair list.
+    pub(super) pairs: Vec<(u32, u32)>,
 }
 
 impl ForkData {
@@ -88,6 +97,12 @@ fn work(data: &ForkData, scratch: &mut WorkerScratch, participant: usize) {
             chunks,
         } => super::pairs::build_work(data, scratch, bodies, chunk, chunks),
         Stage::Arrival(round) => super::arrival::search_work(data, scratch, &round),
+        Stage::Narrow {
+            sub_dt,
+            slack,
+            chunk,
+            chunks,
+        } => super::solver::narrow_work(data, scratch, sub_dt, slack, chunk, chunks),
         #[cfg(test)]
         Stage::Fail {
             participant: failing,
@@ -129,10 +144,50 @@ impl Fork {
         Workers::of(&mut self.workers, self.participants as usize)
     }
 
+    /// The last fork's output, lent out of the pool while the substep's
+    /// pair loop reads it: no stage forks until [`Self::take_back`].
+    pub(super) fn lend(&mut self) -> Ahead {
+        let workers = self.workers();
+        Ahead {
+            scratches: std::mem::take(&mut workers.scratches),
+            chunk_at: std::mem::take(&mut workers.chunk_at),
+        }
+    }
+
+    /// Returns what [`Self::lend`] lent.
+    pub(super) fn take_back(&mut self, ahead: Ahead) {
+        let workers = self.workers();
+        workers.scratches = ahead.scratches;
+        workers.chunk_at = ahead.chunk_at;
+    }
+
     /// The pool, once a stage has forked.
     #[cfg(test)]
     pub(super) fn pool(&self) -> Option<&Workers> {
         self.workers.as_deref()
+    }
+}
+
+/// The pair loop's contacts from a forked narrow phase, out of the pool for
+/// the loop's time: each participant's scratch, and the table that puts
+/// their chunks in pair order.
+#[derive(Debug)]
+pub(super) struct Ahead {
+    scratches: Vec<WorkerScratch>,
+    chunk_at: Vec<(u32, u32, u32)>,
+}
+
+impl Ahead {
+    /// A contact a pair, in pair order.
+    pub(super) fn contacts(&self) -> impl Iterator<Item = Option<Contact>> + '_ {
+        self.chunk_at
+            .iter()
+            .flat_map(|&(participant, start, count)| {
+                self.scratches[participant as usize].narrow
+                    [start as usize..(start + count) as usize]
+                    .iter()
+                    .copied()
+            })
     }
 }
 
@@ -207,6 +262,9 @@ pub(super) struct Workers {
     /// The arrival rounds forked, for the tests that must see one.
     #[cfg(test)]
     pub(super) arrival_forks: usize,
+    /// The narrow phases run ahead, likewise.
+    #[cfg(test)]
+    pub(super) narrow_forks: usize,
     /// The forks run, for the tests that must see a stage fork.
     #[cfg(test)]
     pub(super) forks: usize,
@@ -257,6 +315,8 @@ impl Workers {
             body_spans: Vec::new(),
             #[cfg(test)]
             arrival_forks: 0,
+            #[cfg(test)]
+            narrow_forks: 0,
             #[cfg(test)]
             forks: 0,
         }
