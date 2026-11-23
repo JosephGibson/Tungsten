@@ -767,6 +767,213 @@ pub(crate) fn for_each_run_in_both(
     }
 }
 
+/// A thread's own dedupe marks for its walks of a grid other threads walk
+/// too (`D-298`): what the grid's own marks are to [`SpatialGrid::for_each_run_in`].
+#[derive(Debug, Default)]
+pub(crate) struct QueryMarks {
+    marks: Vec<u32>,
+    generation: u32,
+}
+
+impl QueryMarks {
+    fn begin(&mut self) -> u32 {
+        if self.generation == u32::MAX {
+            self.marks.fill(0);
+            self.generation = 0;
+        }
+        self.generation += 1;
+        self.generation
+    }
+}
+
+impl SpatialGrid {
+    /// Build the staged entries now, so shared walks find them built.
+    pub(crate) fn prepare(&mut self) {
+        if self.dirty {
+            self.build();
+        }
+    }
+
+    /// [`Self::for_each_run_in`] over a built grid through `&self`, with the
+    /// caller's marks: the same runs in the same order. The pool's stages
+    /// walk with it; the serial walk keeps its own body, so its code does
+    /// not move.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a grid with staged entries not yet built: call
+    /// [`Self::prepare`] first.
+    #[inline(always)]
+    pub(crate) fn for_each_run_in_shared(
+        &self,
+        marks: &mut QueryMarks,
+        query: &Aabb,
+        base: ProxyId,
+        mut visit: impl FnMut(Run<'_>),
+    ) {
+        assert!(!self.dirty, "prepare the grid before a shared walk");
+        if self.entry_ids.is_empty() {
+            return;
+        }
+        let generation = if self.single_cell_ids {
+            0
+        } else {
+            marks.begin()
+        };
+        let (min_cell, max_cell) = self.cell_range(query);
+        let scattered = self.scattered();
+        let mut firsts = [0; RUN_CHUNK];
+        let slot_starts = &self.slot_starts;
+        let entry_ids = &self.entry_ids;
+        let entry_cells = &self.entry_cells;
+        let query_marks = &mut marks.marks;
+        let layout = self.layout;
+        let (lo, hi) = match layout {
+            Layout::Direct { min, max, .. } => (min_cell.max(min), max_cell.min(max)),
+            Layout::Hashed { .. } => (min_cell, max_cell),
+        };
+        if lo.x > hi.x || lo.y > hi.y {
+            return;
+        }
+        let slot_of = |cell: IVec2, slot_mask: u32| {
+            let slot = (hash_cell(cell) & slot_mask) as usize;
+            (slot_starts[slot] as usize, slot_starts[slot + 1] as usize)
+        };
+        for y in lo.y..=hi.y {
+            let mut x = lo.x;
+            let (mut at, mut end) = match layout {
+                Layout::Direct { min, width, .. } => {
+                    let row = cells_between(min.y, y) * width;
+                    (
+                        slot_starts[row + cells_between(min.x, lo.x)] as usize,
+                        slot_starts[row + cells_between(min.x, hi.x) + 1] as usize,
+                    )
+                }
+                Layout::Hashed { slot_mask } => slot_of(IVec2::new(x, y), slot_mask),
+            };
+            loop {
+                let (from, stop) = match layout {
+                    Layout::Direct { .. } => (at, end),
+                    Layout::Hashed { slot_mask } => loop {
+                        let found = stretch(entry_cells, IVec2::new(x, y), at, end);
+                        if found.0 != found.1 || x == hi.x {
+                            break found;
+                        }
+                        x += 1;
+                        (at, end) = slot_of(IVec2::new(x, y), slot_mask);
+                    },
+                };
+                if from == stop {
+                    break;
+                }
+                visit(Run {
+                    ids: &entry_ids[from..stop],
+                    base,
+                    marks: &mut *query_marks,
+                    generation,
+                    scattered,
+                    firsts: &mut firsts,
+                });
+                if matches!(layout, Layout::Direct { .. }) {
+                    break;
+                }
+                at = stop;
+            }
+        }
+    }
+}
+
+/// [`for_each_run_in_both`] over built grids through `&`, with the caller's
+/// marks: the same runs in the same order.
+///
+/// # Panics
+///
+/// Panics on a grid with staged entries not yet built.
+#[inline(always)]
+pub(crate) fn for_each_run_in_both_shared(
+    first: &SpatialGrid,
+    second: &SpatialGrid,
+    first_marks: &mut QueryMarks,
+    second_marks: &mut QueryMarks,
+    base: ProxyId,
+    query: &Aabb,
+    mut visit: impl FnMut(Run<'_>),
+) {
+    assert!(!first.dirty && !second.dirty, "prepare the grids first");
+    if second.entry_ids.is_empty() {
+        first.for_each_run_in_shared(first_marks, query, 0, visit);
+        return;
+    }
+    if first.entry_ids.is_empty() {
+        second.for_each_run_in_shared(second_marks, query, base, visit);
+        return;
+    }
+    let first_generation = if first.single_cell_ids {
+        0
+    } else {
+        first_marks.begin()
+    };
+    let second_generation = if second.single_cell_ids {
+        0
+    } else {
+        second_marks.begin()
+    };
+    let (min_cell, max_cell) = first.cell_range(query);
+    let scattered = (first.scattered(), second.scattered());
+    let mut firsts = [0; RUN_CHUNK];
+    let lo = min_cell.max(first.bounds_min.min(second.bounds_min));
+    let hi = max_cell.min(first.bounds_max.max(second.bounds_max));
+    for y in lo.y..=hi.y {
+        for x in lo.x..=hi.x {
+            let cell = IVec2::new(x, y);
+            for second_turn in [false, true] {
+                let (grid, marks, base, generation, scattered) = if second_turn {
+                    (
+                        second,
+                        &mut second_marks.marks,
+                        base,
+                        second_generation,
+                        scattered.1,
+                    )
+                } else {
+                    (
+                        first,
+                        &mut first_marks.marks,
+                        0,
+                        first_generation,
+                        scattered.0,
+                    )
+                };
+                let Some((mut at, end, hashed)) = grid.cell_slot(cell) else {
+                    continue;
+                };
+                loop {
+                    let (from, stop) = if hashed {
+                        stretch(&grid.entry_cells, cell, at, end)
+                    } else {
+                        (at, end)
+                    };
+                    if from == stop {
+                        break;
+                    }
+                    visit(Run {
+                        ids: &grid.entry_ids[from..stop],
+                        base,
+                        marks: &mut *marks,
+                        generation,
+                        scattered,
+                        firsts: &mut firsts,
+                    });
+                    if !hashed {
+                        break;
+                    }
+                    at = stop;
+                }
+            }
+        }
+    }
+}
+
 impl SpatialGrid {
     /// Whether the staged entries cover [`SCATTERED_QUARTER_CELLS`]
     /// quarter cells or more on average.

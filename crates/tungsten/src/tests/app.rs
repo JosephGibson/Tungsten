@@ -18,6 +18,53 @@ use tungsten_render::{QuadInstance, RenderOutcome, ScreenshotError};
 struct ExampleEvent;
 
 #[test]
+fn a_windows_run_gives_the_world_its_physics_workers_and_new_gives_none() {
+    use tungsten_core::physics::PhysicsWorkers;
+
+    let config: Config = serde_json::from_str(r#"{ "physics": { "workers": 3 } }"#).unwrap();
+    let mut app = App::new(config).expect("App::new failed");
+    assert!(
+        !app.world().has_resource::<PhysicsWorkers>(),
+        "App::new steps on the calling thread, as the harness and the guards do"
+    );
+    app.start_physics_workers();
+    assert_eq!(
+        app.world().get_resource::<PhysicsWorkers>(),
+        Some(&PhysicsWorkers::new(3))
+    );
+
+    // 0, the default, is automatic; 1 is the serial step.
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.start_physics_workers();
+    assert_eq!(
+        app.world().get_resource::<PhysicsWorkers>(),
+        Some(&PhysicsWorkers::auto())
+    );
+    let config: Config = serde_json::from_str(r#"{ "physics": { "workers": 1 } }"#).unwrap();
+    let mut app = App::new(config).expect("App::new failed");
+    app.start_physics_workers();
+    assert_eq!(
+        app.world().get_resource::<PhysicsWorkers>(),
+        Some(&PhysicsWorkers::SERIAL)
+    );
+
+    // A game's own resource stands.
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.world_mut().insert_resource(PhysicsWorkers::new(2));
+    app.start_physics_workers();
+    assert_eq!(
+        app.world().get_resource::<PhysicsWorkers>(),
+        Some(&PhysicsWorkers::new(2))
+    );
+
+    // Past 64 is refused where the config is checked.
+    let mut bad = Config::default();
+    bad.physics.workers = 65;
+    let error = App::new(bad).err().expect("refused").to_string();
+    assert!(error.contains("physics.workers"), "{error}");
+}
+
+#[test]
 fn the_app_takes_physics_and_particles_from_its_config() {
     let config: Config = serde_json::from_str(
         r#"{ "physics": { "gravity": [0, 900], "broadphase_cell": 64 },

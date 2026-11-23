@@ -319,14 +319,14 @@ The game clock is spent in fixed steps of 1/60 s, at most two a frame: `fixed_up
 
 A rate below 30 or a bound of 0 fails at startup, and `"interpolate": false` draws every body at its `Position`.
 
-Two more sections set the World's physics and particles at startup, which a plugin may set again after: `physics`, the gravity every dynamic body falls by (px/s², y down, none by default) and the broadphase's cell (32 px), and `particles`, the most particles alive at once (10,000):
+Two more sections set the World's physics and particles at startup, which a plugin may set again after: `physics`, the gravity every dynamic body falls by (px/s², y down, none by default), the broadphase's cell (32 px) and the threads the step's larger stages run on (`workers`: 0, the default, takes half the machine's logical CPUs, at most 6, and 1 keeps the step on the main thread; every count steps to the same result, and `TUNGSTEN_PHYSICS_WORKERS` overrides the file), and `particles`, the most particles alive at once (10,000):
 
 ```json
-"physics": { "gravity": [0, 900], "broadphase_cell": 32 },
+"physics": { "gravity": [0, 900], "broadphase_cell": 32, "workers": 0 },
 "particles": { "budget": 10000 }
 ```
 
-A cell that is not above 0 fails at startup.
+A cell that is not above 0, or more than 64 workers, fails at startup.
 
 ## Read next
 

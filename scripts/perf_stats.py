@@ -410,7 +410,8 @@ def metric_group(metric):
 def hard_mismatches(base, cand):
     """Every field two captures must share for a verdict: the row, the
     workload (version, knobs, script, resolution, warm-up, frames), the build
-    flags, the renderer and the machine, each read from the captures."""
+    flags, the renderer, the machine and the physics step's pinned worker
+    count, each read from the captures."""
     hard = []
 
     def differ(label, left, right):
@@ -431,6 +432,9 @@ def hard_mismatches(base, cand):
     for field in ("backend", "adapter", "present_mode", "max_frame_latency"):
         differ(field.replace("_", " "), base_renderer.get(field), cand_renderer.get(field))
     differ("machine", (base.get("machine") or {}).get("fingerprint"), (cand.get("machine") or {}).get("fingerprint"))
+    # A capture from before the field ran at the engine's own count, as `auto` does.
+    workers = [(side.get("machine") or {}).get("physics_workers_env") or "auto" for side in (base, cand)]
+    differ("physics workers", *workers)
     return hard
 
 

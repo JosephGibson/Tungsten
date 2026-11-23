@@ -5,7 +5,9 @@
 use super::PhysicsBuffers;
 use super::gather::TileCache;
 use crate::physics::PhysicsConfig;
-use crate::physics::broadphase::{ProxyId, Run, SpatialGrid, for_each_run_in_both};
+use crate::physics::broadphase::{
+    ProxyId, QueryMarks, Run, SpatialGrid, for_each_run_in_both, for_each_run_in_both_shared,
+};
 use crate::physics::collision::Aabb;
 use glam::{Vec2, Vec4};
 
@@ -35,9 +37,171 @@ pub(super) struct PairGrid {
     pub(super) tile_aabbs: Vec<Aabb>,
 }
 
+/// One participant's scratch for the step's forked stages (`D-298`), kept
+/// across forks: its marks for the pair grid's two grids and what it wrote
+/// for the chunks it took.
+#[derive(Debug, Default)]
+pub(super) struct WorkerScratch {
+    bodies: QueryMarks,
+    tiles: QueryMarks,
+    /// The pairs of the build chunks it took, a chunk after another.
+    pub(super) pairs: Vec<(u32, u32)>,
+    /// Each chunk it took: the chunk, and its output's start and length.
+    pub(super) spans: Vec<(u32, u32, u32)>,
+}
+
+/// The entity proxies a participant takes at a time in a forked build, and
+/// in one the lockstep tests force, so that a small world has chunks enough
+/// for every participant.
+const BUILD_CHUNK: usize = 256;
+const BUILD_CHUNK_FORCED: usize = 16;
+/// The fewest moving proxies whose build forks: under it the walks cost less
+/// than waking the workers.
+const BUILD_FORK_MIN: usize = 1024;
+
+/// A participant's share of a forked build's walks: the next chunks free,
+/// each chunk's pairs as [`build_pairs`]' serial loop pushes them.
+pub(super) fn build_work(
+    data: &super::pool::ForkData,
+    scratch: &mut WorkerScratch,
+    bodies: usize,
+    chunk_size: usize,
+    chunks: usize,
+) {
+    let (grid, pair_flags, pair_bounds, layers) = (
+        &data.grid,
+        &data.pair_flags[..],
+        &data.pair_bounds[..],
+        &data.layers,
+    );
+    let pair_aabbs = &data.pair_aabbs[..bodies];
+    let WorkerScratch {
+        bodies: body_marks,
+        tiles: tile_marks,
+        pairs: out,
+        spans,
+    } = scratch;
+    out.clear();
+    spans.clear();
+    while let Some(chunk) = data.take_chunk(chunks) {
+        let start = out.len();
+        let from = chunk * chunk_size;
+        let to = (from + chunk_size).min(bodies);
+        for a_idx in from..to {
+            if pair_flags[a_idx] & PAIR_AWAKE == 0 {
+                continue;
+            }
+            let aabb = &pair_aabbs[a_idx];
+            let query = query_bounds(aabb);
+            if pair_flags[a_idx] & PAIR_OVERSIZE != 0 {
+                oversize_pairs(a_idx, query, pair_bounds, pair_flags, layers, out);
+                continue;
+            }
+            grid.for_each_run_in_marks(
+                body_marks,
+                tile_marks,
+                aabb,
+                #[inline(always)]
+                |mut run| {
+                    run.each(Some(a_idx as ProxyId), |b_id| {
+                        let b_idx = b_id as usize;
+                        if pair_flags[b_idx] & PAIR_AWAKE != 0 && b_idx <= a_idx {
+                            return;
+                        }
+                        if bounds_overlap(query, pair_bounds[b_idx]) && layers.meet(a_idx, b_idx) {
+                            out.push((a_idx as u32, b_id));
+                        }
+                    });
+                },
+            );
+        }
+        spans.push((chunk as u32, start as u32, (out.len() - start) as u32));
+    }
+}
+
+/// [`build_pairs`]' walks on the step's participants: the entity proxies in
+/// chunks of `chunk`, each chunk's pairs appended to `pairs` in chunk order,
+/// which is the serial loop's order. Out of line, so the serial loop's code
+/// stays where it was.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn build_walks_forked(
+    workers: &mut super::pool::Workers,
+    bodies: usize,
+    chunk: usize,
+    grid: &mut PairGrid,
+    pair_flags: &mut Vec<u8>,
+    pair_bounds: &mut Vec<Vec4>,
+    pair_aabbs: &mut Vec<Aabb>,
+    layers: &mut super::ProxyLayers,
+    pairs: &mut Vec<(u32, u32)>,
+) {
+    grid.prepare();
+    let chunks = bodies.div_ceil(chunk);
+    let data = workers.fork(super::pool::ForkData {
+        stage: super::pool::Stage::Build {
+            bodies,
+            chunk,
+            chunks,
+        },
+        grid: std::mem::take(grid),
+        pair_flags: std::mem::take(pair_flags),
+        pair_bounds: std::mem::take(pair_bounds),
+        pair_aabbs: std::mem::take(pair_aabbs),
+        layers: std::mem::take(layers),
+        ..Default::default()
+    });
+    *grid = data.grid;
+    *pair_flags = data.pair_flags;
+    *pair_bounds = data.pair_bounds;
+    *pair_aabbs = data.pair_aabbs;
+    *layers = data.layers;
+    workers.index_chunks(chunks, |scratch| &scratch.spans);
+    for &(participant, start, count) in &workers.chunk_at {
+        let from = &workers.scratches[participant as usize].pairs;
+        pairs.extend_from_slice(&from[start as usize..(start + count) as usize]);
+    }
+}
+
 impl PairGrid {
     pub(super) fn cell_size(&self) -> f32 {
         self.bodies.cell_size()
+    }
+
+    /// Build the staged entries of the grids a walk reads, as the first
+    /// [`Self::for_each_run_in`] would, so
+    /// [`Self::for_each_run_in_marks`] finds them built.
+    pub(super) fn prepare(&mut self) {
+        self.bodies.prepare();
+        if self.split {
+            self.tiles.prepare();
+        }
+    }
+
+    /// [`Self::for_each_run_in`] over prepared grids through `&self`, with a
+    /// participant's marks: the same runs in the same order.
+    #[inline(always)]
+    pub(super) fn for_each_run_in_marks(
+        &self,
+        body_marks: &mut QueryMarks,
+        tile_marks: &mut QueryMarks,
+        query: &Aabb,
+        visit: impl FnMut(Run<'_>),
+    ) {
+        if !self.split {
+            self.bodies
+                .for_each_run_in_shared(body_marks, query, 0, visit);
+            return;
+        }
+        for_each_run_in_both_shared(
+            &self.bodies,
+            &self.tiles,
+            body_marks,
+            tile_marks,
+            self.tile_base,
+            query,
+            visit,
+        );
     }
 
     /// Walk the proxies overlapping `query` a [`Run`] at a time, as one
@@ -721,6 +885,9 @@ pub(super) fn build_pairs(
         carry,
         tangents,
         sent,
+        participants,
+        fork_any,
+        workers,
         ..
     } = &mut **extra;
     let bodies = *bodies;
@@ -830,32 +997,50 @@ pub(super) fn build_pairs(
         },
     );
     pair_flags.resize(proxies.len(), 0);
-    for (a_idx, aabb) in pair_aabbs[..bodies].iter().enumerate() {
-        if pair_flags[a_idx] & PAIR_AWAKE == 0 {
-            continue;
-        }
-        let query = query_bounds(aabb);
-        if pair_flags[a_idx] & PAIR_OVERSIZE != 0 {
-            oversize_pairs(a_idx, query, pair_bounds, pair_flags, layers, pairs);
-            continue;
-        }
-        grid.for_each_run_in(
-            aabb,
-            #[inline(always)]
-            |mut run| {
-                run.each(Some(a_idx as ProxyId), |b_id| {
-                    let b_idx = b_id as usize;
-                    // An awake candidate at or below this index runs its own
-                    // query.
-                    if pair_flags[b_idx] & PAIR_AWAKE != 0 && b_idx <= a_idx {
-                        return;
-                    }
-                    if bounds_overlap(query, pair_bounds[b_idx]) && layers.meet(a_idx, b_idx) {
-                        pairs.push((a_idx as u32, b_id));
-                    }
-                });
+    if *participants > 1 && (moving >= BUILD_FORK_MIN || *fork_any) {
+        build_walks_forked(
+            super::pool::Workers::of(workers, *participants as usize),
+            bodies,
+            if *fork_any {
+                BUILD_CHUNK_FORCED
+            } else {
+                BUILD_CHUNK
             },
+            grid,
+            pair_flags,
+            pair_bounds,
+            pair_aabbs,
+            layers,
+            pairs,
         );
+    } else {
+        for (a_idx, aabb) in pair_aabbs[..bodies].iter().enumerate() {
+            if pair_flags[a_idx] & PAIR_AWAKE == 0 {
+                continue;
+            }
+            let query = query_bounds(aabb);
+            if pair_flags[a_idx] & PAIR_OVERSIZE != 0 {
+                oversize_pairs(a_idx, query, pair_bounds, pair_flags, layers, pairs);
+                continue;
+            }
+            grid.for_each_run_in(
+                aabb,
+                #[inline(always)]
+                |mut run| {
+                    run.each(Some(a_idx as ProxyId), |b_id| {
+                        let b_idx = b_id as usize;
+                        // An awake candidate at or below this index runs its own
+                        // query.
+                        if pair_flags[b_idx] & PAIR_AWAKE != 0 && b_idx <= a_idx {
+                            return;
+                        }
+                        if bounds_overlap(query, pair_bounds[b_idx]) && layers.meet(a_idx, b_idx) {
+                            pairs.push((a_idx as u32, b_id));
+                        }
+                    });
+                },
+            );
+        }
     }
     *pairs_invalidated = false;
     sent.enter(pairs);

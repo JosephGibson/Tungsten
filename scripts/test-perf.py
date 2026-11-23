@@ -261,6 +261,7 @@ class Comparability(unittest.TestCase):
             "present mode": lambda c: c["renderer"].update(present_mode="fifo"),
             "max frame latency": lambda c: c["renderer"].update(max_frame_latency=2),
             "machine": lambda c: c["machine"].update(fingerprint="000000000000"),
+            "physics workers": lambda c: c["machine"].update(physics_workers_env="1"),
         }
         for label, change in cases.items():
             with self.subTest(label=label):
@@ -272,6 +273,14 @@ class Comparability(unittest.TestCase):
         report = perf_stats.compare(base, capture(updates=(12.0, 12.1, 11.9)), OWNED)
         self.assertEqual(report["hard"], [])
         self.assertEqual(report["owned"][0]["verdict"], "regressed")
+        # A capture without the field ran at the engine's own count, as `auto` does.
+        pinned = capture(updates=(12.0, 12.1, 11.9))
+        pinned["machine"].update(physics_workers_env="auto")
+        self.assertEqual(perf_stats.compare(base, pinned, OWNED)["hard"], [])
+        both = capture()
+        both["machine"].update(physics_workers_env="1")
+        pinned["machine"].update(physics_workers_env="1")
+        self.assertEqual(perf_stats.compare(both, pinned, OWNED)["hard"], [])
 
     def test_an_invalid_side_suppresses_verdicts(self):
         report = perf_stats.compare(capture(), capture(updates=(12.0, 12.1, 11.9), valid=False), OWNED)

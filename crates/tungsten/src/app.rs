@@ -38,7 +38,7 @@ use tungsten_core::assets::{
     FontRegistry, LoadedManifest, ParticleConfigRegistry, ParticleMeshRegistry, ResolvedManifest,
     RoomGenerator, ShaderRegistry, SoundRegistry, TilemapRegistry,
 };
-use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig, Position};
+use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig, PhysicsWorkers, Position};
 use tungsten_core::post::{PostPass, PostStack, PostTail};
 use tungsten_core::save::SaveOptions;
 use tungsten_core::ui::{
@@ -1198,6 +1198,8 @@ impl App {
         self.startup_clock.started = Some(Instant::now());
         self.resolve_schedule()
             .inspect_err(|err| log::error!("{err}"))?;
+        // A script run forks its physics step too: the perf rows are scripts.
+        self.start_physics_workers();
         if self.script.is_none() {
             self.start_hot_reload();
             self.start_gamepads();
@@ -1613,6 +1615,24 @@ impl App {
             self.manifest_path.as_deref(),
         ));
         self.hot_reload = HotReloadWatcher::new(&dirs, &extra_files);
+    }
+
+    /// Gives the World its [`PhysicsWorkers`] from `physics.workers`
+    /// (`D-298`), unless the game inserted its own. Only a window's run
+    /// does: `App::new` inserts none, so the harness, the checks and every
+    /// counter guard step on the calling thread. The step starts its
+    /// threads at the first stage large enough to fork, not here.
+    fn start_physics_workers(&mut self) {
+        if self.world.has_resource::<PhysicsWorkers>() {
+            return;
+        }
+        let workers = PhysicsWorkers::from_setting(self.config.physics.workers);
+        log::debug!(
+            "physics step: {} participants (physics.workers {})",
+            workers.participants(),
+            self.config.physics.workers
+        );
+        self.world.insert_resource(workers);
     }
 
     /// Starts the gamepad backend (`D-220`), after the watcher: its thread

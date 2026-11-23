@@ -222,6 +222,9 @@ def machine():
         "ac_power": ac_power(),
         "rustc": rustc,
         "wgpu_backend_env": os.environ.get("WGPU_BACKEND", "auto"),
+        # The step's worker count as the caller pinned it (`D-298`); `auto` is
+        # the engine's own pick for the machine.
+        "physics_workers_env": os.environ.get("TUNGSTEN_PHYSICS_WORKERS", "auto"),
     }
 
 

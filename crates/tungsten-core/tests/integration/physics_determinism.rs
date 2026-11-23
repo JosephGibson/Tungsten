@@ -1,9 +1,9 @@
-//! Determinism gate (D-067):
+//! Determinism gate (D-067, D-298):
 //! `physics_step` must produce bit-identical world state across full runs on
-//! identical inputs. The step is serial end to end (D-067 dropped the
-//! parallel solver), so this pins the property future work must preserve:
-//! gather order, pair ordering, union-find, and the solver iteration order
-//! are all deterministic.
+//! identical inputs, and at every count of `PhysicsWorkers`: the step's
+//! forked stages lay their chunks out in the serial loop's order, so gather
+//! order, pair ordering, union-find, and the solver iteration order are all
+//! deterministic whichever thread took a chunk.
 //!
 //! The scenario is the bench's dense 3k pile measured from spawn, so the hash
 //! covers full churn (fall, impact, pile compression), the sleep transition,
@@ -14,7 +14,9 @@
 
 use crate::common::{FLOOR_Y, PILE_WIDTH, SPAWN_SPACING, spawn_pile, spawn_static_box};
 use glam::Vec2;
-use tungsten_core::{Entity, Pcg32, PhysicsConfig, Position, Time, Velocity, World, physics_step};
+use tungsten_core::{
+    Entity, Pcg32, PhysicsConfig, PhysicsWorkers, Position, Time, Velocity, World, physics_step,
+};
 
 const DT: f32 = 1.0 / 60.0;
 const GRAVITY_Y: f32 = 900.0;
@@ -41,8 +43,11 @@ fn state_hash(world: &World, bodies: &[Entity]) -> u64 {
     hash
 }
 
-fn run_pile() -> u64 {
+fn run_pile(workers: Option<PhysicsWorkers>) -> u64 {
     let mut world = World::new();
+    if let Some(workers) = workers {
+        world.insert_resource(workers);
+    }
     let mut time = Time::new();
     time.advance_frame(DT);
     world.insert_resource(time);
@@ -71,8 +76,8 @@ fn physics_step_is_bit_identical_across_runs() {
     // on the 0.40 tree at `afbc330`. A bug fix that moves it updates this
     // value and records the old and new hash in its `CHANGELOG.md` line.
     const EXPECTED: u64 = 0x088e_c07a_73c1_b168;
-    let first = run_pile();
-    let second = run_pile();
+    let first = run_pile(None);
+    let second = run_pile(None);
     println!("state hashes — first: {first:#018x}, second: {second:#018x}");
     assert_eq!(
         first, second,
@@ -82,4 +87,23 @@ fn physics_step_is_bit_identical_across_runs() {
         first, EXPECTED,
         "the pile's state hash moved: {first:#018x}"
     );
+}
+
+/// The pile at its production thresholds: 3,000 bodies fork the pair build
+/// while they are awake, and every count must land on the serial hash.
+#[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "release-scale step test; run with --release"
+)]
+fn physics_step_is_bit_identical_at_every_worker_count() {
+    let serial = run_pile(Some(PhysicsWorkers::SERIAL));
+    assert_eq!(serial, run_pile(None), "one participant is the serial step");
+    for count in [2, 3, 4, 6, 12] {
+        let hash = run_pile(Some(PhysicsWorkers::new(count)));
+        assert_eq!(
+            hash, serial,
+            "{count} participants diverged from the serial step: {hash:#018x}"
+        );
+    }
 }

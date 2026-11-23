@@ -176,6 +176,97 @@ impl PhysicsMaterials {
     }
 }
 
+/// How many threads the physics step's forked stages run on, the calling
+/// thread among them (`D-298`): the pair build's candidate walks today.
+///
+/// A World without the resource, or with one participant, steps on the
+/// calling thread alone, as before the pool. Any count steps to the same
+/// bodies, events and sleep state, bit for bit: a stage's work is cut into
+/// fixed chunks whose output is laid out in chunk order, whichever thread
+/// took a chunk. A stage forks only above a fixed size, so a small world
+/// starts no thread. `App::run` inserts the resource from `tungsten.json`'s
+/// `physics.workers` unless the game inserted its own; `App::new` and the
+/// test harness do not, so tests and counter guards step serially unless
+/// they insert it.
+///
+/// ```
+/// use tungsten_core::physics::PhysicsWorkers;
+///
+/// assert_eq!(PhysicsWorkers::new(4).participants(), 4);
+/// assert_eq!(PhysicsWorkers::new(0).participants(), 1);
+/// assert_eq!(PhysicsWorkers::from_setting(1), PhysicsWorkers::SERIAL);
+/// assert!((1..=6).contains(&PhysicsWorkers::auto().participants()));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PhysicsWorkers {
+    participants: u32,
+    fork_any: bool,
+}
+
+impl PhysicsWorkers {
+    /// The most participants a step takes.
+    pub const MAX: usize = 16;
+    /// The most participants [`Self::auto`] picks: the count past which the
+    /// reference machine, six cores and twelve threads, read no faster.
+    pub const AUTO_MAX: usize = 6;
+    /// The calling thread alone.
+    pub const SERIAL: Self = Self {
+        participants: 1,
+        fork_any: false,
+    };
+
+    /// `participants` threads, the calling thread among them, clamped to 1
+    /// through [`Self::MAX`].
+    #[must_use]
+    pub fn new(participants: usize) -> Self {
+        Self {
+            participants: participants.clamp(1, Self::MAX) as u32,
+            fork_any: false,
+        }
+    }
+
+    /// Half the machine's logical CPUs, at least 1 and at most
+    /// [`Self::AUTO_MAX`]: its cores where each runs two threads, and half
+    /// of them left to the rest of the game where each runs one.
+    #[must_use]
+    pub fn auto() -> Self {
+        let logical = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
+        Self::new((logical / 2).min(Self::AUTO_MAX))
+    }
+
+    /// `physics.workers`' value as a resource: 0 is [`Self::auto`], 1 is
+    /// [`Self::SERIAL`], and a larger number that many participants.
+    #[must_use]
+    pub fn from_setting(workers: u32) -> Self {
+        match workers {
+            0 => Self::auto(),
+            count => Self::new(count as usize),
+        }
+    }
+
+    /// The threads the step's forked stages run on, the calling thread
+    /// among them.
+    #[must_use]
+    pub fn participants(self) -> usize {
+        self.participants as usize
+    }
+
+    /// `participants` threads whose stages fork whatever their size, so a
+    /// small test world runs the forked code.
+    #[cfg(test)]
+    pub(crate) fn forced(participants: usize) -> Self {
+        Self {
+            fork_any: true,
+            ..Self::new(participants)
+        }
+    }
+
+    /// Whether a stage forks under its size threshold.
+    pub(crate) fn forks_any(self) -> bool {
+        self.fork_any
+    }
+}
+
 /// Per-world physics tunables resource.
 #[derive(Debug, Clone, Copy)]
 pub struct PhysicsConfig {

@@ -1,6 +1,6 @@
-# Engine and kit performance pass (`engine-perf-pass`) — draft
+# Engine and kit performance pass (`engine-perf-pass`) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** lower example 01's `total` p50, p95 and p99 under stress (`e01-pit`, `e01-stress`) and its CPU frame in ordinary play (`e01-play`'s `update`, `physics_step` and `extract`; its `total` is the GPU's frame on the reference machine) through engine and kit code, with every physics digest and every pixel kept: a worker pool for the physics step's pure stages, then the serial levers Phase B's reviewers confirmed, each judged by a sitting against `95939269`.
 - **non-goals:** example 01's own systems (`fire_exposure`, `fire_spread`, `ball_look`) and any 01 change but a forced call-site port; any change of motion or pixels, new `unsafe`, or a third-party dependency (each measured and written under Proposals instead); a release cut; the levers under 0.05 ms that Follow-ups lists.
 - **files to touch:**
@@ -109,7 +109,7 @@ Each is exact by the argument its verifier checked (`agents/verify-physics.md`, 
 - **Files:** as listed for Step 2.
 - **Change:** `PhysicsWorkers`, `physics.workers` and its variable, `App::run`'s insert; `step/pool.rs`; the build's forked walk and merge; the lockstep tests; the runner's `physics_workers_env`; the decision and its markers, AGENTS.md's rule, DESIGN.md's threading text, the config key in the getting-started guide, ROADMAP.md's Later line removed, benchmarks.md's lever line rewritten; `status: in progress`.
 - **Done-when:**
-  - `cargo test -p tungsten-core workers` → exit 0: a pile, a blast, a layered scene with one-way platforms, sensors and kinematic movers, and a churn of spawns and despawns each step bit-equal (every body's position, velocity and sleep state, every collision event) to the serial step at 2, 3, 4, 6 and 12 participants forced below the thresholds.
+  - `cargo test -p tungsten-core --lib pool::tests` → exit 0: a pile, a blast, a layered scene with one-way platforms, sensors and kinematic movers, and a churn of spawns and despawns each step bit-equal (every body's position, velocity and sleep state, every collision event) to the serial step at 2, 3, 4, 6 and 12 participants forced below the thresholds.
   - `cargo test -p tungsten-core --test integration physics_determinism` → exit 0, its pinned hash held with `PhysicsWorkers` at 2, 6 and 12.
   - `just check` → exit 0, no guard pin rewritten; `just api-check` → exit 0; `just repo-check` → exit 0; `just perf-test` → exit 0.
   - The sitting → exit 0; `judged.py` → exit 0; `stills.py --base-again` → `9 of 9 equal` (the control: the base against itself), then `stills.py` → `9 of 9 equal`.
@@ -120,8 +120,8 @@ Each is exact by the argument its verifier checked (`agents/verify-physics.md`, 
 ### Step 3: the arrival round's search on the pool
 
 - **Files:** as listed for Step 3.
-- **Change:** the round's forked search and its serial merge; the tests' scenes gain a wake wave that lists more than 256 bodies.
-- **Done-when:** `cargo test -p tungsten-core workers` → exit 0; `just check` → exit 0; the sitting → exit 0; `judged.py` → exit 0; `stills.py` → `9 of 9 equal`; `step_delta.py <sitting> <Step 2's> e01-pit stage.total:p95 e01-pit stage.total:p99 e01-stress stage.total:p95` → `e01-pit`'s p95 and p99 each fall by at least 3.0 ms and `e01-stress`'s p95 by at least 2.0 (probe: the search 2.58 → 0.95 ms a frame in `e01-pit`, in its wave frames; 2.81 → 1.07 in `e01-stress`).
+- **Change:** the round's forked search and its serial merge; the tests' scenes gain a wake wave that lists more than 256 bodies. First, the build's fork branch shrinks to one out-of-line call: Step 2 left the pool's start inlined in `build_pairs`, which grew from 22.5 to 28.6 KB, and `e01-play`'s `physics_step` read 0.30 → 0.31 ms in both pairs of its sitting (`noisy`); this step's sitting must read that metric's Δ at or under 0.005 ms.
+- **Done-when:** `cargo test -p tungsten-core --lib pool::tests` → exit 0; `just check` → exit 0; the sitting → exit 0; `judged.py` → exit 0; `stills.py` → `9 of 9 equal`; `step_delta.py <sitting> <Step 2's> e01-pit stage.total:p95 e01-pit stage.total:p99 e01-stress stage.total:p95` → `e01-pit`'s p95 and p99 each fall by at least 3.0 ms and `e01-stress`'s p95 by at least 2.0 (probe: the search 2.58 → 0.95 ms a frame in `e01-pit`, in its wave frames; 2.81 → 1.07 in `e01-stress`).
 - **Commit:** `perf(physics): fork an arrival round's search on the worker pool`
 - **Moves:** none.
 
@@ -130,7 +130,7 @@ Each is exact by the argument its verifier checked (`agents/verify-physics.md`, 
 - **Files:** as listed for Step 4.
 - **Change:** the forked prepass and the pair loop's consuming variant; then the serial path's sitting.
 - **Done-when:**
-  - `cargo test -p tungsten-core workers` → exit 0; `just check` → exit 0; the sitting → exit 0; `judged.py` → exit 0; `stills.py` → `9 of 9 equal`.
+  - `cargo test -p tungsten-core --lib pool::tests` → exit 0; `just check` → exit 0; the sitting → exit 0; `judged.py` → exit 0; `stills.py` → `9 of 9 equal`.
   - `step_delta.py <sitting> <Step 3's> e01-pit system.physics_step:p50 e01-stress system.physics_step:p50` → each falls by at least 0.7 ms (probe: 1.0–1.7 by subtraction). A miss after one revision reverts this step's commit; Steps 2 and 3 stand.
   - Whether this step's commit stays or is reverted, on the pool as it then stands: `TUNGSTEN_PHYSICS_WORKERS=1 WGPU_BACKEND=vulkan just perf sitting --base 95939269 --cpu-only --wait-quiet 900 --rows physics,physics-sparse,friction,slopes,terrain,rooms,blast,e01-pit,e01-stress,e01-play` → exit 0: the serial path reads no owned metric `regressed`. A `regressed` metric there is fixed before Step 5, or the pool's steps are reverted.
 - **Commit:** `perf(physics): compute the pair loop's contacts ahead on the worker pool`
@@ -241,6 +241,7 @@ gpt-6-astra through the critique skill, 2026-11-23, the working tree at `9593926
 | --- | --- | --- | --- | --- |
 | 1 | 2026-11-23 | landed | `e01-play` `total` 2.90 / 4.61 / 4.97 ms, `update` p50 0.88, `physics_step` p50 0.31, `extract` p50 0.12; guard `play` 828,966 allocations | `95939269`, `perf-runs/20261123T054234Z-e01-play` |
 | gate | 2026-11-23 | passed | six participants: `e01-pit` `total` p95 −8.9, p99 −10.2 ms; `e01-stress` p95 −7.4, p99 −9.5; digests equal at every count | `perf-runs/20261123-engine-perf/probe/timed-means.txt` |
+| 2 | 2026-11-23 | landed, target met | Sitting exit 0, 20 rows `ok`, no rerun; `judged.py` exit 0, 40 pairs' digests equal; stills control 9 of 9, tree 9 of 9. Own move (`step_delta.py`, both pairs below 0): `physics_step` p50 `e01-pit` −3.07 ms (18.28 → 15.25, 18.33 → 15.23), `e01-stress` −3.21, `blast` −2.73, `physics` −1.06, each `improved`; `total` p50 / p95 / p99 `e01-pit` −3.03 / −2.95 / −2.97, `e01-stress` −3.16 / −3.28 / −3.72. `e01-play` `physics_step` p50 +0.010 in both pairs (`noisy`, τ 0.02), `update` +0.001, `total` 0.000: Step 3 takes the cause. `cargo test -p tungsten-core --lib pool::tests` 9 passed (the filter the plan first named matched only the config tests); a reversed merge fails the three lockstep scenes; `physics_determinism` (release) 2 passed, the pinned hash at 2, 3, 4, 6 and 12; `just check`, `just api-check`, `just repo-check`, `just perf-test` exit 0; no guard pin moved. Meter `chain:` 0.3 % at 09:08Z. | `perf-runs/20261123T082919Z-sitting/`, `perf-runs/20261123-engine-perf/step-2/` |
 
 ## Follow-ups
 

@@ -22,6 +22,7 @@ const RENDER_DEPTH_ENABLED_ENV: &str = "TUNGSTEN_RENDER_DEPTH_ENABLED";
 const RENDER_DEPTH_SORT_ENV: &str = "TUNGSTEN_RENDER_DEPTH_SORT";
 const RENDER_POST_AA_ENV: &str = "TUNGSTEN_RENDER_POST_AA";
 const RENDER_BLOOM_MAX_MIPS_ENV: &str = "TUNGSTEN_RENDER_BLOOM_MAX_MIPS";
+const PHYSICS_WORKERS_ENV: &str = "TUNGSTEN_PHYSICS_WORKERS";
 const DISPLAY_MODE_EXPECTED: &str = "one of: windowed, borderless_fullscreen, exclusive_fullscreen";
 const DISPLAY_RESOLUTION_EXPECTED: &str = "WIDTHxHEIGHT with integers >= 1";
 const DISPLAY_FRAME_RATE_CAP_EXPECTED: &str = "an integer >= 0";
@@ -40,6 +41,10 @@ const MAX_STEPS_PER_FRAME_EXPECTED: &str = "an integer >= 1";
 const VOLUME_EXPECTED: &str = "a number from 0 to 1";
 const GRAVITY_EXPECTED: &str = "two finite numbers, px/s² with y down";
 const BROADPHASE_CELL_EXPECTED: &str = "a finite number of pixels above 0";
+const PHYSICS_WORKERS_EXPECTED: &str = "a whole number from 0, automatic, to 64";
+/// The most `physics.workers` takes; the step itself clamps to
+/// `PhysicsWorkers::MAX`.
+const PHYSICS_WORKERS_MAX: u32 = 64;
 const GAME_ID_MAX_LEN: usize = 64;
 /// The lowest step rate: a longer step than physics' default
 /// `max_step_dt`, 1/30 s, would run physics slow against the game (`D-094`).
@@ -647,10 +652,12 @@ pub struct UiConfig {
 
 /// `tungsten.json`'s `physics` (redo 7.12, S-85): the World's gravity and
 /// its broadphase's cell, which `App::new` puts into the World's
-/// `PhysicsConfig`; a game's plugin may set them again after.
+/// `PhysicsConfig`; a game's plugin may set them again after. And the
+/// threads the step's forked stages run on (`D-298`), which `App::run` puts
+/// into the World's `PhysicsWorkers` unless the game inserted its own.
 ///
 /// ```json
-/// "physics": { "gravity": [0, 900], "broadphase_cell": 32 }
+/// "physics": { "gravity": [0, 900], "broadphase_cell": 32, "workers": 0 }
 /// ```
 ///
 /// A file without the section, or a field left out, keeps the engine's
@@ -665,6 +672,12 @@ pub struct PhysicsSection {
     /// `physics.broadphase_cell`: the broadphase grid's cell in pixels; 32
     /// unless set, finite and above 0.
     pub broadphase_cell: f32,
+    /// `physics.workers`: the threads the step's forked stages run on, the
+    /// main thread among them. 0, the default, picks half the machine's
+    /// logical CPUs, at most 6; 1 is the serial step; the step takes at
+    /// most 16. Every count steps to the same result, bit for bit.
+    /// `TUNGSTEN_PHYSICS_WORKERS` overrides the file.
+    pub workers: u32,
 }
 
 impl Default for PhysicsSection {
@@ -673,19 +686,20 @@ impl Default for PhysicsSection {
         Self {
             gravity: physics.gravity.to_array(),
             broadphase_cell: physics.broadphase_cell_size,
+            workers: 0,
         }
     }
 }
 
 impl PhysicsSection {
-    /// Checks the gravity is finite and the cell finite and above 0.
-    /// `Config::load` and `App::new` both call this, since a config built
-    /// in code skips the load.
+    /// Checks the gravity is finite, the cell finite and above 0 and the
+    /// workers at most 64. `Config::load` and `App::new` both call this,
+    /// since a config built in code skips the load.
     ///
     /// # Errors
     ///
     /// [`ConfigError::InvalidValue`] with an empty `path` for field
-    /// `physics.gravity` or `physics.broadphase_cell`.
+    /// `physics.gravity`, `physics.broadphase_cell` or `physics.workers`.
     pub fn validate(&self) -> Result<(), ConfigError> {
         let [x, y] = self.gravity;
         if !(x.is_finite() && y.is_finite()) {
@@ -703,6 +717,14 @@ impl PhysicsSection {
                 field: "physics.broadphase_cell",
                 value: cell.to_string(),
                 expected: BROADPHASE_CELL_EXPECTED,
+            });
+        }
+        if self.workers > PHYSICS_WORKERS_MAX {
+            return Err(ConfigError::InvalidValue {
+                path: String::new(),
+                field: "physics.workers",
+                value: self.workers.to_string(),
+                expected: PHYSICS_WORKERS_EXPECTED,
             });
         }
         Ok(())
@@ -959,6 +981,23 @@ impl Config {
         if let Some(value) = env(RENDER_BLOOM_MAX_MIPS_ENV) {
             self.apply_bloom_max_mips_override(&value)?;
         }
+        if let Some(value) = env(PHYSICS_WORKERS_ENV) {
+            self.apply_physics_workers_override(&value)?;
+        }
+        Ok(())
+    }
+
+    fn apply_physics_workers_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = value
+            .parse::<u32>()
+            .ok()
+            .filter(|workers| *workers <= PHYSICS_WORKERS_MAX)
+            .ok_or_else(|| ConfigError::InvalidEnvOverride {
+                var: PHYSICS_WORKERS_ENV,
+                value: value.to_string(),
+                expected: PHYSICS_WORKERS_EXPECTED,
+            })?;
+        self.physics.workers = parsed;
         Ok(())
     }
 

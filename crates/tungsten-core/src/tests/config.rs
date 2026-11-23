@@ -1252,3 +1252,52 @@ fn a_cell_not_above_zero_fails_the_load() {
         "{message}"
     );
 }
+
+#[test]
+fn the_physics_section_sets_the_steps_workers() {
+    assert_eq!(PhysicsSection::default().workers, 0, "0 is automatic");
+    let (_, loaded) = load_json("physics-workers", r#"{ "physics": { "workers": 4 } }"#);
+    assert_eq!(loaded.unwrap().physics.workers, 4);
+    let (file, loaded) = load_json("physics-workers-65", r#"{ "physics": { "workers": 65 } }"#);
+    match loaded.unwrap_err() {
+        ConfigError::InvalidValue {
+            path,
+            field,
+            value,
+            expected,
+        } => {
+            assert_eq!(field, "physics.workers");
+            assert_eq!(value, "65");
+            assert_eq!(expected, PHYSICS_WORKERS_EXPECTED);
+            assert_eq!(path, file.display().to_string());
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+    let (_, loaded) = load_json("physics-workers-neg", r#"{ "physics": { "workers": -1 } }"#);
+    assert!(matches!(loaded, Err(ConfigError::Parse { .. })));
+}
+
+#[test]
+fn the_physics_workers_variable_overrides_the_file() {
+    let mut config = Config::default();
+    config.physics.workers = 6;
+    config.apply_physics_workers_override("1").unwrap();
+    assert_eq!(config.physics.workers, 1);
+    config.apply_physics_workers_override("0").unwrap();
+    assert_eq!(config.physics.workers, 0);
+    for bad in ["65", "-1", "two", ""] {
+        match config.apply_physics_workers_override(bad).unwrap_err() {
+            ConfigError::InvalidEnvOverride {
+                var,
+                value,
+                expected,
+            } => {
+                assert_eq!(var, PHYSICS_WORKERS_ENV);
+                assert_eq!(value, bad);
+                assert_eq!(expected, PHYSICS_WORKERS_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+    assert_eq!(config.physics.workers, 0, "a refused value changes nothing");
+}

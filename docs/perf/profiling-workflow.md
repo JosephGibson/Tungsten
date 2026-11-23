@@ -6,7 +6,7 @@ Read the [capture rules](#comparison-rule-and-capture-rules) before measuring, t
 
 ## Comparison rule and capture rules
 
-Compare two captures only when they measure the same row with the same workload (version, every bench knob, the script's hash, resolution, warm-up and frames), the same build flags, the same backend, adapter, present mode and frame latency, and the same machine. Compare reads every one of these from the captures and suppresses every verdict on a mismatch. Judge on runs, not frames: a verdict needs at least 3 runs a side. A change is judged in a [sitting](#sittings), which interleaves the base and the candidate with an A/A of the base.
+Compare two captures only when they measure the same row with the same workload (version, every bench knob, the script's hash, resolution, warm-up and frames), the same build flags, the same backend, adapter, present mode and frame latency, the same machine, and the same pinned count of physics workers. Compare reads every one of these from the captures and suppresses every verdict on a mismatch. Judge on runs, not frames: a verdict needs at least 3 runs a side. A change is judged in a [sitting](#sittings), which interleaves the base and the candidate with an A/A of the base.
 
 | Setting | Value |
 | --- | --- |
@@ -17,6 +17,7 @@ Compare two captures only when they measure the same row with the same workload 
 | Frames | the row's warm-up, setup frames included, then 300 measured frames, `e01-play` 1,200 |
 | Repeats | the row's (5, the area rows 3) |
 | GPU timing | only in a GPU run, beside each timing run or alone, never in a timing run |
+| Physics workers | the engine's own count for the machine (`physics.workers` 0: half the logical CPUs, at most 6, `D-298`), recorded as `physics_workers_env: auto`. `TUNGSTEN_PHYSICS_WORKERS=N` before `just perf` pins both sides of a sitting to N, 1 being the serial step; a base from before the pool ignores it |
 | Machine | governor `performance`; nothing else using the CPU, the GPU or the screen |
 
 **No remote-desktop encoder during a capture.** A connected NoMachine client runs `nxcodec.bin`, which encodes the screen and competes for memory bandwidth with the integrated GPU: it slowed every third frame of `ecs`, `total` p95 11.5 → 18.2 ms, while every guard passed and the digests matched. `run` refuses it, and `cargo` or `rustc` outside the runner's own process tree, before building (`D-141`); a sitting's start check refuses more (below). Every measured run is scanned before, once a second during and after, and a run it overlaps is invalid.
@@ -49,7 +50,7 @@ just perf-test                                     # runner tests, no GPU or car
 
 A row lives in `scripts/perf-rows.json`. A bench row runs `example-02-bench` from the repository root with `TUNGSTEN_BENCH`, `TUNGSTEN_BENCH_PRESET` (and `TUNGSTEN_BENCH_SCALE` when the row sets `scale`) and `TUNGSTEN_SMOKE_FRAMES` at warm-up plus frames, which pins dt; its `bench-config:` line must name the row and its preset. A scripted row runs its game's build from the game's folder in script mode (`D-225`) on a script the runner composes: the row's steps, any `until: "end"` held through the last frame, and the row's asserts on the window's last frame; `TUNGSTEN_SCRIPT`, `TUNGSTEN_REPORT` and a fresh `TUNGSTEN_USER_DIR` per run, which is deleted after it. Script mode pins dt at 60 Hz. `run` flags: `--repeat N`, `--frames N`, `--plain` and `--allow-background`.
 
-**Child environment.** Every run clears the inherited `TUNGSTEN_BENCH*`, `TUNGSTEN_RENDER_*`, `TUNGSTEN_DISPLAY_*`, `TUNGSTEN_CAPTURE_*`, `TUNGSTEN_GPU_TIMING`, `TUNGSTEN_OVERLAYS_ON`, `TUNGSTEN_SMOKE_FRAMES`, `TUNGSTEN_PERF_LOG`, `RUST_LOG` and the script handshake variables, then sets `TUNGSTEN_PERF_LOG=1` and `RUST_LOG=tungsten::app=debug,bench=debug`; a GPU run adds `TUNGSTEN_GPU_TIMING=1` and five frames past the window, so the window's last timestamps arrive.
+**Child environment.** Every run clears the inherited `TUNGSTEN_BENCH*`, `TUNGSTEN_RENDER_*`, `TUNGSTEN_DISPLAY_*`, `TUNGSTEN_CAPTURE_*`, `TUNGSTEN_GPU_TIMING`, `TUNGSTEN_OVERLAYS_ON`, `TUNGSTEN_SMOKE_FRAMES`, `TUNGSTEN_PERF_LOG`, `RUST_LOG` and the script handshake variables, then sets `TUNGSTEN_PERF_LOG=1` and `RUST_LOG=tungsten::app=debug,bench=debug`; a GPU run adds `TUNGSTEN_GPU_TIMING=1` and five frames past the window, so the window's last timestamps arrive. `TUNGSTEN_PHYSICS_WORKERS` passes through, and each capture records it.
 
 The bench binary's own variables, for reading a row by hand:
 

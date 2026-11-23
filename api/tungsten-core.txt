@@ -8105,6 +8105,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::ParticlesSe
 #[non_exhaustive] pub struct tungsten_core::config::PhysicsSection
 pub tungsten_core::config::PhysicsSection::broadphase_cell: f32
 pub tungsten_core::config::PhysicsSection::gravity: [f32; 2]
+pub tungsten_core::config::PhysicsSection::workers: u32
 impl tungsten_core::config::PhysicsSection
 pub fn tungsten_core::config::PhysicsSection::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
 impl core::clone::Clone for tungsten_core::config::PhysicsSection
@@ -11005,6 +11006,31 @@ impl core::marker::Unpin for tungsten_core::PhysicsPlugin
 impl core::marker::UnsafeUnpin for tungsten_core::PhysicsPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::PhysicsPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::PhysicsPlugin
+pub struct tungsten_core::physics::PhysicsWorkers
+impl tungsten_core::physics::PhysicsWorkers
+pub const tungsten_core::physics::PhysicsWorkers::AUTO_MAX: usize
+pub const tungsten_core::physics::PhysicsWorkers::MAX: usize
+pub const tungsten_core::physics::PhysicsWorkers::SERIAL: Self
+pub fn tungsten_core::physics::PhysicsWorkers::auto() -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::from_setting(u32) -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::new(usize) -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::participants(self) -> usize
+impl core::clone::Clone for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::clone(&self) -> tungsten_core::physics::PhysicsWorkers
+impl core::cmp::Eq for tungsten_core::physics::PhysicsWorkers
+impl core::cmp::PartialEq for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::eq(&self, &tungsten_core::physics::PhysicsWorkers) -> bool
+impl core::fmt::Debug for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::PhysicsWorkers
+impl core::marker::StructuralPartialEq for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Freeze for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Send for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Sync for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Unpin for tungsten_core::physics::PhysicsWorkers
+impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsWorkers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsWorkers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsWorkers
 pub struct tungsten_core::physics::Position(pub glam::f32::vec2::Vec2)
 impl tungsten_core::physics::components::Position
 pub fn tungsten_core::physics::components::Position::new(f32, f32) -> Self
@@ -22953,6 +22979,31 @@ impl core::marker::Unpin for tungsten_core::PhysicsPlugin
 impl core::marker::UnsafeUnpin for tungsten_core::PhysicsPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::PhysicsPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::PhysicsPlugin
+pub struct tungsten_core::PhysicsWorkers
+impl tungsten_core::physics::PhysicsWorkers
+pub const tungsten_core::physics::PhysicsWorkers::AUTO_MAX: usize
+pub const tungsten_core::physics::PhysicsWorkers::MAX: usize
+pub const tungsten_core::physics::PhysicsWorkers::SERIAL: Self
+pub fn tungsten_core::physics::PhysicsWorkers::auto() -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::from_setting(u32) -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::new(usize) -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::participants(self) -> usize
+impl core::clone::Clone for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::clone(&self) -> tungsten_core::physics::PhysicsWorkers
+impl core::cmp::Eq for tungsten_core::physics::PhysicsWorkers
+impl core::cmp::PartialEq for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::eq(&self, &tungsten_core::physics::PhysicsWorkers) -> bool
+impl core::fmt::Debug for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::PhysicsWorkers
+impl core::marker::StructuralPartialEq for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Freeze for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Send for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Sync for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Unpin for tungsten_core::physics::PhysicsWorkers
+impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsWorkers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsWorkers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsWorkers
 pub struct tungsten_core::PixelOutlineParams
 pub tungsten_core::PixelOutlineParams::alpha_threshold: f32
 pub tungsten_core::PixelOutlineParams::color: [f32; 4]
