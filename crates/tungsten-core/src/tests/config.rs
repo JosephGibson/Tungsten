@@ -464,6 +464,69 @@ fn bloom_max_mips_rejects_zero_and_nine() {
 }
 
 #[test]
+fn bloom_base_defaults_to_auto_and_parses_its_three_names() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert_eq!(parsed.bloom_base, BloomBase::Auto);
+    assert_eq!(Config::default().render.bloom_base, BloomBase::Auto);
+    for (name, base) in [
+        ("auto", BloomBase::Auto),
+        ("half", BloomBase::Half),
+        ("quarter", BloomBase::Quarter),
+    ] {
+        let json = format!(r#"{{ "bloom_base": "{name}" }}"#);
+        let parsed: RenderConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.bloom_base, base);
+        assert_eq!(base.as_str(), name);
+        assert_eq!(name.parse(), Ok(base));
+    }
+    assert!(serde_json::from_str::<RenderConfig>(r#"{ "bloom_base": "eighth" }"#).is_err());
+}
+
+#[test]
+fn bloom_base_env_override() {
+    let mut config = Config::default();
+    config.apply_bloom_base_override("half").unwrap();
+    assert_eq!(config.render.bloom_base, BloomBase::Half);
+    config.apply_bloom_base_override("quarter").unwrap();
+    assert_eq!(config.render.bloom_base, BloomBase::Quarter);
+    for bad in ["", "Half", "third", "2"] {
+        let err = config.apply_bloom_base_override(bad).unwrap_err();
+        match err {
+            ConfigError::InvalidEnvOverride {
+                var,
+                value,
+                expected,
+            } => {
+                assert_eq!(var, RENDER_BLOOM_BASE_ENV);
+                assert_eq!(value, bad);
+                assert_eq!(expected, BLOOM_BASE_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+    assert_eq!(
+        config.render.bloom_base,
+        BloomBase::Quarter,
+        "a refused value changes nothing"
+    );
+}
+
+#[test]
+fn bloom_base_halves_once_up_to_1440_rows_and_twice_above() {
+    assert_eq!(BloomBase::AUTO_HALF_ROWS, 1440);
+    for rows in [1, 360, 720, 1080, 1440] {
+        assert_eq!(BloomBase::Auto.halvings(rows), 1, "{rows} rows");
+    }
+    for rows in [1441, 1600, 2160, 4320] {
+        assert_eq!(BloomBase::Auto.halvings(rows), 2, "{rows} rows");
+    }
+    for rows in [1, 1080, 1440, 1441, 2160] {
+        assert_eq!(BloomBase::Half.halvings(rows), 1);
+        assert_eq!(BloomBase::Quarter.halvings(rows), 2);
+    }
+}
+
+#[test]
 fn is_supported_bloom_max_mips_matches_expected_range() {
     assert!(!is_supported_bloom_max_mips(0));
     assert!(is_supported_bloom_max_mips(1));

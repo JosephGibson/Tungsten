@@ -22,6 +22,7 @@ const RENDER_DEPTH_ENABLED_ENV: &str = "TUNGSTEN_RENDER_DEPTH_ENABLED";
 const RENDER_DEPTH_SORT_ENV: &str = "TUNGSTEN_RENDER_DEPTH_SORT";
 const RENDER_POST_AA_ENV: &str = "TUNGSTEN_RENDER_POST_AA";
 const RENDER_BLOOM_MAX_MIPS_ENV: &str = "TUNGSTEN_RENDER_BLOOM_MAX_MIPS";
+const RENDER_BLOOM_BASE_ENV: &str = "TUNGSTEN_RENDER_BLOOM_BASE";
 const PHYSICS_WORKERS_ENV: &str = "TUNGSTEN_PHYSICS_WORKERS";
 const DISPLAY_MODE_EXPECTED: &str = "one of: windowed, borderless_fullscreen, exclusive_fullscreen";
 const DISPLAY_RESOLUTION_EXPECTED: &str = "WIDTHxHEIGHT with integers >= 1";
@@ -34,6 +35,7 @@ const DEPTH_ENABLED_EXPECTED: &str = "one of: true, false, 1, 0";
 const DEPTH_SORT_EXPECTED: &str = "one of: cpu_stable, gpu_depth";
 const POST_AA_EXPECTED: &str = "one of: off, smaa_low, smaa_medium, smaa_high, smaa_ultra";
 const BLOOM_MAX_MIPS_EXPECTED: &str = "an integer in 1..=8";
+const BLOOM_BASE_EXPECTED: &str = "auto, half or quarter";
 const GAME_ID_EXPECTED: &str = "1-64 ASCII letters, digits, '.', '_' or '-', starting with a letter or digit, not ending in '.', and not a Windows device name";
 const LOGGING_LEVEL_EXPECTED: &str = "one of: off, error, warn, info, debug, trace";
 const FIXED_STEP_HZ_EXPECTED: &str = "an integer >= 30";
@@ -285,6 +287,84 @@ impl FromStr for PostAaMode {
     }
 }
 
+/// `render.bloom_base`: the size of bloom's first pyramid level against its
+/// target (`D-301`). Every later level halves the one before, so a quarter
+/// costs about a quarter of a half's largest passes and spreads the same
+/// glow over twice as many pixels.
+///
+/// ```
+/// use tungsten_core::config::BloomBase;
+///
+/// assert_eq!(BloomBase::Auto.halvings(1080), 1);
+/// assert_eq!(BloomBase::Auto.halvings(1440), 1);
+/// assert_eq!(BloomBase::Auto.halvings(2160), 2);
+/// assert_eq!(BloomBase::Half.halvings(2160), 1);
+/// assert_eq!(BloomBase::Quarter.halvings(720), 2);
+/// assert_eq!("quarter".parse(), Ok(BloomBase::Quarter));
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum BloomBase {
+    /// A half while the target has at most [`Self::AUTO_HALF_ROWS`] rows, a
+    /// quarter above: the glow then keeps the share of the screen it has at
+    /// 1080 rows, and its cost stops growing with the target.
+    #[default]
+    Auto,
+    /// A half at any size.
+    Half,
+    /// A quarter at any size.
+    Quarter,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("expected {BLOOM_BASE_EXPECTED}")]
+pub struct ParseBloomBaseError;
+
+impl BloomBase {
+    /// The most rows a target has for [`Self::Auto`] to start at a half.
+    pub const AUTO_HALF_ROWS: u32 = 1440;
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Half => "half",
+            Self::Quarter => "quarter",
+        }
+    }
+
+    /// How many times a target of `rows` rows is halved for bloom's first
+    /// level: once for a half, twice for a quarter.
+    #[must_use]
+    pub const fn halvings(self, rows: u32) -> u32 {
+        match self {
+            Self::Half => 1,
+            Self::Quarter => 2,
+            Self::Auto => {
+                if rows > Self::AUTO_HALF_ROWS {
+                    2
+                } else {
+                    1
+                }
+            }
+        }
+    }
+}
+
+impl FromStr for BloomBase {
+    type Err = ParseBloomBaseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(Self::Auto),
+            "half" => Ok(Self::Half),
+            "quarter" => Ok(Self::Quarter),
+            _ => Err(ParseBloomBaseError),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RenderConfig {
     /// The colour the scene clears to, RGBA from 0 to 1 in linear light,
@@ -304,6 +384,12 @@ pub struct RenderConfig {
     pub post_aa: PostAaMode,
     #[serde(default = "default_bloom_max_mips")]
     pub bloom_max_mips: u32,
+    /// The size of bloom's first level against its target: `auto` (the
+    /// default: a half up to 1440 rows, a quarter above), `half` or
+    /// `quarter` (`D-301`). Startup-only, as the level count is;
+    /// `TUNGSTEN_RENDER_BLOOM_BASE` overrides the file.
+    #[serde(default)]
+    pub bloom_base: BloomBase,
     /// Let text fall back to the system's fonts after the manifest's
     /// (`D-116`). Off by default: text draws only with packaged faces.
     #[serde(default)]
@@ -321,6 +407,7 @@ impl Default for RenderConfig {
             depth_sort: DepthSortMode::default(),
             post_aa: PostAaMode::default(),
             bloom_max_mips: default_bloom_max_mips(),
+            bloom_base: BloomBase::default(),
             system_fonts: false,
         }
     }
@@ -1003,6 +1090,9 @@ impl Config {
         if let Some(value) = env(RENDER_BLOOM_MAX_MIPS_ENV) {
             self.apply_bloom_max_mips_override(&value)?;
         }
+        if let Some(value) = env(RENDER_BLOOM_BASE_ENV) {
+            self.apply_bloom_base_override(&value)?;
+        }
         if let Some(value) = env(PHYSICS_WORKERS_ENV) {
             self.apply_physics_workers_override(&value)?;
         }
@@ -1085,6 +1175,16 @@ impl Config {
                 expected: BLOOM_MAX_MIPS_EXPECTED,
             })?;
         self.render.bloom_max_mips = parsed;
+        Ok(())
+    }
+
+    fn apply_bloom_base_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = BloomBase::from_str(value).map_err(|_| ConfigError::InvalidEnvOverride {
+            var: RENDER_BLOOM_BASE_ENV,
+            value: value.to_string(),
+            expected: BLOOM_BASE_EXPECTED,
+        })?;
+        self.render.bloom_base = parsed;
         Ok(())
     }
 

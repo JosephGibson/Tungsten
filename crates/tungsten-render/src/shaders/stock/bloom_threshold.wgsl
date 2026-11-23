@@ -7,6 +7,7 @@
 // (sRGB attachments decode to linear automatically) and writes mip 0 of the
 // Rgba16Float bloom pyramid. UBO layout mirrors UniformOverrideBlock (256 B):
 //   knobs.x = threshold, knobs.y = knee, knobs.z = intensity, knobs.w = radius.
+//   levels.w = how many times the source was halved for mip 0: 1 or 2.
 
 struct Params {
     inv_src_size: vec4<f32>,
@@ -36,9 +37,10 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VsOut {
     return out;
 }
 
-@fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    let c = textureSampleLevel(src, src_sampler, in.uv, 0.0).rgb;
+// One bilinear tap at `uv` through the soft-knee curve: the average of the
+// 2x2 source texels around it, kept where it is bright.
+fn bright(uv: vec2<f32>) -> vec3<f32> {
+    let c = textureSampleLevel(src, src_sampler, uv, 0.0).rgb;
     let threshold = params.knobs.x;
     let knee = max(params.knobs.y, 1e-5);
 
@@ -48,5 +50,23 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     soft = soft * soft / (4.0 * knee + 1e-6);
     let contribution = max(soft, br - threshold);
     let factor = contribution / max(br, 1e-6);
-    return vec4<f32>(c * factor, 1.0);
+    return c * factor;
+}
+
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    if (params.levels.w >= 2) {
+        // Mip 0 is a quarter of the source (D-301): a texel covers 4x4 source
+        // texels, read whole by four taps a texel off its centre, each kept
+        // by the curve before they are averaged, so mip 0 is the half-size
+        // pyramid's first level averaged down and a small highlight keeps
+        // its light.
+        let t = params.inv_src_size.xy;
+        let sum = bright(in.uv + t * vec2<f32>(-1.0, -1.0))
+                + bright(in.uv + t * vec2<f32>( 1.0, -1.0))
+                + bright(in.uv + t * vec2<f32>(-1.0,  1.0))
+                + bright(in.uv + t * vec2<f32>( 1.0,  1.0));
+        return vec4<f32>(sum * 0.25, 1.0);
+    }
+    return vec4<f32>(bright(in.uv), 1.0);
 }

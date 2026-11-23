@@ -13,7 +13,7 @@
 //! and post ping/pong textures through non-sRGB twin views so edge detection
 //! sees gamma-encoded values.
 
-use tungsten_core::config::PostAaMode;
+use tungsten_core::config::{BloomBase, PostAaMode};
 use wgpu::{Extent3d, TextureFormat, TextureUsages};
 
 /// Named render-target slots referenced by `PassDesc`.
@@ -38,12 +38,15 @@ pub enum TargetId {
 pub const BLOOM_PYRAMID_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 
 /// Allocated bloom mip-chain: one 2D texture with N mip levels plus per-level
-/// views. Mip 0 is half resolution, each successive mip halves again.
+/// views. Mip 0 is half resolution, or a quarter where `render.bloom_base`
+/// asks (`D-301`); each successive mip halves again.
 #[derive(Debug)]
 pub struct BloomPyramid {
     /// One view per mip; the views keep the pyramid texture alive.
     mip_views: Vec<wgpu::TextureView>,
     mip_extents: Vec<(u32, u32)>,
+    /// How many times the target was halved for mip 0: 1 or 2.
+    halvings: u32,
 }
 
 impl BloomPyramid {
@@ -68,10 +71,26 @@ impl BloomPyramid {
 /// Returns at least 1 so the pyramid texture always has a mip 0.
 #[must_use]
 pub fn bloom_mip_count_for_size(width: u32, height: u32, max_mips: u32) -> u32 {
+    bloom_mip_count_for_halvings(width, height, max_mips, 1)
+}
+
+/// [`bloom_mip_count_for_size`] for a pyramid whose mip 0 is the viewport
+/// halved `halvings` times (`D-301`): a quarter's ceiling is one level under
+/// a half's.
+#[must_use]
+pub fn bloom_mip_count_for_halvings(width: u32, height: u32, max_mips: u32, halvings: u32) -> u32 {
     let smallest = width.min(height).max(1);
     let log2 = u32::BITS - smallest.leading_zeros() - 1;
-    let size_limit = log2.saturating_sub(1).max(1);
+    let size_limit = log2.saturating_sub(halvings.max(1)).max(1);
     max_mips.max(1).min(size_limit)
+}
+
+/// The extent of a bloom pyramid's `level` for a viewport halved `halvings`
+/// times at mip 0: each level halves the one before, never under one texel.
+#[must_use]
+pub fn bloom_mip_extent_for(width: u32, height: u32, halvings: u32, level: u32) -> (u32, u32) {
+    let shift = halvings + level;
+    ((width >> shift).max(1), (height >> shift).max(1))
 }
 
 /// Allocated SMAA-only working set + non-sRGB read views.
@@ -111,6 +130,9 @@ pub struct SceneTarget {
     pub depth_enabled: bool,
     pub post_aa: PostAaMode,
     pub bloom_max_mips: u32,
+    /// `render.bloom_base` (`D-301`): how bloom's first level follows the
+    /// target's size.
+    pub bloom_base: BloomBase,
 }
 
 /// Depth format for `SceneDepth`; portable across wgpu backends.
@@ -134,6 +156,7 @@ pub fn non_srgb_twin(format: TextureFormat) -> Option<TextureFormat> {
 }
 
 impl SceneTarget {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         device: &wgpu::Device,
         size: (u32, u32),
@@ -142,6 +165,7 @@ impl SceneTarget {
         depth_enabled: bool,
         post_aa: PostAaMode,
         bloom_max_mips: u32,
+        bloom_base: BloomBase,
     ) -> Self {
         let (w, h) = (size.0.max(1), size.1.max(1));
         let smaa_active = post_aa.is_smaa();
@@ -206,7 +230,7 @@ impl SceneTarget {
             None
         };
 
-        let bloom_pyramid = create_bloom_pyramid(device, w, h, bloom_max_mips);
+        let bloom_pyramid = create_bloom_pyramid(device, w, h, bloom_max_mips, bloom_base);
 
         Self {
             color,
@@ -222,6 +246,7 @@ impl SceneTarget {
             depth_enabled,
             post_aa,
             bloom_max_mips,
+            bloom_base,
         }
     }
 
@@ -316,6 +341,13 @@ impl SceneTarget {
     pub fn bloom_mip_extent(&self, level: u32) -> Option<(u32, u32)> {
         self.bloom_pyramid.mip_extent(level)
     }
+
+    /// How many times the target was halved for bloom's first level: 1 for
+    /// a half, 2 for a quarter (`D-301`).
+    #[must_use]
+    pub fn bloom_halvings(&self) -> u32 {
+        self.bloom_pyramid.halvings
+    }
 }
 
 /// Owns the scene-target allocation; reallocates on resize or config change.
@@ -362,6 +394,7 @@ impl<K: PartialEq, V> TargetCache<K, V> {
 }
 
 impl RenderTargetPool {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         device: &wgpu::Device,
         size: (u32, u32),
@@ -370,6 +403,7 @@ impl RenderTargetPool {
         depth_enabled: bool,
         post_aa: PostAaMode,
         bloom_max_mips: u32,
+        bloom_base: BloomBase,
     ) -> Self {
         Self {
             scene: SceneTarget::new(
@@ -380,6 +414,7 @@ impl RenderTargetPool {
                 depth_enabled,
                 post_aa,
                 bloom_max_mips,
+                bloom_base,
             ),
             generation: 0,
         }
@@ -403,6 +438,7 @@ impl RenderTargetPool {
         depth_enabled: bool,
         post_aa: PostAaMode,
         bloom_max_mips: u32,
+        bloom_base: BloomBase,
     ) {
         let new_size = (size.0.max(1), size.1.max(1));
         let shape_changed = self.scene.size != new_size
@@ -410,7 +446,8 @@ impl RenderTargetPool {
             || self.scene.sample_count != sample_count
             || self.scene.depth_enabled != depth_enabled
             || self.scene.post_aa != post_aa
-            || self.scene.bloom_max_mips != bloom_max_mips;
+            || self.scene.bloom_max_mips != bloom_max_mips
+            || self.scene.bloom_base != bloom_base;
         if !shape_changed {
             return;
         }
@@ -423,6 +460,7 @@ impl RenderTargetPool {
             depth_enabled,
             post_aa,
             bloom_max_mips,
+            bloom_base,
         );
     }
 }
@@ -627,12 +665,14 @@ fn create_bloom_pyramid(
     width: u32,
     height: u32,
     max_mips: u32,
+    base: BloomBase,
 ) -> BloomPyramid {
     // Mip 0 sits at half resolution (the COD/Frostbite "downsample by 2 then
-    // start the chain" convention). Pyramid extents shrink by 2 per level.
-    let half_w = (width / 2).max(1);
-    let half_h = (height / 2).max(1);
-    let mip_count = bloom_mip_count_for_size(width, height, max_mips);
+    // start the chain" convention), or at a quarter where `base` asks
+    // (`D-301`). Pyramid extents shrink by 2 per level.
+    let halvings = base.halvings(height);
+    let (half_w, half_h) = bloom_mip_extent_for(width, height, halvings, 0);
+    let mip_count = bloom_mip_count_for_halvings(width, height, max_mips, halvings);
 
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("tungsten_bloom_pyramid"),
@@ -659,14 +699,13 @@ fn create_bloom_pyramid(
             ..Default::default()
         });
         mip_views.push(view);
-        let w = (half_w >> level).max(1);
-        let h = (half_h >> level).max(1);
-        mip_extents.push((w, h));
+        mip_extents.push(bloom_mip_extent_for(width, height, halvings, level));
     }
 
     BloomPyramid {
         mip_views,
         mip_extents,
+        halvings,
     }
 }
 

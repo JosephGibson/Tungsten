@@ -323,11 +323,19 @@ impl BloomPipeline {
         }
 
         let payloads = &mut self.payloads;
-        stage_payloads(payloads, params, pool.scene.size, mip_count, |level| {
-            pool.scene
-                .bloom_mip_extent(level)
-                .expect("bloom mip must exist")
-        });
+        let halvings = pool.scene.bloom_halvings();
+        stage_payloads(
+            payloads,
+            params,
+            pool.scene.size,
+            mip_count,
+            halvings,
+            |level| {
+                pool.scene
+                    .bloom_mip_extent(level)
+                    .expect("bloom mip must exist")
+            },
+        );
         let key = BloomSlotKey {
             generation: pool.generation(),
             src,
@@ -518,17 +526,23 @@ impl BloomPipeline {
 
 /// Fills `payloads` with the UBO bytes of a slot's sub-passes in recording
 /// order: threshold, the downsamples from level 1 up, the upsamples from the
-/// second-smallest level down, composite. `2 * mip_count` entries.
+/// second-smallest level down, composite. `2 * mip_count` entries. The
+/// threshold's block carries `halvings` in `levels.w`: at 2 its mip 0 is a
+/// quarter of the scene, and it reads a texel's whole 4x4 footprint
+/// (`D-301`).
 fn stage_payloads(
     payloads: &mut Vec<[u8; 256]>,
     params: &BloomParams,
     scene_size: (u32, u32),
     mip_count: u32,
+    halvings: u32,
     mip_extent: impl Fn(u32) -> (u32, u32),
 ) {
     let inv_scene = inv_size(scene_size);
     payloads.clear();
-    payloads.push(pack_params(params, inv_scene, mip_count, 0, PASS_KIND_THRESHOLD).to_bytes());
+    let mut threshold = pack_params(params, inv_scene, mip_count, 0, PASS_KIND_THRESHOLD);
+    threshold.i32s[3] = halvings as i32;
+    payloads.push(threshold.to_bytes());
     for level in 1..mip_count {
         let inv_prev = inv_size(mip_extent(level - 1));
         payloads

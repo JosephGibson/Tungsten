@@ -54,7 +54,7 @@ use tungsten_core::assets::{
     ShaderAssetId, TextureHandle,
 };
 use tungsten_core::config::{
-    DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
+    BloomBase, DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
 };
 use tungsten_core::post::{PostPass, PostStack};
 use tungsten_core::ui::PaintList;
@@ -160,6 +160,7 @@ pub struct Renderer {
     smaa: Option<SmaaPipeline>,
     smaa_shader_ids: SmaaShaderIds,
     bloom_max_mips: u32,
+    bloom_base: BloomBase,
     /// M29 lit sprite pipeline; rebuilt on `lit_sprite` shader hot-reload.
     lit_sprite_pipeline: LitSpritePipeline,
     /// M29 per-frame lighting UBO + bind group bound at group 2 of the lit
@@ -395,6 +396,7 @@ impl Renderer {
                 );
                 6
             };
+        let bloom_base = config.bloom_base;
         let target_pool = RenderTargetPool::new(
             &device,
             (surface_config.width, surface_config.height),
@@ -403,6 +405,7 @@ impl Renderer {
             depth_enabled,
             post_aa,
             bloom_max_mips,
+            bloom_base,
         );
         let present_blit = PresentBlitPipeline::new(&device, format);
 
@@ -656,6 +659,7 @@ impl Renderer {
             smaa,
             smaa_shader_ids,
             bloom_max_mips,
+            bloom_base,
             lit_sprite_pipeline,
             lighting,
             materials: HashMap::new(),
@@ -1241,6 +1245,7 @@ impl Renderer {
             self.depth_enabled,
             self.post_aa,
             self.bloom_max_mips,
+            self.bloom_base,
         );
         if self.target_pool.generation() != generation {
             self.post_stack.release_target_views();

@@ -10,6 +10,10 @@
 //! - `the_depth_sort_draws_the_painters_image` compares the frame under
 //!   `render.depth_sort = gpu_depth` with the one under `cpu_stable`,
 //!   tolerance 0 (redo 7.15).
+//! - `the_bloom_base_is_a_half_at_720_rows` compares the frame under
+//!   `render.bloom_base = half` with the default's, tolerance 0, and
+//!   `a_quarter_bloom_base_matches_its_fixture` the frame under `quarter`, at
+//!   640x360, with its own fixture, tolerance 2 (`D-301`).
 //! - `capture_past_the_last_frame_fails_the_run` and
 //!   `unwritable_capture_path_fails_the_run` check that a capture that writes
 //!   no file fails the run (`D-142`).
@@ -35,6 +39,7 @@ fn visual_command(frame: u32, path: &Path, sets: Option<&str>, direct: bool) -> 
         .env_remove("TUNGSTEN_BENCH_DESCRIBE")
         .env_remove("TUNGSTEN_CAPTURE_DIRECT")
         .env_remove("TUNGSTEN_RENDER_DEPTH_SORT")
+        .env_remove("TUNGSTEN_RENDER_BLOOM_BASE")
         .env("TUNGSTEN_SMOKE_FRAMES", "8")
         .env("TUNGSTEN_CAPTURE_FRAME", frame.to_string())
         .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")
@@ -90,6 +95,84 @@ fn gpu_visual_matches_fixture() {
         "visual regression: {report:?}"
     );
 }
+
+/// Frame 5 of the `visual` preset under `render.bloom_base = base`, at
+/// `resolution` where one is given, into a file named after `name`.
+fn capture_with_bloom_base(name: &str, base: &str, resolution: Option<&str>) -> PathBuf {
+    let actual = capture_path(name);
+    let mut command = visual_command(5, &actual, None, false);
+    command.env("TUNGSTEN_RENDER_BLOOM_BASE", base);
+    if let Some(resolution) = resolution {
+        command.env("TUNGSTEN_CAPTURE_RESOLUTION", resolution);
+    }
+    let status = command.status().expect("run example-02-bench");
+    assert!(status.success(), "example-02-bench exited with {status:?}");
+    assert!(
+        actual.exists(),
+        "capture did not produce {}",
+        actual.display()
+    );
+    actual
+}
+
+/// `render.bloom_base`'s default starts bloom's pyramid at a half while the
+/// target has at most 1440 rows (`D-301`): at 720 rows it draws `half`'s
+/// pixels, which are the pixels of before the key.
+#[test]
+fn the_bloom_base_is_a_half_at_720_rows() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let auto = capture("bloom-base-auto", None, false);
+    let half = capture_with_bloom_base("bloom-base-half", "half", None);
+    let report = compare_png(&auto, &half, 0).expect("compare the two bases");
+    assert_eq!(
+        report.pixels_above_tolerance, 0,
+        "auto against half at 720 rows: {report:?}"
+    );
+}
+
+/// A pyramid from a quarter of the target, which the default takes above
+/// 1440 rows: its threshold reads each texel's 4x4 footprint. The fixture
+/// holds the frame, and the frame stays the half's glow spread wider, not
+/// another picture.
+#[test]
+fn a_quarter_bloom_base_matches_its_fixture() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let size = Some("640x360");
+    let quarter = capture_with_bloom_base("bloom-base-quarter", "quarter", size);
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("gpu-visual-quarter.png");
+    let report = compare_png(&fixture, &quarter, 2).expect("compare fixture");
+    assert_eq!(
+        report.pixels_above_tolerance, 0,
+        "visual regression: {report:?}"
+    );
+
+    let half = capture_with_bloom_base("bloom-base-half-small", "half", size);
+    let against_half = compare_png(&half, &quarter, 0).expect("compare the two bases");
+    assert!(
+        against_half.pixels_above_tolerance > 0,
+        "a quarter draws its own glow: {against_half:?}"
+    );
+    assert!(
+        against_half.mean_delta < QUARTER_MEAN_DELTA_MOST,
+        "a quarter keeps the half's light: {against_half:?}"
+    );
+}
+
+/// The most a quarter-base frame's mean difference from the half-base frame
+/// may be, in 8-bit steps: the preset glows over its whole frame, and at 360
+/// rows the two read 5.8 apart (2026-11-23), the same picture with its glow
+/// spread wider. A threshold that lost or doubled its light would read far
+/// past this.
+const QUARTER_MEAN_DELTA_MOST: f32 = 9.0;
 
 /// A frame without a capture renders its last full-screen stage into the
 /// swapchain; a capture frame renders offscreen and blits (`D-087`). Both

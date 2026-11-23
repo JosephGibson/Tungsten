@@ -7762,6 +7762,37 @@ pub fn tungsten_core::components::parallax_world_position(glam::f32::vec2::Vec2,
 pub fn tungsten_core::components::sprite_point(&tungsten_core::World, tungsten_core::Entity, &str) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::components::sync_position_to_transform(&mut tungsten_core::World)
 pub mod tungsten_core::config
+#[non_exhaustive] pub enum tungsten_core::config::BloomBase
+pub tungsten_core::config::BloomBase::Auto
+pub tungsten_core::config::BloomBase::Half
+pub tungsten_core::config::BloomBase::Quarter
+impl tungsten_core::config::BloomBase
+pub const tungsten_core::config::BloomBase::AUTO_HALF_ROWS: u32
+pub const fn tungsten_core::config::BloomBase::as_str(self) -> &'static str
+pub const fn tungsten_core::config::BloomBase::halvings(self, u32) -> u32
+impl core::clone::Clone for tungsten_core::config::BloomBase
+pub fn tungsten_core::config::BloomBase::clone(&self) -> tungsten_core::config::BloomBase
+impl core::cmp::Eq for tungsten_core::config::BloomBase
+impl core::cmp::PartialEq for tungsten_core::config::BloomBase
+pub fn tungsten_core::config::BloomBase::eq(&self, &tungsten_core::config::BloomBase) -> bool
+impl core::default::Default for tungsten_core::config::BloomBase
+pub fn tungsten_core::config::BloomBase::default() -> tungsten_core::config::BloomBase
+impl core::fmt::Debug for tungsten_core::config::BloomBase
+pub fn tungsten_core::config::BloomBase::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::config::BloomBase
+impl core::marker::StructuralPartialEq for tungsten_core::config::BloomBase
+impl core::str::traits::FromStr for tungsten_core::config::BloomBase
+pub type tungsten_core::config::BloomBase::Err = tungsten_core::config::ParseBloomBaseError
+pub fn tungsten_core::config::BloomBase::from_str(&str) -> core::result::Result<Self, Self::Err>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::BloomBase
+pub fn tungsten_core::config::BloomBase::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::BloomBase
+impl core::marker::Send for tungsten_core::config::BloomBase
+impl core::marker::Sync for tungsten_core::config::BloomBase
+impl core::marker::Unpin for tungsten_core::config::BloomBase
+impl core::marker::UnsafeUnpin for tungsten_core::config::BloomBase
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::BloomBase
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::BloomBase
 pub enum tungsten_core::config::ConfigError
 pub tungsten_core::config::ConfigError::InvalidEnvOverride
 pub tungsten_core::config::ConfigError::InvalidEnvOverride::expected: &'static str
@@ -8021,6 +8052,26 @@ impl core::marker::Unpin for tungsten_core::config::LoggingConfig
 impl core::marker::UnsafeUnpin for tungsten_core::config::LoggingConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::LoggingConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::LoggingConfig
+pub struct tungsten_core::config::ParseBloomBaseError
+impl core::clone::Clone for tungsten_core::config::ParseBloomBaseError
+pub fn tungsten_core::config::ParseBloomBaseError::clone(&self) -> tungsten_core::config::ParseBloomBaseError
+impl core::cmp::Eq for tungsten_core::config::ParseBloomBaseError
+impl core::cmp::PartialEq for tungsten_core::config::ParseBloomBaseError
+pub fn tungsten_core::config::ParseBloomBaseError::eq(&self, &tungsten_core::config::ParseBloomBaseError) -> bool
+impl core::error::Error for tungsten_core::config::ParseBloomBaseError
+impl core::fmt::Debug for tungsten_core::config::ParseBloomBaseError
+pub fn tungsten_core::config::ParseBloomBaseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::config::ParseBloomBaseError
+pub fn tungsten_core::config::ParseBloomBaseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::config::ParseBloomBaseError
+impl core::marker::StructuralPartialEq for tungsten_core::config::ParseBloomBaseError
+impl core::marker::Freeze for tungsten_core::config::ParseBloomBaseError
+impl core::marker::Send for tungsten_core::config::ParseBloomBaseError
+impl core::marker::Sync for tungsten_core::config::ParseBloomBaseError
+impl core::marker::Unpin for tungsten_core::config::ParseBloomBaseError
+impl core::marker::UnsafeUnpin for tungsten_core::config::ParseBloomBaseError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::ParseBloomBaseError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::ParseBloomBaseError
 pub struct tungsten_core::config::ParseDepthSortModeError
 impl core::clone::Clone for tungsten_core::config::ParseDepthSortModeError
 pub fn tungsten_core::config::ParseDepthSortModeError::clone(&self) -> tungsten_core::config::ParseDepthSortModeError
@@ -8128,6 +8179,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::config::PhysicsSection
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::PhysicsSection
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::PhysicsSection
 pub struct tungsten_core::config::RenderConfig
+pub tungsten_core::config::RenderConfig::bloom_base: tungsten_core::config::BloomBase
 pub tungsten_core::config::RenderConfig::bloom_max_mips: u32
 pub tungsten_core::config::RenderConfig::clear_color: [f64; 4]
 pub tungsten_core::config::RenderConfig::depth_enabled: bool
@@ -23243,6 +23295,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::input::RawEvent
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RawEvent
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RawEvent
 pub struct tungsten_core::RenderConfig
+pub tungsten_core::RenderConfig::bloom_base: tungsten_core::config::BloomBase
 pub tungsten_core::RenderConfig::bloom_max_mips: u32
 pub tungsten_core::RenderConfig::clear_color: [f64; 4]
 pub tungsten_core::RenderConfig::depth_enabled: bool

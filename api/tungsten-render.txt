@@ -1013,8 +1013,8 @@ pub struct tungsten_render::targets::RenderTargetPool
 pub tungsten_render::targets::RenderTargetPool::scene: tungsten_render::targets::SceneTarget
 impl tungsten_render::targets::RenderTargetPool
 pub fn tungsten_render::targets::RenderTargetPool::generation(&self) -> u64
-pub fn tungsten_render::targets::RenderTargetPool::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32) -> Self
-pub fn tungsten_render::targets::RenderTargetPool::resize(&mut self, &wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32)
+pub fn tungsten_render::targets::RenderTargetPool::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32, tungsten_core::config::BloomBase) -> Self
+pub fn tungsten_render::targets::RenderTargetPool::resize(&mut self, &wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32, tungsten_core::config::BloomBase)
 impl core::fmt::Debug for tungsten_render::targets::RenderTargetPool
 pub fn tungsten_render::targets::RenderTargetPool::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tungsten_render::targets::RenderTargetPool
@@ -1025,6 +1025,7 @@ impl core::marker::UnsafeUnpin for tungsten_render::targets::RenderTargetPool
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::RenderTargetPool
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::RenderTargetPool
 pub struct tungsten_render::targets::SceneTarget
+pub tungsten_render::targets::SceneTarget::bloom_base: tungsten_core::config::BloomBase
 pub tungsten_render::targets::SceneTarget::bloom_max_mips: u32
 pub tungsten_render::targets::SceneTarget::bloom_pyramid: tungsten_render::targets::BloomPyramid
 pub tungsten_render::targets::SceneTarget::color: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
@@ -1039,6 +1040,7 @@ pub tungsten_render::targets::SceneTarget::sample_count: u32
 pub tungsten_render::targets::SceneTarget::size: (u32, u32)
 pub tungsten_render::targets::SceneTarget::smaa: core::option::Option<tungsten_render::targets::SmaaTargets>
 impl tungsten_render::targets::SceneTarget
+pub fn tungsten_render::targets::SceneTarget::bloom_halvings(&self) -> u32
 pub fn tungsten_render::targets::SceneTarget::bloom_mip_count(&self) -> u32
 pub fn tungsten_render::targets::SceneTarget::bloom_mip_extent(&self, u32) -> core::option::Option<(u32, u32)>
 pub fn tungsten_render::targets::SceneTarget::bloom_mip_view(&self, u32) -> core::option::Option<&wgpu::api::texture_view::TextureView>
@@ -1046,7 +1048,7 @@ pub fn tungsten_render::targets::SceneTarget::color_msaa_view(&self) -> core::op
 pub fn tungsten_render::targets::SceneTarget::color_texture(&self) -> &wgpu::api::texture::Texture
 pub fn tungsten_render::targets::SceneTarget::color_view(&self) -> &wgpu::api::texture_view::TextureView
 pub fn tungsten_render::targets::SceneTarget::depth_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
-pub fn tungsten_render::targets::SceneTarget::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32) -> Self
+pub fn tungsten_render::targets::SceneTarget::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32, tungsten_core::config::BloomBase) -> Self
 pub fn tungsten_render::targets::SceneTarget::post_ping_smaa_read_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
 pub fn tungsten_render::targets::SceneTarget::post_ping_texture(&self) -> &wgpu::api::texture::Texture
 pub fn tungsten_render::targets::SceneTarget::post_ping_view(&self) -> &wgpu::api::texture_view::TextureView
@@ -1087,7 +1089,9 @@ pub const tungsten_render::targets::BLOOM_PYRAMID_FORMAT: wgpu_types::texture::f
 pub const tungsten_render::targets::DEPTH_FORMAT: wgpu_types::texture::format::TextureFormat
 pub const tungsten_render::targets::SMAA_BLEND_FORMAT: wgpu_types::texture::format::TextureFormat
 pub const tungsten_render::targets::SMAA_EDGES_FORMAT: wgpu_types::texture::format::TextureFormat
+pub fn tungsten_render::targets::bloom_mip_count_for_halvings(u32, u32, u32, u32) -> u32
 pub fn tungsten_render::targets::bloom_mip_count_for_size(u32, u32, u32) -> u32
+pub fn tungsten_render::targets::bloom_mip_extent_for(u32, u32, u32, u32) -> (u32, u32)
 pub fn tungsten_render::targets::non_srgb_twin(wgpu_types::texture::format::TextureFormat) -> core::option::Option<wgpu_types::texture::format::TextureFormat>
 pub mod tungsten_render::text
 #[non_exhaustive] pub enum tungsten_render::text::FontSource
@@ -1877,8 +1881,8 @@ pub struct tungsten_render::RenderTargetPool
 pub tungsten_render::RenderTargetPool::scene: tungsten_render::targets::SceneTarget
 impl tungsten_render::targets::RenderTargetPool
 pub fn tungsten_render::targets::RenderTargetPool::generation(&self) -> u64
-pub fn tungsten_render::targets::RenderTargetPool::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32) -> Self
-pub fn tungsten_render::targets::RenderTargetPool::resize(&mut self, &wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32)
+pub fn tungsten_render::targets::RenderTargetPool::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32, tungsten_core::config::BloomBase) -> Self
+pub fn tungsten_render::targets::RenderTargetPool::resize(&mut self, &wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32, tungsten_core::config::BloomBase)
 impl core::fmt::Debug for tungsten_render::targets::RenderTargetPool
 pub fn tungsten_render::targets::RenderTargetPool::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tungsten_render::targets::RenderTargetPool
@@ -1949,6 +1953,7 @@ impl core::marker::UnsafeUnpin for tungsten_render::renderer::Renderer
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::renderer::Renderer
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::renderer::Renderer
 pub struct tungsten_render::SceneTarget
+pub tungsten_render::SceneTarget::bloom_base: tungsten_core::config::BloomBase
 pub tungsten_render::SceneTarget::bloom_max_mips: u32
 pub tungsten_render::SceneTarget::bloom_pyramid: tungsten_render::targets::BloomPyramid
 pub tungsten_render::SceneTarget::color: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
@@ -1963,6 +1968,7 @@ pub tungsten_render::SceneTarget::sample_count: u32
 pub tungsten_render::SceneTarget::size: (u32, u32)
 pub tungsten_render::SceneTarget::smaa: core::option::Option<tungsten_render::targets::SmaaTargets>
 impl tungsten_render::targets::SceneTarget
+pub fn tungsten_render::targets::SceneTarget::bloom_halvings(&self) -> u32
 pub fn tungsten_render::targets::SceneTarget::bloom_mip_count(&self) -> u32
 pub fn tungsten_render::targets::SceneTarget::bloom_mip_extent(&self, u32) -> core::option::Option<(u32, u32)>
 pub fn tungsten_render::targets::SceneTarget::bloom_mip_view(&self, u32) -> core::option::Option<&wgpu::api::texture_view::TextureView>
@@ -1970,7 +1976,7 @@ pub fn tungsten_render::targets::SceneTarget::color_msaa_view(&self) -> core::op
 pub fn tungsten_render::targets::SceneTarget::color_texture(&self) -> &wgpu::api::texture::Texture
 pub fn tungsten_render::targets::SceneTarget::color_view(&self) -> &wgpu::api::texture_view::TextureView
 pub fn tungsten_render::targets::SceneTarget::depth_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
-pub fn tungsten_render::targets::SceneTarget::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32) -> Self
+pub fn tungsten_render::targets::SceneTarget::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32, tungsten_core::config::BloomBase) -> Self
 pub fn tungsten_render::targets::SceneTarget::post_ping_smaa_read_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
 pub fn tungsten_render::targets::SceneTarget::post_ping_texture(&self) -> &wgpu::api::texture::Texture
 pub fn tungsten_render::targets::SceneTarget::post_ping_view(&self) -> &wgpu::api::texture_view::TextureView

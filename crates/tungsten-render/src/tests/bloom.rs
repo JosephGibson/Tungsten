@@ -76,7 +76,7 @@ fn stage_payloads_follow_recording_order() {
     // 1080p: the pyramid starts at 960 x 540.
     let extent = |level: u32| ((960u32 >> level).max(1), (540u32 >> level).max(1));
     let mut payloads = Vec::new();
-    stage_payloads(&mut payloads, &params, (1920, 1080), 6, extent);
+    stage_payloads(&mut payloads, &params, (1920, 1080), 6, 1, extent);
     assert_eq!(payloads.len(), 12);
 
     let expect = |inv_of: (u32, u32), level: u32, kind: i32| {
@@ -90,8 +90,20 @@ fn stage_payloads_follow_recording_order() {
         .to_bytes()
     };
     // Threshold samples the scene; a downsample samples the level above it, an
-    // upsample the level below; composite samples the scene again.
-    assert_eq!(payloads[0], expect((1920, 1080), 0, PASS_KIND_THRESHOLD));
+    // upsample the level below; composite samples the scene again. The
+    // threshold alone carries the pyramid's halvings (`D-301`).
+    let threshold = |halvings: i32| {
+        let mut block = pack_params(
+            &params,
+            (1.0 / 1920.0, 1.0 / 1080.0),
+            6,
+            0,
+            PASS_KIND_THRESHOLD,
+        );
+        block.i32s[3] = halvings;
+        block.to_bytes()
+    };
+    assert_eq!(payloads[0], threshold(1));
     for level in 1..6u32 {
         assert_eq!(
             payloads[level as usize],
@@ -108,8 +120,15 @@ fn stage_payloads_follow_recording_order() {
     }
     assert_eq!(payloads[11], expect((1920, 1080), 0, PASS_KIND_COMPOSITE));
 
+    // A quarter-size pyramid changes the threshold's block and no other
+    // stage's, given the same level sizes.
+    let mut quarter = Vec::new();
+    stage_payloads(&mut quarter, &params, (1920, 1080), 6, 2, extent);
+    assert_eq!(quarter[0], threshold(2));
+    assert_eq!(quarter[1..], payloads[1..]);
+
     // One mip: threshold and composite only. The vector is reused.
-    stage_payloads(&mut payloads, &params, (4, 4), 1, |_| (2, 2));
+    stage_payloads(&mut payloads, &params, (4, 4), 1, 1, |_| (2, 2));
     assert_eq!(payloads.len(), 2);
     // Other params: every stage's bytes change, so every UBO is rewritten.
     let mut louder = Vec::new();
@@ -117,7 +136,7 @@ fn stage_payloads_follow_recording_order() {
         intensity: 1.5,
         ..params
     };
-    stage_payloads(&mut louder, &boosted, (4, 4), 1, |_| (2, 2));
+    stage_payloads(&mut louder, &boosted, (4, 4), 1, 1, |_| (2, 2));
     assert!(payloads.iter().zip(&louder).all(|(a, b)| a != b));
 }
 

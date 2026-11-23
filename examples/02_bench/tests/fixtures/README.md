@@ -80,3 +80,24 @@ the agreed fallback (`pixels_above_tolerance < 16`).
 - Commit: `6a61cc2` plus M34 (`D-116`): text draws with the packaged JetBrains Mono 2.211. The previous fixture (`0521a2a0…`) drew the HUD with JetBrains Mono 2.304 installed on this machine, which shadowed the packaged face while system fonts loaded; only the two HUD lines differ (2155 pixels).
 - SHA-256: `969bdf53653edb27761701085236b0b36399ceb782c0ee4427e812d11c453f06`
 - Accepted after two consecutive `just visual` passes (2026-10-04, 22:58:08Z and 22:58:15Z)
+
+## The quarter-base fixture
+
+`gpu-visual-quarter.png` is the reference capture of
+`a_quarter_bloom_base_matches_its_fixture` (`D-301`): the same preset and
+frame at 640x360 under `TUNGSTEN_RENDER_BLOOM_BASE=quarter`, where bloom's
+pyramid starts at a quarter of its target and its threshold reads each
+texel's 4x4 footprint. The default takes that pyramid only above 1440 rows,
+which no other pixel test reaches. Regenerate it as the fixture above, with
+`TUNGSTEN_CAPTURE_RESOLUTION=640x360`, `TUNGSTEN_RENDER_BLOOM_BASE=quarter`
+and its own path. The test also holds the frame within a mean difference of
+9 steps from the half-base frame (5.8 on the reference machine).
+
+- OS: Arch Linux, kernel 7.2.14-arch1-1, X11 session
+- GPU: AMD Radeon 660M (integrated, Ryzen 5 6600H)
+- Driver: Mesa 26.2.6 RADV (`RADV REMBRANDT`), Vulkan API 1.4.354
+- wgpu backend: Vulkan (`WGPU_BACKEND=vulkan`), wgpu 30.0.1
+- Toolchain: rustc 1.98.1, `dev` profile
+- Date: 2026-11-23
+- SHA-256: `cf4a59f393b644c61f0ee32349b64264bf026f33855c3c4703b02b04c3fa3362`
+- Accepted after two consecutive `just visual` passes (2026-11-23), two captures byte-equal, and with `gpu-visual.png` unchanged
