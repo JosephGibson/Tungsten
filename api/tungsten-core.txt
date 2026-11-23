@@ -12349,11 +12349,14 @@ pub struct tungsten_core::save::SaveSlots
 impl tungsten_core::save::SaveSlots
 pub fn tungsten_core::save::SaveSlots::delete(&self, &str) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::dir(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::save::SaveSlots::flush(&self) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::list(&self) -> core::result::Result<tungsten_core::save::SlotList, tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::load<T: tungsten_core::save::SaveData>(&self, &str) -> core::result::Result<T, tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::new(core::option::Option<std::path::PathBuf>) -> Self
 pub fn tungsten_core::save::SaveSlots::save<T: tungsten_core::save::SaveData>(&self, &str, &T) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::save_stamped<T: serde_core::ser::Serialize>(&self, &str, &T, &tungsten_core::save::SaveStamp) -> core::result::Result<(), tungsten_core::save::SaveError>
+pub fn tungsten_core::save::SaveSlots::write_behind(&mut self)
+pub fn tungsten_core::save::SaveSlots::writes_behind(&self) -> bool
 impl core::clone::Clone for tungsten_core::save::SaveSlots
 pub fn tungsten_core::save::SaveSlots::clone(&self) -> tungsten_core::save::SaveSlots
 impl core::default::Default for tungsten_core::save::SaveSlots
@@ -23870,11 +23873,14 @@ pub struct tungsten_core::SaveSlots
 impl tungsten_core::save::SaveSlots
 pub fn tungsten_core::save::SaveSlots::delete(&self, &str) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::dir(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::save::SaveSlots::flush(&self) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::list(&self) -> core::result::Result<tungsten_core::save::SlotList, tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::load<T: tungsten_core::save::SaveData>(&self, &str) -> core::result::Result<T, tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::new(core::option::Option<std::path::PathBuf>) -> Self
 pub fn tungsten_core::save::SaveSlots::save<T: tungsten_core::save::SaveData>(&self, &str, &T) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::save_stamped<T: serde_core::ser::Serialize>(&self, &str, &T, &tungsten_core::save::SaveStamp) -> core::result::Result<(), tungsten_core::save::SaveError>
+pub fn tungsten_core::save::SaveSlots::write_behind(&mut self)
+pub fn tungsten_core::save::SaveSlots::writes_behind(&self) -> bool
 impl core::clone::Clone for tungsten_core::save::SaveSlots
 pub fn tungsten_core::save::SaveSlots::clone(&self) -> tungsten_core::save::SaveSlots
 impl core::default::Default for tungsten_core::save::SaveSlots

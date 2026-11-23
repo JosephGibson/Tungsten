@@ -41,7 +41,7 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 ## Hard rules
 
 - No external ECS or engine crate (`bevy_ecs`, `hecs`, `specs`, `legion`, `amethyst`, `fyrox`, `ggez`, `macroquad`; `D-005`).
-- No async runtime (`tokio`, `async-std`). Only these other threads: the `cpal` callback (`rtrb`, `D-034`), the `notify` watcher and `gilrs`'s backend (`mpsc`, `D-220`), the physics step's bit-exact workers (`D-298`).
+- No async runtime (`tokio`, `async-std`). Only these other threads: the `cpal` callback (`rtrb`, `D-034`), the `notify` watcher and `gilrs`'s backend (`mpsc`, `D-220`), the physics workers (`D-298`), the saves' writer (`D-303`).
 - No global mutable state (`static mut`, `lazy_static`); state lives in `World` or is passed explicitly.
 - No new third-party runtime dependency without a `DECISIONS.md` entry citing its `D-015` rule.
 - No hardcoded asset paths in game code except explicit scene loading (`D-046`).
@@ -50,7 +50,7 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 
 ## Conventions
 
-- `rustfmt` defaults and Rust naming conventions.
+- `rustfmt` defaults and Rust naming.
 - Doc comments where a public name isn't self-evident; unit tests in `#[cfg(test)] mod tests`.
 - `thiserror` at library boundaries, `anyhow` at app/example top level; `log` for logging (`println!` in examples only).
 - `unwrap`/`expect` are fine while exploring; tighten once a module stabilizes.

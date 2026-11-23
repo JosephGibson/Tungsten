@@ -561,3 +561,370 @@ fn a_slot_with_a_whole_header_and_broken_data_lists_and_fails_to_load() {
         assert!(matches!(error, SaveError::Corrupt { .. }), "{error}");
     }
 }
+
+// --- Saves written behind (`D-303`) ---
+
+use std::sync::mpsc;
+use std::time::Duration;
+
+/// The longest a held writer waits for its test to let it go.
+const HELD: Duration = Duration::from_secs(10);
+
+/// The file system's own writes and renames, with the writer held where a
+/// test asks: a sync reports itself on `syncing` and waits for a token on
+/// `sync_gate`, or fails; a rename fails with `rename_errors` in turn; a
+/// sleep reports its length on `sleeping` and waits for a token on
+/// `sleep_gate`.
+struct HeldOps {
+    syncing: Option<mpsc::Sender<()>>,
+    sync_gate: Option<mpsc::Receiver<()>>,
+    fail_sync: bool,
+    windows: bool,
+    rename_errors: Vec<i32>,
+    sleeping: Option<mpsc::Sender<Duration>>,
+    sleep_gate: Option<mpsc::Receiver<()>>,
+}
+
+impl HeldOps {
+    fn free() -> Self {
+        Self {
+            syncing: None,
+            sync_gate: None,
+            fail_sync: false,
+            windows: false,
+            rename_errors: Vec::new(),
+            sleeping: None,
+            sleep_gate: None,
+        }
+    }
+}
+
+impl Ops for HeldOps {
+    fn windows(&self) -> bool {
+        self.windows
+    }
+
+    fn write(&mut self, file: &mut std::fs::File, contents: &[u8]) -> std::io::Result<()> {
+        RealOps.write(file, contents)
+    }
+
+    fn sync(&mut self, file: &mut std::fs::File) -> std::io::Result<()> {
+        if let Some(syncing) = &self.syncing {
+            let _ = syncing.send(());
+        }
+        if let Some(gate) = &self.sync_gate {
+            let _ = gate.recv_timeout(HELD);
+        }
+        if self.fail_sync {
+            return Err(std::io::Error::other("injected sync failure"));
+        }
+        RealOps.sync(file)
+    }
+
+    fn rename(&mut self, from: &Path, to: &Path) -> std::io::Result<()> {
+        if !self.rename_errors.is_empty() {
+            return Err(std::io::Error::from_raw_os_error(
+                self.rename_errors.remove(0),
+            ));
+        }
+        std::fs::rename(from, to)
+    }
+
+    fn sleep(&mut self, duration: Duration) {
+        if let Some(sleeping) = &self.sleeping {
+            let _ = sleeping.send(duration);
+        }
+        if let Some(gate) = &self.sleep_gate {
+            let _ = gate.recv_timeout(HELD);
+        }
+    }
+}
+
+/// Slots that write behind, their writer committing through `ops`.
+fn behind(ops: HeldOps) -> SaveSlots {
+    let mut slots = slots();
+    slots.write_behind();
+    *lock(&slots.behind.as_ref().unwrap().ops) = Some(Box::new(ops));
+    slots
+}
+
+/// The names in the slots' folder, temp files included.
+fn files(slots: &SaveSlots) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(slots.dir().unwrap()) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+fn pending(slots: &SaveSlots) -> usize {
+    lock(&slots.behind.as_ref().unwrap().shared.state)
+        .pending
+        .len()
+}
+
+#[test]
+fn slots_write_behind_only_when_asked_and_only_with_a_folder() {
+    let mut none = SaveSlots::new(None);
+    none.write_behind();
+    assert!(!none.writes_behind(), "no folder, nothing to write");
+    none.flush().unwrap();
+
+    let mut some = slots();
+    assert!(
+        !some.writes_behind(),
+        "a save is whole before it returns unless asked"
+    );
+    some.flush().unwrap();
+    some.write_behind();
+    assert!(some.writes_behind());
+    // A clone shares the writer, so it reads what the other saved.
+    let clone = some.clone();
+    some.save("slot-1", &progress()).unwrap();
+    assert_eq!(clone.load::<Progress>("slot-1").unwrap(), progress());
+    clone.flush().unwrap();
+    assert_eq!(files(&some), ["slot-1.json"]);
+}
+
+#[test]
+fn a_save_behind_returns_before_its_commit_and_reads_back_at_once() {
+    let (release, sync_gate) = mpsc::channel();
+    let slots = behind(HeldOps {
+        sync_gate: Some(sync_gate),
+        ..HeldOps::free()
+    });
+    let stamp = SaveStamp::new(2, "0.1.0", 1_760_400_000_000);
+    slots.save_stamped("slot-1", &progress(), &stamp).unwrap();
+
+    // The writer is held at its sync: the save is a temp file, and the
+    // slot's own file is not there yet.
+    let slot_file = slots.dir().unwrap().join("slot-1.json");
+    assert!(!slot_file.exists());
+    assert_eq!(files(&slots).len(), 1);
+    assert_eq!(pending(&slots), 1);
+    // It reads back all the same, and lists with its header.
+    assert_eq!(slots.load::<Progress>("slot-1").unwrap(), progress());
+    let list = slots.list().unwrap();
+    assert!(list.warnings.is_empty(), "{:?}", list.warnings);
+    assert_eq!(list.slots.len(), 1);
+    assert_eq!(list.slots[0].name, "slot-1");
+    assert_eq!(list.slots[0].schema, 2);
+    assert_eq!(list.slots[0].saved_at_ms, 1_760_400_000_000);
+
+    release.send(()).unwrap();
+    slots.flush().unwrap();
+    assert_eq!(
+        files(&slots),
+        ["slot-1.json"],
+        "in place, its temp file gone"
+    );
+    assert_eq!(pending(&slots), 0);
+    assert_eq!(slots.load::<Progress>("slot-1").unwrap(), progress());
+    assert_eq!(slots.list().unwrap().slots.len(), 1);
+
+    // The file is the one a save written before it returns leaves.
+    let whole = self::slots();
+    whole.save_stamped("slot-1", &progress(), &stamp).unwrap();
+    assert_eq!(
+        std::fs::read(&slot_file).unwrap(),
+        std::fs::read(whole.dir().unwrap().join("slot-1.json")).unwrap()
+    );
+}
+
+#[test]
+fn a_save_that_cannot_be_staged_fails_at_once_and_queues_nothing() {
+    // The slots' folder is a file: it cannot be made.
+    let blocked = tempdir().join("saves");
+    std::fs::write(&blocked, "a file").unwrap();
+    let mut slots = SaveSlots::new(Some(blocked));
+    slots.write_behind();
+    let error = slots.save("slot-1", &progress()).unwrap_err();
+    assert!(
+        matches!(error, SaveError::Write(WriteError::Io { .. })),
+        "{error}"
+    );
+    // And what failed before it could be serialized fails as it did.
+    assert!(matches!(
+        slots.save("Not A Name", &progress()),
+        Err(SaveError::InvalidName { .. })
+    ));
+    assert_eq!(pending(&slots), 0);
+    slots.flush().unwrap();
+}
+
+#[test]
+fn a_commit_that_fails_keeps_the_old_file_and_is_the_flushs_error() {
+    let slots = behind(HeldOps {
+        fail_sync: true,
+        ..HeldOps::free()
+    });
+    let old = Progress {
+        level: 1,
+        name: "old".into(),
+    };
+    SaveSlots::new(slots.dir().map(Path::to_path_buf))
+        .save("slot-1", &old)
+        .unwrap();
+
+    slots.save("slot-1", &progress()).unwrap();
+    let error = slots.flush().unwrap_err();
+    assert!(
+        matches!(error, SaveError::Write(WriteError::Io { .. })),
+        "{error}"
+    );
+    assert_eq!(slots.load::<Progress>("slot-1").unwrap(), old);
+    assert_eq!(files(&slots), ["slot-1.json"], "the temp file is removed");
+    assert_eq!(pending(&slots), 0);
+    slots.flush().expect("a failure is reported once");
+}
+
+#[test]
+fn delete_cancels_a_save_not_yet_in_place() {
+    let (syncing, in_sync) = mpsc::channel();
+    let (release, sync_gate) = mpsc::channel();
+    let slots = behind(HeldOps {
+        syncing: Some(syncing),
+        sync_gate: Some(sync_gate),
+        ..HeldOps::free()
+    });
+    slots.save("slot-1", &progress()).unwrap();
+    // The writer holds the save, inside its sync: the delete reaches it
+    // between the sync and the rename.
+    in_sync
+        .recv_timeout(HELD)
+        .expect("the writer syncs the save");
+    slots
+        .delete("slot-1")
+        .expect("a slot saved and not yet in place is there to delete");
+    assert!(matches!(
+        slots.load::<Progress>("slot-1"),
+        Err(SaveError::NotFound { .. })
+    ));
+    assert!(slots.list().unwrap().slots.is_empty());
+
+    release.send(()).unwrap();
+    slots.flush().unwrap();
+    assert!(
+        files(&slots).is_empty(),
+        "the writer dropped the cancelled save"
+    );
+    assert!(matches!(
+        slots.delete("slot-1"),
+        Err(SaveError::NotFound { .. })
+    ));
+}
+
+#[test]
+fn of_two_saves_of_one_slot_the_newer_stands() {
+    let (syncing, in_sync) = mpsc::channel();
+    let (release, sync_gate) = mpsc::channel();
+    let slots = behind(HeldOps {
+        syncing: Some(syncing),
+        sync_gate: Some(sync_gate),
+        ..HeldOps::free()
+    });
+    let first = Progress {
+        level: 1,
+        name: "first".into(),
+    };
+    slots.save("slot-1", &first).unwrap();
+    // The writer holds the first save inside its sync when the second is
+    // made, so the first is dropped after its sync, never renamed in.
+    in_sync
+        .recv_timeout(HELD)
+        .expect("the writer syncs the first save");
+    assert_eq!(slots.load::<Progress>("slot-1").unwrap(), first);
+    slots.save("slot-1", &progress()).unwrap();
+    assert_eq!(slots.load::<Progress>("slot-1").unwrap(), progress());
+    assert_eq!(files(&slots).len(), 2, "two temp files, no slot file yet");
+
+    release.send(()).unwrap();
+    in_sync
+        .recv_timeout(HELD)
+        .expect("the writer syncs the second save");
+    // The first save's temp file went with it: the slot's file was never
+    // the first save's.
+    assert_eq!(files(&slots).len(), 1);
+    assert!(!slots.dir().unwrap().join("slot-1.json").exists());
+    release.send(()).unwrap();
+    slots.flush().unwrap();
+    assert_eq!(slots.load::<Progress>("slot-1").unwrap(), progress());
+    assert_eq!(
+        files(&slots),
+        ["slot-1.json"],
+        "the older save's temp file is gone"
+    );
+}
+
+#[test]
+fn a_load_returns_while_a_renames_retry_sleeps() {
+    let (sleeping, slept) = mpsc::channel();
+    let (wake, sleep_gate) = mpsc::channel();
+    let slots = behind(HeldOps {
+        windows: true,
+        rename_errors: vec![32],
+        sleeping: Some(sleeping),
+        sleep_gate: Some(sleep_gate),
+        ..HeldOps::free()
+    });
+    slots.save("slot-1", &progress()).unwrap();
+    let backoff = slept
+        .recv_timeout(HELD)
+        .expect("the refused rename sleeps before its retry");
+    assert_eq!(backoff, Duration::from_millis(20));
+
+    // The writer sleeps outside the lock a read takes.
+    let reader = slots.clone();
+    let (done, loaded) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = done.send(reader.load::<Progress>("slot-1"));
+    });
+    let loaded = loaded
+        .recv_timeout(Duration::from_secs(5))
+        .expect("a load returns while the retry sleeps");
+    assert_eq!(loaded.unwrap(), progress());
+
+    wake.send(()).unwrap();
+    slots.flush().unwrap();
+    assert_eq!(files(&slots), ["slot-1.json"]);
+}
+
+#[test]
+fn dropping_the_slots_commits_what_is_staged() {
+    let mut slots = slots();
+    slots.write_behind();
+    let dir = slots.dir().unwrap().to_path_buf();
+    for slot in ["a", "b", "c"] {
+        slots.save(slot, &progress()).unwrap();
+    }
+    let clone = slots.clone();
+    drop(slots);
+    // The last clone's drop waits for the writer.
+    drop(clone);
+    let whole = SaveSlots::new(Some(dir));
+    assert_eq!(files(&whole), ["a.json", "b.json", "c.json"]);
+    assert_eq!(whole.load::<Progress>("b").unwrap(), progress());
+}
+
+#[test]
+fn slots_whose_writer_cannot_start_write_each_save_before_it_returns() {
+    let mut slots = slots();
+    slots.write_behind();
+    Arc::get_mut(slots.behind.as_mut().unwrap())
+        .unwrap()
+        .no_thread = true;
+    slots.save("slot-1", &progress()).unwrap();
+    assert_eq!(files(&slots), ["slot-1.json"]);
+    assert_eq!(pending(&slots), 0);
+    assert_eq!(slots.load::<Progress>("slot-1").unwrap(), progress());
+    slots.flush().unwrap();
+}
+
+#[test]
+fn the_slots_keep_their_auto_traits_with_a_writer_inside() {
+    fn auto<T: Send + Sync + std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+    auto::<SaveSlots>();
+}

@@ -1200,15 +1200,19 @@ impl App {
             .inspect_err(|err| log::error!("{err}"))?;
         // A script run forks its physics step too: the perf rows are scripts.
         self.start_physics_workers();
+        // And it writes its saves behind, as a played run does.
+        self.start_saves_writer();
         if self.script.is_none() {
             self.start_hot_reload();
             self.start_gamepads();
         }
         let event_loop = EventLoop::new()
             .inspect_err(|err| log::error!("Failed to create the event loop: {err}"))?;
-        event_loop
+        let ran = event_loop
             .run_app(self)
-            .inspect_err(|err| log::error!("Event loop failed: {err}"))?;
+            .inspect_err(|err| log::error!("Event loop failed: {err}"));
+        self.flush_saves();
+        ran?;
         Ok(())
     }
 
@@ -1636,6 +1640,27 @@ impl App {
             self.config.physics.worker_spin_ms
         );
         self.world.insert_resource(workers);
+    }
+
+    /// Turns the World's [`SaveSlots`] to writing behind (`D-303`): a save
+    /// is staged on the frame, and its wait for the disk goes to the slots'
+    /// writer thread, which starts at the first save. Only a window's run
+    /// does: `App::new` leaves each save written before it returns, so the
+    /// harness, the checks and every test find their files at once.
+    fn start_saves_writer(&mut self) {
+        if let Some(slots) = self.world.get_resource_mut::<SaveSlots>() {
+            slots.write_behind();
+        }
+    }
+
+    /// Waits for the saves still staged as the run ends, the exit's own
+    /// autosave among them, so each is in its slot before the process goes.
+    fn flush_saves(&mut self) {
+        if let Some(slots) = self.world.get_resource::<SaveSlots>()
+            && let Err(error) = slots.flush()
+        {
+            log::error!("a save was not written before the exit: {error}");
+        }
     }
 
     /// Starts the gamepad backend (`D-220`), after the watcher: its thread

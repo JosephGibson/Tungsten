@@ -18,6 +18,52 @@ use tungsten_render::{QuadInstance, RenderOutcome, ScreenshotError};
 struct ExampleEvent;
 
 #[test]
+fn a_windows_run_writes_its_saves_behind_and_new_writes_each_before_it_returns() {
+    use tungsten_core::SaveSlots;
+
+    let dir =
+        std::env::temp_dir().join(format!("tungsten_app_saves_behind_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    // A game without a user folder has no slots to write, behind or not.
+    app.start_saves_writer();
+    assert!(!app.world().resource::<SaveSlots>().writes_behind());
+
+    app.world_mut()
+        .insert_resource(SaveSlots::new(Some(dir.join("saves"))));
+    assert!(
+        !app.world().resource::<SaveSlots>().writes_behind(),
+        "the harness and the checks read a save's file as soon as it returns"
+    );
+    app.start_saves_writer();
+    assert!(app.world().resource::<SaveSlots>().writes_behind());
+
+    // A save made on the frame is read back at once, and in its slot's file
+    // once the run's end has flushed.
+    let slots = app.world().resource::<SaveSlots>().clone();
+    slots
+        .save_stamped(
+            "slot-1",
+            &7u32,
+            &tungsten_core::SaveStamp::new(1, "0.1.0", 1),
+        )
+        .unwrap();
+    assert!(
+        slots
+            .list()
+            .unwrap()
+            .slots
+            .iter()
+            .any(|slot| slot.name == "slot-1")
+    );
+    app.flush_saves();
+    assert!(dir.join("saves").join("slot-1.json").exists());
+    drop(slots);
+    drop(app);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_windows_run_gives_the_world_its_physics_workers_and_new_gives_none() {
     use tungsten_core::physics::PhysicsWorkers;
 
