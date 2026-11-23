@@ -635,10 +635,11 @@ fn only_counting_effects_end_as_ticking_ones_do(crowd: usize) {
 
 #[test]
 fn a_counted_instance_moved_to_another_world_is_read_by_its_id_there() {
-    // An instance the counting pass has read carries its entry's place in
-    // that pass. Another World's pass keeps its own entries, in its own
-    // order, so it must not trust the place: there `plain` has a period and
-    // damage, and the entry at the place the instance carries only counts.
+    // A holder the counting pass has read carries the pass's token, and its
+    // instances their entries' places in that pass. Another World's pass
+    // keeps its own entries, in its own order, so it must not trust the
+    // places: there `plain` has a period and damage, and the entry at the
+    // place the instance carries only counts.
     let (mut home, mut home_schedule) = rig();
     let plain = insert(&mut home, "plain", Effect::new().with_duration(2.0));
     let holder = home.spawn_with((Health::new(10.0),));
@@ -646,10 +647,10 @@ fn a_counted_instance_moved_to_another_world_is_read_by_its_id_there() {
     steps(&mut home, &mut home_schedule, 3);
     let carried = home.get::<Effects>(holder).unwrap().clone();
     assert!(
-        carried.instances[0].counted.0.is_some(),
-        "the home World's pass read the instance"
+        carried.counted.0.is_some(),
+        "the home World's pass read the holder"
     );
-    assert_eq!(carried.instances[0].slot.0, 0);
+    assert_eq!(carried.instances[0].slot.0, 1, "its first known entry");
 
     let (mut away, mut away_schedule) = rig();
     // The away World's first known entry is another effect, one that only
@@ -695,12 +696,22 @@ fn the_counting_passes_mark_is_no_part_of_an_instance() {
     let plain = insert(&mut world, "plain", Effect::new().with_duration(2.0));
     let holder = world.spawn();
     EffectRequest::new(holder, plain).apply(&mut world);
-    let fresh = world.get::<Effects>(holder).unwrap().instances[0].clone();
-    assert!(fresh.counted.0.is_none());
+    let fresh_holder = world.get::<Effects>(holder).unwrap().clone();
+    let fresh = fresh_holder.instances[0].clone();
+    assert!(fresh_holder.counted.0.is_none() && fresh.slot.0 == 0);
     step(&mut world, &mut schedule, 0.0);
-    let marked = world.get::<Effects>(holder).unwrap().instances[0].clone();
-    assert!(marked.counted.0.is_some());
+    let marked_holder = world.get::<Effects>(holder).unwrap().clone();
+    let marked = marked_holder.instances[0].clone();
+    assert!(marked_holder.counted.0.is_some() && marked.slot.0 == 1);
     assert_eq!(marked, fresh);
+    assert_eq!(marked_holder, fresh_holder);
+    assert_eq!(format!("{marked_holder:?}"), format!("{fresh_holder:?}"));
+    assert!(!format!("{marked_holder:?}").contains("counted"));
+    assert_eq!(
+        std::mem::size_of::<EffectInstance>(),
+        168,
+        "no larger for its slot"
+    );
     let printed = format!("{marked:?}");
     assert_eq!(printed, format!("{fresh:?}"));
     assert!(
@@ -715,7 +726,11 @@ fn the_counting_passes_mark_is_no_part_of_an_instance() {
     let saved = serde_json::to_string(&marked).unwrap();
     assert_eq!(saved, serde_json::to_string(&fresh).unwrap());
     let read: EffectInstance = serde_json::from_str(&saved).unwrap();
-    assert!(read.counted.0.is_none());
+    assert_eq!(read.slot.0, 0);
+    let saved = serde_json::to_string(&marked_holder).unwrap();
+    assert_eq!(saved, serde_json::to_string(&fresh_holder).unwrap());
+    let read: Effects = serde_json::from_str(&saved).unwrap();
+    assert!(read.counted.0.is_none() && read.instances[0].slot.0 == 0);
 }
 
 #[test]
