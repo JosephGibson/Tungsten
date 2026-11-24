@@ -178,8 +178,9 @@ impl PhysicsMaterials {
 }
 
 /// How many threads the physics step's forked stages run on, the calling
-/// thread among them (`D-298`): the pair build's walks, a repair's walks and
-/// its removal's scan, an arrival round's search, the narrow phase.
+/// thread among them (`D-298`): the pair build's walks and its grid's fill, a
+/// repair's walks and its removal's scan, an arrival round's search, the
+/// narrow phase.
 ///
 /// A World without the resource, or with one participant, steps on the
 /// calling thread alone, as before the pool. Any count steps to the same

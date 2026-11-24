@@ -1,4 +1,5 @@
 use super::*;
+use crate::Pcg32;
 
 fn aabb(cx: f32, cy: f32, hx: f32, hy: f32) -> Aabb {
     Aabb::new(Vec2::new(cx, cy), Vec2::new(hx, hy))
@@ -647,5 +648,118 @@ fn a_two_grid_walk_by_runs_visits_what_its_walk_by_entries_does() {
         assert!(first.scattered() && !second.scattered(), "seed {seed}");
         assert_eq!(is_direct(&second), !hashed, "seed {seed}'s layout");
         assert!(met > 1_000, "the queries met too little: {met}");
+    }
+}
+
+/// Fill `grid`'s due build by bands of rows, one band after another on this
+/// thread as the step's participants fill them; false when it would not band.
+fn fill_by_bands(grid: &mut SpatialGrid, bands: usize) -> bool {
+    let Some(plan) = grid.banded_fill(1, bands) else {
+        return false;
+    };
+    let (mut starts, mut ids, mut cursors, mut spans) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for band in 0..plan.bands {
+        spans.push((starts.len(), ids.len()));
+        grid.fill_band(&plan, band, &mut starts, &mut ids, &mut cursors);
+    }
+    let parts: Vec<(&[u32], &[ProxyId])> = spans
+        .iter()
+        .enumerate()
+        .map(|(band, &(from, at))| {
+            let band_starts = &starts[from..=from + plan.band_slots(band)];
+            let total = *band_starts.last().unwrap() as usize;
+            (band_starts, &ids[at..at + total])
+        })
+        .collect();
+    grid.finish_banded_fill(&plan, parts.into_iter());
+    true
+}
+
+#[test]
+fn a_banded_fill_lays_out_the_tables_the_serial_fill_does() {
+    let mut rng = Pcg32::seeded(0xF111);
+    let (mut banded_cases, mut crossing_cases) = (0, 0);
+    for case in 0..300 {
+        let cell = [8.0, 16.0, 32.0][case % 3];
+        let mut serial = SpatialGrid::new(cell);
+        let count = 1 + rng.next_u32() as usize % 400;
+        for id in 0..count as u32 {
+            let (x, y) = (rng.next_range(-400.0, 400.0), rng.next_range(-300.0, 300.0));
+            let (hx, hy) = (
+                rng.next_range(0.0, 3.0 * cell),
+                rng.next_range(0.0, 3.0 * cell),
+            );
+            serial.insert(id, &aabb(x, y, hx, hy));
+        }
+        let mut banded = serial.clone();
+        let bands = 1 + rng.next_u32() as usize % 40;
+        let plan = banded.banded_fill(1, bands);
+        if !fill_by_bands(&mut banded, bands) {
+            continue;
+        }
+        serial.prepare();
+        banded_cases += 1;
+        let rows = plan.unwrap().rows as i32;
+        if serial.staged.iter().any(|staged| {
+            let band_of = |row: i32| (row - plan.unwrap().min.y) / rows;
+            band_of(staged.min_cell.y) != band_of(staged.max_cell.y)
+        }) {
+            crossing_cases += 1;
+        }
+        assert!(is_direct(&banded) && !banded.dirty, "case {case}");
+        assert_eq!(banded.slot_starts, serial.slot_starts, "case {case}");
+        assert_eq!(banded.entry_ids, serial.entry_ids, "case {case}");
+        let query = aabb(
+            rng.next_range(-400.0, 400.0),
+            rng.next_range(-300.0, 300.0),
+            60.0,
+            40.0,
+        );
+        let (mut got, mut want) = (Vec::new(), Vec::new());
+        banded.query(&query, None, &mut got);
+        serial.query(&query, None, &mut want);
+        assert_eq!(got, want, "case {case}");
+    }
+    assert!(banded_cases > 250, "{banded_cases} cases banded");
+    assert!(
+        crossing_cases > 200,
+        "{crossing_cases} cases with a record across bands"
+    );
+}
+
+#[test]
+fn a_fill_plans_bands_cover_its_rows_once_up_to_the_top_of_the_range() {
+    for (low, high) in [
+        (-40, 87),
+        (0, 0),
+        (i32::MAX - 127, i32::MAX),
+        (i32::MIN, i32::MIN + 9),
+    ] {
+        for bands in 1..=40 {
+            let height = cells_between(low, high) + 1;
+            let rows = height.div_ceil(bands);
+            let plan = FillPlan {
+                min: IVec2::new(0, low),
+                max: IVec2::new(3, high),
+                width: 4,
+                rows,
+                bands: height.div_ceil(rows),
+            };
+            let mut next = low;
+            let mut slots = 0;
+            for band in 0..plan.bands {
+                let (first, last) = plan.band_rows(band);
+                assert_eq!(first, next, "{low}..={high}, {bands} bands: band {band}");
+                assert!(
+                    first <= last && last <= high,
+                    "{low}..={high}: band {band} {first}..={last}"
+                );
+                slots += plan.band_slots(band);
+                next = last.wrapping_add(1);
+            }
+            assert_eq!(plan.band_rows(plan.bands - 1).1, high);
+            assert_eq!(slots, height * 4, "{low}..={high}, {bands} bands");
+        }
     }
 }

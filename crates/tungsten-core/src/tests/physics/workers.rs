@@ -126,7 +126,8 @@ fn flush(world: &mut World) {
 /// computed and those it waited for; the wakes and keeps its byte decided;
 /// the builds whose carry remap ran beside the walks; the repairs whose walks
 /// forked, and those whose removal did; the forked removals with tangents
-/// and the forked walks with carried tangents or an oversize proxy's pair.
+/// and the forked walks with carried tangents or an oversize proxy's pair; the
+/// builds whose entity grid filled by bands.
 #[derive(Debug, Default, Clone, Copy)]
 struct Forked {
     forks: usize,
@@ -142,6 +143,7 @@ struct Forked {
     tangent_removals: usize,
     tangent_repairs: usize,
     oversize_repairs: usize,
+    fills: usize,
 }
 
 /// Steps one serial world and one forced world a count of [`COUNTS`] and a
@@ -236,6 +238,7 @@ fn lockstep(
                     tangent_removals: pool.tangent_removals,
                     tangent_repairs: pool.tangent_repairs,
                     oversize_repairs: pool.oversize_repairs,
+                    fills: pool.fill_forks,
                 })
         })
         .collect()
@@ -341,7 +344,8 @@ fn a_pile_in_a_tile_pit_steps_alike_at_every_count_split_merged_and_as_built() {
         );
         // The blast knocks bodies into neighbours no contact admitted, so
         // the arrival pass lists them and its rounds fork too; the pile's
-        // trips repair, and each repair's walks and removal fork.
+        // trips repair, and each repair's walks and removal fork; a forked
+        // build fills its grid by bands.
         assert!(
             forks.iter().all(|f| {
                 f.forks > f.rounds + f.narrow
@@ -350,6 +354,7 @@ fn a_pile_in_a_tile_pit_steps_alike_at_every_count_split_merged_and_as_built() {
                     && f.remaps > 0
                     && f.repairs > 0
                     && f.removals > 0
+                    && f.fills > 0
             }),
             "{name}: {forks:?}"
         );
@@ -407,6 +412,7 @@ fn a_pile_with_friction_and_an_oversize_sweeper_steps_alike_at_every_count() {
                 && f.tangent_removals > 0
                 && f.tangent_repairs > 0
                 && f.oversize_repairs > 0
+                && f.fills > 0
         }),
         "{forks:?}"
     );
@@ -564,14 +570,14 @@ fn a_small_world_under_the_thresholds_never_forks() {
     let mut world = seed_world(900.0);
     world.insert_resource(PhysicsWorkers::new(4));
     spawn_pit(&mut world, 0);
-    spawn_mixed(&mut world, &mut Pcg32::seeded(7), 200);
+    spawn_mixed(&mut world, &mut Pcg32::seeded(7), 120);
     for _ in 0..30 {
         physics_step(&mut world);
     }
     let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
     assert!(
         buffers.extra.fork.pool().is_none(),
-        "200 bodies are under every stage's threshold"
+        "120 bodies are under every stage's threshold"
     );
 }
 

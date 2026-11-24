@@ -51,7 +51,8 @@ pub(super) struct WorkerScratch {
     /// pairs, a chunk after another.
     pub(super) pairs: Vec<(u32, u32)>,
     /// Each chunk it took: the chunk, and its output's start and length; a
-    /// removal's, its [`RemovalSpan`]'s place in `removal` and 0.
+    /// removal's, its [`RemovalSpan`]'s place in `removal` and 0; a fill's,
+    /// where its band's starts and ids begin.
     pub(super) spans: Vec<(u32, u32, u32)>,
     /// Its share of an arrival round's search.
     pub(super) arrival: super::arrival::ArrivalWorker,
@@ -68,6 +69,11 @@ pub(super) struct WorkerScratch {
     pub(super) found: Vec<(u32, u32)>,
     pub(super) removed_impulses: Vec<(u128, f32)>,
     pub(super) removed_tangents: Vec<(u128, f32)>,
+    /// A banded fill's bands: each one's slot starts and entry ids, one band
+    /// after another, and the fill's cursors.
+    pub(super) fill_starts: Vec<u32>,
+    pub(super) fill_ids: Vec<ProxyId>,
+    pub(super) fill_cursors: Vec<u32>,
 }
 
 /// Where a removal chunk's outputs lie in its participant's scratch, each
@@ -104,6 +110,77 @@ const REPAIR_FORK_MIN: usize = 256;
 const REMOVAL_CHUNK: usize = 4096;
 const REMOVAL_CHUNK_FORCED: usize = 8;
 const REMOVAL_FORK_MIN: usize = 16_384;
+/// The fewest staged cell refs whose direct-layout fill of the pair grid's
+/// entity grid forks, and the bands it is cut into for each participant.
+const FILL_FORK_MIN: usize = 16_384;
+const FILL_BANDS_PER_PARTICIPANT: usize = 2;
+
+/// A participant's share of a banded fill: the next bands free, each one's
+/// slot starts and entry ids.
+pub(super) fn fill_work(
+    data: &super::pool::ForkData,
+    scratch: &mut WorkerScratch,
+    plan: &crate::physics::broadphase::FillPlan,
+) {
+    let WorkerScratch {
+        fill_starts,
+        fill_ids,
+        fill_cursors,
+        spans,
+        ..
+    } = scratch;
+    fill_starts.clear();
+    fill_ids.clear();
+    spans.clear();
+    while let Some(band) = data.take_chunk(plan.bands) {
+        spans.push((band as u32, fill_starts.len() as u32, fill_ids.len() as u32));
+        data.grid
+            .bodies
+            .fill_band(plan, band, fill_starts, fill_ids, fill_cursors);
+    }
+}
+
+/// The pair grid's entity grid filled by bands of rows on the step's
+/// participants, when its build is due and large and its layout direct:
+/// the tables its own build makes. Out of line, so [`build_walks_forked`]
+/// holds one call for it.
+#[inline(never)]
+fn fill_forked(fork: &mut super::pool::Fork, grid: &mut PairGrid) {
+    // The lockstep tests fill any grid, at the bands a large one takes.
+    let min_refs = if fork.any { 1 } else { FILL_FORK_MIN };
+    let bands = FILL_BANDS_PER_PARTICIPANT * fork.participants as usize;
+    let Some(plan) = grid.bodies.banded_fill(min_refs, bands) else {
+        return;
+    };
+    let workers = fork.workers();
+    let data = workers.fork(super::pool::ForkData {
+        stage: super::pool::Stage::Fill(plan),
+        grid: std::mem::take(grid),
+        ..Default::default()
+    });
+    *grid = data.grid;
+    workers.index_chunks(plan.bands, |scratch| &scratch.spans);
+    let (chunk_at, scratches) = (&workers.chunk_at, &workers.scratches);
+    grid.bodies.finish_banded_fill(
+        &plan,
+        chunk_at
+            .iter()
+            .enumerate()
+            .map(|(band, &(participant, starts, ids))| {
+                let from = &scratches[participant as usize];
+                let (starts, ids) = (starts as usize, ids as usize);
+                let band_starts = &from.fill_starts[starts..=starts + plan.band_slots(band)];
+                let total = *band_starts
+                    .last()
+                    .expect("a band's starts end with its total");
+                (band_starts, &from.fill_ids[ids..ids + total as usize])
+            }),
+    );
+    #[cfg(test)]
+    {
+        workers.fill_forks += 1;
+    }
+}
 
 /// The pair list's columns a forked repair stage writes back: the pairs, their
 /// sent flags, impulses and tangents.
@@ -570,6 +647,7 @@ fn build_walks_forked(
     before: impl FnOnce() -> bool,
 ) {
     let chunk = fork.chunk(BUILD_CHUNK, BUILD_CHUNK_FORCED);
+    fill_forked(fork, grid);
     let workers = fork.workers();
     grid.prepare();
     let chunks = bodies.div_ceil(chunk);
