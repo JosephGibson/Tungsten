@@ -5,7 +5,9 @@ use std::time::Instant;
 
 use crate::counters::{self, Counts, FrameCounters};
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
-use crate::graph::frame::{PassKind, PresentPath, Replaced, ReplacedStages, Shape, declare};
+use crate::graph::frame::{
+    EngineStage, PassKind, PresentPath, Replaced, ReplacedStages, Shape, Stage, declare,
+};
 use crate::graph::pool::{Pool, PoolTexture};
 use crate::graph::{At, Compiled, CompiledPass, Load, Target};
 use crate::lighting::{LightUbo, LightingResources};
@@ -21,11 +23,14 @@ use crate::post::bloom::{
     BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_SHADERS,
     BLOOM_THRESHOLD_SHADER_NAME, BLOOM_UPSAMPLE_SHADER_NAME, BloomShaderIds, BloomStageKind,
 };
+use crate::post::compose::{self, Between, StageInfo};
 use crate::post::smaa::{
     SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
     SMAA_SHADERS, SmaaPipeline, SmaaShaderIds,
 };
-use crate::post::{PostStackRenderer, STOCK_MATERIAL_SHADERS, STOCK_SHADERS, whole_target};
+use crate::post::{
+    PostStackRenderer, STOCK_MATERIAL_SHADERS, STOCK_SHADERS, stage_info, whole_target,
+};
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{
     PendingCapture, ScreenshotError, aligned_bytes_per_row, capture_for_frame, strip_row_padding,
@@ -54,7 +59,7 @@ use tungsten_core::assets::{
 use tungsten_core::config::{
     BloomBase, DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
 };
-use tungsten_core::post::{PostPass, PostStack, VignetteParams};
+use tungsten_core::post::{PostPass, PostStack};
 use tungsten_core::ui::PaintList;
 use winit::window::Window;
 
@@ -173,9 +178,12 @@ pub struct Renderer {
     smaa_shader_ids: SmaaShaderIds,
     bloom_max_mips: u32,
     bloom_base: BloomBase,
-    /// The frame's post stack without its trailing vignette, where bloom's
-    /// composite draws that vignette (`D-302`). Kept for its allocation.
-    folded_stack: PostStack,
+    /// `render.post_fuse`: whether the stages the composer's rule allows
+    /// draw in one pass (`D-307`).
+    post_fuse: bool,
+    /// The stages of the stack being planned, as the composer's rule reads
+    /// them. Kept for its allocation.
+    stage_infos: Vec<StageInfo>,
     /// M29 lit sprite pipeline; rebuilt on `lit_sprite` shader hot-reload.
     lit_sprite_pipeline: LitSpritePipeline,
     /// M29 per-frame lighting UBO + bind group bound at group 2 of the lit
@@ -422,7 +430,6 @@ impl Renderer {
             smaa: false,
             present: PresentPath::Direct,
             stages: Vec::new(),
-            vignette: false,
             bloom_mips: 0,
             bloom_halvings: 0,
             replaced: ReplacedStages::NONE,
@@ -685,7 +692,8 @@ impl Renderer {
             smaa_shader_ids,
             bloom_max_mips,
             bloom_base,
-            folded_stack: PostStack::default(),
+            post_fuse: config.post_fuse,
+            stage_infos: Vec::new(),
             lit_sprite_pipeline,
             lighting,
             materials: HashMap::new(),
@@ -998,6 +1006,10 @@ impl Renderer {
         // leave pixels unwritten, so its pass clears: the frame's shape is
         // read from this record (`D-306`).
         self.replaced.commit(name, &wgsl);
+        // A fused pass that draws this effect is built again at its next
+        // use, from the compiled-in sections: a replaced file's stage draws
+        // alone meanwhile.
+        self.post_stack.forget_fused(name);
         self.shader_cache.commit(id, wgsl, module);
         // Any material bound to this shader needs a rebuild against the new module.
         if name != SPRITE_SHADER_NAME
@@ -1280,11 +1292,11 @@ impl Renderer {
     /// Plans the frame the next record draws. Its shape is everything the
     /// frame's declaration depends on: the surface's size and format, the
     /// config, how the frame reaches the surface, and the stack it draws
-    /// (`vignette`: bloom's composite draws the stack's trailing vignette,
-    /// `D-302`). While the shape is the last frame's, the compiled frame and
-    /// its textures stand, and every bind group over them with them. A new
-    /// shape is declared and compiled, and its slots take pooled textures.
-    fn plan_frame(&mut self, present: PresentPath, post_stack: &PostStack, vignette: bool) {
+    /// with the stages the composer fuses (`D-307`). While the shape is the
+    /// last frame's, the compiled frame and its textures stand, and every
+    /// bind group over them with them. A new shape is declared and
+    /// compiled, and its slots take pooled textures.
+    fn plan_frame(&mut self, present: PresentPath, post_stack: &PostStack) {
         let output = (self.surface_config.width, self.surface_config.height);
         let halvings = self.bloom_base.halvings(output.1);
         let shape = &mut self.shape_scratch;
@@ -1297,7 +1309,30 @@ impl Renderer {
         let replaced = &self.replaced;
         shape.set_stages(post_stack, |pass| replaced.own(pass));
         shape.replaced = replaced.stages();
-        shape.vignette = vignette;
+        // The composer's rule: the two stages that draw in one pass
+        // (`compose::fused_pair`). The pair joins only once its pass is
+        // built, so a failed build leaves its stages drawn alone.
+        if self.post_fuse && post_stack.len() >= 2 && !shape.smaa {
+            let composite = !shape.replaced.holds(EngineStage::BloomComposite);
+            self.stage_infos.clear();
+            self.stage_infos
+                .extend(post_stack.0.iter().zip(&shape.stages).map(|(pass, stage)| {
+                    let own = match stage {
+                        Stage::Stock { own, .. } => *own,
+                        Stage::Bloom => composite,
+                    };
+                    stage_info(pass, own)
+                }));
+            if let Some(pair) = compose::fused_pair(&self.stage_infos, self.post_fuse, shape.smaa)
+                && self.post_stack.fused_ready(
+                    &self.device,
+                    &post_stack.0[pair.clone()],
+                    Between::Clamp,
+                )
+            {
+                shape.join(pair);
+            }
+        }
         shape.bloom_halvings = halvings;
         shape.bloom_mips =
             bloom_mip_count_for_halvings(output.0, output.1, self.bloom_max_mips, halvings);
@@ -1540,10 +1575,8 @@ impl Renderer {
         ui: &PaintList,
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
-        let mut scratch = std::mem::take(&mut self.folded_stack);
-        let (post_stack, vignette) = self.fold_vignette(post_stack, &mut scratch);
         self.gpu_timings.clear_durations();
-        let result = self.render_frame_internal(
+        self.render_frame_internal(
             view_proj,
             quads,
             sprite_batches,
@@ -1552,34 +1585,8 @@ impl Renderer {
             text_sections,
             ui,
             post_stack,
-            vignette,
             None,
-        );
-        self.folded_stack = scratch;
-        result
-    }
-
-    /// The stack this frame draws and the vignette bloom's composite draws
-    /// with it (`D-302`): the game's own stack, or, where its trailing
-    /// vignette folds ([`crate::post::trailing_vignette`]), that stack
-    /// without it, copied into `scratch`. Everything that plans the frame
-    /// reads the stack this returns: the pass order, the targets, the
-    /// timing table and the counters.
-    fn fold_vignette<'s>(
-        &self,
-        stack: &'s PostStack,
-        scratch: &'s mut PostStack,
-    ) -> (&'s PostStack, Option<VignetteParams>) {
-        let smaa_tail = self.post_aa.is_smaa() && self.smaa.is_some();
-        let stock = self.post_stack.stock_vignette_and_composite();
-        match crate::post::trailing_vignette(stack, smaa_tail, stock) {
-            Some(vignette) => {
-                scratch.0.clear();
-                scratch.0.extend_from_slice(&stack.0[..stack.0.len() - 1]);
-                (scratch, Some(vignette))
-            }
-            None => (stack, None),
-        }
+        )
     }
 
     /// The app's number for the frame it renders next, which a timed
@@ -1636,38 +1643,6 @@ impl Renderer {
         ui: &PaintList,
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
-        let mut scratch = std::mem::take(&mut self.folded_stack);
-        let (post_stack, vignette) = self.fold_vignette(post_stack, &mut scratch);
-        let result = self.render_frame_timed_folded(
-            view_proj,
-            quads,
-            sprite_batches,
-            debug_quads,
-            debug_lines,
-            text_sections,
-            ui,
-            post_stack,
-            vignette,
-        );
-        self.folded_stack = scratch;
-        result
-    }
-
-    /// [`Self::render_frame_full_timed`] on the stack the frame draws
-    /// ([`Self::fold_vignette`]).
-    #[allow(clippy::too_many_arguments)]
-    fn render_frame_timed_folded(
-        &mut self,
-        view_proj: &glam::Mat4,
-        quads: &[QuadInstance],
-        sprite_batches: &[SpriteBatch],
-        debug_quads: &[QuadInstance],
-        debug_lines: &[DebugLineInstance],
-        text_sections: &[TextSection],
-        ui: &PaintList,
-        post_stack: &PostStack,
-        vignette: Option<VignetteParams>,
-    ) -> Result<RenderOutcome, RenderError> {
         self.gpu_timings.samples.clear();
         if !self.timestamp_support {
             self.gpu_timings.clear_durations();
@@ -1680,7 +1655,6 @@ impl Renderer {
                 text_sections,
                 ui,
                 post_stack,
-                vignette,
                 None,
             );
         }
@@ -1695,7 +1669,7 @@ impl Renderer {
         // The ring is sized for the frame's passes and one more, a capture's
         // blit, so a capture frame rebuilds nothing.
         let present = self.present_path();
-        self.plan_frame(present, post_stack, vignette.is_some());
+        self.plan_frame(present, post_stack);
         let passes = self
             .frame
             .as_ref()
@@ -1727,7 +1701,6 @@ impl Renderer {
             text_sections,
             ui,
             post_stack,
-            vignette,
             taken.as_mut().map(|(_, slot)| slot),
         );
         if let Some((index, slot)) = taken {
@@ -1753,7 +1726,6 @@ impl Renderer {
         text_sections: &[TextSection],
         ui: &PaintList,
         post_stack: &PostStack,
-        vignette: Option<VignetteParams>,
         mut timing: Option<&mut TimingResources>,
     ) -> Result<RenderOutcome, RenderError> {
         self.cpu_timings = CpuFrameTimings::default();
@@ -1761,7 +1733,7 @@ impl Renderer {
         // The armed capture picks the frame's path here; the acquire takes
         // it.
         let present_path = self.present_path();
-        self.plan_frame(present_path, post_stack, vignette.is_some());
+        self.plan_frame(present_path, post_stack);
         let draws = FrameDraws {
             quads,
             sprite_batches,
@@ -1769,7 +1741,6 @@ impl Renderer {
             debug_lines,
             ui,
             post_stack,
-            vignette,
         };
 
         // Late acquire (`D-145`): the passes that draw into no imported
@@ -1818,7 +1789,7 @@ impl Renderer {
             if let Some(slot) = timing.take() {
                 slot.begin();
             }
-            self.plan_frame(present_path, post_stack, vignette.is_some());
+            self.plan_frame(present_path, post_stack);
             first =
                 self.record_before_acquire(view_proj, text_sections, draws, timing.as_deref_mut());
             encode_ms += record_start.elapsed().as_secs_f64() as f32 * 1000.0;
@@ -2024,7 +1995,6 @@ impl Renderer {
             debug_quads,
             debug_lines,
             post_stack,
-            vignette,
             ..
         } = draws;
         let Some(frame) = self.frame.as_ref() else {
@@ -2054,8 +2024,6 @@ impl Renderer {
                     params,
                     attachment,
                     frame.shape.bloom_halvings,
-                    // The folded vignette is the last slot's, a bloom.
-                    vignette.as_ref().filter(|_| slot + 1 == post_stack.len()),
                     source,
                     pyramid,
                     frame.shape.bloom_mips.max(1),
@@ -2101,21 +2069,37 @@ impl Renderer {
                     );
                     true
                 }
-                PassKind::Post { slot } => {
-                    if let Some(post_pass) = post_stack.0.get(slot)
+                // A stock effect alone draws with its own pipeline; with
+                // the stages joined to it, with the pass the composer
+                // generated for them (`D-307`).
+                PassKind::Post { slot, stages } => {
+                    if let Some(run) = post_stack.0.get(slot..slot + stages)
                         && let Some(source) = views.sampled(pass.reads.first())
                     {
-                        self.post_stack
-                            .warn_inert(post_pass, self.clear_color.a as f32);
-                        self.post_stack.record_pass(
-                            &self.device,
-                            &self.queue,
-                            &mut render_pass,
-                            source,
-                            post_pass,
-                            slot,
-                        );
-                        true
+                        for stage in run {
+                            self.post_stack.warn_inert(stage, self.clear_color.a as f32);
+                        }
+                        if let [post_pass] = run {
+                            self.post_stack.record_pass(
+                                &self.device,
+                                &self.queue,
+                                &mut render_pass,
+                                source,
+                                post_pass,
+                                slot,
+                            );
+                            true
+                        } else {
+                            self.post_stack.record_fused(
+                                &self.device,
+                                &self.queue,
+                                &mut render_pass,
+                                Some(source),
+                                run,
+                                slot,
+                                Between::Clamp,
+                            )
+                        }
                     } else {
                         false
                     }
@@ -2135,11 +2119,31 @@ impl Renderer {
                     slot,
                     BloomStageKind::Up(level),
                 ),
-                PassKind::BloomComposite { slot, vignette } => self.post_stack.bloom.draw_stage(
+                PassKind::BloomComposite { slot, stages: 1 } => self.post_stack.bloom.draw_stage(
                     &mut render_pass,
                     slot,
-                    BloomStageKind::Composite { vignette },
+                    BloomStageKind::Composite,
                 ),
+                // The composite with the stages joined to it, in the pass
+                // the composer generated: it binds the slot's own groups.
+                PassKind::BloomComposite { slot, stages } => {
+                    if let Some(run) = post_stack.0.get(slot..slot + stages) {
+                        for stage in &run[1..] {
+                            self.post_stack.warn_inert(stage, self.clear_color.a as f32);
+                        }
+                        self.post_stack.record_fused(
+                            &self.device,
+                            &self.queue,
+                            &mut render_pass,
+                            None,
+                            run,
+                            slot,
+                            Between::Clamp,
+                        )
+                    } else {
+                        false
+                    }
+                }
                 // The edge test reads the stack's last version through its
                 // non-sRGB twin where it has one, so it sees encoded values.
                 PassKind::SmaaEdges => {
@@ -2408,9 +2412,6 @@ struct FrameDraws<'f> {
     /// The UI paint list (M46).
     ui: &'f PaintList,
     post_stack: &'f PostStack,
-    /// The vignette the stack's last pass, a bloom, draws in its composite
-    /// (`D-302`).
-    vignette: Option<VignetteParams>,
 }
 
 #[allow(clippy::too_many_arguments)]

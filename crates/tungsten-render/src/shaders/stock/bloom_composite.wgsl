@@ -5,71 +5,55 @@
 //
 // Stage 4 — composite. Reads the slot's source view (group 0) and the bloom
 // pyramid mip 0 (group 2), writes `mix(src, src + bloom * intensity, radius)`
-// into the slot dst (PostPing/PostPong) using replace blending so stale dst
-// contents do not accumulate across frames. composite_tint is reserved for a
-// future tinted-bloom knob and defaults to white (1,1,1,1).
+// into the slot's target using replace blending so stale target contents do
+// not accumulate across frames. Reads v0 = inv_src_size, v1 = composite_tint
+// (reserved for a future tinted-bloom knob, white by default), f = threshold,
+// knee, intensity, radius, i = mip_count, dst_level, pass_kind.
 
 struct Params {
-    inv_src_size: vec4<f32>,
-    composite_tint: vec4<f32>,
-    vignette_color: vec4<f32>,
-    vignette_shape: vec4<f32>,
-    knobs: vec4<f32>,
-    levels: vec4<i32>,
-    _reserved: array<vec4<u32>, 10>,
+    v0: vec4<f32>,
+    v1: vec4<f32>,
+    v2: vec4<f32>,
+    v3: vec4<f32>,
+    f: vec4<f32>,
+    i: vec4<i32>,
 };
 
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var src_sampler: sampler;
 @group(1) @binding(0) var<uniform> params: Params;
-@group(2) @binding(0) var bloom_mip0: texture_2d<f32>;
-@group(2) @binding(1) var bloom_sampler: sampler;
 
-struct VsOut {
-    @builtin(position) pos: vec4<f32>,
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
     @location(0) uv: vec2<f32>,
 };
 
 @vertex
-fn vs_main(@builtin(vertex_index) vi: u32) -> VsOut {
-    let q = vec2<f32>(f32((vi << 1u) & 2u), f32(vi & 2u));
-    var out: VsOut;
-    out.pos = vec4<f32>(q * 2.0 - 1.0, 0.0, 1.0);
-    out.uv = vec2<f32>(q.x, 1.0 - q.y);
+fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
+    var uv = vec2<f32>(f32((vi << 1u) & 2u), f32(vi & 2u));
+    var out: VertexOutput;
+    out.position = vec4<f32>(uv * 2.0 - 1.0, 0.0, 1.0);
+    out.uv = vec2<f32>(uv.x, 1.0 - uv.y);
     return out;
 }
 
-@fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    let scene = textureSampleLevel(src, src_sampler, in.uv, 0.0);
-    let bloom_rgb = textureSampleLevel(bloom_mip0, bloom_sampler, in.uv, 0.0).rgb
-                  * params.composite_tint.rgb;
-    let intensity = params.knobs.z;
-    let radius = clamp(params.knobs.w, 0.0, 1.0);
+// @fx begin head
+@group(2) @binding(0) var bloom_composite_mip0: texture_2d<f32>;
+@group(2) @binding(1) var bloom_composite_sampler: sampler;
+
+fn bloom_composite_head(uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let scene = textureSampleLevel(src, src_sampler, uv, 0.0);
+    let bloom_rgb = textureSampleLevel(bloom_composite_mip0, bloom_composite_sampler, uv, 0.0).rgb
+                  * p.v1.rgb;
+    let intensity = p.f.z;
+    let radius = clamp(p.f.w, 0.0, 1.0);
     let added = scene.rgb + bloom_rgb * intensity;
     let mixed = mix(scene.rgb, added, radius);
     return vec4<f32>(mixed, scene.a);
 }
+// @fx end
 
-// The composite with the stack's trailing vignette drawn in the same pass
-// (D-302): `fs_main`'s colour, clamped as the 8-bit target between the two
-// passes clamped it, then `vignette.wgsl`'s tint. `vignette_color` is its
-// colour; `vignette_shape` its inner radius, outer radius and strength.
 @fragment
-fn fs_vignette(in: VsOut) -> @location(0) vec4<f32> {
-    let scene = textureSampleLevel(src, src_sampler, in.uv, 0.0);
-    let bloom_rgb = textureSampleLevel(bloom_mip0, bloom_sampler, in.uv, 0.0).rgb
-                  * params.composite_tint.rgb;
-    let intensity = params.knobs.z;
-    let radius = clamp(params.knobs.w, 0.0, 1.0);
-    let added = scene.rgb + bloom_rgb * intensity;
-    let mixed = clamp(mix(scene.rgb, added, radius), vec3<f32>(0.0), vec3<f32>(1.0));
-
-    let d = distance(in.uv, vec2<f32>(0.5, 0.5));
-    let inner = params.vignette_shape.x;
-    let outer = max(params.vignette_shape.y, inner + 1e-4);
-    let t = clamp((d - inner) / (outer - inner), 0.0, 1.0);
-    let strength = clamp(params.vignette_shape.z, 0.0, 1.0);
-    let tinted = mix(mixed, params.vignette_color.rgb, t * strength);
-    return vec4<f32>(tinted, scene.a);
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return bloom_composite_head(in.uv, params);
 }

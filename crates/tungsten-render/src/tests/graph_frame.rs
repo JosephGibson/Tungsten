@@ -68,21 +68,47 @@ fn ladder(slot: usize) -> Role {
     }
 }
 
+/// The slots that lead a pass: every stage but those joined to the stage
+/// before them. The old frame folded one such stage, a vignette into
+/// bloom's composite (`D-302`); it drew the stack without it.
+fn leads(shape: &Shape) -> Vec<usize> {
+    (0..shape.stages.len())
+        .filter(|&slot| {
+            slot == 0 || !matches!(shape.stages[slot], Stage::Stock { joined: true, .. })
+        })
+        .collect()
+}
+
+/// The names of the stages joined to the stage in `slot`.
+fn joined_names(shape: &Shape, slot: usize) -> Vec<&'static str> {
+    shape.stages[slot + 1..]
+        .iter()
+        .map_while(|stage| match stage {
+            Stage::Stock {
+                name, joined: true, ..
+            } => Some(*name),
+            _ => None,
+        })
+        .collect()
+}
+
 /// What the stack's output was called in the old frame, and the overlay's
-/// target on a blit frame without SMAA.
-fn stack_output(len: usize) -> Role {
-    if len == 0 {
+/// target on a blit frame without SMAA: the target of its last pass.
+fn stack_output(passes: usize) -> Role {
+    if passes == 0 {
         Role::SceneColor
     } else {
-        ladder(len - 1)
+        ladder(passes - 1)
     }
 }
 
-/// The old frame for `shape`, and the index its acquire split fell on.
+/// The old frame for `shape`, and the index its acquire split fell on. A
+/// run of joined stages is one pass of it, as the folded vignette was, under
+/// its first slot's label.
 fn reference(shape: &Shape) -> (Vec<RefPass>, usize) {
-    let len = shape.stages.len();
+    let leads = leads(shape);
     let direct = shape.present != PresentPath::Capture;
-    let scene_is_last = direct && len == 0 && !shape.smaa;
+    let scene_is_last = direct && leads.is_empty() && !shape.smaa;
     let mut passes = Vec::new();
 
     // The scene: into the swapchain, or resolving into it, when no stage
@@ -98,32 +124,36 @@ fn reference(shape: &Shape) -> (Vec<RefPass>, usize) {
     scene.depth = shape.depth;
     passes.push(scene);
 
-    // Where each slot's passes begin: the old split was counted in slots.
+    // Where each stack pass's passes begin: the old split was counted in
+    // slots.
     let mut slot_start = Vec::new();
-    for (slot, stage) in shape.stages.iter().enumerate() {
+    for (index, &slot) in leads.iter().enumerate() {
         slot_start.push(passes.len());
-        let source = if slot == 0 {
+        let source = if index == 0 {
             Role::SceneColor
         } else {
-            ladder(slot - 1)
+            ladder(index - 1)
         };
-        let writes_swapchain = direct && !shape.smaa && slot + 1 == len;
+        let writes_swapchain = direct && !shape.smaa && index + 1 == leads.len();
         let target = if writes_swapchain {
             Role::Swapchain
         } else {
-            ladder(slot)
+            ladder(index)
         };
         let label = if slot < 32 {
             format!("tungsten_post_pass_{slot}")
         } else {
             "tungsten_post_pass_overflow".to_string()
         };
-        match stage {
+        let joined = joined_names(shape, slot)
+            .iter()
+            .fold(String::new(), |all, name| all + "_" + name);
+        match shape.stages[slot] {
             Stage::Stock { name, .. } => {
                 // A stock pass loads offscreen and clears the swapchain.
                 passes.push(ref_pass(
                     label,
-                    format!("post{slot}_{name}"),
+                    format!("post{slot}_{name}{joined}"),
                     target,
                     writes_swapchain,
                     &[source],
@@ -161,15 +191,9 @@ fn reference(shape: &Shape) -> (Vec<RefPass>, usize) {
                         &[Role::Bloom(level + 1)],
                     ));
                 }
-                let vignette = shape.vignette && slot + 1 == len;
-                let composite = if vignette {
-                    format!("post{slot}_bloom_composite_vignette")
-                } else {
-                    format!("post{slot}_bloom_composite")
-                };
                 passes.push(ref_pass(
                     "tungsten_bloom_composite",
-                    composite,
+                    format!("post{slot}_bloom_composite{joined}"),
                     target,
                     writes_swapchain,
                     &[source, Role::Bloom(0)],
@@ -181,7 +205,7 @@ fn reference(shape: &Shape) -> (Vec<RefPass>, usize) {
     // SMAA the last post slot, whole; with neither the scene.
     let mut split = slot_start.last().copied().unwrap_or(0);
 
-    let source = stack_output(len);
+    let source = stack_output(leads.len());
     let mut overlay = if direct { Role::Swapchain } else { source };
     if shape.smaa {
         passes.push(ref_pass(
@@ -295,7 +319,6 @@ fn shape(stages: &[Stage]) -> Shape {
         smaa: false,
         present: PresentPath::Direct,
         stages: stages.to_vec(),
-        vignette: false,
         bloom_mips: 6,
         bloom_halvings: 1,
         replaced: ReplacedStages::NONE,
@@ -303,36 +326,56 @@ fn shape(stages: &[Stage]) -> Shape {
 }
 
 const fn stock(name: &'static str) -> Stage {
-    Stage::Stock { name, own: true }
+    Stage::Stock {
+        name,
+        own: true,
+        joined: false,
+    }
+}
+
+/// A stage that draws in the pass of the stage before it.
+const fn joined(name: &'static str) -> Stage {
+    Stage::Stock {
+        name,
+        own: true,
+        joined: true,
+    }
 }
 
 const V: Stage = stock("vignette");
 const F: Stage = stock("fade");
 const D: Stage = stock("dither");
 const B: Stage = Stage::Bloom;
+const VJ: Stage = joined("vignette");
+const FJ: Stage = joined("fade");
 
-/// Every shape the old order's arguments spanned, and bloom's.
+/// Every shape the old order's arguments spanned, bloom's, and stacks with
+/// stages joined to the stage before them.
 fn matrix() -> Vec<Shape> {
     let seventeen: Vec<Stage> = (0..17)
         .map(|slot| if slot % 3 == 0 { F } else { V })
         .collect();
-    let stacks: Vec<(Vec<Stage>, bool)> = vec![
-        (vec![], false),
-        (vec![V], false),
-        (vec![V, F], false),
-        (vec![V, F, D], false),
-        (seventeen, false),
-        (vec![B], false),
-        (vec![B], true),
-        (vec![B, V], false),
-        (vec![V, B], false),
-        (vec![V, B], true),
-        (vec![F, B, V], false),
-        (vec![B, B], false),
-        (vec![B, F, B], true),
+    let stacks: Vec<Vec<Stage>> = vec![
+        vec![],
+        vec![V],
+        vec![V, F],
+        vec![V, F, D],
+        seventeen,
+        vec![B],
+        vec![B, VJ],
+        vec![B, V],
+        vec![V, B],
+        vec![V, B, VJ],
+        vec![F, B, V],
+        vec![B, B],
+        vec![B, F, B, VJ],
+        vec![V, FJ],
+        vec![D, V, FJ],
+        vec![B, V, FJ],
+        vec![D, FJ, VJ, B, FJ],
     ];
     let mut shapes = Vec::new();
-    for (stages, vignette) in &stacks {
+    for stages in &stacks {
         for samples in [1, 4] {
             for depth in [false, true] {
                 for smaa in [false, true] {
@@ -342,16 +385,11 @@ fn matrix() -> Vec<Shape> {
                         PresentPath::DirectCapture,
                     ] {
                         for (bloom_mips, bloom_halvings) in [(6, 1), (5, 2), (1, 1)] {
-                            // The fold never applied under an SMAA tail.
-                            if *vignette && smaa {
-                                continue;
-                            }
                             shapes.push(Shape {
                                 samples,
                                 depth,
                                 smaa,
                                 present,
-                                vignette: *vignette,
                                 bloom_mips,
                                 bloom_halvings,
                                 ..shape(stages)
@@ -368,7 +406,7 @@ fn matrix() -> Vec<Shape> {
 #[test]
 fn the_declaration_draws_the_old_orders_frame() {
     let shapes = matrix();
-    assert_eq!(shapes.len(), 828);
+    assert_eq!(shapes.len(), 17 * 72);
     for shape in &shapes {
         let compiled = declare(shape)
             .compile()
@@ -519,7 +557,10 @@ fn the_declaration_draws_the_old_orders_frame() {
             .position(on_import)
             .expect("a frame reaches the surface");
         assert_eq!(compiled.split, first, "{context}");
-        let ends_in_bloom = !shape.smaa && shape.stages.last() == Some(&B);
+        let ends_in_bloom = !shape.smaa
+            && leads(shape)
+                .last()
+                .is_some_and(|&slot| shape.stages[slot] == B);
         if shape.present == PresentPath::Capture {
             assert_eq!(compiled.split, compiled.passes.len() - 1, "{context}");
         } else if ends_in_bloom {
@@ -635,15 +676,28 @@ fn a_replaced_shaders_pass_clears() {
     let replaced = Stage::Stock {
         name: "vignette",
         own: false,
+        joined: false,
     };
 
     // A stock pass: on the output and offscreen.
-    let post = |kind: &PassKind| matches!(kind, PassKind::Post { slot: 0 });
+    let post = |kind: &PassKind| matches!(kind, PassKind::Post { slot: 0, .. });
     assert_eq!(load_of(&shape(&[V]), post), [Load::Nothing]);
     assert_eq!(load_of(&shape(&[replaced]), post), [clear]);
     assert_eq!(load_of(&shape(&[V, F]), post), [Load::Keep]);
     assert_eq!(load_of(&shape(&[replaced, F]), post), [clear]);
     assert_ne!(shape(&[V]), shape(&[replaced]), "the shape moves with it");
+    // A pass that draws a replaced file's stage beside its own clears too:
+    // the rule joins no such stage, and the declaration does not rely on it.
+    let joined_replaced = Stage::Stock {
+        name: "fade",
+        own: false,
+        joined: true,
+    };
+    assert_eq!(load_of(&shape(&[V, FJ]), post), [Load::Nothing]);
+    assert_eq!(load_of(&shape(&[V, joined_replaced]), post), [clear]);
+    let composite = |kind: &PassKind| matches!(kind, PassKind::BloomComposite { .. });
+    assert_eq!(load_of(&shape(&[B, VJ]), composite), [Load::Nothing]);
+    assert_eq!(load_of(&shape(&[B, joined_replaced]), composite), [clear]);
 
     // Each of bloom's and SMAA's stages, on the output where it can be and
     // offscreen (a capture frame draws every stage offscreen).
@@ -854,11 +908,11 @@ fn a_frame_holds_only_the_targets_it_uses() {
     assert_eq!(held(&shape(&[])), []);
     // Under `cpu_stable` no pass attaches depth, so none is held.
     assert_eq!(held(&shape(&[V])), [color]);
-    // Example 01's frame: bloom, its vignette folded, under `gpu_depth`.
+    // Example 01's frame: bloom and the vignette its composite draws, under
+    // `gpu_depth`.
     let e01 = Shape {
         depth: true,
-        vignette: true,
-        ..shape(&[B])
+        ..shape(&[B, VJ])
     };
     assert_eq!(held(&e01), [color, depth, pyramid]);
     // A stack of any length alternates between two colour textures.
@@ -925,31 +979,81 @@ fn no_frame_of_the_matrix_drops_a_pass() {
 }
 
 #[test]
-fn a_folded_vignette_takes_no_pass_of_the_frame() {
-    // Bloom then vignette: 2 * 6 bloom passes and the vignette's, with the
-    // scene and the overlay. Where bloom's composite draws the vignette
-    // (`D-302`) the frame plans the stack without it: one pass fewer, the
-    // composite under a label of its own.
-    let timings = |shape: &Shape| -> Vec<String> {
+fn a_run_of_joined_stages_is_one_pass_under_its_stages_names() {
+    let passes = |shape: &Shape| -> Vec<(PassKind, String)> {
         let compiled = declare(shape).compile().expect("compiles");
         compiled
             .passes
             .iter()
-            .map(|pass| pass.timing.clone())
+            .map(|pass| (pass.kind, pass.timing.clone()))
             .collect()
     };
-    let apart = timings(&shape(&[B, V]));
-    let folded = timings(&Shape {
-        vignette: true,
-        ..shape(&[B])
-    });
+    // Bloom then vignette: 2 * 6 bloom passes and the vignette's, with the
+    // scene and the overlay. Where the composite draws the vignette the
+    // frame has one pass fewer, the composite under the label `D-302` gave
+    // it.
+    let apart = passes(&shape(&[B, V]));
     assert_eq!(apart.len(), 15);
     assert_eq!(
         apart[12..],
-        ["post0_bloom_composite", "post1_vignette", "text"]
+        [
+            (
+                PassKind::BloomComposite { slot: 0, stages: 1 },
+                "post0_bloom_composite".to_string()
+            ),
+            (
+                PassKind::Post { slot: 1, stages: 1 },
+                "post1_vignette".to_string()
+            ),
+            (PassKind::Overlay, "text".to_string()),
+        ]
     );
-    assert_eq!(folded.len(), 14);
-    assert_eq!(folded[12..], ["post0_bloom_composite_vignette", "text"]);
+    let fused = passes(&shape(&[B, VJ]));
+    assert_eq!(fused.len(), 14);
+    assert_eq!(
+        fused[12..],
+        [
+            (
+                PassKind::BloomComposite { slot: 0, stages: 2 },
+                "post0_bloom_composite_vignette".to_string()
+            ),
+            (PassKind::Overlay, "text".to_string()),
+        ]
+    );
+    // A stock pair under a screen transition, behind example 01's bloom:
+    // the pass keeps its first stage's slot.
+    let transition = passes(&shape(&[B, V, FJ]));
+    assert_eq!(transition.len(), 15);
+    assert_eq!(
+        transition[12..14],
+        [
+            (
+                PassKind::BloomComposite { slot: 0, stages: 1 },
+                "post0_bloom_composite".to_string()
+            ),
+            (
+                PassKind::Post { slot: 1, stages: 2 },
+                "post1_vignette_fade".to_string()
+            ),
+        ]
+    );
+    // A stage after a run leads the next pass, under its own slot.
+    let after = passes(&shape(&[D, FJ, VJ, B, FJ]));
+    assert_eq!(
+        after[1],
+        (
+            PassKind::Post { slot: 0, stages: 3 },
+            "post0_dither_fade_vignette".to_string()
+        )
+    );
+    assert_eq!(after.last().map(|(kind, _)| *kind), Some(PassKind::Overlay));
+    assert_eq!(
+        after[after.len() - 2],
+        (
+            PassKind::BloomComposite { slot: 3, stages: 2 },
+            "post3_bloom_composite_fade".to_string()
+        )
+    );
 }
 
 #[test]
@@ -973,10 +1077,22 @@ fn the_shape_follows_the_stack() {
             B,
             Stage::Stock {
                 name: "vignette",
-                own: false
+                own: false,
+                joined: false,
             }
         ]
     );
+    // The composer's runs join the stages after their first.
+    shape.set_stages(&stack, |_| true);
+    assert_eq!((shape.run_len(0), shape.run_len(1)), (1, 1));
+    shape.join(1..3);
+    assert_eq!(shape.stages, [F, B, VJ]);
+    assert_eq!((shape.run_len(0), shape.run_len(1)), (1, 2));
+    // A bloom leads a pass whatever a run says, and a refill starts over.
+    shape.join(0..2);
+    assert_eq!(shape.stages, [F, B, VJ]);
+    shape.set_stages(&stack, |_| true);
+    assert_eq!(shape.stages, [F, B, V]);
     shape.set_stages(&PostStack::default(), |_| true);
     assert!(shape.stages.is_empty());
 }
@@ -989,9 +1105,16 @@ fn post_labels_run_out_into_one_shared_label() {
 }
 
 #[test]
-fn bloom_labels_name_the_quarter_base_and_the_folded_vignette() {
+fn bloom_labels_name_the_quarter_base_and_the_joined_stages() {
     assert_eq!(threshold_label(0, 1), "post0_bloom_threshold");
     assert_eq!(threshold_label(1, 2), "post1_bloom_threshold_quarter");
-    assert_eq!(composite_label(0, false), "post0_bloom_composite");
-    assert_eq!(composite_label(2, true), "post2_bloom_composite_vignette");
+    assert_eq!(composite_label(0, &[]), "post0_bloom_composite");
+    assert_eq!(
+        composite_label(2, &["vignette"]),
+        "post2_bloom_composite_vignette"
+    );
+    assert_eq!(
+        composite_label(1, &["fog", "fade"]),
+        "post1_bloom_composite_fog_fade"
+    );
 }

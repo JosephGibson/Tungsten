@@ -45,17 +45,24 @@ pub enum ShaderError {
     Pipeline { name: String, report: String },
 }
 
-/// Builds GPU objects inside a validation error scope. `Err` carries wgpu's
-/// report and the caller keeps its live objects: a module that passes Naga
-/// but not pipeline validation never reaches the default error handler,
-/// which panics (B2, `D-057`).
+/// Builds GPU objects inside a validation error scope and an internal one.
+/// `Err` carries wgpu's report and the caller keeps its live objects: a
+/// module that passes Naga but not pipeline validation, or one the
+/// backend's own compiler refuses (an internal error, which a validation
+/// scope does not hold), never reaches the default error handler, which
+/// panics (B2, `D-057`). A pass the composer generates is built through
+/// here in the frame that first draws it (`D-307`).
 pub(crate) fn build_validated<T>(
     device: &wgpu::Device,
     build: impl FnOnce() -> T,
 ) -> Result<T, String> {
-    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+    let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let built = build();
-    match pollster::block_on(scope.pop()) {
+    // Scopes pop in the reverse of their pushes.
+    let invalid = pollster::block_on(validation.pop());
+    let refused = pollster::block_on(internal.pop());
+    match invalid.or(refused) {
         None => Ok(built),
         Some(error) => Err(error.to_string()),
     }

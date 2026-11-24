@@ -15,9 +15,10 @@ fn a_layout_holds_two_queries_a_pass_and_rejects_query_overflow() {
 #[test]
 fn a_layout_moves_with_its_pass_count_or_its_size() {
     // Bloom then vignette draws fifteen passes, and fourteen where bloom's
-    // composite draws the vignette (`D-302`; the frame's own test is
-    // `graph_frame::a_folded_vignette_takes_no_pass_of_the_frame`): with the
-    // blit's room, a stack that starts or stops folding rebuilds the ring.
+    // composite draws the vignette (`D-307`; the frame's own test is
+    // `graph_frame::a_run_of_joined_stages_is_one_pass_under_its_stages_names`):
+    // with the blit's room, a stack that starts or stops fusing rebuilds the
+    // ring.
     let size = (3840, 2160);
     assert_eq!(TimingLayout::new(16, size), TimingLayout::new(16, size));
     assert_ne!(TimingLayout::new(16, size), TimingLayout::new(15, size));

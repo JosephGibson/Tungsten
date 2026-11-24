@@ -8187,6 +8187,7 @@ pub tungsten_core::config::RenderConfig::depth_sort: tungsten_core::config::Dept
 pub tungsten_core::config::RenderConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::config::RenderConfig::msaa: u32
 pub tungsten_core::config::RenderConfig::post_aa: tungsten_core::config::PostAaMode
+pub tungsten_core::config::RenderConfig::post_fuse: bool
 pub tungsten_core::config::RenderConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::config::RenderConfig::system_fonts: bool
 impl core::clone::Clone for tungsten_core::config::RenderConfig
@@ -23306,6 +23307,7 @@ pub tungsten_core::RenderConfig::depth_sort: tungsten_core::config::DepthSortMod
 pub tungsten_core::RenderConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::RenderConfig::msaa: u32
 pub tungsten_core::RenderConfig::post_aa: tungsten_core::config::PostAaMode
+pub tungsten_core::RenderConfig::post_fuse: bool
 pub tungsten_core::RenderConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::RenderConfig::system_fonts: bool
 impl core::clone::Clone for tungsten_core::config::RenderConfig

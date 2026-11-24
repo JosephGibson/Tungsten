@@ -1,5 +1,5 @@
 use super::*;
-use tungsten_core::post::{BloomParams, VignetteParams};
+use tungsten_core::post::BloomParams;
 
 use crate::targets::{TargetCache, bloom_mip_count_for_size};
 
@@ -76,7 +76,7 @@ fn stage_payloads_follow_recording_order() {
     // 1080p: the pyramid starts at 960 x 540.
     let extent = |level: u32| ((960u32 >> level).max(1), (540u32 >> level).max(1));
     let mut payloads = Vec::new();
-    stage_payloads(&mut payloads, &params, (1920, 1080), 6, 1, None, extent);
+    stage_payloads(&mut payloads, &params, (1920, 1080), 6, 1, extent);
     assert_eq!(payloads.len(), 12);
 
     let expect = |inv_of: (u32, u32), level: u32, kind: i32| {
@@ -123,30 +123,13 @@ fn stage_payloads_follow_recording_order() {
     // A quarter-size pyramid changes the threshold's block and no other
     // stage's, given the same level sizes.
     let mut quarter = Vec::new();
-    stage_payloads(&mut quarter, &params, (1920, 1080), 6, 2, None, extent);
+    stage_payloads(&mut quarter, &params, (1920, 1080), 6, 2, extent);
     assert_eq!(quarter[0], threshold(2));
     assert_eq!(quarter[1..], payloads[1..]);
 
-    // A stack's trailing vignette drawn by the composite (`D-302`): its
-    // colour and its shape ride in the composite's block and no other's.
-    let vignette = VignetteParams {
-        inner: 0.38,
-        outer: 0.78,
-        strength: 0.18,
-        color: [0.015, 0.013, 0.02, 1.0],
-    };
-    let mut folded = Vec::new();
-    stage_payloads(
-        &mut folded,
-        &params,
-        (1920, 1080),
-        6,
-        1,
-        Some(&vignette),
-        extent,
-    );
-    assert_eq!(folded[..11], payloads[..11]);
-    let mut composite = pack_params(
+    // The composite's block holds bloom's own values alone: a stage that
+    // draws in its pass brings a block of its own (`D-307`).
+    let composite = pack_params(
         &params,
         (1.0 / 1920.0, 1.0 / 1080.0),
         6,
@@ -154,13 +137,11 @@ fn stage_payloads_follow_recording_order() {
         PASS_KIND_COMPOSITE,
     );
     assert_eq!(payloads[11], composite.to_bytes());
-    assert_eq!(composite.vec4[2], [0.0; 4], "free until a vignette folds");
-    composite.vec4[2] = vignette.color;
-    composite.vec4[3] = [0.38, 0.78, 0.18, 0.0];
-    assert_eq!(folded[11], composite.to_bytes());
+    assert_eq!(composite.vec4[2], [0.0; 4]);
+    assert_eq!(composite.vec4[3], [0.0; 4]);
 
     // One mip: threshold and composite only. The vector is reused.
-    stage_payloads(&mut payloads, &params, (4, 4), 1, 1, None, |_| (2, 2));
+    stage_payloads(&mut payloads, &params, (4, 4), 1, 1, |_| (2, 2));
     assert_eq!(payloads.len(), 2);
     // Other params: every stage's bytes change, so every UBO is rewritten.
     let mut louder = Vec::new();
@@ -168,7 +149,7 @@ fn stage_payloads_follow_recording_order() {
         intensity: 1.5,
         ..params
     };
-    stage_payloads(&mut louder, &boosted, (4, 4), 1, 1, None, |_| (2, 2));
+    stage_payloads(&mut louder, &boosted, (4, 4), 1, 1, |_| (2, 2));
     assert!(payloads.iter().zip(&louder).all(|(a, b)| a != b));
 }
 
@@ -222,21 +203,13 @@ fn a_stage_is_found_by_its_place_in_the_recording_order() {
     let order: Vec<BloomStageKind> = std::iter::once(BloomStageKind::Threshold)
         .chain((1..6).map(BloomStageKind::Down))
         .chain((0..5).rev().map(BloomStageKind::Up))
-        .chain([BloomStageKind::Composite { vignette: false }])
+        .chain([BloomStageKind::Composite])
         .collect();
     assert_eq!(order.len(), 12);
     for (index, stage) in order.iter().enumerate() {
         assert_eq!(stage_index(*stage, 6), index, "{stage:?}");
     }
-    // The composite that draws the vignette is the same stage.
-    assert_eq!(
-        stage_index(BloomStageKind::Composite { vignette: true }, 6),
-        11
-    );
     // One level: the threshold and the composite alone.
     assert_eq!(stage_index(BloomStageKind::Threshold, 1), 0);
-    assert_eq!(
-        stage_index(BloomStageKind::Composite { vignette: false }, 1),
-        1
-    );
+    assert_eq!(stage_index(BloomStageKind::Composite, 1), 1);
 }

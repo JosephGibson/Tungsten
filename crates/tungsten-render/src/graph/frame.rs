@@ -10,10 +10,12 @@ use tungsten_core::post::{PostPass, PostStack};
 use wgpu::TextureFormat;
 
 use super::{Class, Graph, Pass, Spec, Tex, Write};
+use crate::post::bloom::BLOOM_COMPOSITE_SECTION;
 use crate::post::bloom::{
     BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_SHADERS,
     BLOOM_THRESHOLD_SHADER_NAME,
 };
+use crate::post::compose;
 use crate::post::smaa::{
     SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
     SMAA_SHADERS,
@@ -29,9 +31,11 @@ use crate::targets::{
 pub(crate) enum PassKind {
     /// Quads, sprites, mesh particles and debug primitives.
     Scene,
-    /// The stock effect in post-stack slot `slot`.
+    /// The stock effect in post-stack slot `slot`, and with it the
+    /// `stages - 1` stages after it that draw in its pass (`D-307`).
     Post {
         slot: usize,
+        stages: usize,
     },
     /// Bloom's bright pass into the pyramid's first level.
     BloomThreshold {
@@ -45,11 +49,11 @@ pub(crate) enum PassKind {
         slot: usize,
         level: u32,
     },
-    /// Bloom's composite; `vignette` when it also draws the stack's
-    /// trailing vignette (`D-302`).
+    /// Bloom's composite, and with it the `stages - 1` stages after the
+    /// bloom that draw in its pass (`D-307`).
     BloomComposite {
         slot: usize,
-        vignette: bool,
+        stages: usize,
     },
     SmaaEdges,
     SmaaWeights,
@@ -78,10 +82,12 @@ pub(crate) enum PresentPath {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Stage {
     /// A stock effect, by its kind's name; `own` while its shader is the
-    /// engine's compiled-in text.
+    /// engine's compiled-in text; `joined` when it draws in the pass of the
+    /// stage before it (`D-307`).
     Stock {
         name: &'static str,
         own: bool,
+        joined: bool,
     },
     Bloom,
 }
@@ -223,9 +229,6 @@ pub(crate) struct Shape {
     pub smaa: bool,
     pub present: PresentPath,
     pub stages: Vec<Stage>,
-    /// Whether the stack's last pass, a bloom, draws the trailing vignette
-    /// in its composite (`D-302`).
-    pub vignette: bool,
     /// The pyramid's level count and how many times the output is halved
     /// for its first level (`D-301`).
     pub bloom_mips: u32,
@@ -245,8 +248,30 @@ impl Shape {
             other => Stage::Stock {
                 name: other.kind_name(),
                 own: own(other),
+                joined: false,
             },
         }));
+    }
+
+    /// Marks the stages of `run` after its first as drawn in the first's
+    /// pass: the composer's rule chose the run and its pipeline is built
+    /// (`D-307`). A bloom leads a pass and never joins one.
+    pub(crate) fn join(&mut self, run: std::ops::Range<usize>) {
+        for stage in self.stages[run].iter_mut().skip(1) {
+            if let Stage::Stock { joined, .. } = stage {
+                *joined = true;
+            }
+        }
+    }
+
+    /// How many stages draw in the pass that slot `slot` leads: itself and
+    /// the joined stages that follow it.
+    pub(crate) fn run_len(&self, slot: usize) -> usize {
+        let joined = self.stages[slot + 1..]
+            .iter()
+            .take_while(|stage| matches!(stage, Stage::Stock { joined: true, .. }))
+            .count();
+        1 + joined
     }
 }
 
@@ -326,15 +351,14 @@ pub(crate) fn threshold_label(slot: usize, halvings: u32) -> String {
     }
 }
 
-/// The composite pass's timing label in post-stack slot `slot`: its own
-/// where it also draws the stack's trailing vignette (`D-302`), so the two
-/// passes' work is not read as the composite's alone.
-pub(crate) fn composite_label(slot: usize, with_vignette: bool) -> String {
-    if with_vignette {
-        format!("post{slot}_bloom_composite_vignette")
-    } else {
-        format!("post{slot}_bloom_composite")
-    }
+/// The composite pass's timing label in post-stack slot `slot`, with the
+/// names of the stages that draw in its pass: a pass that draws a vignette
+/// too is `post<slot>_bloom_composite_vignette`, so the two stages' work is
+/// not read as the composite's alone.
+pub(crate) fn composite_label(slot: usize, joined: &[&str]) -> String {
+    let mut names = vec![BLOOM_COMPOSITE_SECTION];
+    names.extend_from_slice(joined);
+    compose::label(slot, &names)
 }
 
 fn pass(
@@ -421,28 +445,40 @@ pub(crate) fn declare(shape: &Shape) -> Graph<PassKind> {
     }
     graph.pass(scene);
 
-    // Each post pass reads a version and writes the next.
-    let last_slot = shape.stages.len().saturating_sub(1);
-    for (slot, stage) in shape.stages.iter().enumerate() {
+    // Each post pass reads a version and writes the next. A pass draws its
+    // slot's stage and the stages joined to it (`D-307`).
+    let mut slot = 0;
+    while slot < shape.stages.len() {
+        let stages = shape.run_len(slot);
+        let mut joined: Vec<&str> = Vec::new();
+        let mut joined_own = true;
+        for stage in &shape.stages[slot + 1..slot + stages] {
+            if let Stage::Stock { name, own, .. } = stage {
+                joined.push(name);
+                joined_own &= *own;
+            }
+        }
         let next = graph.transient(color);
-        match stage {
-            Stage::Stock { name, own } => {
+        match shape.stages[slot] {
+            Stage::Stock { name, own, .. } => {
+                let mut names = vec![name];
+                names.extend_from_slice(&joined);
                 let mut post = pass(
-                    PassKind::Post { slot },
+                    PassKind::Post { slot, stages },
                     post_pass_label(slot),
-                    format!("post{slot}_{name}"),
+                    compose::label(slot, &names),
                     next,
-                    full_screen(*own),
+                    full_screen(own && joined_own),
                 );
                 post.reads = vec![current.base()];
                 graph.pass(post);
             }
             Stage::Bloom => {
-                let vignette = shape.vignette && slot == last_slot;
-                declare_bloom(&mut graph, shape, slot, current, next, vignette);
+                declare_bloom(&mut graph, shape, slot, current, next, &joined, joined_own);
             }
         }
         current = next;
+        slot += stages;
     }
 
     if shape.smaa {
@@ -532,14 +568,16 @@ pub(crate) fn declare(shape: &Shape) -> Graph<PassKind> {
 
 /// Bloom's passes in slot `slot`: the threshold into the pyramid's first
 /// level, the downsamples, the additive upsamples, and the composite of
-/// `source` and the pyramid into `target`.
+/// `source` and the pyramid into `target`, which also draws the stages
+/// named `joined`.
 fn declare_bloom(
     graph: &mut Graph<PassKind>,
     shape: &Shape,
     slot: usize,
     source: Tex,
     target: Tex,
-    vignette: bool,
+    joined: &[&str],
+    joined_own: bool,
 ) {
     let mips = shape.bloom_mips.max(1);
     let pyramid = graph.transient(Spec {
@@ -589,11 +627,14 @@ fn declare_bloom(
         ));
     }
     let mut composite = pass(
-        PassKind::BloomComposite { slot, vignette },
+        PassKind::BloomComposite {
+            slot,
+            stages: 1 + joined.len(),
+        },
         "tungsten_bloom_composite",
-        composite_label(slot, vignette),
+        composite_label(slot, joined),
         target,
-        full_screen(!shape.replaced.holds(EngineStage::BloomComposite)),
+        full_screen(!shape.replaced.holds(EngineStage::BloomComposite) && joined_own),
     );
     composite.reads = vec![source.base(), pyramid.base()];
     graph.pass(composite);

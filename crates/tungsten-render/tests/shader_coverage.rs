@@ -246,8 +246,7 @@ fn the_engines_fullscreen_fragments_write_every_pixel() {
 
     // The pipelines: every builder of a full-screen pipeline takes its
     // colour target from `whole_target`, which blends nothing and writes
-    // every channel. The stock effects' builder still spells the same state
-    // out, the one `ColorTargetState` of its file.
+    // every channel.
     let source = |rel: &str| {
         let path = repo.join(RENDER_SRC).join(rel);
         fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", shown(&path)))
@@ -263,19 +262,23 @@ fn the_engines_fullscreen_fragments_write_every_pixel() {
         body.contains("write_mask: wgpu::ColorWrites::ALL,"),
         "{body}"
     );
-    // (file, its calls of `whole_target`, its own `ColorTargetState`s, its
-    // pipeline builders): bloom's threshold and downsample share one
+    // (file, its mentions of `whole_target`, its own `ColorTargetState`s,
+    // its pipeline builders): bloom's threshold and downsample share one
     // builder and the additive upsample keeps a state of its own; SMAA's
-    // three stages; the blit. Each builder culls nothing and tests no
-    // depth, so the one triangle is drawn whichever way it winds.
-    for (rel, calls, own, builders) in [
+    // three stages; the blit; the stock effects; and the post stack's own
+    // file, which defines the function and builds the fused passes with it.
+    // Each builder culls nothing and tests no depth, so the one triangle is
+    // drawn whichever way it winds.
+    for (rel, mentions, own, builders) in [
         ("post/bloom.rs", 2, 1, 2),
         ("post/smaa.rs", 3, 0, 3),
         ("renderer.rs", 1, 0, 1),
-        ("post/fullscreen.rs", 0, 1, 1),
+        ("post/fullscreen.rs", 1, 0, 1),
+        // `whole_target` names the state in its signature and its body.
+        ("post/mod.rs", 2, 2, 1),
     ] {
         let text = source(rel);
-        assert_eq!(text.matches("whole_target(").count(), calls, "{rel}");
+        assert_eq!(text.matches("whole_target(").count(), mentions, "{rel}");
         assert_eq!(text.matches("ColorTargetState {").count(), own, "{rel}");
         assert_eq!(
             text.matches("create_render_pipeline(").count(),
@@ -289,11 +292,6 @@ fn the_engines_fullscreen_fragments_write_every_pixel() {
             "{rel}"
         );
     }
-    let stock = source("post/fullscreen.rs");
-    assert!(
-        stock.contains("blend: None,\n                write_mask: wgpu::ColorWrites::ALL,"),
-        "the stock effects' pipeline blends nothing and writes every channel"
-    );
 }
 
 #[test]

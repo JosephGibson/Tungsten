@@ -28,28 +28,34 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
-    let center = vec2<f32>(params.v0.x, params.v0.y);
-    let samples = clamp(u32(params.f.w), 1u, 32u);
-    let density = params.f.x;
-    let decay = params.f.y;
-    let weight = params.f.z;
+// @fx begin head
+fn god_rays_head(uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let sample = textureSample(src, src_sampler, uv);
+    let center = vec2<f32>(p.v0.x, p.v0.y);
+    let samples = clamp(u32(p.f.w), 1u, 32u);
+    let density = p.f.x;
+    let decay = p.f.y;
+    let weight = p.f.z;
     let threshold = vec3<f32>(0.6);
-    var uv = in.uv;
-    let delta = (in.uv - center) * (1.0 / f32(samples)) * density;
+    var at = uv;
+    let delta = (uv - center) * (1.0 / f32(samples)) * density;
     var illumination = vec3<f32>(0.0);
     var attenuation = 1.0;
     // Only bright pixels seed rays — without a threshold a flat sky blows the
     // accumulator out before the intended highlights even land.
     for (var s: u32 = 0u; s < samples; s = s + 1u) {
-        uv = uv - delta;
-        let tap = textureSample(src, src_sampler, uv).rgb;
+        at = at - delta;
+        let tap = textureSample(src, src_sampler, at).rgb;
         let bright = max(tap - threshold, vec3<f32>(0.0));
         illumination = illumination + bright * attenuation;
         attenuation = attenuation * decay;
     }
     let rays = illumination * weight;
     return vec4<f32>(clamp(sample.rgb + rays, vec3<f32>(0.0), vec3<f32>(1.0)), sample.a);
+}
+// @fx end
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return god_rays_head(in.uv, params);
 }

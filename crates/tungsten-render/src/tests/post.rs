@@ -1,8 +1,8 @@
+use super::compose::{self, Between, Class};
 use super::{
-    InertParam, ParamSlots, STOCK_SHADERS, SourceGroups, VIGNETTE_SHADER_NAME, inert_param,
-    stock_index, trailing_vignette,
+    InertParam, ParamSlots, STOCK_CLASSES, STOCK_SHADERS, Signature, SourceGroups, effect_section,
+    inert_param, stage_info, stock_class, stock_index,
 };
-use tungsten_core::post::PostStack;
 use tungsten_core::post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
     FilmGrainParams, FogParams, GlitchParams, GodRaysParams, LutParams, PixelOutlineParams,
@@ -199,47 +199,139 @@ fn settings_that_draw_nothing_or_not_as_named_are_found() {
 }
 
 #[test]
-fn a_vignette_folds_into_bloom_only_as_the_stacks_last_pass_after_a_bloom() {
+fn a_stacks_last_pair_fuses_when_it_ends_in_a_bounded_mix() {
     let bloom = PostPass::Bloom(BloomParams::default());
-    let own = VignetteParams {
+    let vignette = PostPass::Vignette(VignetteParams {
         inner: 0.38,
         outer: 0.78,
         strength: 0.18,
         color: [0.015, 0.013, 0.02, 1.0],
-    };
-    let vignette = PostPass::Vignette(own);
-    let other = PostPass::Vignette(VignetteParams::default());
+    });
+    let fade = PostPass::Fade(FadeParams::default());
     let tonemap = PostPass::Tonemap(TonemapParams::default());
     let dither = PostPass::Dither(DitherParams::default());
-    let folds = |passes: &[PostPass]| trailing_vignette(&PostStack(passes.to_vec()), false, true);
+    let grain = PostPass::FilmGrain(FilmGrainParams::default());
+    let pixelate = PostPass::Pixelate(4.0);
+    // The runs of more than one stage, as (first slot, stages), every
+    // shader the engine's own.
+    let fused = |passes: &[PostPass]| -> Vec<(usize, usize)> {
+        let stages: Vec<_> = passes.iter().map(|pass| stage_info(pass, true)).collect();
+        compose::runs(&stages, false)
+            .into_iter()
+            .filter(|run| run.len() > 1)
+            .map(|run| (run.start, run.len()))
+            .collect()
+    };
 
-    // Bloom then vignette, ending the stack: the composite draws it, with
-    // its own values.
-    assert_eq!(folds(&[bloom, vignette]), Some(own));
-    assert_eq!(folds(&[tonemap, bloom, vignette]), Some(own));
-    // Of two vignettes after a bloom the last keeps its pass: it does not
-    // follow the bloom. A vignette that does, with a pass after it, keeps
-    // its own too: the pass after could turn one rounding step into more.
-    assert_eq!(folds(&[bloom, vignette, other]), None);
-    assert_eq!(folds(&[bloom, vignette, dither]), None);
-    // Any other order plans as before.
-    assert_eq!(folds(&[vignette, bloom]), None);
-    assert_eq!(folds(&[bloom, tonemap, vignette]), None);
-    assert_eq!(folds(&[vignette]), None);
-    assert_eq!(folds(&[bloom]), None);
-    assert_eq!(folds(&[]), None);
+    // `D-302`'s pair, wherever it ends the stack.
+    assert_eq!(fused(&[bloom, vignette]), [(0, 2)]);
+    assert_eq!(fused(&[tonemap, bloom, vignette]), [(1, 2)]);
+    // The pairs it never reached: a screen transition over example 01's
+    // stack, its game-over tail, any stage behind a fade.
+    assert_eq!(fused(&[bloom, vignette, fade]), [(1, 2)]);
+    assert_eq!(fused(&[bloom, vignette, pixelate, fade]), [(2, 2)]);
+    assert_eq!(fused(&[dither, fade]), [(0, 2)]);
+    assert_eq!(fused(&[bloom, fade]), [(0, 2)]);
+    // Nothing follows a fused pass, and only a `mix` ends one.
+    assert_eq!(fused(&[bloom, vignette, dither]), []);
+    assert_eq!(fused(&[bloom, vignette, grain]), []);
+    assert_eq!(fused(&[vignette, bloom]), []);
+    assert_eq!(fused(&[bloom, tonemap]), []);
+    assert_eq!(fused(&[vignette]), []);
+    assert_eq!(fused(&[bloom]), []);
+    assert_eq!(fused(&[]), []);
 
-    // SMAA reads the stack's output: its edge test keeps the vignette's own
-    // pass. A game's own vignette or composite shader does as well.
-    let stack = PostStack(vec![bloom, vignette]);
-    assert_eq!(trailing_vignette(&stack, true, true), None);
-    assert_eq!(trailing_vignette(&stack, false, false), None);
-    assert_eq!(trailing_vignette(&stack, false, true), Some(own));
+    // A replaced file's stage has no class, so it draws alone, as the last
+    // stage or the one before it; so does a vignette towards a negative
+    // colour.
+    let own = |passes: &[(PostPass, bool)]| -> usize {
+        let stages: Vec<_> = passes
+            .iter()
+            .map(|(pass, own)| stage_info(pass, *own))
+            .collect();
+        compose::runs(&stages, false)
+            .iter()
+            .filter(|run| run.len() > 1)
+            .count()
+    };
+    assert_eq!(own(&[(bloom, true), (vignette, true)]), 1);
+    assert_eq!(own(&[(bloom, false), (vignette, true)]), 0);
+    assert_eq!(own(&[(bloom, true), (vignette, false)]), 0);
+    let negative = PostPass::Vignette(VignetteParams {
+        color: [-0.1, 0.0, 0.0, 1.0],
+        ..VignetteParams::default()
+    });
+    assert_eq!(fused(&[bloom, negative]), []);
+
+    // The class the rule reads is the stock table's.
+    assert_eq!(stock_class(&vignette), Some(Class::Mix));
+    assert_eq!(stock_class(&dither), Some(Class::Steps));
+    assert_eq!(stock_class(&bloom), None);
+    assert_eq!(stage_info(&bloom, true).class, Some(Class::Head));
+    assert_eq!(stage_info(&bloom, false).class, None);
 }
 
 #[test]
-fn the_vignettes_shader_name_is_its_stock_row() {
-    // A reload names the shader it replaced; the fold ends on this name.
-    let index = stock_index(&PostPass::Vignette(VignetteParams::default())).unwrap();
-    assert_eq!(STOCK_SHADERS[index].0, VIGNETTE_SHADER_NAME);
+fn a_fused_pass_is_known_by_its_stages_and_not_their_values() {
+    let bloom = PostPass::Bloom(BloomParams::default());
+    let vignette = PostPass::Vignette(VignetteParams::default());
+    let fade = PostPass::Fade(FadeParams::default());
+    let pair = Signature::of(&[bloom, vignette], Between::Clamp).expect("a pair");
+    // Other values, the same pass.
+    let louder = PostPass::Bloom(BloomParams {
+        intensity: 1.5,
+        ..BloomParams::default()
+    });
+    let darker = PostPass::Vignette(VignetteParams {
+        strength: 0.9,
+        ..VignetteParams::default()
+    });
+    assert_eq!(Signature::of(&[louder, darker], Between::Clamp), Some(pair));
+    // Other stages, another pass.
+    let other = Signature::of(&[vignette, fade], Between::Clamp).expect("a pair");
+    assert_ne!(pair, other);
+    assert_ne!(
+        Signature::of(&[fade, vignette], Between::Clamp),
+        Some(other),
+        "the order is the pass's"
+    );
+    // A reload names a shader: the passes that hold its effect go.
+    assert!(pair.holds("bloom_composite") && pair.holds("vignette"));
+    assert!(!pair.holds("fade") && !pair.holds("bloom_threshold"));
+    assert!(other.holds("fade") && !other.holds("bloom_composite"));
+    // A bloom only leads, and a pass holds eight stages at most.
+    assert_eq!(Signature::of(&[vignette, bloom], Between::Clamp), None);
+    assert_eq!(Signature::of(&[], Between::Clamp), None);
+    assert!(Signature::of(&[fade; 8], Between::Clamp).is_some());
+    assert_eq!(Signature::of(&[fade; 9], Between::Clamp), None);
+}
+
+#[test]
+fn every_effect_of_a_signature_has_its_section_in_the_compiled_in_text() {
+    // The 17 stock rows and bloom's composite, each under its class and
+    // its own name.
+    for effect in 0..=17u8 {
+        let section = effect_section(effect).expect("a section");
+        let class = STOCK_CLASSES
+            .get(usize::from(effect))
+            .copied()
+            .unwrap_or(Class::Head);
+        assert_eq!(section.class, class, "{}", section.name);
+        let entry = if class.follows() { "_fx(" } else { "_head(" };
+        assert!(
+            section
+                .text
+                .contains(&format!("fn {}{entry}", section.name)),
+            "{}",
+            section.name
+        );
+    }
+    assert_eq!(
+        effect_section(17).expect("a section").name,
+        "bloom_composite"
+    );
+    assert_eq!(
+        effect_section(1).expect("a section").name,
+        STOCK_SHADERS[1].0
+    );
 }

@@ -28,19 +28,24 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-fn hue_rotate(c: vec3<f32>, angle: f32) -> vec3<f32> {
+// @fx begin pixel
+fn color_adjust_hue_rotate(c: vec3<f32>, angle: f32) -> vec3<f32> {
     let k = vec3<f32>(0.57735);
     let ca = cos(angle);
     return c * ca + cross(k, c) * sin(angle) + k * dot(k, c) * (1.0 - ca);
 }
 
+fn color_adjust_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    var rgb = color.rgb;
+    rgb = color_adjust_hue_rotate(rgb, p.f.x);
+    let luma = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+    rgb = mix(vec3<f32>(luma), rgb, p.f.y);
+    rgb = mix(vec3<f32>(0.5), rgb, p.f.z);
+    return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+}
+// @fx end
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
-    var rgb = sample.rgb;
-    rgb = hue_rotate(rgb, params.f.x);
-    let luma = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
-    rgb = mix(vec3<f32>(luma), rgb, params.f.y);
-    rgb = mix(vec3<f32>(0.5), rgb, params.f.z);
-    return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), sample.a);
+    return color_adjust_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
 }

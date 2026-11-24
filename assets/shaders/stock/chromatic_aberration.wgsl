@@ -28,13 +28,19 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
+// @fx begin head
+fn chromatic_aberration_head(uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let dims = vec2<f32>(textureDimensions(src, 0));
+    let offset = (p.f.x / max(dims.x, 1.0)) * (uv - vec2<f32>(0.5));
+    let r = textureSample(src, src_sampler, uv + offset).r;
+    let g = textureSample(src, src_sampler, uv).g;
+    let b = textureSample(src, src_sampler, uv - offset).b;
+    let a = textureSample(src, src_sampler, uv).a;
+    return vec4<f32>(r, g, b, a);
+}
+// @fx end
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let dims = vec2<f32>(textureDimensions(src, 0));
-    let offset = (params.f.x / max(dims.x, 1.0)) * (in.uv - vec2<f32>(0.5));
-    let r = textureSample(src, src_sampler, in.uv + offset).r;
-    let g = textureSample(src, src_sampler, in.uv).g;
-    let b = textureSample(src, src_sampler, in.uv - offset).b;
-    let a = textureSample(src, src_sampler, in.uv).a;
-    return vec4<f32>(r, g, b, a);
+    return chromatic_aberration_head(in.uv, params);
 }

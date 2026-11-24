@@ -27,16 +27,21 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-fn hash12(p: vec2<f32>) -> f32 {
+// @fx begin pixel
+fn film_grain_hash12(p: vec2<f32>) -> f32 {
     var p3 = fract(vec3<f32>(p.xyx) * 0.1031);
     p3 = p3 + dot(p3, p3.yzx + 33.33);
     return fract((p3.x + p3.y) * p3.z);
 }
 
+fn film_grain_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let n = film_grain_hash12(uv * vec2<f32>(1920.0, 1080.0) + vec2<f32>(p.f.y, -p.f.y));
+    let g = (n - 0.5) * 2.0 * p.f.x;
+    return vec4<f32>(clamp(color.rgb + vec3<f32>(g), vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+}
+// @fx end
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
-    let n = hash12(in.uv * vec2<f32>(1920.0, 1080.0) + vec2<f32>(params.f.y, -params.f.y));
-    let g = (n - 0.5) * 2.0 * params.f.x;
-    return vec4<f32>(clamp(sample.rgb + vec3<f32>(g), vec3<f32>(0.0), vec3<f32>(1.0)), sample.a);
+    return film_grain_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
 }

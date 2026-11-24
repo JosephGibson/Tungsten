@@ -28,14 +28,19 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
-    let center = vec2<f32>(params.f.z, params.f.w);
-    let progress = clamp(params.f.x, 0.0, 1.0);
-    let softness = max(params.f.y, 1e-4);
-    let d = distance(in.uv, center);
+// @fx begin mix
+fn wipe_radial_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let center = vec2<f32>(p.f.z, p.f.w);
+    let progress = clamp(p.f.x, 0.0, 1.0);
+    let softness = max(p.f.y, 1e-4);
+    let d = distance(uv, center);
     let radius = progress * 1.5;
     let t = smoothstep(radius - softness, radius + softness, d);
-    return vec4<f32>(sample.rgb * (1.0 - t), sample.a);
+    return vec4<f32>(color.rgb * (1.0 - t), color.a);
+}
+// @fx end
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return wipe_radial_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
 }

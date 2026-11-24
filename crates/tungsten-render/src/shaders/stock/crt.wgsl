@@ -28,24 +28,24 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-fn curve_uv(uv: vec2<f32>, amount: f32) -> vec2<f32> {
+// @fx begin head
+fn crt_curve_uv(uv: vec2<f32>, amount: f32) -> vec2<f32> {
     let centered = uv * 2.0 - 1.0;
     let offset = abs(centered.yx) / vec2<f32>(4.0, 3.0);
     return uv + centered * offset * amount;
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn crt_head(uv: vec2<f32>, p: Params) -> vec4<f32> {
     let dims = vec2<f32>(textureDimensions(src, 0));
-    let curved_uv = curve_uv(in.uv, params.f.y);
+    let curved_uv = crt_curve_uv(uv, p.f.y);
     if (any(curved_uv < vec2<f32>(0.0)) || any(curved_uv > vec2<f32>(1.0))) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
     let sample = textureSample(src, src_sampler, curved_uv);
     let scan = 0.5 + 0.5 * cos(curved_uv.y * dims.y * 3.14159);
-    let strength = clamp(params.f.x, 0.0, 1.0);
+    let strength = clamp(p.f.x, 0.0, 1.0);
     let scanned = sample.rgb * mix(1.0, scan, strength);
-    let mask_mode = u32(params.f.z);
+    let mask_mode = u32(p.f.z);
     var masked = scanned;
     if (mask_mode == 1u) {
         let triad = vec3<f32>(1.2, 1.0, 0.9);
@@ -53,4 +53,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         masked = scanned * select(select(vec3<f32>(triad.z, 1.0, triad.y), vec3<f32>(1.0, triad.x, 1.0), col == 1u), triad, col == 0u);
     }
     return vec4<f32>(masked, sample.a);
+}
+// @fx end
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return crt_head(in.uv, params);
 }

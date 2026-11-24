@@ -27,9 +27,14 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
+// @fx begin mix
+fn fade_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let t = clamp(p.f.x, 0.0, 1.0);
+    return vec4<f32>(mix(color.rgb, p.v0.rgb, t), color.a);
+}
+// @fx end
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
-    let p = clamp(params.f.x, 0.0, 1.0);
-    return vec4<f32>(mix(sample.rgb, params.v0.rgb, p), sample.a);
+    return fade_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
 }

@@ -28,14 +28,19 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
+// @fx begin mix
+fn vignette_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let d = distance(uv, vec2<f32>(0.5, 0.5));
+    let inner = p.f.x;
+    let outer = max(p.f.y, inner + 1e-4);
+    let t = clamp((d - inner) / (outer - inner), 0.0, 1.0);
+    let strength = clamp(p.f.z, 0.0, 1.0);
+    let tinted = mix(color.rgb, p.v0.rgb, t * strength);
+    return vec4<f32>(tinted, color.a);
+}
+// @fx end
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
-    let d = distance(in.uv, vec2<f32>(0.5, 0.5));
-    let inner = params.f.x;
-    let outer = max(params.f.y, inner + 1e-4);
-    let t = clamp((d - inner) / (outer - inner), 0.0, 1.0);
-    let strength = clamp(params.f.z, 0.0, 1.0);
-    let tinted = mix(sample.rgb, params.v0.rgb, t * strength);
-    return vec4<f32>(tinted, sample.a);
+    return vignette_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
 }

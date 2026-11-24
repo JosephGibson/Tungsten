@@ -23,6 +23,7 @@ const RENDER_DEPTH_SORT_ENV: &str = "TUNGSTEN_RENDER_DEPTH_SORT";
 const RENDER_POST_AA_ENV: &str = "TUNGSTEN_RENDER_POST_AA";
 const RENDER_BLOOM_MAX_MIPS_ENV: &str = "TUNGSTEN_RENDER_BLOOM_MAX_MIPS";
 const RENDER_BLOOM_BASE_ENV: &str = "TUNGSTEN_RENDER_BLOOM_BASE";
+const RENDER_POST_FUSE_ENV: &str = "TUNGSTEN_RENDER_POST_FUSE";
 const PHYSICS_WORKERS_ENV: &str = "TUNGSTEN_PHYSICS_WORKERS";
 const DISPLAY_MODE_EXPECTED: &str = "one of: windowed, borderless_fullscreen, exclusive_fullscreen";
 const DISPLAY_RESOLUTION_EXPECTED: &str = "WIDTHxHEIGHT with integers >= 1";
@@ -390,6 +391,13 @@ pub struct RenderConfig {
     /// `TUNGSTEN_RENDER_BLOOM_BASE` overrides the file.
     #[serde(default)]
     pub bloom_base: BloomBase,
+    /// Draw in one pass the post stages the composer may fuse (`D-307`):
+    /// the stack's last two, when the last only mixes each pixel towards a
+    /// colour. On by default; `false` draws every stage in a pass of its
+    /// own, which the pixel tests compare with. Startup-only;
+    /// `TUNGSTEN_RENDER_POST_FUSE` overrides the file.
+    #[serde(default = "default_post_fuse")]
+    pub post_fuse: bool,
     /// Let text fall back to the system's fonts after the manifest's
     /// (`D-116`). Off by default: text draws only with packaged faces.
     #[serde(default)]
@@ -408,6 +416,7 @@ impl Default for RenderConfig {
             post_aa: PostAaMode::default(),
             bloom_max_mips: default_bloom_max_mips(),
             bloom_base: BloomBase::default(),
+            post_fuse: default_post_fuse(),
             system_fonts: false,
         }
     }
@@ -419,6 +428,10 @@ fn default_clear_color() -> [f64; 4] {
 
 fn default_msaa() -> u32 {
     1
+}
+
+fn default_post_fuse() -> bool {
+    true
 }
 
 fn default_depth_enabled() -> bool {
@@ -1095,6 +1108,9 @@ impl Config {
         if let Some(value) = env(RENDER_BLOOM_BASE_ENV) {
             self.apply_bloom_base_override(&value)?;
         }
+        if let Some(value) = env(RENDER_POST_FUSE_ENV) {
+            self.apply_post_fuse_override(&value)?;
+        }
         if let Some(value) = env(PHYSICS_WORKERS_ENV) {
             self.apply_physics_workers_override(&value)?;
         }
@@ -1177,6 +1193,22 @@ impl Config {
                 expected: BLOOM_MAX_MIPS_EXPECTED,
             })?;
         self.render.bloom_max_mips = parsed;
+        Ok(())
+    }
+
+    fn apply_post_fuse_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = match value {
+            "true" | "1" => true,
+            "false" | "0" => false,
+            _ => {
+                return Err(ConfigError::InvalidEnvOverride {
+                    var: RENDER_POST_FUSE_ENV,
+                    value: value.to_string(),
+                    expected: DEPTH_ENABLED_EXPECTED,
+                });
+            }
+        };
+        self.render.post_fuse = parsed;
         Ok(())
     }
 

@@ -483,6 +483,31 @@ fn bloom_base_defaults_to_auto_and_parses_its_three_names() {
 }
 
 #[test]
+fn post_fuse_is_on_by_default_and_takes_its_override() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert!(parsed.post_fuse);
+    assert!(Config::default().render.post_fuse);
+    let off: RenderConfig = serde_json::from_str(r#"{ "post_fuse": false }"#).unwrap();
+    assert!(!off.post_fuse);
+
+    let mut config = Config::default();
+    config.apply_post_fuse_override("false").unwrap();
+    assert!(!config.render.post_fuse);
+    config.apply_post_fuse_override("1").unwrap();
+    assert!(config.render.post_fuse);
+    config.apply_post_fuse_override("0").unwrap();
+    assert!(!config.render.post_fuse);
+    config.apply_post_fuse_override("true").unwrap();
+    assert!(config.render.post_fuse);
+    let err = config.apply_post_fuse_override("yes").unwrap_err();
+    assert!(
+        err.to_string().contains("TUNGSTEN_RENDER_POST_FUSE"),
+        "{err}"
+    );
+    assert!(config.render.post_fuse, "a refused value changes nothing");
+}
+
+#[test]
 fn bloom_base_env_override() {
     let mut config = Config::default();
     config.apply_bloom_base_override("half").unwrap();

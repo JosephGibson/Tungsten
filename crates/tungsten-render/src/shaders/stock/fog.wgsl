@@ -28,11 +28,16 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
+// @fx begin mix
+fn fog_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let density = clamp(p.f.x, 0.0, 1.0);
+    let falloff = max(p.f.y, 1e-4);
+    let t = clamp(pow(1.0 - uv.y, falloff) * density, 0.0, 1.0);
+    return vec4<f32>(mix(color.rgb, p.v0.rgb, t), color.a);
+}
+// @fx end
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
-    let density = clamp(params.f.x, 0.0, 1.0);
-    let falloff = max(params.f.y, 1e-4);
-    let t = clamp(pow(1.0 - in.uv.y, falloff) * density, 0.0, 1.0);
-    return vec4<f32>(mix(sample.rgb, params.v0.rgb, t), sample.a);
+    return fog_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
 }

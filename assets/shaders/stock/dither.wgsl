@@ -28,27 +28,33 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-const BAYER4: array<f32, 16> = array<f32, 16>(
+// @fx begin steps
+const DITHER_BAYER4: array<f32, 16> = array<f32, 16>(
     0.0 / 16.0, 8.0 / 16.0, 2.0 / 16.0, 10.0 / 16.0,
     12.0 / 16.0, 4.0 / 16.0, 14.0 / 16.0, 6.0 / 16.0,
     3.0 / 16.0, 11.0 / 16.0, 1.0 / 16.0, 9.0 / 16.0,
     15.0 / 16.0, 7.0 / 16.0, 13.0 / 16.0, 5.0 / 16.0,
 );
 
-fn bayer4(p: vec2<u32>) -> f32 {
-    let idx = (p.y % 4u) * 4u + (p.x % 4u);
-    return BAYER4[idx];
+fn dither_bayer4(at: vec2<u32>) -> f32 {
+    let idx = (at.y % 4u) * 4u + (at.x % 4u);
+    return DITHER_BAYER4[idx];
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
+fn dither_head(uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let sample = textureSample(src, src_sampler, uv);
     let dims = vec2<f32>(textureDimensions(src, 0));
-    let pix = vec2<u32>(in.uv * dims);
-    let threshold = bayer4(pix) - 0.5;
-    let levels = max(params.f.y, 2.0);
-    let strength = clamp(params.f.z, 0.0, 1.0);
+    let pix = vec2<u32>(uv * dims);
+    let threshold = dither_bayer4(pix) - 0.5;
+    let levels = max(p.f.y, 2.0);
+    let strength = clamp(p.f.z, 0.0, 1.0);
     let step_size = 1.0 / levels;
     let quantised = floor(sample.rgb / step_size + threshold * strength) * step_size;
     return vec4<f32>(clamp(quantised, vec3<f32>(0.0), vec3<f32>(1.0)), sample.a);
+}
+// @fx end
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return dither_head(in.uv, params);
 }
