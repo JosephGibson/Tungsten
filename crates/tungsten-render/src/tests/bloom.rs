@@ -158,13 +158,6 @@ fn stage_payloads_follow_recording_order() {
     composite.vec4[2] = vignette.color;
     composite.vec4[3] = [0.38, 0.78, 0.18, 0.0];
     assert_eq!(folded[11], composite.to_bytes());
-    // And the pass is timed under a label of its own.
-    assert_eq!(composite_label(0, false), "post0_bloom_composite");
-    assert_eq!(composite_label(2, true), "post2_bloom_composite_vignette");
-    // So is a quarter-size pyramid's threshold, which reads the first
-    // downsample's footprint as well (`D-301`).
-    assert_eq!(threshold_label(0, 1), "post0_bloom_threshold");
-    assert_eq!(threshold_label(1, 2), "post1_bloom_threshold_quarter");
 
     // One mip: threshold and composite only. The vector is reused.
     stage_payloads(&mut payloads, &params, (4, 4), 1, 1, None, |_| (2, 2));
@@ -181,11 +174,11 @@ fn stage_payloads_follow_recording_order() {
 
 #[test]
 fn bloom_slots_keep_objects_of_their_own() {
-    use crate::passes::TargetId::{PostPing, PostPong, SceneColor};
-    let key = |generation, src, dst, mip_count| BloomSlotKey {
-        generation,
-        src,
-        dst,
+    // A slot's objects hold views of its source and of the pyramid, pooled
+    // textures named by their identities.
+    let key = |source, pyramid, mip_count| BloomSlotKey {
+        source,
+        pyramid,
         mip_count,
     };
     let mut slots: Vec<TargetCache<BloomSlotKey, u32>> = Vec::new();
@@ -197,25 +190,53 @@ fn bloom_slots_keep_objects_of_their_own() {
         })
     };
 
-    // Two bloom passes in one stack, at slots 0 and 2.
-    let first = key(0, SceneColor, PostPing, 6);
-    let second = key(0, PostPong, PostPing, 6);
+    // Two bloom passes in one stack, at slots 0 and 2, over one pyramid.
+    let first = key(1, 3, 6);
+    let second = key(2, 3, 6);
     assert_eq!(record(&mut slots, 0, first), 1);
     assert_eq!(record(&mut slots, 2, second), 2);
     assert_eq!(slots.len(), 3);
-    // Later frames build nothing.
+    // Later frames build nothing. Nor does a capture frame, whose composite
+    // draws into another texture: the key names what a slot samples, not
+    // what it draws into.
     for _ in 0..3 {
         assert_eq!(record(&mut slots, 0, first), 1);
         assert_eq!(record(&mut slots, 2, second), 2);
     }
-    // Reallocated targets (a resize, a `post_aa` switch): each slot rebuilds
-    // at its next use.
-    assert_eq!(record(&mut slots, 0, key(1, SceneColor, PostPing, 6)), 3);
-    assert_eq!(record(&mut slots, 2, key(1, PostPong, PostPing, 6)), 4);
-    // A pass inserted ahead of slot 0's bloom moves it to slot 1 with another
-    // source and destination; slot 2 is untouched.
-    assert_eq!(record(&mut slots, 1, key(1, PostPing, PostPong, 6)), 5);
-    assert_eq!(record(&mut slots, 2, key(1, PostPong, PostPing, 6)), 4);
-    // A smaller pyramid.
-    assert_eq!(record(&mut slots, 2, key(1, PostPong, PostPing, 5)), 6);
+    // New textures (a resize, a `post_aa` switch): each slot rebuilds at
+    // its next use.
+    assert_eq!(record(&mut slots, 0, key(11, 13, 6)), 3);
+    assert_eq!(record(&mut slots, 2, key(12, 13, 6)), 4);
+    // A pass inserted ahead of slot 0's bloom moves it to slot 1 with
+    // another source; slot 2 is untouched.
+    assert_eq!(record(&mut slots, 1, key(12, 13, 6)), 5);
+    assert_eq!(record(&mut slots, 2, key(12, 13, 6)), 4);
+    // A smaller pyramid is another texture.
+    assert_eq!(record(&mut slots, 2, key(12, 14, 5)), 6);
+}
+
+#[test]
+fn a_stage_is_found_by_its_place_in_the_recording_order() {
+    // Six levels: the threshold, downsamples 1 to 5, upsamples 4 to 0, the
+    // composite, as `stage_payloads` fills them.
+    let order: Vec<BloomStageKind> = std::iter::once(BloomStageKind::Threshold)
+        .chain((1..6).map(BloomStageKind::Down))
+        .chain((0..5).rev().map(BloomStageKind::Up))
+        .chain([BloomStageKind::Composite { vignette: false }])
+        .collect();
+    assert_eq!(order.len(), 12);
+    for (index, stage) in order.iter().enumerate() {
+        assert_eq!(stage_index(*stage, 6), index, "{stage:?}");
+    }
+    // The composite that draws the vignette is the same stage.
+    assert_eq!(
+        stage_index(BloomStageKind::Composite { vignette: true }, 6),
+        11
+    );
+    // One level: the threshold and the composite alone.
+    assert_eq!(stage_index(BloomStageKind::Threshold, 1), 0);
+    assert_eq!(
+        stage_index(BloomStageKind::Composite { vignette: false }, 1),
+        1
+    );
 }

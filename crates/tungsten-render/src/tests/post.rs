@@ -1,8 +1,7 @@
 use super::{
-    InertParam, ParamSlots, PostStackRenderer, STOCK_SHADERS, VIGNETTE_SHADER_NAME, inert_param,
-    source_slot, stock_index, trailing_vignette,
+    InertParam, ParamSlots, STOCK_SHADERS, SourceGroups, VIGNETTE_SHADER_NAME, inert_param,
+    stock_index, trailing_vignette,
 };
-use crate::passes::TargetId;
 use tungsten_core::post::PostStack;
 use tungsten_core::post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
@@ -11,80 +10,28 @@ use tungsten_core::post::{
 };
 
 #[test]
-fn plan_empty_stack_produces_no_entries() {
-    let plan = PostStackRenderer::plan_targets(0);
-    assert!(plan.is_empty());
-}
-
-#[test]
-fn plan_single_pass_reads_scene_writes_ping() {
-    let plan = PostStackRenderer::plan_targets(1);
-    assert_eq!(plan, vec![(TargetId::SceneColor, TargetId::PostPing)]);
-}
-
-#[test]
-fn plan_two_passes_chains_ping_then_pong() {
-    let plan = PostStackRenderer::plan_targets(2);
-    assert_eq!(
-        plan,
-        vec![
-            (TargetId::SceneColor, TargetId::PostPing),
-            (TargetId::PostPing, TargetId::PostPong),
-        ]
-    );
-}
-
-#[test]
-fn plan_three_passes_returns_to_ping() {
-    let plan = PostStackRenderer::plan_targets(3);
-    assert_eq!(
-        plan,
-        vec![
-            (TargetId::SceneColor, TargetId::PostPing),
-            (TargetId::PostPing, TargetId::PostPong),
-            (TargetId::PostPong, TargetId::PostPing),
-        ]
-    );
-}
-
-#[test]
-fn plan_seventeen_passes_stays_valid_all_the_way() {
-    let plan = PostStackRenderer::plan_targets(17);
-    assert_eq!(plan.len(), 17);
-    for (i, &(src, dst)) in plan.iter().enumerate() {
-        let expected_dst = if i.is_multiple_of(2) {
-            TargetId::PostPing
-        } else {
-            TargetId::PostPong
-        };
-        assert_eq!(dst, expected_dst, "pass {i}");
-        if i == 0 {
-            assert_eq!(src, TargetId::SceneColor);
-        } else {
-            let prev_dst = if (i - 1).is_multiple_of(2) {
-                TargetId::PostPing
-            } else {
-                TargetId::PostPong
-            };
-            assert_eq!(src, prev_dst, "pass {i} src follows previous dst");
-        }
+fn a_source_group_is_built_once_a_texture_and_goes_with_it() {
+    // A stack's passes sample two or three pooled textures in turn: each
+    // gets one bind group, found again every frame.
+    let mut groups: SourceGroups<u32> = SourceGroups::default();
+    let mut built = 0;
+    let mut get = |groups: &mut SourceGroups<u32>, id| {
+        *groups.get_or_build(id, || {
+            built += 1;
+            built
+        })
+    };
+    for _ in 0..3 {
+        assert_eq!(get(&mut groups, 4), 1);
+        assert_eq!(get(&mut groups, 9), 2);
+        assert_eq!(get(&mut groups, 4), 1);
     }
-}
-
-#[test]
-fn every_source_of_the_ladder_has_a_cache_slot_of_its_own() {
-    // The three targets a stock pass can sample, as `plan_targets` names them.
-    let mut slots: Vec<usize> = PostStackRenderer::plan_targets(17)
-        .iter()
-        .map(|&(src, _)| source_slot(src))
-        .collect();
-    slots.sort_unstable();
-    slots.dedup();
-    assert_eq!(slots, vec![0, 1, 2]);
-    assert_ne!(
-        source_slot(TargetId::PostPing),
-        source_slot(TargetId::PostPong)
-    );
+    assert_eq!(groups.len(), 2);
+    // A freed texture's group goes; the other texture's stays.
+    groups.forget(&[4]);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(get(&mut groups, 9), 2);
+    assert_eq!(get(&mut groups, 4), 3);
 }
 
 /// Stages `payload` in `slot`, counting builds in `built`: returns the slot's

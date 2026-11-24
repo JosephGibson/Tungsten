@@ -56,14 +56,14 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | Task | Open |
 | --- | --- |
 | Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/timing.rs`, `render/surface_acquire.rs` |
-| Pass order, direct present, late acquire (`D-087`, `D-145`) | `render/passes/order.rs`, `render/renderer.rs`, `render/surface_acquire.rs`, `render/screenshot.rs` |
+| Frame graph, direct present, late acquire (`D-087`, `D-145`, `D-305`) | `render/graph/`, `render/renderer.rs`, `render/surface_acquire.rs`, `render/screenshot.rs` |
 | Text engine, layout cache, world labels, retained nodes, font families, fallback (`D-085`, `D-115`–`D-117`, `D-123`, `D-161`) | `render/text.rs`, `render/text/engine.rs`, `render/text/nodes.rs`, `render/text/fonts.rs`, `render/text/gpu.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/engine_font.rs` |
 | Neutral text types, world labels, `TextMeasure`, `TextNodeStore` (`D-117`, `D-125`) | `core/text.rs` |
 | UI tree, layout, focus, hits, routing, tracks, prompts, capture, prewarm, keys, widgets (`D-124`, `D-125`, `D-149`, `D-163`, `D-164`, `D-235`) | `core/ui/`, `tungsten/testing/ui.rs`, `core/tests/ui/`, `tungsten/tests/ui_route.rs` |
 | UI paint list, overlay pipeline, text batches, layout stage, debug actions (`D-147`, `D-148`) | `core/ui/paint.rs`, `render/ui.rs`, `render/ui.wgsl`, `tungsten/app.rs`, `tungsten/ui_debug.rs`, `render/tests/ui.rs`, `render/tests/text_batches.rs` |
 | Render components, default sprite extract, `Extracts` channels (`D-042`, `D-086`, `D-113`, `D-114`, `D-138`) | `core/components.rs`, `tungsten/sprite_extract.rs`, `tungsten/extract.rs` |
 | Materials, the fragment prelude, post-stack (`D-058`, `D-231`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/` |
-| SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
+| SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/graph/frame.rs` |
 | Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |
 | Lighting (`D-061`) | `core/components.rs`, `core/lighting.rs`, `render/lighting.rs`, `render/lit_sprite.rs`, `assets/shaders/lit_sprite.wgsl`, `tungsten/light_extract.rs` |
 | Overlays, captures (`D-047`, `D-142`) | `core/debug_draw.rs`, `core/inspect.rs`, `render/debug_line.rs`, `render/screenshot.rs`, `render/image_diff.rs`, `tungsten/capture.rs`, `tungsten/script.rs`, `tungsten/physics_debug.rs`, `tungsten/systems_overlay.rs`, `tungsten/inspector.rs` |

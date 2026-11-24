@@ -5,8 +5,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use tungsten_core::post::{PostPass, PostStack};
-
 /// Slots in the timestamp ring. A frame's timings are read at the poll of
 /// the fourth frame after it when the CPU runs three frames ahead of the GPU,
 /// as it does in immediate mode on the reference adapter, so three slots
@@ -99,52 +97,27 @@ impl GpuFrameTimings {
     }
 }
 
-/// Two queries per real render pass, including every bloom stage. `blit` adds
-/// the present blit, which only a capture frame records (`D-087`).
-fn query_count(stack: &PostStack, bloom_mips: u32, smaa: bool, blit: bool) -> Option<u32> {
-    // Scene and text, the SMAA tail, the present blit.
-    let mut passes: u32 = 2 + if smaa { 3 } else { 0 } + u32::from(blit);
-    for pass in &stack.0 {
-        passes = passes.checked_add(if matches!(pass, PostPass::Bloom(_)) {
-            bloom_mips.checked_mul(2)?
-        } else {
-            1
-        })?;
-    }
-    let count = passes.checked_mul(2)?;
-    (count <= wgpu::QUERY_SET_MAX_QUERIES).then_some(count)
-}
-
-/// What a ring's query sets are sized for: the frame's pass layout (the post
-/// stack, bloom's mips, SMAA, room for a capture's present blit) and the
-/// target size. A change rebuilds the ring.
+/// What a ring's query sets are sized for: the most passes a frame of the
+/// shape times, a capture's present blit among them, and the target size. A
+/// change rebuilds the ring. The count comes from the frame's compiled
+/// graph, which holds one pass for the scene, each post pass, each of
+/// bloom's stages, SMAA's three and the overlay.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TimingLayout {
-    /// Each post pass, whether it is a bloom.
-    post: Vec<bool>,
-    bloom_mips: u32,
-    smaa: bool,
+    passes: usize,
     size: (u32, u32),
 }
 
 impl TimingLayout {
-    pub(crate) fn new(stack: &PostStack, bloom_mips: u32, smaa: bool, size: (u32, u32)) -> Self {
-        Self {
-            post: stack
-                .0
-                .iter()
-                .map(|pass| matches!(pass, PostPass::Bloom(_)))
-                .collect(),
-            bloom_mips,
-            smaa,
-            size,
-        }
+    pub(crate) fn new(passes: usize, size: (u32, u32)) -> Self {
+        Self { passes, size }
     }
 
-    /// Queries a frame of this layout writes at most, a capture's present
-    /// blit included; `None` past the query limit.
-    pub(crate) fn query_count(&self, stack: &PostStack) -> Option<u32> {
-        query_count(stack, self.bloom_mips, self.smaa, true)
+    /// Queries a frame of this layout writes at most, two a pass; `None`
+    /// past the query limit.
+    pub(crate) fn query_count(&self) -> Option<u32> {
+        let count = u32::try_from(self.passes).ok()?.checked_mul(2)?;
+        (count <= wgpu::QUERY_SET_MAX_QUERIES).then_some(count)
     }
 }
 

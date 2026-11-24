@@ -26,7 +26,7 @@ members = [
 [workspace.metadata.cargo-shear]
 ignored-paths = [
     "crates/tungsten-core/src/tests/{assets,ecs,input,physics,ui}/*.rs",
-    "crates/tungsten-render/src/tests/{bloom,passes_order,post,smaa,text,text_fonts,text_nodes}.rs",
+    "crates/tungsten-render/src/tests/{bloom,graph,graph_frame,graph_pool,post,smaa,text,text_fonts,text_nodes}.rs",
     "crates/tungsten/src/tests/{asset_loader,testing_ui,check}.rs",
 ]
 

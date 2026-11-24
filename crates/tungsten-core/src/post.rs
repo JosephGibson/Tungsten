@@ -401,8 +401,8 @@ impl PostPass {
 }
 
 /// Per-session reorderable post-processing stack resource. Default is empty,
-/// which keeps the frame byte-identical to the M25 baseline. The renderer's
-/// ping-pong ladder is `PostStackRenderer::plan_targets` (`D-058`).
+/// which keeps the frame byte-identical to the M25 baseline. The renderer
+/// declares the stack's passes in its frame graph (`D-058`, `D-305`).
 #[derive(Debug, Clone, Default)]
 pub struct PostStack(pub Vec<PostPass>);
 

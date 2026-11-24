@@ -1,51 +1,29 @@
 use super::*;
-use tungsten_core::post::{BloomParams, VignetteParams};
 
 #[test]
-fn counts_real_passes_and_rejects_query_overflow() {
-    // Scene and text; a capture frame adds its present blit.
-    assert_eq!(query_count(&PostStack::default(), 6, false, false), Some(4));
-    assert_eq!(query_count(&PostStack::default(), 6, false, true), Some(6));
-    let stack = PostStack(vec![
-        PostPass::Bloom(BloomParams::default()),
-        PostPass::Vignette(VignetteParams::default()),
-        PostPass::Bloom(BloomParams::default()),
-    ]);
-    assert_eq!(query_count(&stack, 6, true, false), Some(60));
-    assert_eq!(query_count(&stack, 6, true, true), Some(62));
-    assert_eq!(query_count(&stack, 1, false, true), Some(16));
-    assert_eq!(query_count(&stack, 0, false, true), Some(8));
-    assert_eq!(query_count(&stack, 0, false, false), Some(6));
-    assert_eq!(query_count(&stack, u32::MAX, false, false), None);
-    let huge = PostStack(vec![PostPass::Vignette(VignetteParams::default()); 2047]);
-    assert_eq!(query_count(&huge, 6, false, false), None);
+fn a_layout_holds_two_queries_a_pass_and_rejects_query_overflow() {
+    let count = |passes| TimingLayout::new(passes, (1280, 720)).query_count();
+    // Scene and text, with room for a capture's present blit.
+    assert_eq!(count(3), Some(6));
+    // Two blooms of six levels around a vignette, SMAA's tail and the blit.
+    assert_eq!(count(31), Some(62));
+    assert_eq!(count(2048), Some(wgpu::QUERY_SET_MAX_QUERIES));
+    assert_eq!(count(2049), None);
+    assert_eq!(count(usize::MAX), None);
 }
 
 #[test]
-fn a_folded_vignette_takes_no_pass_of_the_timing_table() {
-    // Bloom then vignette: 2 * 6 bloom passes and the vignette's, with the
-    // scene and the text. Where bloom's composite draws the vignette
-    // (`D-302`) the frame plans the stack without it: one pass, two queries
-    // and one row of the layout fewer.
-    let stack = PostStack(vec![
-        PostPass::Bloom(BloomParams::default()),
-        PostPass::Vignette(VignetteParams::default()),
-    ]);
-    assert_eq!(query_count(&stack, 6, false, false), Some(30));
-    let vignette = crate::post::trailing_vignette(&stack, false, true);
-    assert_eq!(vignette, Some(VignetteParams::default()));
-    let folded = PostStack(stack.0[..1].to_vec());
-    assert_eq!(query_count(&folded, 6, false, false), Some(28));
+fn a_layout_moves_with_its_pass_count_or_its_size() {
+    // Bloom then vignette draws fifteen passes, and fourteen where bloom's
+    // composite draws the vignette (`D-302`; the frame's own test is
+    // `graph_frame::a_folded_vignette_takes_no_pass_of_the_frame`): with the
+    // blit's room, a stack that starts or stops folding rebuilds the ring.
     let size = (3840, 2160);
-    assert_eq!(
-        TimingLayout::new(&stack, 6, false, size).post,
-        [true, false]
-    );
-    assert_eq!(TimingLayout::new(&folded, 6, false, size).post, [true]);
+    assert_eq!(TimingLayout::new(16, size), TimingLayout::new(16, size));
+    assert_ne!(TimingLayout::new(16, size), TimingLayout::new(15, size));
     assert_ne!(
-        TimingLayout::new(&stack, 6, false, size),
-        TimingLayout::new(&folded, 6, false, size),
-        "a stack that starts or stops folding rebuilds the ring"
+        TimingLayout::new(16, size),
+        TimingLayout::new(16, (1920, 1080))
     );
 }
 
@@ -87,7 +65,7 @@ struct FakeSlot {
 }
 
 fn layout(width: u32) -> TimingLayout {
-    TimingLayout::new(&PostStack::default(), 6, false, (width, 720))
+    TimingLayout::new(3, (width, 720))
 }
 
 fn ring() -> Ring<FakeSlot> {
@@ -166,12 +144,10 @@ fn timing_ring_rebuilds_on_a_layout_change_only() {
         complete_all(&mut ring).is_empty(),
         "the old layout's frames are dropped"
     );
-    let stack = PostStack(vec![PostPass::Bloom(BloomParams::default())]);
-    assert!(
-        ring.ensure(TimingLayout::new(&stack, 6, false, (1920, 720)), || Some(
-            FakeSlot::default()
-        ))
-    );
+    // A stack that adds passes at the same size.
+    assert!(ring.ensure(TimingLayout::new(15, (1920, 720)), || Some(
+        FakeSlot::default()
+    )));
 
     // A slot out for recording across a rebuild is dropped on return.
     let (index, slot) = ring.take().expect("a free slot");

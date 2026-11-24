@@ -1,20 +1,20 @@
 //! M28 bloom pipeline.
 //!
-//! Four sub-pipelines (threshold, downsample, upsample, composite) share the
-//! `Rgba16Float` `BloomPyramid` allocated on `SceneTarget`. Bloom is a normal
-//! reorderable `PostPass`, but unlike the 17 single-fullscreen-pass stock
-//! effects it records `1 + 2*(N-1) + 1` sub-passes — each into a different
-//! attachment — so it bypasses `PassRecorder::begin` and drives the encoder
-//! directly. See `D-060`.
+//! Four sub-pipelines (threshold, downsample, upsample, composite) share an
+//! `Rgba16Float` pyramid the frame's graph declares and the pool lends.
+//! Bloom is a normal reorderable `PostPass`, but unlike the 17
+//! single-fullscreen-pass stock effects it draws `1 + 2*(N-1) + 1`
+//! sub-passes, each a pass of the graph into a level of the pyramid or the
+//! slot's target. See `D-060`.
 
 use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::post::{BloomParams, VignetteParams};
 use tungsten_core::tween::UniformOverrideBlock;
 
 use crate::counters::{self, Counts};
-use crate::passes::TargetId;
+use crate::graph::pool::PoolTexture;
 use crate::shader_hot_reload::{ShaderModuleCache, build_validated};
-use crate::targets::{BLOOM_PYRAMID_FORMAT, RenderTargetPool, TargetCache};
+use crate::targets::{BLOOM_PYRAMID_FORMAT, TargetCache, bloom_mip_extent_for};
 
 /// Stage shader manifest names. Must match `assets/manifest.json` keys and the
 /// pre-seeded ids in `Renderer::new`.
@@ -122,13 +122,40 @@ pub fn pack_params(
 }
 
 /// What a bloom slot's GPU objects were built for: they hold views of the
-/// slot's source and of the pyramid's mips.
+/// slot's source and of the pyramid's levels, pooled textures named by
+/// their identities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BloomSlotKey {
-    pub generation: u64,
-    pub src: TargetId,
-    pub dst: TargetId,
+    pub source: u64,
+    pub pyramid: u64,
     pub mip_count: u32,
+}
+
+/// One sub-pass of a bloom slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BloomStageKind {
+    /// The bright pass into the pyramid's first level.
+    Threshold,
+    /// The downsample into `level` from the level above it.
+    Down(u32),
+    /// The additive upsample into `level` from the level below it.
+    Up(u32),
+    /// The composite into the slot's target; `vignette` when it also draws
+    /// the stack's trailing vignette (`D-302`).
+    Composite { vignette: bool },
+}
+
+/// Where `stage` sits in a slot's recording order: threshold, the
+/// downsamples from level 1 up, the upsamples from the second-smallest
+/// level down, composite.
+pub(crate) fn stage_index(stage: BloomStageKind, mip_count: u32) -> usize {
+    let levels = mip_count.max(1) as usize;
+    match stage {
+        BloomStageKind::Threshold => 0,
+        BloomStageKind::Down(level) => level as usize,
+        BloomStageKind::Up(level) => levels + (levels - 2 - level as usize),
+        BloomStageKind::Composite { .. } => 2 * levels - 1,
+    }
 }
 
 /// One sub-pass of a bloom slot: its params UBO and the two bind groups it
@@ -147,6 +174,7 @@ struct BloomStage {
 struct BloomSlot {
     stages: Vec<BloomStage>,
     composite_bg: wgpu::BindGroup,
+    mip_count: u32,
 }
 
 /// The cache of post-stack slot `slot`, growing the list to reach it: two
@@ -264,10 +292,12 @@ impl BloomPipeline {
         }
     }
 
-    /// Drops every slot's objects, and with them their views of the scene
-    /// targets and the pyramid.
-    pub(crate) fn release_target_views(&mut self) {
-        self.slots.clear();
+    /// Drops the objects of every slot that holds a view of one of the
+    /// pooled textures `freed`.
+    pub(crate) fn forget_targets(&mut self, freed: &[u64]) {
+        for slot in &mut self.slots {
+            slot.clear_if(|key| freed.contains(&key.source) || freed.contains(&key.pyramid));
+        }
     }
 
     /// Hot-reload entry: rebuild only the affected stage's pipeline against a
@@ -307,61 +337,51 @@ impl BloomPipeline {
         self.target_format
     }
 
-    /// Record one bloom slot: threshold → N-1 downsamples → N-1 additive
-    /// upsamples → composite. Each sub-pass opens its own `RenderPass` because
-    /// the attachments differ per stage (a different mip view, then dst).
-    /// `slot` is the pass's index in the post stack; its UBOs and bind groups
-    /// are built once and rebuilt when the targets, the slot's source or
-    /// destination or the mip count change. `swap_view` is the frame's
-    /// swapchain view; the composite writes it
-    /// when `dst` is [`TargetId::Swapchain`], which is where a direct frame
-    /// sends a bloom that ends the post stack (`D-087`).
+    /// Readies post-stack slot `slot` for a frame, before its threshold
+    /// pass records: stages the sub-passes' blocks, builds the slot's UBOs
+    /// and bind groups once (again when its source, the pyramid or the mip
+    /// count change) and writes each block whose bytes changed. `source` is
+    /// the pooled texture the slot samples and `pyramid` the pooled pyramid,
+    /// each with its identity; `scene_size` is the frame's.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn record_pass_timed(
+    pub(crate) fn prepare_slot(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        pool: &RenderTargetPool,
-        swap_view: Option<&wgpu::TextureView>,
-        params: &BloomParams,
-        src: TargetId,
-        dst: TargetId,
-        mut timing: Option<&mut crate::timing::TimingResources>,
         slot: usize,
+        params: &BloomParams,
+        scene_size: (u32, u32),
+        halvings: u32,
         vignette: Option<&VignetteParams>,
+        source: (u64, &wgpu::TextureView),
+        pyramid: (u64, &PoolTexture),
+        mip_count: u32,
     ) {
-        let mip_count = pool.scene.bloom_mip_count();
         if mip_count == 0 {
             return;
         }
-
         let payloads = &mut self.payloads;
-        let halvings = pool.scene.bloom_halvings();
         stage_payloads(
             payloads,
             params,
-            pool.scene.size,
+            scene_size,
             mip_count,
             halvings,
             vignette,
-            |level| {
-                pool.scene
-                    .bloom_mip_extent(level)
-                    .expect("bloom mip must exist")
-            },
+            |level| bloom_mip_extent_for(scene_size.0, scene_size.1, halvings, level),
         );
         let key = BloomSlotKey {
-            generation: pool.generation(),
-            src,
-            dst,
+            source: source.0,
+            pyramid: pyramid.0,
             mip_count,
         };
         let layouts = &self.layouts;
         let sampler = &self.sampler;
         let counts = &*self.counts;
         let objects = slot_cache(&mut self.slots, slot).get_or_build(key, || {
-            build_slot(counts, device, layouts, sampler, pool, src, payloads)
+            build_slot(
+                counts, device, layouts, sampler, source.1, pyramid.1, mip_count, payloads,
+            )
         });
         // A stage's UBO is written only when its bytes change: new params or
         // new sizes.
@@ -371,175 +391,50 @@ impl BloomPipeline {
                 stage.written = *payload;
             }
         }
-        let mut stages = objects.stages.iter();
-        let mut next_stage = || {
-            stages
-                .next()
-                .expect("bloom slot holds 2 * mip_count stages")
+    }
+
+    /// Draws sub-pass `stage` of the prepared slot `slot` into `pass`, which
+    /// the frame's graph opened on the stage's target. Each sub-pass's
+    /// debug group opens inside its pass: a group pushed or popped on the
+    /// encoder between two passes makes wgpu open a command buffer that
+    /// holds only the label.
+    ///
+    /// The threshold, the downsamples and an offscreen composite load their
+    /// targets where they once cleared them: each draws one triangle over
+    /// the whole target with blending off and every channel written, so no
+    /// texel of what was there survives. A stage that came to draw less
+    /// than its whole target would need its clear back. The upsamples add
+    /// into what the downsamples left, so they load.
+    pub(crate) fn draw_stage(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        slot: usize,
+        stage: BloomStageKind,
+    ) {
+        let Some(objects) = self.slots.get(slot).and_then(TargetCache::get) else {
+            return;
         };
-
-        let dst_view = match (dst, swap_view) {
-            (TargetId::Swapchain, Some(view)) => view,
-            _ => resolve_post_view(pool, dst),
+        let Some(blocks) = objects.stages.get(stage_index(stage, objects.mip_count)) else {
+            return;
         };
-
-        encoder.push_debug_group("bloom_slot");
-
-        // Each sub-pass's debug group opens inside its pass: a group pushed
-        // or popped on the encoder between two passes makes wgpu open a
-        // command buffer that holds only the label, twelve a frame here.
-        //
-        // The threshold, the downsamples and an offscreen composite load
-        // their targets where they once cleared them: each draws one
-        // triangle over the whole target with blending off and every
-        // channel written, so no texel of what was there survives, and the
-        // clear was the driver's work for nothing. A stage that came to draw
-        // less than its whole target would need its clear back.
-
-        // Stage 1 — threshold: sample slot src, write mip 0.
-        {
-            let stage = next_stage();
-            let mip0_view = pool
-                .scene
-                .bloom_mip_view(0)
-                .expect("bloom mip 0 must exist");
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("tungsten_bloom_threshold"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: mip0_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: timing
-                    .as_deref_mut()
-                    .map(|t| t.next(threshold_label(slot, halvings))),
-                ..Default::default()
-            });
-            pass.push_debug_group("bloom_threshold");
-            pass.set_pipeline(&self.threshold);
-            pass.set_bind_group(0, &stage.source_bg, &[]);
-            pass.set_bind_group(1, &stage.params_bg, &[]);
-            counters::draw(counts, &mut pass, 0..3, 0..1);
-            pass.pop_debug_group();
-            drop(pass);
-        }
-
-        // Stage 2 — downsample chain: each level reads (level-1) and writes level.
-        for level in 1..mip_count {
-            let stage = next_stage();
-            let level_view = pool
-                .scene
-                .bloom_mip_view(level)
-                .expect("level mip view must exist");
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("tungsten_bloom_downsample"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: level_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: timing
-                    .as_deref_mut()
-                    .map(|t| t.next(format!("post{slot}_bloom_down{level}"))),
-                ..Default::default()
-            });
-            pass.push_debug_group("bloom_downsample");
-            pass.set_pipeline(&self.downsample);
-            pass.set_bind_group(0, &stage.source_bg, &[]);
-            pass.set_bind_group(1, &stage.params_bg, &[]);
-            counters::draw(counts, &mut pass, 0..3, 0..1);
-            pass.pop_debug_group();
-            drop(pass);
-        }
-
-        // Stage 3 — upsample chain: each iteration reads (level+1) and adds
-        // into level. Pipeline blend state contributes the One+One.
-        for level in (0..mip_count - 1).rev() {
-            let stage = next_stage();
-            let level_view = pool
-                .scene
-                .bloom_mip_view(level)
-                .expect("level mip view must exist");
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("tungsten_bloom_upsample"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: level_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        // Load: pipeline blend additively combines fragment
-                        // with the prior downsample contents. Clearing here
-                        // would discard the downsampled energy.
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: timing
-                    .as_deref_mut()
-                    .map(|t| t.next(format!("post{slot}_bloom_up{level}"))),
-                ..Default::default()
-            });
-            pass.push_debug_group("bloom_upsample");
-            pass.set_pipeline(&self.upsample);
-            pass.set_bind_group(0, &stage.source_bg, &[]);
-            pass.set_bind_group(1, &stage.params_bg, &[]);
-            counters::draw(counts, &mut pass, 0..3, 0..1);
-            pass.pop_debug_group();
-            drop(pass);
-        }
-
-        // Stage 4 — composite: src + bloom * intensity, mixed by radius, into dst.
-        {
-            let stage = next_stage();
-            // The swapchain keeps its clear: the frame's last full-screen
-            // stage clears it, and a load of a newly acquired surface is a
-            // clear of the backend's own.
-            let load = if matches!(dst, TargetId::Swapchain) {
-                wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
-            } else {
-                wgpu::LoadOp::Load
-            };
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("tungsten_bloom_composite"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: dst_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: timing.map(|t| t.next(composite_label(slot, vignette.is_some()))),
-                ..Default::default()
-            });
-            pass.push_debug_group("bloom_composite");
-            pass.set_pipeline(if vignette.is_some() {
-                &self.composite_vignette
-            } else {
-                &self.composite
-            });
-            pass.set_bind_group(0, &stage.source_bg, &[]);
-            pass.set_bind_group(1, &stage.params_bg, &[]);
+        let (group, pipeline) = match stage {
+            BloomStageKind::Threshold => ("bloom_threshold", &self.threshold),
+            BloomStageKind::Down(_) => ("bloom_downsample", &self.downsample),
+            BloomStageKind::Up(_) => ("bloom_upsample", &self.upsample),
+            BloomStageKind::Composite { vignette: true } => {
+                ("bloom_composite", &self.composite_vignette)
+            }
+            BloomStageKind::Composite { vignette: false } => ("bloom_composite", &self.composite),
+        };
+        pass.push_debug_group(group);
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(0, &blocks.source_bg, &[]);
+        pass.set_bind_group(1, &blocks.params_bg, &[]);
+        if matches!(stage, BloomStageKind::Composite { .. }) {
             pass.set_bind_group(2, &objects.composite_bg, &[]);
-            counters::draw(counts, &mut pass, 0..3, 0..1);
-            pass.pop_debug_group();
-            drop(pass);
         }
-
-        encoder.pop_debug_group();
+        counters::draw(&self.counts, pass, 0..3, 0..1);
+        pass.pop_debug_group();
     }
 }
 
@@ -581,48 +476,20 @@ fn stage_payloads(
     payloads.push(composite.to_bytes());
 }
 
-/// The threshold pass's timing label in post-stack slot `slot`: its own
-/// where the pyramid starts at a quarter of its target (`D-301`). The pass
-/// then reads each texel's 4x4 footprint, the half-size pyramid's first
-/// downsample with its threshold, and its time is no measure of the
-/// half-size threshold's.
-pub(crate) fn threshold_label(slot: usize, halvings: u32) -> String {
-    if halvings >= 2 {
-        format!("post{slot}_bloom_threshold_quarter")
-    } else {
-        format!("post{slot}_bloom_threshold")
-    }
-}
-
-/// The composite pass's timing label in post-stack slot `slot`: its own
-/// where it also draws the stack's trailing vignette (`D-302`), so the two
-/// passes' work is not read as the composite's alone.
-pub(crate) fn composite_label(slot: usize, with_vignette: bool) -> String {
-    if with_vignette {
-        format!("post{slot}_bloom_composite_vignette")
-    } else {
-        format!("post{slot}_bloom_composite")
-    }
-}
-
 /// Builds a slot's UBOs, seeded with `payloads`, and its bind groups, in
 /// the order of [`stage_payloads`].
+#[allow(clippy::too_many_arguments)]
 fn build_slot(
     counts: &Counts,
     device: &wgpu::Device,
     layouts: &BloomLayouts,
     sampler: &wgpu::Sampler,
-    pool: &RenderTargetPool,
-    src: TargetId,
+    src_view: &wgpu::TextureView,
+    pyramid: &PoolTexture,
+    mip_count: u32,
     payloads: &[[u8; 256]],
 ) -> BloomSlot {
-    let mip_count = pool.scene.bloom_mip_count();
-    let src_view = resolve_post_view(pool, src);
-    let mip_view = |level: u32| {
-        pool.scene
-            .bloom_mip_view(level)
-            .expect("bloom mip view must exist")
-    };
+    let mip_view = |level: u32| pyramid.view(level);
     // Each sub-pass's label and the view it samples, in recording order.
     let mut sources: Vec<(&'static str, &wgpu::TextureView)> = Vec::with_capacity(payloads.len());
     sources.push(("bloom_threshold", src_view));
@@ -664,15 +531,7 @@ fn build_slot(
     BloomSlot {
         stages,
         composite_bg,
-    }
-}
-
-fn resolve_post_view(pool: &RenderTargetPool, target: TargetId) -> &wgpu::TextureView {
-    match target {
-        TargetId::SceneColor => pool.scene.color_view(),
-        TargetId::PostPing => pool.scene.post_ping_view(),
-        TargetId::PostPong => pool.scene.post_pong_view(),
-        _ => unreachable!("invalid bloom slot target {target:?}"),
+        mip_count,
     }
 }
 

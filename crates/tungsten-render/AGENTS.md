@@ -11,9 +11,9 @@ Rules over the root `AGENTS.md`; the `tungsten-wgpu` skill adds more.
 
 ## Frame order
 
-`Scene → PostStack → [SMAA tail] → Overlay` (`D-087`, `D-147`, `D-161`). The last full-screen stage renders into the swapchain and clears it: SMAA's neighborhood pass; without SMAA the last post pass, or bloom's composite (which also draws a stock `Vignette` ending the stack after it: plan from `fold_vignette`, `D-302`); with neither the scene pass, or its resolve under MSAA. The overlay (timing label `text`) then draws the world labels, the UI paint list, each item under its scissor, then the text, after presentation AA.
+`Scene → PostStack → [SMAA tail] → Overlay` (`D-087`, `D-147`, `D-161`), declared in `src/graph/frame.rs` (`D-305`): a pass names what it samples and writes (`Clear`, `Whole`, `Over`). Compiling derives the rest: the last version nothing samples is the swapchain, its first write a clear; loads, stores, pooled targets, the acquire split. Add passes and targets there, not in `renderer.rs`. Bloom's composite also draws a stock `Vignette` ending the stack after it (plan from `fold_vignette`, `D-302`). The overlay (timing label `text`) draws the world labels, the UI paint list, each item under its scissor, then the text, after presentation AA.
 
-A capture frame (`Renderer::capture_frame`, `TUNGSTEN_CAPTURE_FRAME`) keeps the blit tail, `… → [SMAA tail → PresentSource] → Overlay → Present Blit → Swapchain`, and the screenshot reads the blit's source. `default_pass_order` takes the `PresentPath`; a new full-screen stage must work on both. `TUNGSTEN_CAPTURE_DIRECT=1` captures the direct path, for the test comparing the two.
+A capture frame (`Renderer::capture_frame`, `TUNGSTEN_CAPTURE_FRAME`) is that declaration with its last version marked copied-from: it stays offscreen for the screenshot and a blit shows it. A new stage must pass `graph_frame`'s matrix. `TUNGSTEN_CAPTURE_DIRECT=1` captures the direct path, for the test comparing the two.
 
 Surface acquire decisions (reconfigure, recreate, skip, fail) live in the GPU-free `src/surface_acquire.rs` with transition tests; change policy there, not in `renderer.rs`.
 
@@ -21,7 +21,7 @@ Surface acquire decisions (reconfigure, recreate, skip, fail) live in the GPU-fr
 
 - **Materials** (`D-058`): manifest `materials` entries get a `MaterialAssetId`; each batch in a frame gets a 256-byte UBO slot matching `UniformOverrideBlock` (`D-101`). `MaterialPipeline` reuses the sprite layout (groups 0/1) and adds group 2. `uniform_defaults` reload with the manifest.
 - **SMAA** (`D-059`): three manifest-tracked stage shaders. `area`/`search` LUTs are `include_bytes!` engine content in `src/assets/smaa/` (MIT, not manifest-tracked). `render.post_aa` / `TUNGSTEN_RENDER_POST_AA`; runtime switches go through `tungsten::request_post_aa` at a frame boundary. `msaa` changes need a relaunch.
-- **Bloom** (`D-060`): a `PostPass` variant recording its own sub-passes, not `PassRecorder::begin`. The `Rgba16Float` pyramid lives on `SceneTarget`, sized by `render.bloom_base` (`D-301`) and `bloom_max_mips`, startup-only. `SceneColor` stays sRGB.
+- **Bloom** (`D-060`): a `PostPass` variant declared as its own passes over a pooled `Rgba16Float` pyramid, sized by `render.bloom_base` (`D-301`) and `bloom_max_mips`, startup-only. Scene colour stays sRGB.
 - **Lighting** (`D-061`): `LitSpritePipeline` runs in the scene pass; `LightingResources` owns a 544-byte `LightUbo` at group 2 (`LIGHT_CAP = 16`; `lights_view` drops lights lighting no pixel). Normal/emissive siblings pack into parallel atlas pages keyed by the albedo `TextureHandle`. `emissive_mask` and `rim_light` are validated helpers, no pipeline.
 - **Depth sort** (`D-297`): under `gpu_depth` a batch's depth is its place and solid batches draw first; `fs_solid` must draw what `fs_main` draws.
 - **Screenshots/debug** (`D-047`): an offscreen `COPY_SRC` target read back through a row-padded `MAP_READ` buffer; debug groups and labels always on.

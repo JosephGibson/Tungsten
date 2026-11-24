@@ -1,16 +1,14 @@
 //! M26 post-processing stack renderer.
 //!
 //! Holds one pipeline per stock effect, allocated once at `Renderer::new`.
-//! `record` walks the `PostStack` and dispatches each pass against the
-//! ping-pong ladder of `PostStackRenderer::plan_targets` (`D-058`).
+//! The frame's graph declares a pass a stack slot, each reading the version
+//! of the frame's colour before it (`D-058`); `record_pass` draws one.
 
 use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::post::{PostPass, PostStack, VignetteParams};
 use tungsten_core::tween::UniformOverrideBlock;
 
-use crate::passes::TargetId;
 use crate::shader_hot_reload::ShaderModuleCache;
-use crate::targets::{RenderTargetPool, TargetCache};
 
 pub mod bloom;
 pub mod fullscreen;
@@ -125,11 +123,11 @@ impl StockResources {
     }
 }
 
-/// One stock-effect pipeline. Its bind groups are not here. The source view
-/// flips between `SceneColor`, `PostPing` and `PostPong` across the ping-pong
-/// ladder, and every effect shares the three source groups that
-/// `PostStackRenderer` caches. The params belong to the post-stack slot, not
-/// to the effect (`ParamSlots`).
+/// One stock-effect pipeline. Its bind groups are not here. The source is
+/// whichever pooled texture holds the version of the frame's colour before
+/// the pass, and every effect shares the source groups that
+/// `PostStackRenderer` caches by texture. The params belong to the
+/// post-stack slot, not to the effect (`ParamSlots`).
 pub(crate) struct StockPipeline {
     pub pipeline: wgpu::RenderPipeline,
 }
@@ -228,13 +226,38 @@ impl<T> ParamSlots<T> {
     }
 }
 
-/// Cache slot of a post-stack source target.
-fn source_slot(src: TargetId) -> usize {
-    match src {
-        TargetId::SceneColor => 0,
-        TargetId::PostPing => 1,
-        TargetId::PostPong => 2,
-        _ => unreachable!("invalid post-source target {src:?}"),
+/// Bind groups that sample a pooled texture, by the texture's identity. A
+/// frame's post passes read two or three textures, so a short list serves.
+pub(crate) struct SourceGroups<T> {
+    groups: Vec<(u64, T)>,
+}
+
+impl<T> Default for SourceGroups<T> {
+    fn default() -> Self {
+        Self { groups: Vec::new() }
+    }
+}
+
+impl<T> SourceGroups<T> {
+    /// The group over the texture `id`, built by `build` on its first use.
+    pub(crate) fn get_or_build(&mut self, id: u64, build: impl FnOnce() -> T) -> &T {
+        let held = self.groups.iter().position(|(held, _)| *held == id);
+        let index = held.unwrap_or_else(|| {
+            self.groups.push((id, build()));
+            self.groups.len() - 1
+        });
+        &self.groups[index].1
+    }
+
+    /// Drops the groups over the textures `freed`, and with them their
+    /// views.
+    pub(crate) fn forget(&mut self, freed: &[u64]) {
+        self.groups.retain(|(id, _)| !freed.contains(id));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.groups.len()
     }
 }
 
@@ -246,9 +269,9 @@ pub struct PostStackRenderer {
     /// M28 bloom pipeline. Records its own multi-subpass slot at the encoder
     /// level instead of the per-slot single-render-pass path; see `D-060`.
     pub(crate) bloom: BloomPipeline,
-    /// Source bind groups for `SceneColor`, `PostPing` and `PostPong`, shared
-    /// by every stock effect and keyed on the pool generation.
-    source_bind_groups: [TargetCache<u64, wgpu::BindGroup>; 3],
+    /// Source bind groups over the pooled textures the stack's passes
+    /// sample, shared by every stock effect.
+    source_bind_groups: SourceGroups<wgpu::BindGroup>,
     /// Params of the stock passes, per post-stack slot.
     params: ParamSlots<StockParams>,
     /// The [`InertParam`]s already warned about, one bit each.
@@ -348,7 +371,7 @@ impl PostStackRenderer {
             stock,
             bloom: BloomPipeline::new(device, format, shader_cache, bloom_shader_ids),
             resources,
-            source_bind_groups: Default::default(),
+            source_bind_groups: SourceGroups::default(),
             params: ParamSlots::default(),
             inert_warned: 0,
             vignette_replaced: false,
@@ -375,18 +398,16 @@ impl PostStackRenderer {
         }
     }
 
-    /// Drops every cached object that holds a view of the scene targets, so
-    /// reallocated targets are freed at once and not at their next use.
-    pub(crate) fn release_target_views(&mut self) {
-        for cache in &mut self.source_bind_groups {
-            cache.clear();
-        }
-        self.bloom.release_target_views();
+    /// Drops every cached object that holds a view of one of the pooled
+    /// textures `freed`, so the pool's frees take effect at once.
+    pub(crate) fn forget_targets(&mut self, freed: &[u64]) {
+        self.source_bind_groups.forget(freed);
+        self.bloom.forget_targets(freed);
     }
 
     fn pipeline_for(&self, pass: &PostPass) -> &StockPipeline {
         let Some(index) = stock_index(pass) else {
-            unreachable!("PostPass::Bloom is recorded by record_bloom_slot_timed, not record_pass")
+            unreachable!("PostPass::Bloom is drawn by its own passes, not record_pass")
         };
         &self.stock[index]
     }
@@ -512,67 +533,37 @@ impl PostStackRenderer {
                 block.f32s[3] = p.samples as f32;
             }
             // Bloom is multi-subpass; UBO packing happens per sub-pass inside
-            // `BloomPipeline::record_pass_timed` via `bloom::pack_params`.
+            // `BloomPipeline::prepare_slot` via `bloom::pack_params`.
             PostPass::Bloom(_) => {}
         }
         block
     }
 
-    /// Plan the (src, dst) ladder for a stack of `len` passes. First pass
-    /// samples `SceneColor`, subsequent passes alternate between ping/pong.
-    /// Each entry's `src` is the previous `dst`. Even dst = PostPing.
-    #[must_use]
-    pub fn plan_targets(len: usize) -> Vec<(TargetId, TargetId)> {
-        let mut out = Vec::with_capacity(len);
-        for i in 0..len {
-            let dst = if i.is_multiple_of(2) {
-                TargetId::PostPing
-            } else {
-                TargetId::PostPong
-            };
-            let src = if i == 0 {
-                TargetId::SceneColor
-            } else if (i - 1).is_multiple_of(2) {
-                TargetId::PostPing
-            } else {
-                TargetId::PostPong
-            };
-            out.push((src, dst));
-        }
-        out
-    }
-
-    /// Record one post-stack pass into an already-open `render_pass`. The
-    /// caller has selected the correct dst view via `PassRecorder::begin`
-    /// with the matching `PassDesc`; we upload params if they changed, bind
-    /// the cached source group, set pipeline, and draw. `slot` is the pass's
-    /// index in the post stack: each slot keeps a params buffer of its own.
-    #[allow(clippy::too_many_arguments)]
-    pub fn record_pass(
+    /// Draws one post-stack pass into an already-open `render_pass`, which
+    /// the frame's graph opened on the pass's target: uploads the params if
+    /// they changed, binds the cached source group, sets the pipeline and
+    /// draws. `source` is the pooled texture the pass samples, with its
+    /// identity; `slot` is the pass's index in the post stack: each slot
+    /// keeps a params buffer of its own.
+    pub(crate) fn record_pass(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         render_pass: &mut wgpu::RenderPass<'_>,
-        pool: &RenderTargetPool,
+        source: (u64, &wgpu::TextureView),
         pass: &PostPass,
-        src: TargetId,
         slot: usize,
     ) {
         let payload = Self::pack(pass).to_bytes();
-        let src_view = match src {
-            TargetId::SceneColor => pool.scene.color_view(),
-            TargetId::PostPing => pool.scene.post_ping_view(),
-            TargetId::PostPong => pool.scene.post_pong_view(),
-            _ => unreachable!("invalid post-source target {src:?}"),
-        };
         let resources = &self.resources;
-        let source_bg = self.source_bind_groups[source_slot(src)]
-            .get_or_build(pool.generation(), || {
+        let source_bg = self
+            .source_bind_groups
+            .get_or_build(source.0, || {
                 fullscreen::build_source_bind_group(
                     device,
                     &resources.layouts,
                     "post",
-                    src_view,
+                    source.1,
                     &resources.sampler,
                 )
             })
@@ -593,35 +584,6 @@ impl PostStackRenderer {
         render_pass.set_bind_group(0, &source_bg, &[]);
         render_pass.set_bind_group(1, &params_bg, &[]);
         counters::draw(&self.counts, render_pass, 0..3, 0..1);
-    }
-
-    /// Record a `PostPass::Bloom` slot at encoder level. Unlike `record_pass`,
-    /// this opens its own per-subpass `RenderPass`es (threshold, downsample
-    /// chain, additive upsample chain, composite); the renderer's outer slot
-    /// `PassDesc` is treated as a debug-only label. `slot` is the pass's
-    /// index in the post stack: each slot keeps GPU objects of its own. The
-    /// composite writes the frame's swapchain view when `dst` is
-    /// [`TargetId::Swapchain`]; a slot recorded before the surface acquire
-    /// has no view (`None`), and a swapchain `dst` without one panics
-    /// (`D-145`). `timing` records the sub-passes.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn record_bloom_slot_timed(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        pool: &RenderTargetPool,
-        swap_view: Option<&wgpu::TextureView>,
-        params: &tungsten_core::post::BloomParams,
-        src: TargetId,
-        dst: TargetId,
-        timing: Option<&mut crate::timing::TimingResources>,
-        slot: usize,
-        vignette: Option<&VignetteParams>,
-    ) {
-        self.bloom.record_pass_timed(
-            device, queue, encoder, pool, swap_view, params, src, dst, timing, slot, vignette,
-        );
     }
 }
 

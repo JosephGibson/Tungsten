@@ -24,24 +24,30 @@ fn non_srgb_twin_returns_none_for_linear_input() {
 
 #[test]
 fn target_cache_rebuilds_only_when_its_key_moves() {
-    // Keyed like the renderer's caches: pool generation and source target.
-    let mut cache: TargetCache<(u64, TargetId), u32> = TargetCache::default();
+    // Keyed like the renderer's caches: the identity of the pooled texture
+    // the value holds a view of.
+    let mut cache: TargetCache<u64, u32> = TargetCache::default();
     let mut builds = 0;
-    let mut get = |cache: &mut TargetCache<(u64, TargetId), u32>, key| {
+    let mut get = |cache: &mut TargetCache<u64, u32>, key| {
         *cache.get_or_build(key, || {
             builds += 1;
             builds
         })
     };
-    assert_eq!(get(&mut cache, (0, TargetId::SceneColor)), 1);
-    assert_eq!(get(&mut cache, (0, TargetId::SceneColor)), 1);
-    // A resize or a `post_aa` switch rebuilds the targets: new generation.
-    assert_eq!(get(&mut cache, (1, TargetId::SceneColor)), 2);
-    assert_eq!(get(&mut cache, (1, TargetId::SceneColor)), 2);
-    // Another source target in the same generation.
-    assert_eq!(get(&mut cache, (1, TargetId::PostPing)), 3);
-    cache.clear();
-    assert_eq!(get(&mut cache, (1, TargetId::PostPing)), 4);
+    assert_eq!(cache.get(), None);
+    assert_eq!(get(&mut cache, 7), 1);
+    assert_eq!(get(&mut cache, 7), 1);
+    assert_eq!(cache.get(), Some(&1));
+    // Another texture: the frame's shape moved, or a resize made new ones.
+    assert_eq!(get(&mut cache, 8), 2);
+    assert_eq!(get(&mut cache, 8), 2);
+    // A freed texture takes the value over it, and no other texture's.
+    cache.clear_if(|key| *key == 7);
+    assert_eq!(cache.get(), Some(&2));
+    assert_eq!(get(&mut cache, 8), 2);
+    cache.clear_if(|key| *key == 8);
+    assert_eq!(cache.get(), None);
+    assert_eq!(get(&mut cache, 8), 3);
 }
 
 #[test]
