@@ -37,10 +37,19 @@ fn on_worker() -> bool {
 }
 
 /// Item `i`'s outputs: `i % 3` of them, from the item's value, so items give
-/// none, one or two and a merge that loses or moves one shows.
+/// none, one or two and a merge that loses or moves one shows. Slow, the
+/// calling thread's chunks wait (at most two seconds) for a worker to have
+/// taken one, so a loaded machine cannot leave every chunk to the caller.
 fn spread(values: &Values, range: Range<usize>, out: &mut Vec<u64>) {
     if on_worker() {
-        values.on_workers.fetch_add(1, Ordering::Relaxed);
+        values.on_workers.fetch_add(1, Ordering::Release);
+    } else if values.slow {
+        let start = Instant::now();
+        while values.on_workers.load(Ordering::Acquire) == 0
+            && start.elapsed() < Duration::from_secs(2)
+        {
+            std::thread::yield_now();
+        }
     }
     for i in range {
         if values.slow {
@@ -96,11 +105,12 @@ fn a_map_equals_one_serial_call_at_every_count_and_chunk() {
                 );
                 assert_eq!(back.items.len(), len, "the shared value comes back whole");
             }
-            // Items of a microsecond each: the workers wake within the
-            // caller's share and take chunks of their own.
-            let values = Values::new(items(&mut rng, 1_000), true);
+            // Items of a microsecond each, the caller's waiting for a worker:
+            // the workers take chunks of their own.
+            let slow = items(&mut rng, 1_000);
             let mut want = Vec::new();
-            spread(&values, 0..1_000, &mut want);
+            spread(&Values::new(slow.clone(), false), 0..1_000, &mut want);
+            let values = Values::new(slow, true);
             let mut got = Vec::new();
             let back = workers.map(values, 1_000, 4_096, usize::MAX, &mut got, spread);
             assert_eq!(
