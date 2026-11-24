@@ -1342,9 +1342,13 @@ fn the_physics_section_sets_the_steps_workers() {
 
 #[test]
 fn the_physics_section_sets_the_workers_spin() {
-    assert_eq!(PhysicsSection::default().worker_spin_ms, 3);
+    assert_eq!(
+        PhysicsSection::default().worker_spin_ms,
+        0,
+        "a worker parks unless the game asks"
+    );
     for (millis, json) in [
-        (0, r#"{ "physics": { "worker_spin_ms": 0 } }"#),
+        (3, r#"{ "physics": { "worker_spin_ms": 3 } }"#),
         (50, r#"{ "physics": { "worker_spin_ms": 50 } }"#),
     ] {
         let (_, loaded) = load_json("physics-spin", json);

@@ -74,12 +74,11 @@ fn a_windows_run_gives_the_world_its_physics_workers_and_new_gives_none() {
         "App::new steps on the calling thread, as the harness and the guards do"
     );
     app.start_physics_workers();
-    // The workers spin `physics.worker_spin_ms` for a step's next fork: 3 ms
-    // unless the file says otherwise (`D-300`).
-    let spin = Duration::from_millis(3);
+    // The workers park between forks unless `physics.worker_spin_ms` asks
+    // them to spin (`D-300`, `D-304`).
     assert_eq!(
         app.world().get_resource::<PhysicsWorkers>(),
-        Some(&PhysicsWorkers::new(3).with_spin(spin))
+        Some(&PhysicsWorkers::new(3))
     );
 
     // 0, the default, is automatic; 1 is the serial step.
@@ -87,20 +86,20 @@ fn a_windows_run_gives_the_world_its_physics_workers_and_new_gives_none() {
     app.start_physics_workers();
     assert_eq!(
         app.world().get_resource::<PhysicsWorkers>(),
-        Some(&PhysicsWorkers::auto().with_spin(spin))
+        Some(&PhysicsWorkers::auto())
     );
     let config: Config = serde_json::from_str(r#"{ "physics": { "workers": 1 } }"#).unwrap();
     let mut app = App::new(config).expect("App::new failed");
     app.start_physics_workers();
     assert_eq!(
         app.world().get_resource::<PhysicsWorkers>(),
-        Some(&PhysicsWorkers::SERIAL.with_spin(spin))
+        Some(&PhysicsWorkers::SERIAL)
     );
 
-    // A spin of 0 parks a worker at once, and the key's own time is kept.
+    // The key's own time is kept, 0 parking a worker at once.
     for (millis, json) in [
         (0, r#"{ "physics": { "workers": 4, "worker_spin_ms": 0 } }"#),
-        (7, r#"{ "physics": { "workers": 4, "worker_spin_ms": 7 } }"#),
+        (3, r#"{ "physics": { "workers": 4, "worker_spin_ms": 3 } }"#),
     ] {
         let config: Config = serde_json::from_str(json).unwrap();
         let mut app = App::new(config).expect("App::new failed");

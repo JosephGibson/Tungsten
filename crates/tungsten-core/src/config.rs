@@ -745,11 +745,11 @@ pub struct UiConfig {
 /// its broadphase's cell, which `App::new` puts into the World's
 /// `PhysicsConfig`; a game's plugin may set them again after. And the
 /// threads the step's forked stages run on (`D-298`) with the time each
-/// spins for a step's next fork (`D-300`), which `App::run` puts into the
+/// spins for a step's next fork (`D-300`, `D-304`), which `App::run` puts into the
 /// World's `PhysicsWorkers` unless the game inserted its own.
 ///
 /// ```json
-/// "physics": { "gravity": [0, 900], "broadphase_cell": 32, "workers": 0, "worker_spin_ms": 3 }
+/// "physics": { "gravity": [0, 900], "broadphase_cell": 32, "workers": 0, "worker_spin_ms": 0 }
 /// ```
 ///
 /// A file without the section, or a field left out, keeps the engine's
@@ -771,10 +771,12 @@ pub struct PhysicsSection {
     /// `TUNGSTEN_PHYSICS_WORKERS` overrides the file.
     pub workers: u32,
     /// `physics.worker_spin_ms`: how long a worker spins for its step's
-    /// next fork before it parks, 0 to 50 ms; 3 unless set. A spinning
-    /// worker takes the fork without a wake-up and keeps a core busy while
-    /// the step runs, never past it; 0 parks at once. A step that never
-    /// forks starts no worker, so a small world pays nothing.
+    /// next fork before it parks, 0 to 50 ms; 0 unless set, which parks at
+    /// once (`D-304`). A spinning worker takes the fork without a wake-up
+    /// and keeps a core busy while the step runs, never past it: at 3 ms a
+    /// large step read 0.1 to 0.6 ms shorter on the reference machine. A
+    /// step that never forks starts no worker, so a small world pays
+    /// nothing either way.
     pub worker_spin_ms: u32,
 }
 
@@ -785,7 +787,7 @@ impl Default for PhysicsSection {
             gravity: physics.gravity.to_array(),
             broadphase_cell: physics.broadphase_cell_size,
             workers: 0,
-            worker_spin_ms: 3,
+            worker_spin_ms: 0,
         }
     }
 }

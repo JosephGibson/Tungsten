@@ -4668,6 +4668,7 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - The same commit rebuilds the sleep table by a cursor: a body's entry is looked for where the one after the last found sat, and through the key index only when another key sits there; a key names one entry, so both find the same one, and a test holds a world rebuilt by key equal to one rebuilt by cursor through 240 steps of churn.
 
 ## D-300 — The physics pool's workers spin for their step's next fork
+**Amended by D-304:** the default only; `physics.worker_spin_ms` is 0 unless a game sets it, so a worker parks between forks as before. The rest stands.
 **Date:** 2026-11-23
 **Decision:** The owner's decision of 2026-11-23 ("do all of them but the x11 one", of the engine perf pass's proposals), landed by the proposals' Step 1. A worker that has answered a fork polls its channel under `std::hint::spin_loop` until the next fork comes, its spin time has passed since its answer, or its step has ended; then it parks in `recv` as before. `PhysicsWorkers::with_spin` sets the time (whole microseconds, at most 50 ms; the constructors park), and `App::run` passes `tungsten.json`'s `physics.worker_spin_ms`: 3 by default, 0 to park at once, more than 50 fails the load. The step sets one shared flag at a fork and clears it after its last substep, so a worker is busy between its step's forks and never past the step; the calling thread waits for a fork's answers under the same patience. A changed spin time remakes the pool. No environment variable sets it: a capture records `physics_workers_env` alone.
 
@@ -4719,4 +4720,15 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - A shell that wants a manual save confirmed on screen calls `flush()` after it; the template's and example 01's shells are unchanged.
 - Tests: `stage` and `commit` leave `write_atomic`'s bytes and removals through the injected failures; with the writer held, a save returns before its commit and reads back and lists at once, a delete and a newer save each cancel one after its sync, a load returns while a rename's retry sleeps, a failed commit keeps the old file and is the flush's error, the slots' drop commits what is staged, and a writer that cannot start writes each save before it returns.
 - What the save frames read after it is in docs/perf/benchmarks.md's `e01-play` section.
+
+## D-304 — The pool's spin is off unless a game asks for it
+**Date:** 2026-11-23
+**Decision:** `physics.worker_spin_ms` defaults to 0: a worker parks between forks, as before `D-300`, unless a game's `tungsten.json` sets a spin time. `D-300`'s mechanism stands: the key, `PhysicsWorkers::with_spin`, the step's flag and the caller's patience.
+
+**Why:** `D-300`'s own sitting and the proposals' full sitting, each against `3940a739` (`perf-runs/20261123T234321Z-sitting/`, an export of `33653869`, and `perf-runs/20261123T224403Z-sitting/`, machine-local), read a spin of 3 ms smaller than the probe had. Over their four pairs `total` p50 / p95 / p99 fell 0.07 / 0.28 / 0.60 ms in `e01-pit`, 0.27 / 0.34 / 0.11 in `e01-stress` and 0.03 / 0.42 / 0.59 in `blast`, about 1 % of a frame, every digest equal. The step's plan had set floors under the probe's reading, p95 0.25 ms in `e01-pit` and 0.4 in `e01-stress`, and said the default goes to 0 where they are not shown: each sitting missed one of the two. Up to `participants − 1` cores busy through every forking step is a price for a game to choose: a desktop game on mains may take it for the tail, a game on a battery will not.
+
+**Consequences:**
+- Amends `D-300` as its marker line says, the default alone.
+- A window's run steps as it did at `D-298`, so the rows' reference numbers are the parked pool's.
+- Turning it on is one line of a game's `tungsten.json`, `"physics": { "worker_spin_ms": 3 }`; ROADMAP.md's Later holds the default as the owner's question, with the readings.
 
