@@ -43,6 +43,7 @@ mod seam;
 mod spawning;
 mod spells;
 mod tomes;
+mod workers;
 
 use std::path::PathBuf;
 

@@ -3,9 +3,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::f32::consts::TAU;
 use std::hash::{BuildHasherDefault, Hasher};
+use std::ops::Range;
 
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
+use tungsten::core::workers;
 use tungsten::core::{
     AssetRegistry, BodyKind, Bundle, Collider, CollisionEvent, DataRef, Easing, Entity, EventQueue,
     Particle, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
@@ -202,6 +204,37 @@ impl Marks {
     }
 }
 
+/// `spread_fire`'s lit centres, the cells of the unburnt balls about them and
+/// the touch distance.
+struct Reach {
+    cells: Cells<Vec<(Entity, Vec2)>>,
+    lit: Vec<Vec2>,
+    contact: f32,
+}
+
+/// `spread_fire` forks its searches in chunks of this many lit centres, from
+/// this many.
+const SPREAD_CHUNK: usize = 256;
+const SPREAD_MIN: usize = 2_048;
+
+/// The unburnt balls within touch of each lit centre of `range`, in the
+/// serial search's order.
+fn reached_by(shared: &Reach, range: Range<usize>, out: &mut Vec<Entity>) {
+    let contact = shared.contact;
+    for &p in &shared.lit[range] {
+        let (x, y) = cell(p, contact);
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                for &(entity, q) in shared.cells.get(&(x + dx, y + dy)).into_iter().flatten() {
+                    if q.distance_squared(p) <= contact * contact {
+                        out.push(entity);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// `fire_spread`, in the overlap phase after the physics step: a burning
 /// ball lights the small balls its step's contacts name and those resting
 /// against it, which sleep and send no contacts. The burning set is the
@@ -268,13 +301,35 @@ pub fn spread_fire(world: &mut World) {
             cells.entry(cell(p, contact)).or_default().push((entity, p));
         }
     }
-    for &p in &lit {
-        let (x, y) = cell(p, contact);
-        for dy in -1..=1 {
-            for dx in -1..=1 {
-                for &(entity, q) in cells.get(&(x + dx, y + dy)).into_iter().flatten() {
-                    if q.distance_squared(p) <= contact * contact {
-                        targets.insert(entity);
+    if workers::forks(world, lit.len(), SPREAD_CHUNK, SPREAD_MIN) {
+        // The searches fork on the systems' map (`D-311`); what they reach
+        // joins the set, whose order the sort below sets.
+        let len = lit.len();
+        let mut reached = Vec::new();
+        let search = Reach {
+            cells,
+            lit,
+            contact,
+        };
+        workers::map(
+            world,
+            search,
+            len,
+            SPREAD_CHUNK,
+            SPREAD_MIN,
+            &mut reached,
+            reached_by,
+        );
+        targets.extend(reached);
+    } else {
+        for &p in &lit {
+            let (x, y) = cell(p, contact);
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    for &(entity, q) in cells.get(&(x + dx, y + dy)).into_iter().flatten() {
+                        if q.distance_squared(p) <= contact * contact {
+                            targets.insert(entity);
+                        }
                     }
                 }
             }
@@ -290,6 +345,82 @@ pub fn spread_fire(world: &mut World) {
     for (_, entity) in targets {
         ignite(world, entity);
     }
+}
+
+/// `flame_exposure`'s burning balls, the cells of the balls about them and
+/// the two reaches its test reads.
+struct Exposure {
+    cells: Cells<Vec<Vec2>>,
+    burning: Vec<(Entity, Vec2)>,
+    small: f32,
+    cover: f32,
+}
+
+/// `flame_exposure` forks its test in chunks of this many burning balls,
+/// from this many (the CPU pass's map probe).
+const EXPOSURE_CHUNK: usize = 256;
+const EXPOSURE_MIN: usize = 1_024;
+
+/// `flame_exposure`'s test forked on the systems' map (`D-311`): each ball's
+/// test reads only its centre and the cells, so the chunks' outputs, laid
+/// out in the burning order, are the serial test's.
+#[inline(never)]
+fn exposure_forked(
+    world: &mut World,
+    cells: Cells<Vec<Vec2>>,
+    burning: Vec<(Entity, Vec2)>,
+    small: f32,
+    cover: f32,
+) -> Vec<(Entity, bool)> {
+    let len = burning.len();
+    let mut exposed = Vec::with_capacity(len);
+    let cover_test = Exposure {
+        cells,
+        burning,
+        small,
+        cover,
+    };
+    workers::map(
+        world,
+        cover_test,
+        len,
+        EXPOSURE_CHUNK,
+        EXPOSURE_MIN,
+        &mut exposed,
+        exposure_of,
+    );
+    exposed
+}
+
+/// Whether each burning ball of `range` has nothing resting on it, in order:
+/// the serial test of `flame_exposure` over a range.
+fn exposure_of(shared: &Exposure, range: Range<usize>, out: &mut Vec<(Entity, bool)>) {
+    let Exposure {
+        cells,
+        burning,
+        small,
+        cover,
+    } = shared;
+    let (small, cover) = (*small, *cover);
+    out.extend(burning[range].iter().map(|&(entity, p)| {
+        let (x, y) = cell(p, cover);
+        let (mut left, mut right, mut over) = (false, false, false);
+        for q in (y - 1..=y)
+            .flat_map(|cy| (x - 1..=x + 1).map(move |cx| (cx, cy)))
+            .filter_map(|key| cells.get(&key))
+            .flatten()
+        {
+            let rise = p.y - q.y;
+            let dx = q.x - p.x;
+            if !(0.5 * small..=cover).contains(&rise) || dx.abs() > 1.3 * small {
+                continue;
+            }
+            over |= dx.abs() < 0.5 * small;
+            left |= dx < 0.0;
+            right |= dx > 0.0;
+        }
+        (entity, !(over || (left && right)))
+    }));
 }
 
 /// `fire_exposure`, in the overlap phase: which burning balls have nothing
@@ -328,28 +459,33 @@ pub fn flame_exposure(world: &mut World) {
             cells.entry(cell(p, cover)).or_default().push(p);
         }
     }
-    let exposed: Vec<(Entity, bool)> = burning
-        .into_iter()
-        .map(|(entity, p)| {
-            let (x, y) = cell(p, cover);
-            let (mut left, mut right, mut over) = (false, false, false);
-            for q in (y - 1..=y)
-                .flat_map(|cy| (x - 1..=x + 1).map(move |cx| (cx, cy)))
-                .filter_map(|key| cells.get(&key))
-                .flatten()
-            {
-                let rise = p.y - q.y;
-                let dx = q.x - p.x;
-                if !(0.5 * small..=cover).contains(&rise) || dx.abs() > 1.3 * small {
-                    continue;
-                }
-                over |= dx.abs() < 0.5 * small;
-                left |= dx < 0.0;
-                right |= dx > 0.0;
-            }
-            (entity, !(over || (left && right)))
-        })
-        .collect();
+    let exposed: Vec<(Entity, bool)> =
+        if workers::forks(world, burning.len(), EXPOSURE_CHUNK, EXPOSURE_MIN) {
+            exposure_forked(world, cells, burning, small, cover)
+        } else {
+            burning
+                .into_iter()
+                .map(|(entity, p)| {
+                    let (x, y) = cell(p, cover);
+                    let (mut left, mut right, mut over) = (false, false, false);
+                    for q in (y - 1..=y)
+                        .flat_map(|cy| (x - 1..=x + 1).map(move |cx| (cx, cy)))
+                        .filter_map(|key| cells.get(&key))
+                        .flatten()
+                    {
+                        let rise = p.y - q.y;
+                        let dx = q.x - p.x;
+                        if !(0.5 * small..=cover).contains(&rise) || dx.abs() > 1.3 * small {
+                            continue;
+                        }
+                        over |= dx.abs() < 0.5 * small;
+                        left |= dx < 0.0;
+                        right |= dx > 0.0;
+                    }
+                    (entity, !(over || (left && right)))
+                })
+                .collect()
+        };
     // The flames' rows again, which listed the burning ones in this order:
     // each is written as its row comes, and one this pass did not meet in
     // turn by its own lookup.

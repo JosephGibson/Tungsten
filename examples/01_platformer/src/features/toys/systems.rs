@@ -1,7 +1,10 @@
 //! The toys' systems and the work behind the functions the spells call.
 
+use std::ops::Range;
+
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
+use tungsten::core::workers;
 use tungsten::core::{
     AssetRegistry, AudioCommands, BodyKind, Bundle, Collider, Easing, Entity, EventCursor,
     EventQueue, Light, LightKind, Particle, ParticleConfigRegistry, ParticleEmitter,
@@ -849,13 +852,97 @@ pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
     }
 }
 
+/// Whether `entity`'s slot is marked in `slots`, a bit an entity index.
+fn is_marked(slots: &[u64], entity: Entity) -> bool {
+    let slot = entity.id() as usize;
+    slots
+        .get(slot / 64)
+        .is_some_and(|word| word >> (slot % 64) & 1 == 1)
+}
+
+/// The body a contact rests on its other side: `normal` is the way `a` was
+/// pushed, up for a body resting on `b`.
+fn resting(event: &tungsten::core::CollisionEvent) -> Option<Entity> {
+    if event.normal.y < -0.5 {
+        Some(event.a)
+    } else if event.normal.y > 0.5 {
+        event.b
+    } else {
+        None
+    }
+}
+
+/// Whether a resting `entity` loses speed to friction: iron, a scrap, a
+/// dummy or a prop.
+fn rubs(world: &World, entity: Entity) -> bool {
+    world.has::<IronBlock>(entity)
+        || world.has::<IronScrap>(entity)
+        || world.has::<Dummy>(entity)
+        || props::is_prop(world, entity)
+}
+
+/// `friction` forks its contact scan in chunks of this many contacts, from
+/// this many.
+const FRICTION_CHUNK: usize = 2_048;
+const FRICTION_MIN: usize = 8_192;
+
+/// The contacts and the marked bodies' slots `friction`'s forked scan reads.
+struct Contacts {
+    queue: EventQueue<tungsten::core::CollisionEvent>,
+    slots: Vec<u64>,
+}
+
+/// The marked bodies resting on something, from the contacts of `range`, in
+/// event order.
+fn candidates_of(shared: &Contacts, range: Range<usize>, out: &mut Vec<Entity>) {
+    out.extend(
+        shared
+            .queue
+            .iter_current()
+            .skip(range.start)
+            .take(range.len())
+            .filter_map(resting)
+            .filter(|&e| is_marked(&shared.slots, e)),
+    );
+}
+
+/// `friction`'s set of resting bodies with the contact scan forked on the
+/// systems' map (`D-311`): the contact queue moves out of the World for the
+/// fork and back before the serial checks.
+#[inline(never)]
+fn supported_forked(
+    world: &mut World,
+    slots: Vec<u64>,
+    contacts: usize,
+) -> std::collections::HashSet<Entity> {
+    let queue = world
+        .remove_resource::<EventQueue<tungsten::core::CollisionEvent>>()
+        .expect("its contacts were counted");
+    let mut candidates = Vec::new();
+    let scan = Contacts { queue, slots };
+    let scan = workers::map(
+        world,
+        scan,
+        contacts,
+        FRICTION_CHUNK,
+        FRICTION_MIN,
+        &mut candidates,
+        candidates_of,
+    );
+    world.insert_resource(scan.queue);
+    candidates.into_iter().filter(|&e| rubs(world, e)).collect()
+}
+
 /// `iron_friction`, in the overlap phase after the physics step: the solver
 /// has no friction, so iron, a prop (a crate, a keg or a stone as wood, a
 /// bomb or a rock rolling) or a dummy resting on something loses horizontal
 /// speed, a frozen one less, a scrap a sixteenth.
 pub fn friction(world: &mut World) {
     let dt = world.resource::<Time>().delta();
-    let Some(events) = world.get_resource::<EventQueue<tungsten::core::CollisionEvent>>() else {
+    let Some(contacts) = world
+        .get_resource::<EventQueue<tungsten::core::CollisionEvent>>()
+        .map(|events| events.iter_current().count())
+    else {
         return;
     };
     // The few bodies it acts on, marked by their entities' slots, so a
@@ -879,32 +966,19 @@ pub fn friction(world: &mut World) {
         }
         slots[slot / 64] |= 1 << (slot % 64);
     }
-    let marked = |entity: Entity| {
-        let slot = entity.id() as usize;
-        slots
-            .get(slot / 64)
-            .is_some_and(|word| word >> (slot % 64) & 1 == 1)
-    };
-    // `normal` is the way `a` was pushed: up for a body resting on `b`.
-    let supported: std::collections::HashSet<Entity> = events
-        .iter_current()
-        .filter_map(|event| {
-            if event.normal.y < -0.5 {
-                Some(event.a)
-            } else if event.normal.y > 0.5 {
-                event.b
-            } else {
-                None
-            }
-        })
-        .filter(|&e| {
-            marked(e)
-                && (world.has::<IronBlock>(e)
-                    || world.has::<IronScrap>(e)
-                    || world.has::<Dummy>(e)
-                    || props::is_prop(world, e))
-        })
-        .collect();
+    let supported: std::collections::HashSet<Entity> =
+        if workers::forks(world, contacts, FRICTION_CHUNK, FRICTION_MIN) {
+            supported_forked(world, slots, contacts)
+        } else {
+            let events = world
+                .get_resource::<EventQueue<tungsten::core::CollisionEvent>>()
+                .expect("its contacts were counted above");
+            events
+                .iter_current()
+                .filter_map(resting)
+                .filter(|&e| is_marked(&slots, e) && rubs(world, e))
+                .collect()
+        };
     for iron in supported {
         let base = if has_status(world, iron, FROZEN) {
             FROZEN_FRICTION
