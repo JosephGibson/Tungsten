@@ -46,39 +46,6 @@ enum Layout {
     Hashed { slot_mask: u32 },
 }
 
-/// A direct layout cut into bands of whole rows for a fill on the step's
-/// participants ([`SpatialGrid::banded_fill`]).
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct FillPlan {
-    min: IVec2,
-    max: IVec2,
-    width: usize,
-    /// Rows a band holds; the last band may hold fewer.
-    rows: usize,
-    /// The bands, which cover every row of the layout.
-    pub(crate) bands: usize,
-}
-
-impl FillPlan {
-    /// Band `band`'s first and last row; the last band ends at the layout's
-    /// last row, so it may hold fewer rows than the others.
-    fn band_rows(&self, band: usize) -> (i32, i32) {
-        let first = self.min.y.wrapping_add((band * self.rows) as i32);
-        let last = if cells_between(first, self.max.y) < self.rows {
-            self.max.y
-        } else {
-            first.wrapping_add(self.rows as i32 - 1)
-        };
-        (first, last)
-    }
-
-    /// Band `band`'s slots.
-    pub(crate) fn band_slots(&self, band: usize) -> usize {
-        let (first, last) = self.band_rows(band);
-        (cells_between(first, last) + 1) * self.width
-    }
-}
-
 /// Flat prefix-sum grid; negative/unbounded coordinates allowed.
 #[derive(Debug, Clone)]
 pub struct SpatialGrid {
@@ -93,7 +60,7 @@ pub struct SpatialGrid {
     layout: Layout,
     /// `slot_starts[s]..slot_starts[s + 1]` bounds slot `s` in the entry arrays.
     slot_starts: Vec<u32>,
-    /// Scatter cursors; reset from `slot_starts` each serial build.
+    /// Scatter cursors; reset from `slot_starts` each build.
     cursors: Vec<u32>,
     entry_ids: Vec<ProxyId>,
     /// Exact cell per entry; hashed layout only.
@@ -825,106 +792,6 @@ impl SpatialGrid {
         if self.dirty {
             self.build();
         }
-    }
-
-    /// A fill by bands of rows, when a build is due over at least `min_refs`
-    /// staged refs and would choose the direct layout: its rows cut into
-    /// `bands` bands at most, each a run of adjacent slots. Each band is
-    /// filled by [`Self::fill_band`] and the bands laid out by
-    /// [`Self::finish_banded_fill`], into the tables [`Self::prepare`]'s
-    /// build makes. `None` leaves the build to it.
-    pub(crate) fn banded_fill(&self, min_refs: usize, bands: usize) -> Option<FillPlan> {
-        if !self.dirty || self.cell_refs < min_refs {
-            return None;
-        }
-        let Layout::Direct { min, max, width } = self.choose_layout() else {
-            return None;
-        };
-        let height = cells_between(min.y, max.y) + 1;
-        let rows = height.div_ceil(bands.max(1));
-        Some(FillPlan {
-            min,
-            max,
-            width,
-            rows,
-            bands: height.div_ceil(rows),
-        })
-    }
-
-    /// Band `band`'s share of a banded fill: its slots' starts within the
-    /// band, an exclusive prefix of their counts and the band's total after
-    /// them, onto `starts`, and its entry ids slot by slot, each slot's in
-    /// staging order, onto `ids`, as the build's fill lays out those slots.
-    /// `cursors` is scratch.
-    pub(crate) fn fill_band(
-        &self,
-        plan: &FillPlan,
-        band: usize,
-        starts: &mut Vec<u32>,
-        ids: &mut Vec<ProxyId>,
-        cursors: &mut Vec<u32>,
-    ) {
-        let (first, last) = plan.band_rows(band);
-        let slots = plan.band_slots(band);
-        let width = plan.width;
-        let slot_of =
-            |x: i32, y: i32| cells_between(first, y) * width + cells_between(plan.min.x, x);
-        let base = starts.len();
-        starts.resize(base + slots + 1, 0);
-        let band_starts = &mut starts[base..];
-        for staged in &self.staged {
-            for y in staged.min_cell.y.max(first)..=staged.max_cell.y.min(last) {
-                for x in staged.min_cell.x..=staged.max_cell.x {
-                    band_starts[slot_of(x, y) + 1] += 1;
-                }
-            }
-        }
-        for i in 1..=slots {
-            band_starts[i] += band_starts[i - 1];
-        }
-        let at = ids.len();
-        ids.resize(at + band_starts[slots] as usize, 0);
-        cursors.clear();
-        cursors.extend_from_slice(&band_starts[..slots]);
-        for staged in &self.staged {
-            for y in staged.min_cell.y.max(first)..=staged.max_cell.y.min(last) {
-                for x in staged.min_cell.x..=staged.max_cell.x {
-                    let slot = slot_of(x, y);
-                    ids[at + cursors[slot] as usize] = staged.id;
-                    cursors[slot] += 1;
-                }
-            }
-        }
-    }
-
-    /// Lay out a banded fill's bands, given in band order as
-    /// [`Self::fill_band`] wrote them: the build [`Self::prepare`] would
-    /// make, with the same slot starts and entry ids.
-    pub(crate) fn finish_banded_fill<'a>(
-        &mut self,
-        plan: &FillPlan,
-        bands: impl Iterator<Item = (&'a [u32], &'a [ProxyId])>,
-    ) {
-        self.dirty = false;
-        self.layout = Layout::Direct {
-            min: plan.min,
-            max: plan.max,
-            width: plan.width,
-        };
-        self.slot_starts.clear();
-        self.entry_ids.clear();
-        let mut offset = 0;
-        for (starts, ids) in bands {
-            let (total, band) = starts
-                .split_last()
-                .expect("a band's starts end with its total");
-            self.slot_starts
-                .extend(band.iter().map(|&start| start + offset));
-            offset += total;
-            self.entry_ids.extend_from_slice(ids);
-        }
-        self.slot_starts.push(offset);
-        debug_assert_eq!(self.entry_ids.len(), self.cell_refs);
     }
 
     /// [`Self::for_each_run_in`] over a built grid through `&self`, with the

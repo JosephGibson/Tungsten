@@ -26,10 +26,10 @@ const ARRIVAL_TIGHT: f32 = 1.0e-3;
 
 /// The listed bodies a participant takes at a time in a forked round, and in
 /// one the lockstep tests force; and the fewest listed bodies whose round
-/// forks (`D-298`): from 128, a round's search costs some twenty forks.
-const ARRIVAL_CHUNK: usize = 32;
+/// forks (`D-298`).
+const ARRIVAL_CHUNK: usize = 64;
 const ARRIVAL_CHUNK_FORCED: usize = 4;
-const ARRIVAL_FORK_MIN: usize = 128;
+const ARRIVAL_FORK_MIN: usize = 256;
 
 /// A participant's share of a forked round's search.
 #[derive(Debug, Default)]

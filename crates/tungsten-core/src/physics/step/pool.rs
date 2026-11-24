@@ -23,7 +23,7 @@ use glam::Vec4;
 use super::arrival::Round;
 use super::pairs::{PairGrid, WorkerScratch};
 use super::{Proxy, ProxyLayers};
-use crate::physics::broadphase::{FillPlan, SpatialGrid};
+use crate::physics::broadphase::SpatialGrid;
 use crate::physics::collision::{Aabb, Contact};
 
 /// How long the calling thread spins for a worker's answer before it blocks:
@@ -68,9 +68,6 @@ pub(super) enum Stage {
         chunk: usize,
         chunks: usize,
     },
-    /// The pair grid's entity grid filled by its plan's bands of rows, a band
-    /// a chunk.
-    Fill(FillPlan),
     /// A share that panics in one participant, for the pool's own test.
     #[cfg(test)]
     Fail { participant: usize },
@@ -194,7 +191,6 @@ fn work(data: &ForkData, scratch: &mut WorkerScratch, participant: usize) {
             chunk,
             chunks,
         } => super::solver::narrow_work(data, sub_dt, slack, chunk, chunks),
-        Stage::Fill(plan) => super::pairs::fill_work(data, scratch, &plan),
         #[cfg(test)]
         Stage::Fail {
             participant: failing,
@@ -429,9 +425,6 @@ pub(super) struct Workers {
     pub(super) repair_forks: usize,
     #[cfg(test)]
     pub(super) removal_forks: usize,
-    /// Tests: the builds whose entity grid filled by bands.
-    #[cfg(test)]
-    pub(super) fill_forks: usize,
     #[cfg(test)]
     pub(super) tangent_removals: usize,
     #[cfg(test)]
@@ -508,8 +501,6 @@ impl Workers {
             repair_forks: 0,
             #[cfg(test)]
             removal_forks: 0,
-            #[cfg(test)]
-            fill_forks: 0,
             #[cfg(test)]
             tangent_removals: 0,
             #[cfg(test)]
