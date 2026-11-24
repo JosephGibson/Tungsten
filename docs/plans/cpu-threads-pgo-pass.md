@@ -1,0 +1,205 @@
+# CPU threads and PGO pass (`cpu-threads-pgo-pass`) — draft
+
+- **status:** draft
+- **goal:** lower `total` p50, p95 and p99 on the stress rows (`e01-stress`, `e01-pit`, `blast`) and `e01-play`'s `update`, with every digest, physics hash and script-mode still unchanged: a parallel map in core that example 01's systems take where each row's result depends only on its own inputs and shared reads, and more of the physics step's exact serial work on its pool. PGO's probe missed the owner's gate twice (Step 1), so the release builds stay plain and PGO's design and readings are Proposals. Each step's own move is read on kept binaries in a timed batch; the whole is judged by a full sitting against `eef99146`.
+- **non-goals:** PGO in the release builds, the headless script run that would train it and the games' recipe (the gate missed; Proposals); a change of motion or of a pixel (a colour-parallel or SIMD solver, the kept pair list, a reordered arrival sweep); new `unsafe`; a runtime dependency (rustup's `llvm-tools` is a toolchain component); a platform-only call (affinity, priority, huge pages); the release cut and its sitting (the next session); the spin's default (`D-304`); a scoped, borrowing fork for `ball_look` and `effect_tick` and the serial fixes the map review priced (Proposals); CONSUME-1 past its serial probe (Step 6 measures it).
+- **files to touch:**
+  - Step 1 (run before this plan's commit): none in the tree; evidence in `perf-runs/20261124-cpu-threads-pgo/` (machine-local).
+  - Step 2: `crates/tungsten-core/src/workers.rs` (new), `crates/tungsten-core/src/tests/workers.rs` (new), `crates/tungsten-core/src/lib.rs`, `crates/tungsten/src/app.rs`, `crates/tungsten/src/tests/app.rs`, `api/tungsten-core.txt`, `AGENTS.md`, `DESIGN.md`, `DECISIONS.md`, `docs/DECISION_INDEX.md`, `docs/LLM_INDEX.md`, `ROADMAP.md`.
+  - Step 3: `examples/01_platformer/src/features/elements/systems.rs`, `examples/01_platformer/src/features/toys/systems.rs`, `examples/01_platformer/tests/game/workers.rs` (new), `examples/01_platformer/tests/game/main.rs` (its module list), and the guard pins a step's own change forces (`examples/01_platformer/tests/game/guards/*.json`, named in the evidence log).
+  - Step 4: `crates/tungsten-core/src/physics/step/pool.rs`, `step/solver.rs`, `step/mod.rs`, `step/pairs.rs`, `crates/tungsten-core/src/tests/physics/workers.rs`.
+  - Step 5: `crates/tungsten-core/src/physics/step/pairs.rs`, `step/pool.rs`, `crates/tungsten-core/src/tests/physics/workers.rs`.
+  - Step 6: `crates/tungsten-core/src/physics/broadphase.rs`, `step/pairs.rs`, `step/arrival.rs`, `step/pool.rs`, `crates/tungsten-core/src/tests/physics/workers.rs`, `crates/tungsten-core/src/tests/physics/broadphase.rs`.
+  - Step 7: `docs/perf/benchmarks.md`, this plan's Proposals.
+  - Step 8: this plan (deleted), `ROADMAP.md`, `docs/perf/benchmarks.md`, `docs/known-issues.md`.
+  - Every step: this plan's evidence log.
+- **ordered steps:** (1) the PGO probe, run; (2) the parallel map in core; (3) example 01's systems on the map; (4) the pair loop consumed as its prepass runs, and the carry's remap under the build's walks; (5) the repair's walks and its removal's scan on the pool; (6) the pair grid's fill by bands and arrival rounds forked from 128, with CONSUME-1's serial probe; (7) the readings: the timed batch, the full and one-worker sittings, the proposals; (8) close.
+- **done-when:** every step's done-when passes or the step is recorded stopped, quoted in the evidence log; the close's full sitting against `eef99146` reads no owned metric `regressed` without a fix or a known-issues row, and its one-worker sitting likewise; every row's digest and the nine stills equal the base's; `just check` passes; the plan deleted with its citations and the item out of Now.
+
+Item `cpu-threads-pgo-pass` in [ROADMAP.md](../../ROADMAP.md), off the roadmap by the owner's request of 2026-11-24, before the 0.119 cut, as the GPU foundation pass ran. Written 2026-11-24 at `eef99146`. Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md) and the [operating rules](../operating-rules.md); this plan records only where it differs.
+
+## Context digest
+
+- **Owner's decisions (2026-11-24), in priority order;** what the budget does not reach is measured and written under Proposals. (1) A PGO probe before any code: the rows' binaries instrumented at the bench's flags plus `-C target-cpu=native`, trained on `e01-stress`, `e01-pit`, `blast`, `physics`, `spread` and `e01-play`, merged by rustup's `llvm-profdata`, timed alone against the same commit's plain build, three runs a row, digests equal; the gate is 5 % off `update` p50 on both `e01-stress` and `e01-pit`. (2) A parallel map in core over owned inputs, on the physics pool's threads or a pool beside it as the probe reads better, chunked and laid out in index order (`D-298`), `Sync`/`Send` only at its call site (`D-131`), standard library only, absent from the harness; kit and 01 systems take it where exact. (3) The physics step's exact serial leftovers. (4) On the gate only: PGO in `release.yml` for both targets and both CPU levels (`D-072`), trained headless, a recipe for games, the bench on plain builds; a decision; the 0.119 release rehearsing first. Budget: 40 % of the weekly meter from the session's start (~20.0 % used at 17:24Z), new work stops at 35 %.
+- **Where the time is** (the GPU pass's close sitting, `e01-stress` p50): `physics_step` 16.15 ms, 01's `fire_exposure` 3.31, `ball_look` 1.33, `fire_spread` 1.06, the kit's `effect_tick` 1.05; `update` 26.83 of `total` 28.00. The step's calling thread is busy for the whole step while its five workers idle about 88 % of it (the physics review).
+- **What the probes read** (Step 1 and the map probe, timed alone, 2026-11-24): PGO at the owner's flags missed the gate (`update` p50 −0.80 % on `e01-stress`, −2.56 % on `e01-pit`), and again with the instrumented build counting atomically, since six participants race on the forked stages' counters (−1.56 %, −2.38 %); under both profiles `physics_step` reads 1–4 % slower while 01's and the kit's systems read 10–40 % faster. A map over `fire_exposure`'s per-ball test took its p50 3.317 → 1.550 ms beside the physics pool and → 1.573 on its threads, `e01-stress` `total` p50 −1.62 ms, every digest equal.
+- **Stands on:** `D-072` (CPU levels), `D-131` (bounds at the call site), `D-226` (sittings), `D-298` (the pool's rule), `D-300`/`D-304` (the spin, off). Step 2's decision amends `D-131` and the thread rule.
+- **Evidence** is machine-local under `perf-runs/20261124-cpu-threads-pgo/`: `README.md` (the log), `profile/` (six gated profiles of the base), `agents/{map,physics,pgo}.md` (three reviews), `pgo/` (the probe), `probe/` (the map probe), `tools/` (`pgo.py`, `timed.py`, `stills.py`, `frames.py`, `profiles.sh`).
+
+## 1. Audit
+
+Read at `eef99146`. Times are ms a frame; "the reviews" are `agents/*.md`.
+
+| # | Finding | Evidence |
+| --- | --- | --- |
+| A1 | Base, five runs a row, `total` p50 / p95 / p99: `e01-stress` 28.0 / 32.4 / 33.1, `e01-pit` 16.5 / 25.6 / 28.6, `blast` 15.0 / 22.7 / 25.9; `e01-play` `update` p50 0.68, its `total` the GPU's frame. | `perf-runs/20261124T131621Z-sitting/` (B1, B2) |
+| A2 | `e01-stress`'s 20 highest frames read `total` 32.4–34.4 with `physics_step` 17.2–27.7: 12–16 ms of each is outside the step, 01's systems most of it. | `tools/frames.py` over the sitting's B1 runs |
+| A3 | The pool (`D-298`): a fork moves the stage's buffers into `ForkData` behind an `Arc`, each worker's scratch travels to it and back by channel, the caller lays the chunks out by `chunk_at`; three stages fork. No public way reaches its threads. | `crates/tungsten-core/src/physics/step/pool.rs:57-79`, `:384-443` |
+| A4 | The calling thread's serial work in `physics_step` (`stress-top20` / `pit-awake`): the solve group 4.71 / 4.02 (out of scope), the pair loop's consuming part 4.98 / 3.79, the arrival sweeps 1.78 / 0, the sensor pass 1.07 / 0.61, the repair's removal 1.04 / 0.04 and walks 0.96 / 0, the carry's remap 0.60 / 0.02, the grid fill 0.50 / 0.46, the staging 0.42 / 0.37, the arrival rounds under 256 0.40 / 0. | `agents/physics.md`, Table 1 |
+| A5 | `flame_exposure`'s per-ball cover test is 2.59 of its 3.45 ms (`stress-steady`), over a read-only cell map; `spread_fire`'s neighbour search 0.28 of 1.06; `friction`'s contact scan 0.32 of 0.33 (both rows), over the `EventQueue<CollisionEvent>` resource. | `agents/map.md`; `examples/01_platformer/src/features/elements/systems.rs:299`, `:209`; `toys/systems.rs:856` |
+| A6 | `ball_look` and `effect_tick` are pure per row but read or write heap-owning components in place: an owned-input map would copy what it computes on; only a borrowing (scoped) fork fits, at 21–71 µs a fork (`D-131`). `ball_impacts`, `body_impacts` and `animation_tick` are World reads and string compares, serial fixes. | `agents/map.md` |
+| A7 | The harness is `tungsten`'s `testing` feature, on only in dev-dependencies, and tests build with unwinding where the release profile aborts: every crate's hash, so every symbol, differs in a test binary, and a test-trained profile matches nothing that ships. RUSTFLAGS do not enter the hash. | `agents/pgo.md` §1a; `Cargo.toml` `[profile.release]` |
+| A8 | `App::run` already has three headless modes on environment variables (`TUNGSTEN_DESCRIBE`, `TUNGSTEN_GENERATE`, `TUNGSTEN_CHECK`); `run_frame` and the pinned clock sit behind no feature; the device-free `HeadlessTarget` is `cfg(test)`. | `crates/tungsten/src/app.rs:1167-1192`, `:2870`; `crates/tungsten/src/asset_loader/mod.rs:1050` |
+| A9 | `release.yml` builds each target × level with `RUSTFLAGS="-C target-cpu=$LEVEL $EXTRA_RUSTFLAGS"` and `--target`; its toolchain action installs `rust-toolchain.toml`'s `rustfmt` and `clippy` only. | `.github/workflows/release.yml:127-143` |
+| A10 | `AGENTS.md` sits at 6,143 of 6,144 bytes and names the threads at line 44; `docs/LLM_INDEX.md` at 12,278 of 12,288. | `scripts/check-agent-context.py:23-25` |
+| A11 | 01's `pit` guard pins 40,207 allocations and 4,997,217 bytes and runs `friction`; the pit has no `Flame`, so `flame_exposure` and `spread_fire` return at `has_any` there. | `examples/01_platformer/tests/game/guards/pit.json`; `agents/map.md` |
+
+## 2. Design
+
+### 2.1 How a step is judged
+
+- **The gate `G`**, untimed, each exit 0: `cargo fmt --all -- --check`; the step's targeted tests; `just check` with any moved pin named; `just repo-check`; `just ctx`; `just api` then `just api-check` where the public surface moves; `just physics-release` for a physics step.
+- **Digests and stills**, functional (the encoder allowed), on the step's aligned binaries kept at `target/cpu-pass/bin/<step>/` (built into `target/perf/tree-aligned` and copied): `python3 -B perf-runs/20261124-cpu-threads-pgo/tools/timed.py digests <bin01> <bin02> target/cpu-pass/base-tree e01-stress,e01-pit,e01-play,blast,physics` → `5 of 5 digests equal` (the base's, A1's captures); `tools/stills.py capture <step> <bin01> --tree target/cpu-pass/base-tree` then `stills.py compare base <step>` → `9 of 9 equal`. Every variant runs from the base's export: this pass changes no asset or shader.
+- **The timed batch.** Timed checks wait for the owner's NoMachine client to be off (`pgrep -x nxcodec.bin` empty) and for nothing else to run; each step commits on `G`, digests and stills, its timed checks marked `not run yet`. A batch runs `tools/timed.py run` on a spec of the kept binaries (`base`, then each step's) interleaved a row, five runs each, through the runner's own capture (each run scans for the encoder and foreign builds). **A step's own move** is the mean over its runs minus the previous step's, each side its runs' statistic, judged by `perf_stats.judge` (`D-078`'s rule; three runs or more a side) on every metric the registry's `owned` list names for the row, each of which must have a value on both sides (`timed.py read` marks them `*` and prints `MISSING` for one absent), and on the step's own target metrics. `timed.py read` exits 0 only when every row and variant of the batch's spec has three valid runs or more and every owned metric a value on every side; a batch that reads `INCOMPLETE` is taken again for what it lacks. A target is a floor under the lowest estimate.
+- **A verifier.** Before each code step's commit a fresh-context subagent reads the step's diff, read-only, against `D-298`'s rule and this section's invariants (the GPU pass's reviews each found a defect its gate had passed); what it finds is fixed in the step.
+- **Step 7** takes the full sitting, `WGPU_BACKEND=vulkan just perf sitting --base eef99146 --wait-quiet 900`, and the one-worker sitting, `TUNGSTEN_PHYSICS_WORKERS=1` before the same with `--cpu-only --rows physics,physics-sparse,friction,slopes,terrain,rooms,blast,e01-pit,e01-stress,e01-play`: one participant runs both pools' serial paths. `target/perf/base-aligned` is deleted before the first: its build is `b12958b4`'s (the stale-fingerprint trap).
+
+### 2.2 The parallel map (Step 2)
+
+- **Where.** `tungsten_core::workers`: `SystemWorkers`, a World resource, and `workers::map`. The probe read a pool beside the step's (`fire_exposure` p50 1.550 ms) and the step's own threads (1.573) alike within noise; the pool beside lands, since it changes no physics code and needs no reach into `PhysicsBuffers`.
+- **The call.** `map<S, O>(world: &mut World, shared: S, len: usize, chunk: usize, min: usize, out: &mut Vec<O>, f: fn(&S, Range<usize>, &mut Vec<O>)) -> S`, bounded `S: Send + Sync + 'static, O: Send + 'static` on the call alone. `f`'s output for a range is the concatenation of its outputs for any split of it; an item may give any number of outputs. Serially, with no resource, one participant, `len < min` or `len <= chunk`, it is one call `f(&shared, 0..len, out)`. Forked, the range is cut into fixed chunks of `chunk`, claimed through one atomic counter by the participants, the calling thread among them; each appends to its own output and records each chunk's count; the caller appends the chunks to `out` in index order (each participant claims in rising order, so its outputs are already in chunk order) and takes `shared` back once every worker has answered. A share that panics still answers, and the call then panics.
+- **The threads.** `participants − 1` named `tungsten-map-N`, parked on their own channels, started at the first fork, so a game whose maps stay under their minimum starts none. `App::run` inserts `SystemWorkers` beside `PhysicsWorkers` at the same count (`physics.workers`, `TUNGSTEN_PHYSICS_WORKERS`) unless the game inserted its own; `App::new`, the harness, every test and every counter guard insert none, so their maps run serially. A capture's `physics_workers_env` therefore pins both pools.
+- **Tests.** `SystemWorkers::forced(participants, chunk)` forks every map of two items or more in chunks of `chunk`. Core's tests compare a map with one serial call over random lengths, chunks 1 to 64 and variable outputs at 2, 3, 4, 6 and 12 participants; a world without the resource, with one participant or under the minimum starts no thread; a share that panics fails the map; dropping the pool joins its threads; the resource keeps `Send`, `Sync` and both unwind traits.
+
+### 2.3 Example 01's systems on the map (Step 3)
+
+- **`flame_exposure`**: `shared` the cell map, the two reaches and the burning list; `f` today's per-ball test over its range, one `(Entity, bool)` an item; the apply unchanged. Chunks of 256 from 1,024 burning balls (the probe's). Exact: each output reads its own centre and the cell map, which nothing writes during the fork; ORs of comparisons, no float carried across items.
+- **`spread_fire`'s neighbour search**: `shared` the cell map, the lit centres and the touch distance; `f` the entities within touch of each lit centre, in its walk order; the serial part inserts them into the target set after the contacts' targets, as today, and the set is filtered and sorted by save ID. Exact: the set's members are the same; balls carry save IDs, so no tie keeps the set's order.
+- **`friction`'s contact scan**: `shared` the `EventQueue<CollisionEvent>` moved out of the World and the marked bodies' bits; `f` the candidates of its range in event order; the queue goes back before the serial `world.has` check, the set and the apply. Only the forked path moves the queue. The candidates' vector is kept scratch, so the serial path allocates what it allocates today (A11).
+- **Pins.** The serial path keeps its allocations: `flame_exposure` reserves its output's length, as its `collect` allocated it, and `friction`'s scratch reaches its size in the guards' warm-up. A pin that still moves is named with its cause.
+- **The test.** `examples/01_platformer/tests/game/workers.rs` steps a serial world beside worlds with `SystemWorkers::forced(n, 16)` at 2, 3, 4, 6 and 12 through a burning pit with marked iron, comparing after every step each ball's `Flame.exposed`, the lit set by save ID, each body's velocity bits and the step's collision and contact events.
+
+### 2.4 The physics step's serial leftovers (Steps 4–6)
+
+Each lever keeps `D-298`'s rule (1), joins the lockstep tests (`crates/tungsten-core/src/tests/physics/workers.rs`) with a scene that forks it, a fork counter it must move and a negative control that must fail, and goes in an `#[inline(never)]` function behind one call in its stage, its state in `StepExtra`, nothing compiled twice (the placement traps). Estimates are `agents/physics.md`'s, at six participants, net of the forks.
+
+- **NARROW-2 (Step 4).** `Workers::fork_with(data, caller)` runs a caller closure where `fork` runs participant 0's share; `ForkData` holds one slot a narrow chunk (a done flag and its contacts, kept across forks). The pair loop's new consuming function walks the chunks in order, computing a chunk itself when it can claim it and waiting on its flag otherwise, so it consumes while the workers compute. The wait also reads a failure flag in `ForkData` that a worker's answering guard sets when its share unwinds, and panics on it, so a worker that dies after claiming a chunk fails the step instead of hanging it, as a panicking share fails a fork today. The loop's two one-way proxy writes (`sleeping` true to false, `kept_awake` false to true; the narrow phase reads neither) go to a byte a body in `StepExtra`, read through and applied to `proxies` after the fork; one `#[inline(always)]` body over a flag store keeps the serial loop's source. Est. `e01-stress` p50 0.95, `e01-pit` p50 0.70, `blast` p50 0.90.
+- **OVERLAP-1 (Step 4).** The carry's remap, or its rekey, runs in the build fork's caller closure while the workers walk; the walks read none of what it writes. Est. `e01-stress` p50 0.40; nothing elsewhere.
+- **REPAIR-1 (Step 5).** The repair's per-member walks fork in chunks of 32 from 256 members, each chunk's pairs, sent flags, impulses and tangents laid out in member order. Est. `e01-pit` wave 0.83, `e01-stress` top 20 0.63, `blast` p50 0.3.
+- **REMOVAL-1 (Step 5).** The removal's scan forks in chunks of 4,096 from 16,384 pairs, each chunk's kept and removed records merged in pair order, the `sent.found` inserts serial in that order. Est. 0.25–0.35 on the repair-heavy rows.
+- **FILL-1 (Step 6).** The direct-layout pair grid fills by bands of rows, each band's slot counts and entries in staging order, the prefix and the copy serial. Est. 0.25 on `e01-stress` and `e01-pit` p50.
+- **ARRIVAL-MIN (Step 6).** Arrival rounds fork from 128 listed bodies, after a test-only count of round sizes shows enough rounds there to pay a fork. Est. up to 0.35 in the wave.
+- **CONSUME-1 (Step 6, a probe).** A scratch build that has the prepass carry every pure per-pair value the loop reads, run serially, times the consuming loop on `e01-pit`'s awake frames; at 1 ms or more it is a proposal with that reading, under it a closed lever.
+
+### 2.5 PGO (Step 1's verdict)
+
+Both probes missed the gate, so nothing of the owner's item 4 lands: no headless script run, no `release.yml` change, no recipe, no decision; the 0.119 release needs no rehearsal for this pass. What would ship, as the PGO review designed it (`agents/pgo.md`), and both readings are under Proposals, with the one finding that blocks it: under a profile the physics step reads slower.
+
+### 2.6 What stays out, measured into Proposals
+
+The scoped fork for `ball_look` (est. −0.9 ms `e01-stress`) and `effect_tick` (−0.8), which borrows column slices through `std::thread::scope` and needs a mutable slice query; `ball_impacts` and `body_impacts` by a speed bitset from one column scan (−0.55 on both stress rows); `animation_tick`'s clip compare by pointer and length first (−0.3); one burning list a step for the four systems that rescan the `Tags` (about −0.5). Each is outside the owner's four items; Step 7 records them with the reviews' estimates.
+
+## 3. Steps
+
+### Step 1: the PGO probe (run 2026-11-24, before this plan's commit)
+
+- **Files:** none in the tree.
+- **Change:** an export of `eef99146` (`target/cpu-pass/base-tree`) built `plain`, `instr` (`-Cprofile-generate`) and `pgo` (`-Cprofile-use`) at `-C force-frame-pointers=yes -C llvm-args=-align-all-functions=6 -C llvm-args=-align-all-nofallthru-blocks=6 -C target-cpu=native` with `--target x86_64-unknown-linux-gnu` (`tools/pgo.py`); the instrumented binaries trained once a row, windowed; the profiles merged by rustup's `llvm-profdata` 22.1.8; the seven rows timed, three runs a side interleaved, alone (`tools/timed.py`, `specs/pgo-native.json`). Then the same with atomic counters (`-Cllvm-args=-instrprof-atomic-counter-update-all` on the instrumented build), since six participants race on the forked stages' counters, timed three ways with plain and the first profile (`specs/pgo-atomic.json`).
+- **Done-when:** `python3 -B perf-runs/20261124-cpu-threads-pgo/tools/timed.py read pgo/time-native plain` and `… read pgo/time-atomic plain` → one digest a row on every side; the gate is `stages.update:p50` at −5.0 % or lower on both `e01-stress` and `e01-pit`; `e01-play`'s and `boot`'s owned metrics read, not `regressed`.
+- **Commit:** none (this plan's commit carries its evidence row).
+- **Moves:** none.
+
+### Step 2: the parallel map in core
+
+- **Files:** Step 2's list.
+- **Change:** §2.2; `App::run` inserting the resource; the step's decision (a map over owned inputs on a pool of its own for systems; amends `D-131`'s worker clause and the thread count of `D-298` and `D-303`); `AGENTS.md`'s thread rule and `DESIGN.md`'s frame loop naming the map's workers; `api/tungsten-core.txt`.
+- **Done-when:** `G`; `cargo test -p tungsten-core --lib workers::tests` → exit 0 with every test of §2.2 run; a negative control that concatenates the participants' outputs one participant after another, ignoring the chunk indices, fails the equality test (recorded, then restored, `git diff --stat` empty after; one atomic counter makes claim order the index order, so only a layout by participant shows); `cargo test -p tungsten app::tests` → exit 0 with a test that `App::run`'s start inserts `SystemWorkers` at `PhysicsWorkers`' count and `App::new` none.
+- **Commit:** `feat(core): run a system's map on worker threads, bit-identical at every count`
+- **Moves:** nothing measured (no caller yet).
+
+### Step 3: example 01's systems on the map
+
+- **Files:** Step 3's list.
+- **Change:** §2.3.
+- **Done-when:** `G`; `cargo test -p example-01-platformer --test game workers` → exit 0 with the lockstep test run (`running 1 test` or more), and a negative control failing it: core's merge dropping its last chunk (a temporary edit, `git diff --stat` empty after its restore; the three applies take their outputs in any order, so only a lost or altered output can show); digests → `5 of 5 digests equal`; stills → `9 of 9 equal`. Timed, in the batch: `e01-stress` `system.fire_exposure` p50 falls by at least 1.3 ms (probe −1.77), `system.iron_friction` p50 by at least 0.1 on `e01-stress` and `e01-pit` (est. −0.23), `stage.total` p50 on `e01-stress` by at least 1.3; `e01-play` no owned metric `regressed`.
+- **Commit:** `perf(example-01): fork the fire and friction scans on the systems' map`
+- **Moves:** 01's guard pins only where the step's change forces them, named.
+
+### Step 4: NARROW-2 and OVERLAP-1
+
+- **Files:** Step 4's list.
+- **Change:** §2.4's first two levers.
+- **Done-when:** `G`; `cargo test -p tungsten-core --lib physics::step::pool::tests` → exit 0, the three lockstep scenes asserting the new counters (`overlapped`, `caller_claims` with a test-only worker delay and without), and a test whose worker panics after claiming a narrow chunk and before publishing it failing the step within a second (not hanging it); the negative control (the loop reading `proxies[b].sleeping` without the side byte) fails the bullets scene; `just physics-release` → exit 0; digests and stills equal. Timed: `system.physics_step` p50 falls by at least 0.9 ms on `e01-stress` (est. 1.35), 0.45 on `e01-pit` (0.70), 0.55 on `blast` (0.90); `e01-play`'s `physics_step` not `regressed`; `nm -S` sizes of the serial `substep_rest`, `build_pairs` and `physics_step` against the base's binary recorded.
+- **Commit:** `perf(physics): consume the narrow phase as its chunks finish`
+- **Moves:** none.
+
+### Step 5: REPAIR-1 and REMOVAL-1
+
+- **Files:** Step 5's list.
+- **Change:** §2.4's next two, with test-only counts of a repair's members and pairs setting their thresholds first.
+- **Done-when:** `G`; the pool's tests → exit 0 with `repair_forks` and `removal_forks` above 0 in the bullets scene and a pile with fast bodies; the controls (a worker pushing `false` sent flags; one chunk's removed impulses dropped) fail; `just physics-release` → exit 0; digests and stills equal. Timed: `e01-pit` `physics_step` p95 falls by at least 0.5 ms (wave est. 1.13), `e01-stress` p95 by 0.4 (top 20 est. 0.98), `blast` p50 by 0.25 (est. 0.57).
+- **Commit:** `perf(physics): fork the repair's walks and its removal's scan`
+- **Moves:** none.
+
+### Step 6: FILL-1 and ARRIVAL-MIN, CONSUME-1's probe
+
+- **Files:** Step 6's list; the probe in a scratch export under `target/cpu-pass/`.
+- **Change:** §2.4's last three. ARRIVAL-MIN lands only if the count shows rounds of 128–255 bodies worth 0.1 ms a wave frame.
+- **Done-when:** `G`; a property test that the banded fill gives `slot_starts` and `entry_ids` byte-equal to the serial fill on random staged sets with records across bands → exit 0, and its control (a record written to its first band only) fails; the pool's tests with `fill_forks` above 0; `just physics-release` → exit 0; digests and stills equal. Timed: `physics_step` p50 falls by at least 0.12 ms on `e01-stress` and `e01-pit`; CONSUME-1's serial probe reading recorded.
+- **Commit:** `perf(physics): fill the pair grid by bands of rows on the pool`
+- **Moves:** none.
+
+### Step 7: the readings
+
+- **Files:** `docs/perf/benchmarks.md`, this plan's Proposals.
+- **Change:** the last timed batch over every kept step; the full and one-worker sittings (§2.1); the rows' sections and the levers take the readings, PGO's beside the rows; the proposals of §2.6 written with their estimates.
+- **Done-when:** each sitting reads every row `ok`, or `regressed` with each metric fixed or recorded in known issues with the sitting's path; a row `unresolved` or `invalid` is taken again for those rows, and a second such reading stops the step; `python3 -B perf-runs/20261124-cpu-threads-pgo/tools/judged.py --digests <sitting> <out>` → exit 0 for each (it fails on a judged pair whose digests differ or whose compare fails or suppresses its verdicts, and on an `unresolved` or `invalid` row; a `regressed` row prints as information for this check's first clause); `timed.py read` of the last batch → exit 0; stills `9 of 9 equal` on the last step's binary.
+- **Commit:** `docs(perf): record the CPU pass's readings and proposals`
+- **Moves:** the rows' reference numbers.
+
+### Step 8: Close
+
+- **Files:** this plan (deleted), `ROADMAP.md`, `docs/perf/benchmarks.md`, `docs/known-issues.md`, Later's lines.
+- **Change:** follow-ups to known issues or Later; the plan and its citations deleted; the item out of Now.
+- **Done-when:** `just check` → exit 0; `just repo-check` → exit 0; `e01-stress`, `e01-pit` and `e01-play` run with one digest each, equal to the base's.
+- **Ends with:** the commits, the evidence, what the owner should try, the next prompt (the 0.119 release; `release.yml` and `release.py` unchanged, so no rehearsal is due).
+
+## 4. Open questions
+
+| # | Question | Default |
+| --- | --- | --- |
+| Q1 | A step's timed target misses in the batch, after later steps landed. | The step stays when its own move reads nothing `regressed` on any row and its tests hold; the target is logged as not shown. A `regressed` own move gets a fix, or a `git revert` of the step's commit when later steps do not build on it. |
+| Q2 | `physics.workers` sets both pools' count. | It does; a key of the map's own goes to Later. |
+| Q3 | Kit systems: none takes an owned-input map (A6). | No kit step; the scoped fork and the serial fixes go to Proposals. |
+
+## 5. Invariants
+
+- **May move:** 01's guard pins, only where Step 3's change forces them, named in the evidence log.
+- **Must not move:** every row's `physics:` and `bench:` digest; `physics_determinism`'s pinned hash and the containment tests (`just physics-release`); the nine script-mode stills; `KIT_RECIPES_HASH`; every bench guard pin.
+
+## 6. Stop conditions
+
+- A done-when check fails: restore the step's files from the last commit, mark the step skipped, and continue with the steps that do not depend on it. Steps 4 to 6 build on each other's pool changes in order; Step 3 on Step 2.
+- A digest or a still differs: the step stops at once, whatever its speed.
+- The weekly meter's `chain:` reading passes 35 %: no new step starts; the readings and the close run.
+
+## 7. Critique
+
+Round 1: Codex (`gpt-6-astra`, xhigh, `--repo`), 2026-11-24, reading the draft at `eef99146` with the tree's plan and tools; 328.1 s, 1,138,976 tokens in (1,044,352 cached), 34 commands, 5h 0 → 25 %, week 15 → 19 %. Four findings, all MEDIUM.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 1 | NARROW-2's caller waits on a chunk's done flag; a worker that panics before setting it answers on the channel the caller reads only after its own closure, so an unwinding build hangs. | `crates/tungsten-core/src/physics/step/pool.rs:213-229` (the answering guard), `:443-466` (answers read after the caller's share); `agents/physics.md` NARROW-2 ("the answer channel is unchanged") | Right | The wait reads a failure flag the worker's guard sets on unwinding and panics on it; Step 4's done-when adds a worker panicking after its claim, failing the step within a second. |
+| 2 | The timed reader's metric list is hardcoded and omits owned metrics (`e01-stress`'s `system.iron_crush` p95), so Q1's "nothing `regressed` on any row" cannot be read. | `tools/timed.py` `METRICS`; `scripts/perf-rows.json`'s `e01-stress` `owned` | Right | `timed.py read` takes each row's owned metrics from the registry, marks them and prints `MISSING` for one absent; §2.1 requires a value for each on both sides. |
+| 3 | A control that merges in "claim order" cannot fail: one atomic counter makes the global claim order the index order. | `pool.rs:83-86` (`take_chunk`); §2.2's layout | Right | The control concatenates the participants' outputs one after another, ignoring the indices, which differs whenever two participants interleave chunks. |
+| 4 | Step 7 lets a `regressed` metric be recorded but requires `judged.py` to exit 0, which it does only when every row reads `ok`. | `tools/judged.py` (the verdict joins `bad`) | Right | `judged.py --digests` exits 1 only on a digest mismatch or a failed compare; the sittings' own exit codes go by the done-when's first clause. |
+
+Round 2: Codex (`gpt-6-astra`, xhigh, `--repo`), the plan without §7 and the log, with a focus note naming round 1's five changed sections; 165.6 s, 571,605 tokens in (496,768 cached), 20 commands, 5h 25 → 40 %, week 19 → 21 %. Two findings, both MEDIUM.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 2.1 | Step 7's "exit 0, or each `regressed` metric fixed or recorded" passes a sitting that fails on an `unresolved` or `invalid` row, whose regression list is empty; `judged.py --digests` ignored verdicts, and `compare` exits 0 when invalid captures suppress its verdicts. | `scripts/perf.py` `judge_row`, `cmd_compare` (returns 0), `print_compare` ("Verdicts suppressed"); `tools/judged.py` | Right | Step 7 requires every row `ok` or `regressed` with each metric fixed or recorded, takes an `unresolved` or `invalid` row again and stops on a second; `judged.py --digests` fails on a suppressed compare and on an `unresolved` or `invalid` row. |
+| 2.2 | The reader builds its sides from valid runs only, so a variant with no valid run, or a row with no captures, drops out without a `MISSING`. | `tools/timed.py read` | Right | `read` enumerates the spec's rows and variants, flags fewer than three valid runs as `INSUFFICIENT` and exits 1 on any gap (`INCOMPLETE`); §2.1 takes such a batch again. Shown on the atomic PGO batch's two-run variant. |
+
+## Evidence log
+
+| Step | Date | Verdict | Key numbers | Paths |
+| --- | --- | --- | --- | --- |
+| 1 | 2026-11-24 | gate missed, twice | 42 of 42 runs valid, one digest a row on both sides. `update` p50 plain → pgo: `e01-stress` 26.527 → 26.313 (−0.80 %), `e01-pit` 15.240 → 14.850 (−2.56 %). `physics_step` slower (`physics` +4.46 % `regressed`, `e01-stress` +2.52 %, `blast` +1.55 %); 01's and the kit's systems faster (`ball_impacts` −26 %, `body_impacts` −38 %, `effect_tick` −11 %; `spread` `update` p50 −21.6 %); `fire_exposure` +6.9 %. `e01-play` `update` p50 −11.1 %, `total` +0.5 % (`unchanged`); `boot` `first_frame` −4.8 %. With atomic counts (44 of 45 runs valid, one met the encoder): `e01-stress` −1.56 %, `e01-pit` −2.38 % (the racing profile −1.33 % and −2.08 % in the same batch); `physics` `physics_step` +3.88 % (`regressed`); `e01-play` `update` −11.3 %. Gate missed twice: PGO to Proposals. | `perf-runs/20261124-cpu-threads-pgo/pgo/` |
+| map probe | 2026-11-24 | the pool beside lands | 24 of 24 runs valid, one digest a row. `e01-stress` `fire_exposure` p50 3.317 → 1.550 (beside) / 1.573 (the step's threads) / 3.317 (serial path); `total` p50 −1.617 / −1.570 / −0.020. `e01-play` unchanged in all three. | `perf-runs/20261124-cpu-threads-pgo/probe/map-1/` |
+
+## Follow-ups
+
+## Proposals
+
+- **PGO in the release builds (the owner's item 4), not shipped: its gate missed twice.** At the bench's aligned flags plus `-C target-cpu=native`, a profile trained in the window on the six rows takes `update` p50 −0.80 % / −1.56 % (racing / atomic counts) on `e01-stress` and −2.56 % / −2.38 % on `e01-pit` against a gate of 5 %, every digest equal. It slows `physics_step` (`physics` +3.9 to +4.5 %, `regressed`; `e01-stress` +1.2 to +2.5 %; `blast` +1.5 %) and `fire_exposure` (+6 %), and speeds the rest of the frame: `ball_impacts` −26 %, `body_impacts` −38 %, `effect_tick` −11 %, `animation_tick` −17 %, `spread`'s `update` −22 %, `e01-play`'s `update` −11 % (its `total`, the GPU's frame, unchanged), `boot`'s `first_frame` −4.8 % (`perf-runs/20261124-cpu-threads-pgo/pgo/`). Why the step slows is not established; the step's hand-placed inlining (`#[inline(always)]`, `#[inline(never)]`, the out-of-line forks) against PGO's own is the first suspect, and a profile that leaves `tungsten-core` unoptimized needs per-crate flags cargo does not offer on stable. What would ship, as `agents/pgo.md` designed it: a `TUNGSTEN_HEADLESS` script run in the shipped binary (a test-trained profile matches no shipped crate: tests build with unwinding and the `testing` feature, which change every crate's hash), each `release.yml` job instrumenting the same cargo command, training headless on every perf row with `TUNGSTEN_PHYSICS_WORKERS=4` and atomic counts, merging with the toolchain's `llvm-profdata`, checking the profile's counts and the build's missing-function warnings, and a v3 runner check; `tungsten package --profile` and `run --headless` for games.
