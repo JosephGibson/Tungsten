@@ -11,11 +11,11 @@ Rules over the root `AGENTS.md`; the `tungsten-wgpu` skill adds more.
 
 ## Frame order
 
-`Scene → PostStack → [SMAA tail] → Overlay` (`D-087`, `D-147`, `D-161`), declared in `src/graph/frame.rs` (`D-305`): a pass names what it samples and writes (`Clear`, `Whole`, `Over`). Compiling derives the rest: the last version nothing samples is the swapchain, its first write a clear; loads, stores, pooled targets, the acquire split. Add passes and targets there, not in `renderer.rs`. Bloom's composite also draws a stock `Vignette` ending the stack after it (plan from `fold_vignette`, `D-302`). The overlay (timing label `text`) draws the world labels, the UI paint list, each item under its scissor, then the text, after presentation AA.
+`Scene → PostStack → [SMAA tail] → Overlay` (`D-087`, `D-147`, `D-161`), declared in `src/graph/frame.rs` (`D-305`): a pass names what it samples and writes (`Clear`, `Whole`, `Over`). Compiling derives the swapchain's writer (the last version nothing samples), loads, stores, pooled targets and the acquire split. `Whole` is only a full-screen pass on the engine's own shader, which never discards; the swapchain's first one loads `DontCare`, the crate's one `unsafe` (`D-306`). Add passes there, not in `renderer.rs`. Bloom's composite also draws a stock `Vignette` that ends the stack (`fold_vignette`, `D-302`). The overlay (timing label `text`) draws world labels, the UI paint list under each item's scissor, then text, after presentation AA.
 
-A capture frame (`Renderer::capture_frame`, `TUNGSTEN_CAPTURE_FRAME`) is that declaration with its last version marked copied-from: it stays offscreen for the screenshot and a blit shows it. A new stage must pass `graph_frame`'s matrix. `TUNGSTEN_CAPTURE_DIRECT=1` captures the direct path, for the test comparing the two.
+A capture frame (`Renderer::capture_frame`, `TUNGSTEN_CAPTURE_FRAME`) is that declaration with its last version marked copied-from: it stays offscreen and a blit shows it. A new stage must pass `graph_frame`'s matrix. `TUNGSTEN_CAPTURE_DIRECT=1` captures the direct path.
 
-Surface acquire decisions (reconfigure, recreate, skip, fail) live in the GPU-free `src/surface_acquire.rs` with transition tests; change policy there, not in `renderer.rs`.
+Surface acquire policy lives in the GPU-free `src/surface_acquire.rs` with transition tests; change it there.
 
 ## Features
 

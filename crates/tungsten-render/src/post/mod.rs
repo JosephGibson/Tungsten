@@ -98,6 +98,23 @@ fn stock_index(pass: &PostPass) -> Option<usize> {
     })
 }
 
+/// The shader that draws stock pass `pass`, by its `STOCK_SHADERS` name;
+/// `None` for bloom, whose four stages are its own.
+pub(crate) fn stock_shader_name(pass: &PostPass) -> Option<&'static str> {
+    stock_index(pass).map(|index| STOCK_SHADERS[index].0)
+}
+
+/// The colour target of a pass the frame's graph may take for a whole
+/// write: no blend and every channel written, so the pass's one triangle
+/// replaces every pixel its target held (`D-306`).
+pub(crate) fn whole_target(format: wgpu::TextureFormat) -> wgpu::ColorTargetState {
+    wgpu::ColorTargetState {
+        format,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    }
+}
+
 /// Shared resources every stock effect samples against: layouts, a linear
 /// sampler for post passes, and a reusable source-bind-group factory.
 pub(crate) struct StockResources {

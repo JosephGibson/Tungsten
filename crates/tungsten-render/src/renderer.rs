@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use crate::counters::{self, Counts, FrameCounters};
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
-use crate::graph::frame::{PassKind, PresentPath, Shape, declare};
+use crate::graph::frame::{PassKind, PresentPath, Replaced, ReplacedStages, Shape, declare};
 use crate::graph::pool::{Pool, PoolTexture};
 use crate::graph::{At, Compiled, CompiledPass, Load, Target};
 use crate::lighting::{LightUbo, LightingResources};
@@ -18,14 +18,14 @@ use crate::material::{
 };
 use crate::mesh_particle::{MeshParticleBatch, MeshParticlePipeline};
 use crate::post::bloom::{
-    BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_THRESHOLD_SHADER_NAME,
-    BLOOM_UPSAMPLE_SHADER_NAME, BloomShaderIds, BloomStageKind,
+    BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_SHADERS,
+    BLOOM_THRESHOLD_SHADER_NAME, BLOOM_UPSAMPLE_SHADER_NAME, BloomShaderIds, BloomStageKind,
 };
 use crate::post::smaa::{
     SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
-    SmaaPipeline, SmaaShaderIds,
+    SMAA_SHADERS, SmaaPipeline, SmaaShaderIds,
 };
-use crate::post::{PostStackRenderer, STOCK_MATERIAL_SHADERS, STOCK_SHADERS};
+use crate::post::{PostStackRenderer, STOCK_MATERIAL_SHADERS, STOCK_SHADERS, whole_target};
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{
     PendingCapture, ScreenshotError, aligned_bytes_per_row, capture_for_frame, strip_row_padding,
@@ -160,6 +160,9 @@ pub struct Renderer {
     target_resizes: u64,
     /// When the renderer was made: the clock the pool's keep rule reads.
     started: Instant,
+    /// The engine's full-screen shaders a manifest's file or a reload
+    /// replaced. Their passes clear their targets (`D-306`).
+    replaced: Replaced,
     shader_cache: ShaderModuleCache,
     sample_count: u32,
     depth_enabled: bool,
@@ -422,6 +425,7 @@ impl Renderer {
             vignette: false,
             bloom_mips: 0,
             bloom_halvings: 0,
+            replaced: ReplacedStages::NONE,
         };
         let present_blit = PresentBlitPipeline::new(&device, format);
 
@@ -444,9 +448,9 @@ impl Renderer {
             blend_weights: ShaderAssetId(2),
             neighborhood_blend: ShaderAssetId(3),
         };
-        let edge_src = include_str!("shaders/stock/smaa_edge.wgsl").to_string();
-        let blend_src = include_str!("shaders/stock/smaa_blend_weights.wgsl").to_string();
-        let nbh_src = include_str!("shaders/stock/smaa_neighborhood_blend.wgsl").to_string();
+        let edge_src = SMAA_SHADERS[0].1.to_string();
+        let blend_src = SMAA_SHADERS[1].1.to_string();
+        let nbh_src = SMAA_SHADERS[2].1.to_string();
         shader_cache
             .upload(
                 &device,
@@ -481,10 +485,10 @@ impl Renderer {
             upsample: ShaderAssetId(6),
             composite: ShaderAssetId(7),
         };
-        let bloom_threshold_src = include_str!("shaders/stock/bloom_threshold.wgsl").to_string();
-        let bloom_downsample_src = include_str!("shaders/stock/bloom_downsample.wgsl").to_string();
-        let bloom_upsample_src = include_str!("shaders/stock/bloom_upsample.wgsl").to_string();
-        let bloom_composite_src = include_str!("shaders/stock/bloom_composite.wgsl").to_string();
+        let bloom_threshold_src = BLOOM_SHADERS[0].1.to_string();
+        let bloom_downsample_src = BLOOM_SHADERS[1].1.to_string();
+        let bloom_upsample_src = BLOOM_SHADERS[2].1.to_string();
+        let bloom_composite_src = BLOOM_SHADERS[3].1.to_string();
         shader_cache
             .upload(
                 &device,
@@ -671,6 +675,7 @@ impl Renderer {
             shape_scratch,
             target_resizes: 0,
             started: Instant::now(),
+            replaced: Replaced::default(),
             shader_cache,
             sample_count,
             depth_enabled,
@@ -989,6 +994,10 @@ impl Renderer {
                 name: name.to_string(),
                 report,
             })?;
+        // A full-screen shader on a text that is not the engine's own may
+        // leave pixels unwritten, so its pass clears: the frame's shape is
+        // read from this record (`D-306`).
+        self.replaced.commit(name, &wgsl);
         self.shader_cache.commit(id, wgsl, module);
         // Any material bound to this shader needs a rebuild against the new module.
         if name != SPRITE_SHADER_NAME
@@ -1285,7 +1294,9 @@ impl Renderer {
         shape.depth = self.depth_enabled && self.depth_sort == DepthSortMode::GpuDepth;
         shape.smaa = self.post_aa.is_smaa() && self.smaa.is_some();
         shape.present = present;
-        shape.set_stages(post_stack);
+        let replaced = &self.replaced;
+        shape.set_stages(post_stack, |pass| replaced.own(pass));
+        shape.replaced = replaced.stages();
         shape.vignette = vignette;
         shape.bloom_halvings = halvings;
         shape.bloom_mips =
@@ -2069,24 +2080,27 @@ impl Renderer {
                 timestamp_writes,
             );
 
-            match pass.kind {
-                PassKind::Scene => record_main_draws(
-                    &mut render_pass,
-                    &self.device,
-                    &self.queue,
-                    &self.quad_pipeline,
-                    &mut self.sprite_pipeline,
-                    &self.debug_line_pipeline,
-                    &self.mesh_particle_pipeline,
-                    quads,
-                    sprite_batches,
-                    debug_quads,
-                    debug_lines,
-                    &self.materials,
-                    &self.lit_sprite_pipeline,
-                    &self.lighting,
-                    attachment,
-                ),
+            let drew = match pass.kind {
+                PassKind::Scene => {
+                    record_main_draws(
+                        &mut render_pass,
+                        &self.device,
+                        &self.queue,
+                        &self.quad_pipeline,
+                        &mut self.sprite_pipeline,
+                        &self.debug_line_pipeline,
+                        &self.mesh_particle_pipeline,
+                        quads,
+                        sprite_batches,
+                        debug_quads,
+                        debug_lines,
+                        &self.materials,
+                        &self.lit_sprite_pipeline,
+                        &self.lighting,
+                        attachment,
+                    );
+                    true
+                }
                 PassKind::Post { slot } => {
                     if let Some(post_pass) = post_stack.0.get(slot)
                         && let Some(source) = views.sampled(pass.reads.first())
@@ -2101,6 +2115,9 @@ impl Renderer {
                             post_pass,
                             slot,
                         );
+                        true
+                    } else {
+                        false
                     }
                 }
                 PassKind::BloomThreshold { slot } => self.post_stack.bloom.draw_stage(
@@ -2135,6 +2152,9 @@ impl Renderer {
                             &mut render_pass,
                             (id, texture.edge_view()),
                         );
+                        true
+                    } else {
+                        false
                     }
                 }
                 PassKind::SmaaWeights => {
@@ -2142,6 +2162,9 @@ impl Renderer {
                         && let Some(edges) = views.sampled(pass.reads.first())
                     {
                         smaa.record_blend_weights_pass(&self.device, &mut render_pass, edges);
+                        true
+                    } else {
+                        false
                     }
                 }
                 // The neighborhood pass's target encodes on store, so it
@@ -2158,6 +2181,9 @@ impl Renderer {
                             source,
                             weights,
                         );
+                        true
+                    } else {
+                        false
                     }
                 }
                 PassKind::Overlay => {
@@ -2205,6 +2231,7 @@ impl Renderer {
                     render_pass.push_debug_group("text");
                     self.text_pipeline.render(&mut render_pass);
                     render_pass.pop_debug_group();
+                    true
                 }
                 // A capture frame's blit samples the composed frame: a
                 // pooled texture, its bind group kept while the texture
@@ -2224,9 +2251,21 @@ impl Renderer {
                         render_pass.set_pipeline(&self.present_blit.pipeline);
                         render_pass.set_bind_group(0, &bind_group, &[]);
                         counters::draw(&self.counts, &mut render_pass, 0..3, 0..1);
+                        true
+                    } else {
+                        false
                     }
                 }
-            }
+            };
+            // What the surface held is undefined under a pass that loads
+            // nothing, so that pass must have drawn. The plan and the
+            // records read one stack and one set of textures, so no guard
+            // above fails; this holds a later change to that.
+            assert!(
+                drew || pass.color.load != Load::Nothing,
+                "the pass `{}` loads nothing and drew nothing",
+                pass.label
+            );
         }
     }
 }
@@ -2287,6 +2326,26 @@ impl<'f> FrameViews<'f> {
     }
 }
 
+/// The load of a pass that writes every pixel of the surface before any
+/// other pass has: wgpu's `DontCare`, which neither clears the texture nor
+/// reads it. Vulkan and Metal take it as their own load op; DX12 and GL
+/// load a back buffer wgpu counts as written, so every backend draws the
+/// same picture. A texture the renderer made itself never takes it: the
+/// graph clears a direct capture's stand-in, as D3D12 asks of a new render
+/// target.
+fn load_nothing() -> wgpu::LoadOp<wgpu::Color> {
+    // SAFETY: wgpu asks that every pixel of the target be written before any
+    // is read, blended with or stored. The frame's graph compiles this load
+    // only for the surface's first write by a `Write::Whole` pass: one
+    // triangle over the whole target with no blend, every channel written,
+    // no culling, no depth test and no scissor, by a shader of the engine's
+    // own text. The shader coverage test holds those files to no `discard`
+    // and each builder to that pipeline state, and `record_passes` asserts
+    // that a pass which loads nothing drew. No draw of such a pass samples
+    // its own target.
+    wgpu::LoadOp::DontCare(unsafe { wgpu::LoadOpDontCare::enabled() })
+}
+
 /// Opens the render pass of a compiled pass on its attachments' views. The
 /// scene's clear is the renderer's `scene_clear`, which a game may change
 /// between two frames of one shape; a store the frame does not need is a
@@ -2303,7 +2362,8 @@ fn begin_pass<'e>(
     let load = match pass.color.load {
         Load::Clear(_) if pass.kind == PassKind::Scene => wgpu::LoadOp::Clear(scene_clear),
         Load::Clear(color) => wgpu::LoadOp::Clear(color),
-        Load::Load => wgpu::LoadOp::Load,
+        Load::Keep => wgpu::LoadOp::Load,
+        Load::Nothing => load_nothing(),
     };
     let store = |keep: bool| {
         if keep {
@@ -2452,11 +2512,7 @@ impl PresentBlitPipeline {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: target_format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &[Some(whole_target(target_format))],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {

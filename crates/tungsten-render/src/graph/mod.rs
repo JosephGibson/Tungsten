@@ -72,7 +72,9 @@ pub(crate) enum Write {
     /// Cleared, then drawn into: the pass leaves pixels unwritten.
     Clear(wgpu::Color),
     /// Every pixel written with blending off, so nothing of what the target
-    /// held survives the pass.
+    /// held survives the pass. A declaration says so only of a pass it
+    /// knows: one full-screen triangle, no blend, every channel written, by
+    /// a shader that never discards (`D-306`).
     Whole,
     /// Drawn over what the target holds.
     Over,
@@ -97,7 +99,11 @@ pub(crate) struct Pass<K> {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Decl {
+    /// A texture the caller owns and has not drawn into: a direct
+    /// capture's stand-in.
     Imported,
+    /// The window surface's texture, acquired for the frame.
+    Surface,
     Transient(Spec),
 }
 
@@ -152,7 +158,12 @@ pub(crate) struct At {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Load {
     Clear(wgpu::Color),
-    Load,
+    /// What the target holds.
+    Keep,
+    /// Neither a clear nor what the target holds (wgpu's `DontCare`): the
+    /// pass writes every pixel of the surface before any other pass has
+    /// (`D-306`).
+    Nothing,
 }
 
 /// A compiled colour attachment.
@@ -217,6 +228,20 @@ impl<K: Copy> Graph<K> {
         self.declare(Decl::Imported)
     }
 
+    /// The window surface's texture, imported: its first write, when it is
+    /// whole, loads nothing (`D-306`). A texture the caller made itself is
+    /// [`import`](Self::import)ed, and a first whole write clears it: a new
+    /// texture must be initialised on every backend, where a surface's is
+    /// each frame's to overwrite.
+    pub(crate) fn import_surface(&mut self) -> Tex {
+        self.declare(Decl::Surface)
+    }
+
+    /// Whether `tex` is the caller's, of either kind, and not the pool's.
+    fn imported(&self, tex: Tex) -> bool {
+        !matches!(self.textures[tex.0 as usize], Decl::Transient(_))
+    }
+
     /// A texture the pool lends for as long as the frame's passes use it.
     pub(crate) fn transient(&mut self, spec: Spec) -> Tex {
         self.declare(Decl::Transient(spec))
@@ -259,7 +284,7 @@ impl<K: Copy> Graph<K> {
         let passes = self.resolved();
         for (index, pass) in passes.iter().enumerate() {
             if let Some((depth, _)) = pass.depth
-                && self.textures[depth.0 as usize] == Decl::Imported
+                && self.imported(depth)
             {
                 return Err(GraphError::ImportedDepth(index));
             }
@@ -321,7 +346,7 @@ impl<K: Copy> Graph<K> {
         }
 
         let imports: Vec<Tex> = (0..self.textures.len())
-            .filter(|&index| self.textures[index] == Decl::Imported)
+            .filter(|&index| !matches!(self.textures[index], Decl::Transient(_)))
             .map(|index| Tex(index as u16))
             .collect();
         let target = |tex: Tex| match slot_of[tex.0 as usize] {
@@ -337,7 +362,8 @@ impl<K: Copy> Graph<K> {
             target: target(level.tex),
             mip: level.mip,
         };
-        let imported = |tex: Tex| self.textures[tex.0 as usize] == Decl::Imported;
+        let imported = |tex: Tex| self.imported(tex);
+        let surface = |tex: Tex| self.textures[tex.0 as usize] == Decl::Surface;
         let kept = |tex: Tex| imported(tex) || self.copied == Some(tex);
 
         let compiled: Vec<CompiledPass<K>> = passes
@@ -346,13 +372,22 @@ impl<K: Copy> Graph<K> {
             .map(|(index, pass)| {
                 let (level, write) = pass.color;
                 let later = &passes[index + 1..];
+                let unwritten = !passes[..index]
+                    .iter()
+                    .any(|earlier| earlier.color.0 == level || earlier.resolve == Some(level));
                 let load = match write {
                     Write::Clear(color) => Load::Clear(color),
-                    // The output's first full write keeps its clear: a load
-                    // of a newly acquired surface makes wgpu clear it in a
-                    // pass of its own (`D-087`).
-                    Write::Whole if imported(level.tex) => Load::Clear(wgpu::Color::TRANSPARENT),
-                    Write::Whole | Write::Over => Load::Load,
+                    // The surface's first write, when it is whole, starts
+                    // from nothing: a load of a newly acquired surface makes
+                    // wgpu clear it in a pass of its own (`D-087`), and a
+                    // clear is work the pass's own draw covers (`D-306`).
+                    Write::Whole if unwritten && surface(level.tex) => Load::Nothing,
+                    // Another imported texture is new, and a new texture's
+                    // first use must initialise it on every backend.
+                    Write::Whole if unwritten && imported(level.tex) => {
+                        Load::Clear(wgpu::Color::TRANSPARENT)
+                    }
+                    Write::Whole | Write::Over => Load::Keep,
                 };
                 CompiledPass {
                     kind: pass.kind,
@@ -437,8 +472,7 @@ impl<K: Copy> Graph<K> {
     /// Which passes draw: one that writes an imported or copied-from
     /// texture, or whose result a pass that draws reads or draws over.
     fn live(&self, passes: &[Pass<K>]) -> Vec<bool> {
-        let kept =
-            |tex: Tex| self.textures[tex.0 as usize] == Decl::Imported || self.copied == Some(tex);
+        let kept = |tex: Tex| self.imported(tex) || self.copied == Some(tex);
         let mut needed: Vec<Level> = Vec::new();
         let mut live = vec![false; passes.len()];
         for (index, pass) in passes.iter().enumerate().rev() {

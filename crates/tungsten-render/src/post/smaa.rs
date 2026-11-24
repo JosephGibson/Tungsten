@@ -25,6 +25,7 @@ use bytemuck::{Pod, Zeroable};
 use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::config::PostAaMode;
 
+use super::whole_target;
 use crate::counters::{self, Counts};
 use crate::post::smaa_luts;
 use crate::shader_hot_reload::build_validated;
@@ -35,6 +36,23 @@ use crate::targets::{SMAA_BLEND_FORMAT, SMAA_EDGES_FORMAT, TargetCache};
 pub const SMAA_EDGE_SHADER_NAME: &str = "smaa_edge";
 pub const SMAA_BLEND_WEIGHTS_SHADER_NAME: &str = "smaa_blend_weights";
 pub const SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME: &str = "smaa_neighborhood_blend";
+
+/// The three stage shaders with their compiled-in text, which the renderer
+/// seeds its cache with and holds a loaded file against (`D-306`).
+pub(crate) const SMAA_SHADERS: [(&str, &str); 3] = [
+    (
+        SMAA_EDGE_SHADER_NAME,
+        include_str!("../shaders/stock/smaa_edge.wgsl"),
+    ),
+    (
+        SMAA_BLEND_WEIGHTS_SHADER_NAME,
+        include_str!("../shaders/stock/smaa_blend_weights.wgsl"),
+    ),
+    (
+        SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
+        include_str!("../shaders/stock/smaa_neighborhood_blend.wgsl"),
+    ),
+];
 
 /// Shader ids assigned by `Renderer` for the three SMAA stages. Used as a
 /// stable handle for `rebuild_stage_with_module` dispatch.
@@ -566,11 +584,7 @@ fn build_edge_pipeline(
         fragment: Some(wgpu::FragmentState {
             module,
             entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: SMAA_EDGES_FORMAT,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &[Some(whole_target(SMAA_EDGES_FORMAT))],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
@@ -608,11 +622,7 @@ fn build_blend_pipeline(
         fragment: Some(wgpu::FragmentState {
             module,
             entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: SMAA_BLEND_FORMAT,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &[Some(whole_target(SMAA_BLEND_FORMAT))],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
@@ -651,11 +661,7 @@ fn build_nbh_pipeline(
         fragment: Some(wgpu::FragmentState {
             module,
             entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
-                format,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &[Some(whole_target(format))],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {

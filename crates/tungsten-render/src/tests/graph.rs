@@ -32,7 +32,7 @@ fn blit() -> Pass<u8> {
 /// Scene into `a`, a full-screen pass from `a` into `b`, an overlay over `b`.
 fn two_stages() -> (Graph<u8>, Tex, Tex, Tex) {
     let mut graph = Graph::default();
-    let output = graph.import();
+    let output = graph.import_surface();
     let a = graph.transient(COLOR);
     let b = graph.transient(COLOR);
     graph.pass(pass(0, a.base(), CLEAR, &[]));
@@ -52,13 +52,13 @@ fn the_last_version_is_the_output_when_nothing_samples_it() {
     let compiled = graph.compile().expect("compiles");
 
     assert_eq!(kinds(&compiled), [0, 1, 2], "no blit");
-    // The stage that wrote the last version writes the output, and clears
-    // it; the overlay loads it.
+    // The stage that wrote the last version writes the output, whole, so
+    // it starts from nothing; the overlay loads it.
     let stage = &compiled.passes[1];
     assert_eq!(stage.color.at.target, Target::Imported(0));
-    assert_eq!(stage.color.load, Load::Clear(wgpu::Color::TRANSPARENT));
+    assert_eq!(stage.color.load, Load::Nothing);
     assert_eq!(compiled.passes[2].color.at.target, Target::Imported(0));
-    assert_eq!(compiled.passes[2].color.load, Load::Load);
+    assert_eq!(compiled.passes[2].color.load, Load::Keep);
     // The scene's target is the frame's one pooled texture.
     assert_eq!(compiled.slots, [COLOR]);
     assert_eq!(compiled.passes[0].color.at.target, Target::Slot(0));
@@ -74,6 +74,91 @@ fn the_last_version_is_the_output_when_nothing_samples_it() {
 }
 
 #[test]
+fn only_the_surfaces_first_whole_write_starts_from_nothing() {
+    let loads = |graph: &Graph<u8>| -> Vec<Load> {
+        let compiled = graph.compile().expect("compiles");
+        compiled.passes.iter().map(|pass| pass.color.load).collect()
+    };
+
+    // A whole write, an overlay, then a second whole write of the surface:
+    // the first loads nothing, the others load what is there.
+    let mut graph = Graph::default();
+    let output = graph.import_surface();
+    let scene = graph.transient(COLOR);
+    graph.pass(pass(0, scene.base(), CLEAR, &[]));
+    graph.pass(pass(1, output.base(), Write::Whole, &[scene.base()]));
+    graph.pass(pass(2, output.base(), Write::Over, &[]));
+    graph.pass(pass(3, output.base(), Write::Whole, &[scene.base()]));
+    assert_eq!(
+        loads(&graph),
+        [
+            Load::Clear(wgpu::Color::BLACK),
+            Load::Nothing,
+            Load::Keep,
+            Load::Keep
+        ]
+    );
+
+    // A pass that leaves pixels unwritten clears the surface as it clears
+    // any target, and an offscreen whole write loads.
+    let mut graph = Graph::default();
+    let output = graph.import_surface();
+    let scene = graph.transient(COLOR);
+    let stage = graph.transient(COLOR);
+    graph.pass(pass(0, scene.base(), CLEAR, &[]));
+    graph.pass(pass(1, stage.base(), Write::Whole, &[scene.base()]));
+    graph.pass(pass(2, output.base(), CLEAR, &[stage.base()]));
+    assert_eq!(
+        loads(&graph),
+        [
+            Load::Clear(wgpu::Color::BLACK),
+            Load::Keep,
+            Load::Clear(wgpu::Color::BLACK)
+        ]
+    );
+
+    // A texture the caller made itself is new: its first whole write clears
+    // it, which every backend takes for a new render target, and the
+    // surface behind it starts from nothing.
+    let mut graph = Graph::default();
+    let standin = graph.import();
+    let surface = graph.import_surface();
+    let scene = graph.transient(COLOR);
+    graph.pass(pass(0, scene.base(), CLEAR, &[]));
+    graph.pass(pass(1, standin.base(), Write::Whole, &[scene.base()]));
+    graph.pass(pass(2, standin.base(), Write::Over, &[]));
+    graph.pass(pass(3, surface.base(), Write::Whole, &[standin.base()]));
+    assert_eq!(
+        loads(&graph),
+        [
+            Load::Clear(wgpu::Color::BLACK),
+            Load::Clear(wgpu::Color::TRANSPARENT),
+            Load::Keep,
+            Load::Nothing
+        ]
+    );
+    let compiled = graph.compile().expect("compiles");
+    assert_eq!(compiled.passes[1].color.at.target, Target::Imported(0));
+    assert_eq!(compiled.passes[3].color.at.target, Target::Imported(1));
+    assert_eq!(compiled.split, 1, "either kind of import needs the acquire");
+
+    // A resolve counts as a write: a whole write of a surface the scene
+    // resolved into loads it.
+    let mut graph = Graph::default();
+    let surface = graph.import_surface();
+    let multisampled = graph.transient(Spec {
+        samples: 4,
+        class: Class::Multisampled,
+        ..COLOR
+    });
+    let mut scene = pass(0, multisampled.base(), CLEAR, &[]);
+    scene.resolve = Some(surface.base());
+    graph.pass(scene);
+    graph.pass(pass(1, surface.base(), Write::Whole, &[]));
+    assert_eq!(loads(&graph), [Load::Clear(wgpu::Color::BLACK), Load::Keep]);
+}
+
+#[test]
 fn a_capture_keeps_the_last_version_offscreen_and_blits_it() {
     let (mut graph, output, _, b) = two_stages();
     graph.copy_from(b);
@@ -85,7 +170,7 @@ fn a_capture_keeps_the_last_version_offscreen_and_blits_it() {
     assert!(matches!(last.target, Target::Slot(_)), "{last:?}");
     assert_eq!(
         compiled.passes[1].color.load,
-        Load::Load,
+        Load::Keep,
         "an offscreen whole write loads"
     );
     assert_eq!(compiled.passes[2].color.at, last, "the overlay draws on it");
@@ -379,7 +464,7 @@ fn a_level_drawn_over_later_is_stored() {
     let compiled = graph.compile().expect("compiles");
     assert_eq!(kinds(&compiled), [0, 1, 2, 3, 4]);
     assert!(compiled.passes.iter().all(|pass| pass.color.store));
-    assert_eq!(compiled.passes[3].color.load, Load::Load);
+    assert_eq!(compiled.passes[3].color.load, Load::Keep);
     assert_eq!(compiled.passes[3].color.at.mip, 0);
     assert_eq!(compiled.passes[2].color.at.mip, 1);
 }

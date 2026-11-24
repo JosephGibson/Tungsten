@@ -156,6 +156,159 @@ fn every_workspace_shader_validates_and_mirrors_match() {
     }
 }
 
+/// The compiled-in stock files that are not full-screen passes: the stock
+/// materials and the lit helpers, drawn by sprite batches.
+const NOT_FULL_SCREEN: &[&str] = &[
+    "damage_flash.wgsl",
+    "emissive_mask.wgsl",
+    "glow.wgsl",
+    "rim_light.wgsl",
+];
+
+/// Whether `block` or a block nested in it holds a `discard`.
+fn discards(block: &wgpu::naga::Block) -> bool {
+    use wgpu::naga::Statement;
+    block.iter().any(|statement| match statement {
+        Statement::Kill => true,
+        Statement::Block(inner) => discards(inner),
+        Statement::If { accept, reject, .. } => discards(accept) || discards(reject),
+        Statement::Switch { cases, .. } => cases.iter().any(|case| discards(&case.body)),
+        Statement::Loop {
+            body, continuing, ..
+        } => discards(body) || discards(continuing),
+        _ => false,
+    })
+}
+
+/// The names of the functions of `wgsl` that can discard a fragment: its
+/// entry points and every function they could call.
+fn discarding_functions(name: &str, wgsl: &str) -> Vec<String> {
+    let module = wgpu::naga::front::wgsl::parse_str(wgsl)
+        .unwrap_or_else(|error| panic!("{name}: {}", error.emit_to_string(wgsl)));
+    let mut found: Vec<String> = module
+        .functions
+        .iter()
+        .filter(|(_, function)| discards(&function.body))
+        .map(|(_, function)| function.name.clone().unwrap_or_default())
+        .collect();
+    found.extend(
+        module
+            .entry_points
+            .iter()
+            .filter(|entry| discards(&entry.function.body))
+            .map(|entry| entry.name.clone()),
+    );
+    found
+}
+
+/// The engine's full-screen shader files under the render crate's sources,
+/// as repo-relative paths: the stock post effects, bloom's four stages,
+/// SMAA's three and the present blit.
+fn full_screen_files(repo: &Path) -> Vec<PathBuf> {
+    let stock = Path::new(RENDER_SRC).join("shaders/stock");
+    let mut files: Vec<PathBuf> = fs::read_dir(repo.join(&stock))
+        .unwrap_or_else(|e| panic!("read {}: {e}", shown(&stock)))
+        .map(|entry| entry.expect("read dir entry").file_name())
+        .filter(|name| Path::new(name).extension().is_some_and(|ext| ext == "wgsl"))
+        .filter(|name| {
+            !name
+                .to_str()
+                .is_some_and(|name| NOT_FULL_SCREEN.contains(&name))
+        })
+        .map(|name| stock.join(name))
+        .collect();
+    files.push(Path::new(RENDER_SRC).join("shaders/present_blit.wgsl"));
+    files.sort();
+    files
+}
+
+/// The frame's graph takes a full-screen pass for one that writes every
+/// pixel, and loads the surface with `DontCare` under it (`D-306`). That
+/// holds while no fragment of these files discards and each pipeline that
+/// draws them blends nothing and writes every channel.
+#[test]
+fn the_engines_fullscreen_fragments_write_every_pixel() {
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let files = full_screen_files(&repo);
+    // 17 stock post effects, 4 bloom stages, 3 SMAA stages, the blit: a new
+    // file is classed here, as full-screen or in `NOT_FULL_SCREEN`.
+    assert_eq!(files.len(), 25, "{files:?}");
+    for path in &files {
+        let wgsl =
+            fs::read_to_string(repo.join(path)).unwrap_or_else(|e| panic!("{}: {e}", shown(path)));
+        assert_eq!(
+            discarding_functions(&shown(path), &wgsl),
+            Vec::<String>::new(),
+            "{} discards: its pass no longer writes every pixel",
+            shown(path)
+        );
+    }
+
+    // The pipelines: every builder of a full-screen pipeline takes its
+    // colour target from `whole_target`, which blends nothing and writes
+    // every channel. The stock effects' builder still spells the same state
+    // out, the one `ColorTargetState` of its file.
+    let source = |rel: &str| {
+        let path = repo.join(RENDER_SRC).join(rel);
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", shown(&path)))
+    };
+    let helper = source("post/mod.rs");
+    let body = helper
+        .split("pub(crate) fn whole_target(")
+        .nth(1)
+        .expect("post/mod.rs defines whole_target");
+    let body = &body[..body.find("\n}\n").expect("the function ends")];
+    assert!(body.contains("blend: None,"), "{body}");
+    assert!(
+        body.contains("write_mask: wgpu::ColorWrites::ALL,"),
+        "{body}"
+    );
+    // (file, its calls of `whole_target`, its own `ColorTargetState`s, its
+    // pipeline builders): bloom's threshold and downsample share one
+    // builder and the additive upsample keeps a state of its own; SMAA's
+    // three stages; the blit. Each builder culls nothing and tests no
+    // depth, so the one triangle is drawn whichever way it winds.
+    for (rel, calls, own, builders) in [
+        ("post/bloom.rs", 2, 1, 2),
+        ("post/smaa.rs", 3, 0, 3),
+        ("renderer.rs", 1, 0, 1),
+        ("post/fullscreen.rs", 0, 1, 1),
+    ] {
+        let text = source(rel);
+        assert_eq!(text.matches("whole_target(").count(), calls, "{rel}");
+        assert_eq!(text.matches("ColorTargetState {").count(), own, "{rel}");
+        assert_eq!(
+            text.matches("create_render_pipeline(").count(),
+            builders,
+            "{rel}"
+        );
+        assert_eq!(text.matches("cull_mode: None,").count(), builders, "{rel}");
+        assert_eq!(
+            text.matches("depth_stencil: None,").count(),
+            builders,
+            "{rel}"
+        );
+    }
+    let stock = source("post/fullscreen.rs");
+    assert!(
+        stock.contains("blend: None,\n                write_mask: wgpu::ColorWrites::ALL,"),
+        "the stock effects' pipeline blends nothing and writes every channel"
+    );
+}
+
+#[test]
+fn a_discard_in_any_branch_is_found() {
+    let nested = "@fragment\nfn fs_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {\n    \
+        if at.x > 4.0 {\n        loop {\n            if at.y > 2.0 {\n                discard;\n            }\n            \
+        break;\n        }\n    }\n    return vec4<f32>(1.0);\n}\n";
+    assert_eq!(discarding_functions("nested", nested), ["fs_main"]);
+    let helper = "fn cut(x: f32) {\n    if x < 0.5 {\n        discard;\n    }\n}\n\
+        @fragment\nfn fs_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {\n    \
+        cut(at.x);\n    return vec4<f32>(1.0);\n}\n";
+    assert_eq!(discarding_functions("helper", helper), ["cut"]);
+    assert!(discarding_functions("valid", VALID).is_empty());
+}
+
 // Negative cases run against a disposable tree so the checker itself stays honest.
 
 const VALID: &str =

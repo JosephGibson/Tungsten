@@ -119,7 +119,7 @@ fn reference(shape: &Shape) -> (Vec<RefPass>, usize) {
             "tungsten_post_pass_overflow".to_string()
         };
         match stage {
-            Stage::Stock(name) => {
+            Stage::Stock { name, .. } => {
                 // A stock pass loads offscreen and clears the swapchain.
                 passes.push(ref_pass(
                     label,
@@ -267,6 +267,25 @@ fn imported(role: Role) -> Option<Target> {
     }
 }
 
+/// Where the window surface is among a frame's imports: behind the
+/// stand-in on a direct capture, the frame's output otherwise.
+fn surface_of(shape: &Shape) -> Target {
+    if shape.present == PresentPath::DirectCapture {
+        Target::Imported(1)
+    } else {
+        Target::Imported(0)
+    }
+}
+
+/// The kinds that draw one triangle over their whole target with blending
+/// off: every kind but the scene, bloom's additive upsample and the overlay.
+fn full_screen(kind: PassKind) -> bool {
+    !matches!(
+        kind,
+        PassKind::Scene | PassKind::BloomUp { .. } | PassKind::Overlay
+    )
+}
+
 fn shape(stages: &[Stage]) -> Shape {
     Shape {
         output: SIZE,
@@ -279,12 +298,17 @@ fn shape(stages: &[Stage]) -> Shape {
         vignette: false,
         bloom_mips: 6,
         bloom_halvings: 1,
+        replaced: ReplacedStages::NONE,
     }
 }
 
-const V: Stage = Stage::Stock("vignette");
-const F: Stage = Stage::Stock("fade");
-const D: Stage = Stage::Stock("dither");
+const fn stock(name: &'static str) -> Stage {
+    Stage::Stock { name, own: true }
+}
+
+const V: Stage = stock("vignette");
+const F: Stage = stock("fade");
+const D: Stage = stock("dither");
 const B: Stage = Stage::Bloom;
 
 /// Every shape the old order's arguments spanned, and bloom's.
@@ -381,19 +405,34 @@ fn the_declaration_draws_the_old_orders_frame() {
             );
             assert_eq!(new.depth.is_some(), old_pass.depth, "{at}");
 
-            // The ops: a clear where the old pass cleared, a load where it
-            // loaded. A capture's blit is the one change, on either capture
-            // path: it loaded the surface, which made wgpu clear it in a
-            // pass of its own, and now clears it itself.
+            // The ops. The old frame cleared the scene, SMAA's three
+            // targets and the swapchain's first write, and loaded the rest;
+            // a capture's blit loaded the surface, which made wgpu clear it
+            // in a pass of its own. Now an imported texture's first write
+            // loads nothing when a full-screen pass makes it, and SMAA's
+            // stages, which write every pixel, load (`D-306`).
+            let on_import = matches!(new.color.at.target, Target::Imported(_));
+            let on_surface = new.color.at.target == surface_of(shape);
+            let first_write = producer(&compiled, index, new.color.at).is_none();
+            let smaa = matches!(
+                new.kind,
+                PassKind::SmaaEdges | PassKind::SmaaWeights | PassKind::SmaaNeighborhood
+            );
+            // A direct capture's stand-in is the renderer's own new
+            // texture: its first whole write clears it, as before.
+            let expected = if on_surface && first_write && full_screen(new.kind) {
+                Load::Nothing
+            } else if on_import && first_write && full_screen(new.kind) {
+                Load::Clear(wgpu::Color::TRANSPARENT)
+            } else if smaa || !old_pass.clears {
+                Load::Keep
+            } else {
+                Load::Clear(wgpu::Color::TRANSPARENT)
+            };
+            assert_eq!(new.color.load, expected, "{at}");
             let clears = matches!(new.color.load, Load::Clear(_));
             if new.kind == PassKind::Blit {
                 assert_ne!(shape.present, PresentPath::Direct, "{at}");
-                assert!(clears && !old_pass.clears, "{at}");
-            } else {
-                assert_eq!(clears, old_pass.clears, "{at}");
-            }
-            if let Load::Clear(color) = new.color.load {
-                assert_eq!(color, wgpu::Color::TRANSPARENT, "{at}");
             }
 
             // Every result is stored but the multisampled colour, which its
@@ -518,6 +557,269 @@ fn the_declaration_draws_the_old_orders_frame() {
             }
         }
     }
+}
+
+/// The passes of `compiled` that load nothing, by index.
+fn dont_cares(compiled: &Compiled<PassKind>) -> Vec<usize> {
+    (0..compiled.passes.len())
+        .filter(|&index| compiled.passes[index].color.load == Load::Nothing)
+        .collect()
+}
+
+#[test]
+fn dont_care_loads_only_the_outputs_first_whole_write() {
+    for shape in matrix() {
+        let compiled = declare(&shape).compile().expect("compiles");
+        // The surface's first writer, as colour or resolve.
+        let surface = surface_of(&shape);
+        let first = compiled.passes.iter().position(|pass| {
+            pass.color.at.target == surface
+                || pass
+                    .resolve
+                    .is_some_and(|resolve| resolve.target == surface)
+        });
+        // It loads nothing when it is a full-screen pass that attaches the
+        // surface as its colour: never the scene, which clears or resolves.
+        let expected: Vec<usize> = first
+            .into_iter()
+            .filter(|&index| {
+                let pass = &compiled.passes[index];
+                full_screen(pass.kind) && pass.color.at.target == surface
+            })
+            .collect();
+        assert_eq!(dont_cares(&compiled), expected, "{shape:?}");
+        for index in dont_cares(&compiled) {
+            let pass = &compiled.passes[index];
+            assert!(
+                matches!(
+                    pass.kind,
+                    PassKind::Post { .. }
+                        | PassKind::BloomComposite { .. }
+                        | PassKind::SmaaNeighborhood
+                        | PassKind::Blit
+                ),
+                "{:?} of {shape:?}",
+                pass.kind
+            );
+            assert!(pass.color.store, "{shape:?}");
+        }
+        // A frame whose scene writes the surface has none; every other
+        // frame has one, a capture's on its blit. No pass on a direct
+        // capture's stand-in or on a pooled texture has one.
+        let scene_ends = shape.stages.is_empty() && !shape.smaa;
+        let count = match shape.present {
+            PresentPath::Direct => usize::from(!scene_ends),
+            PresentPath::Capture | PresentPath::DirectCapture => 1,
+        };
+        assert_eq!(dont_cares(&compiled).len(), count, "{shape:?}");
+        for pass in &compiled.passes {
+            if pass.color.at.target != surface {
+                assert_ne!(pass.color.load, Load::Nothing, "{shape:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_replaced_shaders_pass_clears() {
+    let clear = Load::Clear(wgpu::Color::TRANSPARENT);
+    let load_of = |shape: &Shape, kind: fn(&PassKind) -> bool| -> Vec<Load> {
+        let compiled = declare(shape).compile().expect("compiles");
+        compiled
+            .passes
+            .iter()
+            .filter(|pass| kind(&pass.kind))
+            .map(|pass| pass.color.load)
+            .collect()
+    };
+    let replaced = Stage::Stock {
+        name: "vignette",
+        own: false,
+    };
+
+    // A stock pass: on the output and offscreen.
+    let post = |kind: &PassKind| matches!(kind, PassKind::Post { slot: 0 });
+    assert_eq!(load_of(&shape(&[V]), post), [Load::Nothing]);
+    assert_eq!(load_of(&shape(&[replaced]), post), [clear]);
+    assert_eq!(load_of(&shape(&[V, F]), post), [Load::Keep]);
+    assert_eq!(load_of(&shape(&[replaced, F]), post), [clear]);
+    assert_ne!(shape(&[V]), shape(&[replaced]), "the shape moves with it");
+
+    // Each of bloom's and SMAA's stages, on the output where it can be and
+    // offscreen (a capture frame draws every stage offscreen).
+    let kind_of = |stage: EngineStage| -> fn(&PassKind) -> bool {
+        match stage {
+            EngineStage::BloomThreshold => |kind| matches!(kind, PassKind::BloomThreshold { .. }),
+            EngineStage::BloomDownsample => |kind| matches!(kind, PassKind::BloomDown { .. }),
+            EngineStage::BloomComposite => |kind| matches!(kind, PassKind::BloomComposite { .. }),
+            EngineStage::SmaaEdges => |kind| matches!(kind, PassKind::SmaaEdges),
+            EngineStage::SmaaWeights => |kind| matches!(kind, PassKind::SmaaWeights),
+            EngineStage::SmaaNeighborhood => |kind| matches!(kind, PassKind::SmaaNeighborhood),
+        }
+    };
+    let mut checked = 0;
+    for stage in EngineStage::ALL {
+        let kind = kind_of(stage);
+        for present in [PresentPath::Direct, PresentPath::Capture] {
+            // Bloom ends the stack and SMAA follows it, so the composite
+            // and the neighborhood pass each reach the output in one of
+            // the two frames below.
+            for smaa in [false, true] {
+                let own = Shape {
+                    smaa,
+                    present,
+                    ..shape(&[B])
+                };
+                let other = Shape {
+                    replaced: ReplacedStages::NONE.with(stage, true),
+                    ..own.clone()
+                };
+                let before = load_of(&own, kind);
+                let after = load_of(&other, kind);
+                assert_eq!(before.len(), after.len(), "{stage:?}");
+                if before.is_empty() {
+                    continue;
+                }
+                checked += 1;
+                assert!(
+                    before.iter().all(|load| *load != clear),
+                    "{stage:?}: on its own text the stage is whole"
+                );
+                assert!(
+                    after.iter().all(|load| *load == clear),
+                    "{stage:?}: a replaced file's pass clears"
+                );
+                assert_ne!(own, other, "{stage:?}: the shape moves with it");
+                // Marked compiled-in again, it is the first frame's.
+                let back = Shape {
+                    replaced: other.replaced.with(stage, false),
+                    ..other.clone()
+                };
+                assert_eq!(back, own, "{stage:?}");
+            }
+        }
+    }
+    // Bloom's three stages in all four frames, SMAA's three in two.
+    assert_eq!(checked, 3 * 4 + 3 * 2);
+    // The upsample draws over what the downsamples left, whatever is
+    // replaced.
+    let all = EngineStage::ALL
+        .into_iter()
+        .fold(ReplacedStages::NONE, |stages, stage| {
+            stages.with(stage, true)
+        });
+    assert!(EngineStage::ALL.into_iter().all(|stage| all.holds(stage)));
+    let none = Shape {
+        replaced: all,
+        ..shape(&[B])
+    };
+    let ups = |kind: &PassKind| matches!(kind, PassKind::BloomUp { .. });
+    assert_eq!(load_of(&none, ups), [Load::Keep; 5]);
+}
+
+#[test]
+fn a_committed_text_marks_its_own_pass_and_no_other() {
+    use tungsten_core::post::{DitherParams, FadeParams, VignetteParams};
+    let own_text = |name: &str| fullscreen_source(name).expect("a full-screen shader").1;
+    let stock = [
+        ("vignette", PostPass::Vignette(VignetteParams::default())),
+        ("fade", PostPass::Fade(FadeParams::default())),
+        ("dither", PostPass::Dither(DitherParams::default())),
+        ("pixelate", PostPass::Pixelate(4.0)),
+    ];
+
+    // Each stage of bloom and SMAA is drawn by a shader of the two tables,
+    // and a text other than the compiled-in one marks that stage alone.
+    let tables: Vec<&str> = BLOOM_SHADERS
+        .iter()
+        .chain(&SMAA_SHADERS)
+        .map(|(name, _)| *name)
+        .collect();
+    for stage in EngineStage::ALL {
+        assert!(tables.contains(&stage.shader()), "{stage:?}");
+        let mut replaced = Replaced::default();
+        replaced.commit(stage.shader(), "// a game's own text");
+        assert_eq!(
+            replaced.stages(),
+            ReplacedStages::NONE.with(stage, true),
+            "{stage:?}"
+        );
+        for (name, pass) in &stock {
+            assert!(replaced.own(pass), "{stage:?} leaves {name} its own");
+        }
+        // The compiled-in bytes are the engine's own again.
+        replaced.commit(stage.shader(), own_text(stage.shader()));
+        assert_eq!(replaced, Replaced::default(), "{stage:?}");
+    }
+    // The six stages are six shaders; the seventh of the two tables is
+    // bloom's upsample, which draws over what its level holds either way.
+    let mut shaders: Vec<&str> = EngineStage::ALL
+        .iter()
+        .map(|stage| stage.shader())
+        .collect();
+    shaders.sort_unstable();
+    shaders.dedup();
+    assert_eq!(shaders.len(), 6);
+    let mut replaced = Replaced::default();
+    replaced.commit("bloom_upsample", "// a game's own text");
+    assert_eq!(replaced.stages(), ReplacedStages::NONE);
+
+    // A stock effect's text marks the passes of its kind and no stage.
+    for (name, pass) in &stock {
+        let mut replaced = Replaced::default();
+        replaced.commit(name, "// a game's own text");
+        assert!(!replaced.own(pass), "{name}");
+        assert_eq!(replaced.stages(), ReplacedStages::NONE, "{name}");
+        for (other, other_pass) in &stock {
+            assert_eq!(
+                replaced.own(other_pass),
+                other != name,
+                "{name} and {other}"
+            );
+        }
+        replaced.commit(name, own_text(name));
+        assert!(replaced.own(pass), "{name}");
+    }
+    // A shader that draws no full-screen pass records nothing, and a bloom
+    // is never a stock pass.
+    let mut replaced = Replaced::default();
+    replaced.commit("sprite", "// a game's own text");
+    replaced.commit("glow", "// a game's own text");
+    assert_eq!(replaced, Replaced::default());
+    assert!(fullscreen_source("sprite").is_none());
+    assert_eq!(
+        STOCK_SHADERS.len() + BLOOM_SHADERS.len() + SMAA_SHADERS.len(),
+        24
+    );
+    for (name, source) in STOCK_SHADERS
+        .iter()
+        .chain(&BLOOM_SHADERS)
+        .chain(&SMAA_SHADERS)
+    {
+        assert_eq!(fullscreen_source(name), Some((*name, *source)), "{name}");
+    }
+}
+
+#[test]
+fn the_record_holds_a_replaced_shader_until_its_own_text_is_back() {
+    let mut replaced = Replaced::default();
+    assert!(!replaced.holds("vignette"));
+    replaced.record("vignette", false);
+    replaced.record("smaa_edge", false);
+    assert!(replaced.holds("vignette") && replaced.holds("smaa_edge"));
+    assert!(!replaced.holds("fade"));
+    // Another replacement of the same file is still one.
+    replaced.record("vignette", false);
+    replaced.record("vignette", true);
+    assert!(
+        !replaced.holds("vignette"),
+        "the compiled-in bytes are back"
+    );
+    assert!(replaced.holds("smaa_edge"));
+    // A text that was never replaced records nothing.
+    replaced.record("fade", true);
+    replaced.record("smaa_edge", true);
+    assert_eq!(replaced, Replaced::default());
 }
 
 /// The specs of the pooled textures a frame of `shape` holds.
@@ -659,9 +961,23 @@ fn the_shape_follows_the_stack() {
         PostPass::Vignette(VignetteParams::default()),
     ]);
     let mut shape = shape(&[V]);
-    shape.set_stages(&stack);
+    shape.set_stages(&stack, |_| true);
     assert_eq!(shape.stages, [F, B, V]);
-    shape.set_stages(&PostStack::default());
+    // A stock pass whose shader a file replaced says so; bloom's stages are
+    // the shape's own record.
+    shape.set_stages(&stack, |pass| !matches!(pass, PostPass::Vignette(_)));
+    assert_eq!(
+        shape.stages,
+        [
+            F,
+            B,
+            Stage::Stock {
+                name: "vignette",
+                own: false
+            }
+        ]
+    );
+    shape.set_stages(&PostStack::default(), |_| true);
     assert!(shape.stages.is_empty());
 }
 

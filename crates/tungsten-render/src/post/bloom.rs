@@ -11,6 +11,7 @@ use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::post::{BloomParams, VignetteParams};
 use tungsten_core::tween::UniformOverrideBlock;
 
+use super::whole_target;
 use crate::counters::{self, Counts};
 use crate::graph::pool::PoolTexture;
 use crate::shader_hot_reload::{ShaderModuleCache, build_validated};
@@ -22,6 +23,27 @@ pub const BLOOM_THRESHOLD_SHADER_NAME: &str = "bloom_threshold";
 pub const BLOOM_DOWNSAMPLE_SHADER_NAME: &str = "bloom_downsample";
 pub const BLOOM_UPSAMPLE_SHADER_NAME: &str = "bloom_upsample";
 pub const BLOOM_COMPOSITE_SHADER_NAME: &str = "bloom_composite";
+
+/// The four stage shaders with their compiled-in text, which the renderer
+/// seeds its cache with and holds a loaded file against (`D-306`).
+pub(crate) const BLOOM_SHADERS: [(&str, &str); 4] = [
+    (
+        BLOOM_THRESHOLD_SHADER_NAME,
+        include_str!("../shaders/stock/bloom_threshold.wgsl"),
+    ),
+    (
+        BLOOM_DOWNSAMPLE_SHADER_NAME,
+        include_str!("../shaders/stock/bloom_downsample.wgsl"),
+    ),
+    (
+        BLOOM_UPSAMPLE_SHADER_NAME,
+        include_str!("../shaders/stock/bloom_upsample.wgsl"),
+    ),
+    (
+        BLOOM_COMPOSITE_SHADER_NAME,
+        include_str!("../shaders/stock/bloom_composite.wgsl"),
+    ),
+];
 
 /// Stage `pass_kind` values written into the UBO. Mirrored as comments in the
 /// WGSL stages but unused there today; kept stable so future shader work can
@@ -404,18 +426,19 @@ impl BloomPipeline {
     /// the whole target with blending off and every channel written, so no
     /// texel of what was there survives. A stage that came to draw less
     /// than its whole target would need its clear back. The upsamples add
-    /// into what the downsamples left, so they load.
+    /// into what the downsamples left, so they load. Returns whether it
+    /// drew: `false` for a slot that was not prepared.
     pub(crate) fn draw_stage(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
         slot: usize,
         stage: BloomStageKind,
-    ) {
+    ) -> bool {
         let Some(objects) = self.slots.get(slot).and_then(TargetCache::get) else {
-            return;
+            return false;
         };
         let Some(blocks) = objects.stages.get(stage_index(stage, objects.mip_count)) else {
-            return;
+            return false;
         };
         let (group, pipeline) = match stage {
             BloomStageKind::Threshold => ("bloom_threshold", &self.threshold),
@@ -435,6 +458,7 @@ impl BloomPipeline {
         }
         counters::draw(&self.counts, pass, 0..3, 0..1);
         pass.pop_debug_group();
+        true
     }
 }
 
@@ -615,20 +639,26 @@ fn build_pyramid_pipeline(
         bind_group_layouts: &[Some(&layouts.source_bgl), Some(&layouts.params_bgl)],
         immediate_size: 0,
     });
-    let blend_state = match blend {
-        BlendKind::Replace => None,
-        BlendKind::Additive => Some(wgpu::BlendState {
-            color: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::One,
-                dst_factor: wgpu::BlendFactor::One,
-                operation: wgpu::BlendOperation::Add,
-            },
-            alpha: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::One,
-                dst_factor: wgpu::BlendFactor::Zero,
-                operation: wgpu::BlendOperation::Add,
-            },
-        }),
+    // The threshold and the downsamples replace their level whole; an
+    // upsample adds into what its level holds.
+    let target = match blend {
+        BlendKind::Replace => whole_target(BLOOM_PYRAMID_FORMAT),
+        BlendKind::Additive => wgpu::ColorTargetState {
+            format: BLOOM_PYRAMID_FORMAT,
+            blend: Some(wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::One,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::Zero,
+                    operation: wgpu::BlendOperation::Add,
+                },
+            }),
+            write_mask: wgpu::ColorWrites::ALL,
+        },
     };
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(&format!("{label}_pipeline")),
@@ -642,11 +672,7 @@ fn build_pyramid_pipeline(
         fragment: Some(wgpu::FragmentState {
             module,
             entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: BLOOM_PYRAMID_FORMAT,
-                blend: blend_state,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &[Some(target)],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
@@ -694,11 +720,7 @@ fn build_composite_pipeline(
         fragment: Some(wgpu::FragmentState {
             module,
             entry_point: Some(fragment_entry),
-            targets: &[Some(wgpu::ColorTargetState {
-                format,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &[Some(whole_target(format))],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
