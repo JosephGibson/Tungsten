@@ -45,6 +45,21 @@ pub(super) enum Stage {
     },
     /// An arrival round's search for the pairs its listed bodies reach.
     Arrival(Round),
+    /// A repair's removal scan, in `chunks` chunks of `chunk` pairs.
+    Remove {
+        chunk: usize,
+        chunks: usize,
+        friction_on: bool,
+    },
+    /// A repair's walks for its members' pairs, in `chunks` chunks of
+    /// `chunk` members.
+    Repair {
+        chunk: usize,
+        chunks: usize,
+        friction_on: bool,
+        carried: bool,
+        carried_tangents: bool,
+    },
     /// The pair loop's narrow phase, in `chunks` chunks of `chunk` pairs, a
     /// chunk's contacts written to its [`NarrowSlot`].
     Narrow {
@@ -75,10 +90,20 @@ pub(super) struct ForkData {
     pub(super) repair_grid: SpatialGrid,
     pub(super) repaired: Vec<u32>,
     pub(super) oversize: Vec<u32>,
-    /// The arrival pass's listed bodies.
+    /// The arrival pass's listed bodies, or a repair's members.
     pub(super) list: Vec<u32>,
-    /// The substep's pair list.
+    /// The substep's pair list, and for a repair's removal its impulses,
+    /// tangents and sent flags.
     pub(super) pairs: Vec<(u32, u32)>,
+    pub(super) pair_impulses: Vec<f32>,
+    pub(super) pair_tangents: Vec<f32>,
+    pub(super) sent_pairs: Vec<bool>,
+    /// For a repair's walks: the step's sent pairs that a producer finds by
+    /// their proxies (`D-270`, `SentRecord::found`), and the removed pairs'
+    /// carried impulses and tangents by key.
+    pub(super) found: super::pairs::PairSet,
+    pub(super) repair_impulses: super::pairs::ImpulseMap,
+    pub(super) repair_tangents: super::pairs::ImpulseMap,
     /// The narrow phase's chunks, a slot a chunk, each filled by the
     /// participant that takes it and marked whole: the pair loop consumes a
     /// chunk as soon as it is.
@@ -140,6 +165,26 @@ fn work(data: &ForkData, scratch: &mut WorkerScratch, participant: usize) {
             chunks,
         } => super::pairs::build_work(data, scratch, bodies, chunk, chunks),
         Stage::Arrival(round) => super::arrival::search_work(data, scratch, &round),
+        Stage::Remove {
+            chunk,
+            chunks,
+            friction_on,
+        } => super::pairs::remove_work(data, scratch, chunk, chunks, friction_on),
+        Stage::Repair {
+            chunk,
+            chunks,
+            friction_on,
+            carried,
+            carried_tangents,
+        } => super::pairs::repair_work(
+            data,
+            scratch,
+            chunk,
+            chunks,
+            friction_on,
+            carried,
+            carried_tangents,
+        ),
         Stage::Narrow {
             sub_dt,
             slack,
@@ -345,8 +390,9 @@ pub(super) struct Workers {
     threads: Mutex<Threads>,
     /// A scratch a participant: the caller's, then each worker's.
     pub(super) scratches: Vec<WorkerScratch>,
-    /// Per chunk of the last fork: the participant that took it and where
-    /// its output starts and how long it is, as the stage's merge reads it.
+    /// Per chunk of the last fork: the participant that took it and the two
+    /// numbers its span holds, where its output starts and how long it is
+    /// for most stages, as the stage's merge reads them.
     pub(super) chunk_at: Vec<(u32, u32, u32)>,
     /// Per body of a forked arrival round, in list order: the participant
     /// that searched it and where its pairs start and how many they are.
@@ -372,6 +418,19 @@ pub(super) struct Workers {
     /// Tests: the builds whose carry remap ran while the workers walked.
     #[cfg(test)]
     pub(super) remaps_overlapped: usize,
+    /// Tests: the repairs whose walks forked, and those whose removal did;
+    /// the forked removals that carried tangents, and the forked walks that
+    /// read carried tangents or admitted an oversize proxy's pair.
+    #[cfg(test)]
+    pub(super) repair_forks: usize,
+    #[cfg(test)]
+    pub(super) removal_forks: usize,
+    #[cfg(test)]
+    pub(super) tangent_removals: usize,
+    #[cfg(test)]
+    pub(super) tangent_repairs: usize,
+    #[cfg(test)]
+    pub(super) oversize_repairs: usize,
     /// The forks run, for the tests that must see a stage fork.
     #[cfg(test)]
     pub(super) forks: usize,
@@ -438,6 +497,16 @@ impl Workers {
             kept_by_byte: 0,
             #[cfg(test)]
             remaps_overlapped: 0,
+            #[cfg(test)]
+            repair_forks: 0,
+            #[cfg(test)]
+            removal_forks: 0,
+            #[cfg(test)]
+            tangent_removals: 0,
+            #[cfg(test)]
+            tangent_repairs: 0,
+            #[cfg(test)]
+            oversize_repairs: 0,
             #[cfg(test)]
             forks: 0,
         }

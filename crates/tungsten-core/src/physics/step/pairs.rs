@@ -47,12 +47,43 @@ pub(super) struct WorkerScratch {
     pub(super) repair: QueryMarks,
     /// A walk's candidates, for a stage that cuts them after the walk.
     pub(super) candidates: Vec<ProxyId>,
-    /// The pairs of the build chunks it took, a chunk after another.
+    /// The pairs of the build or repair chunks it took, or a removal's kept
+    /// pairs, a chunk after another.
     pub(super) pairs: Vec<(u32, u32)>,
-    /// Each chunk it took: the chunk, and its output's start and length.
+    /// Each chunk it took: the chunk, and its output's start and length; a
+    /// removal's, its [`RemovalSpan`]'s place in `removal` and 0.
     pub(super) spans: Vec<(u32, u32, u32)>,
     /// Its share of an arrival round's search.
     pub(super) arrival: super::arrival::ArrivalWorker,
+    /// Beside `pairs`, for a repair's chunks: each admitted pair's sent
+    /// flag, carried impulse and, with friction, carried tangent; for a
+    /// removal's, each kept pair's.
+    pub(super) sent: Vec<bool>,
+    pub(super) impulses: Vec<f32>,
+    pub(super) tangents: Vec<f32>,
+    /// A removal's chunks: where each one's outputs lie, and the removed
+    /// pairs that sent and the removed impulses and tangents by key, each in
+    /// pair order.
+    pub(super) removal: Vec<RemovalSpan>,
+    pub(super) found: Vec<(u32, u32)>,
+    pub(super) removed_impulses: Vec<(u128, f32)>,
+    pub(super) removed_tangents: Vec<(u128, f32)>,
+}
+
+/// Where a removal chunk's outputs lie in its participant's scratch, each
+/// as a start and a count: its kept pairs, its removed pairs that sent, its
+/// removed impulses and its removed tangents.
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct RemovalSpan {
+    kept: (u32, u32),
+    found: (u32, u32),
+    impulses: (u32, u32),
+    tangents: (u32, u32),
+}
+
+/// A [`RemovalSpan`] part's range.
+fn span_range((start, count): (u32, u32)) -> std::ops::Range<usize> {
+    start as usize..(start + count) as usize
 }
 
 /// The entity proxies a participant takes at a time in a forked build, and
@@ -63,6 +94,399 @@ const BUILD_CHUNK_FORCED: usize = 16;
 /// The fewest moving proxies whose build forks: under it the walks cost less
 /// than waking the workers.
 const BUILD_FORK_MIN: usize = 1024;
+/// A repair's members a participant takes at a time when its walks fork, in
+/// one the lockstep tests force, and the fewest members whose walks fork.
+const REPAIR_CHUNK: usize = 32;
+const REPAIR_CHUNK_FORCED: usize = 4;
+const REPAIR_FORK_MIN: usize = 256;
+/// A removal's pairs a participant takes at a time when its scan forks, in
+/// one the lockstep tests force, and the fewest pairs whose scan forks.
+const REMOVAL_CHUNK: usize = 4096;
+const REMOVAL_CHUNK_FORCED: usize = 8;
+const REMOVAL_FORK_MIN: usize = 16_384;
+
+/// The pair list's columns a forked repair stage writes back: the pairs, their
+/// sent flags, impulses and tangents.
+type PairColumns<'a> = (
+    &'a mut Vec<(u32, u32)>,
+    &'a mut Vec<bool>,
+    &'a mut Vec<f32>,
+    &'a mut Vec<f32>,
+);
+/// A removal's carried impulses and tangents by key, in pair order.
+type RemovedRecords<'a> = (&'a mut Vec<(u128, f32)>, &'a mut Vec<(u128, f32)>);
+
+/// A participant's share of a forked removal: for each chunk of pairs it
+/// takes, the kept pairs with their impulses, tangents and sent flags, and
+/// the removed pairs that sent and the removed impulses and tangents by key,
+/// each as [`repair_pairs`]' serial loop meets them.
+pub(super) fn remove_work(
+    data: &super::pool::ForkData,
+    scratch: &mut WorkerScratch,
+    chunk_size: usize,
+    chunks: usize,
+    friction_on: bool,
+) {
+    let (pairs, pair_impulses, pair_tangents, sent_pairs) = (
+        &data.pairs[..],
+        &data.pair_impulses[..],
+        &data.pair_tangents[..],
+        &data.sent_pairs[..],
+    );
+    let (pair_flags, proxies) = (&data.pair_flags[..], &data.proxies[..]);
+    let WorkerScratch {
+        pairs: kept_pairs,
+        impulses: kept_impulses,
+        tangents: kept_tangents,
+        sent: kept_sent,
+        spans,
+        removal,
+        found,
+        removed_impulses,
+        removed_tangents,
+        ..
+    } = scratch;
+    kept_pairs.clear();
+    kept_impulses.clear();
+    kept_tangents.clear();
+    kept_sent.clear();
+    spans.clear();
+    removal.clear();
+    found.clear();
+    removed_impulses.clear();
+    removed_tangents.clear();
+    while let Some(chunk) = data.take_chunk(chunks) {
+        let from = chunk * chunk_size;
+        let to = (from + chunk_size).min(pairs.len());
+        let starts = [
+            kept_pairs.len(),
+            found.len(),
+            removed_impulses.len(),
+            removed_tangents.len(),
+        ];
+        for index in from..to {
+            let (a, b) = pairs[index];
+            let impulse = pair_impulses[index];
+            let tangent = if friction_on {
+                pair_tangents[index]
+            } else {
+                0.0
+            };
+            if (pair_flags[a as usize] | pair_flags[b as usize]) & PAIR_TRIPPED == 0 {
+                kept_pairs.push((a, b));
+                kept_impulses.push(impulse);
+                if friction_on {
+                    kept_tangents.push(tangent);
+                }
+                kept_sent.push(sent_pairs[index]);
+            } else {
+                if sent_pairs[index] {
+                    found.push((a, b));
+                }
+                if impulse != 0.0 || tangent != 0.0 {
+                    let key = pair_key(proxies[a as usize].key, proxies[b as usize].key);
+                    if impulse != 0.0 {
+                        removed_impulses.push((key, impulse));
+                    }
+                    if tangent != 0.0 {
+                        removed_tangents.push((key, tangent));
+                    }
+                }
+            }
+        }
+        let part = |start: usize, end: usize| (start as u32, (end - start) as u32);
+        spans.push((chunk as u32, removal.len() as u32, 0));
+        removal.push(RemovalSpan {
+            kept: part(starts[0], kept_pairs.len()),
+            found: part(starts[1], found.len()),
+            impulses: part(starts[2], removed_impulses.len()),
+            tangents: part(starts[3], removed_tangents.len()),
+        });
+    }
+}
+
+/// [`repair_pairs`]' removal scan on the step's participants: each chunk's
+/// kept pairs, impulses, tangents and sent flags laid back in chunk order,
+/// which is the serial loop's order, and its removed records merged in that
+/// order, the `found` inserts serial among them. Returns the kept count. Out
+/// of line, so [`repair_pairs`] holds one call for the fork and its serial
+/// loop's code stays as it was.
+#[inline(never)]
+fn removal_forked(
+    fork: &mut super::pool::Fork,
+    lists: PairColumns<'_>,
+    pair_flags: &mut Vec<u8>,
+    proxies: &mut Vec<super::Proxy>,
+    found: &mut PairSet,
+    removed: RemovedRecords<'_>,
+    friction_on: bool,
+) -> usize {
+    let (pairs, sent_pairs, pair_impulses, pair_tangents) = lists;
+    let (removed_impulses, removed_tangents) = removed;
+    let chunk = fork.chunk(REMOVAL_CHUNK, REMOVAL_CHUNK_FORCED);
+    let chunks = pairs.len().div_ceil(chunk);
+    let workers = fork.workers();
+    let data = workers.fork(super::pool::ForkData {
+        stage: super::pool::Stage::Remove {
+            chunk,
+            chunks,
+            friction_on,
+        },
+        pairs: std::mem::take(pairs),
+        pair_impulses: std::mem::take(pair_impulses),
+        pair_tangents: std::mem::take(pair_tangents),
+        sent_pairs: std::mem::take(sent_pairs),
+        pair_flags: std::mem::take(pair_flags),
+        proxies: std::mem::take(proxies),
+        ..Default::default()
+    });
+    *pairs = data.pairs;
+    *pair_impulses = data.pair_impulses;
+    *pair_tangents = data.pair_tangents;
+    *sent_pairs = data.sent_pairs;
+    *pair_flags = data.pair_flags;
+    *proxies = data.proxies;
+    pairs.clear();
+    pair_impulses.clear();
+    sent_pairs.clear();
+    if friction_on {
+        pair_tangents.clear();
+    }
+    workers.index_chunks(chunks, |scratch| &scratch.spans);
+    for &(participant, ordinal, _) in &workers.chunk_at {
+        let from = &workers.scratches[participant as usize];
+        let span = from.removal[ordinal as usize];
+        let kept = span_range(span.kept);
+        pairs.extend_from_slice(&from.pairs[kept.clone()]);
+        pair_impulses.extend_from_slice(&from.impulses[kept.clone()]);
+        if friction_on {
+            pair_tangents.extend_from_slice(&from.tangents[kept.clone()]);
+        }
+        sent_pairs.extend_from_slice(&from.sent[kept]);
+        for &(a, b) in &from.found[span_range(span.found)] {
+            found.insert(a, b);
+        }
+        removed_impulses.extend_from_slice(&from.removed_impulses[span_range(span.impulses)]);
+        removed_tangents.extend_from_slice(&from.removed_tangents[span_range(span.tangents)]);
+    }
+    #[cfg(test)]
+    {
+        workers.removal_forks += 1;
+        workers.tangent_removals += usize::from(!removed_tangents.is_empty());
+    }
+    pairs.len()
+}
+
+/// A participant's share of a forked repair's walks: for each member of the
+/// chunks it takes, the pairs [`repair_pairs`]' serial loop admits, in its
+/// order, with their sent flags, impulses and tangents.
+pub(super) fn repair_work(
+    data: &super::pool::ForkData,
+    scratch: &mut WorkerScratch,
+    chunk_size: usize,
+    chunks: usize,
+    friction_on: bool,
+    carried: bool,
+    carried_tangents: bool,
+) {
+    let (grid, repair_grid, proxies) = (&data.grid, &data.repair_grid, &data.proxies[..]);
+    let (pair_flags, pair_bounds, layers, oversize) = (
+        &data.pair_flags[..],
+        &data.pair_bounds[..],
+        &data.layers,
+        &data.oversize[..],
+    );
+    let (found, repair_impulses, repair_tangents) =
+        (&data.found, &data.repair_impulses, &data.repair_tangents);
+    let WorkerScratch {
+        bodies: body_marks,
+        tiles: tile_marks,
+        repair: repair_marks,
+        pairs,
+        spans,
+        sent,
+        impulses,
+        tangents,
+        ..
+    } = scratch;
+    pairs.clear();
+    sent.clear();
+    impulses.clear();
+    tangents.clear();
+    spans.clear();
+    while let Some(chunk) = data.take_chunk(chunks) {
+        let start = pairs.len();
+        let from = chunk * chunk_size;
+        let to = (from + chunk_size).min(data.list.len());
+        for &member in &data.list[from..to] {
+            let aabb = &data.pair_aabbs[member as usize];
+            let query = query_bounds(aabb);
+            let member_key = proxies[member as usize].key;
+            let mut admit = |a: u32, b: u32, other: u32| {
+                pairs.push((a, b));
+                sent.push(found.contains(a, b));
+                let key = pair_key(member_key, proxies[other as usize].key);
+                impulses.push(if carried {
+                    repair_impulses.get(key)
+                } else {
+                    0.0
+                });
+                if friction_on {
+                    tangents.push(if carried_tangents {
+                        repair_tangents.get(key)
+                    } else {
+                        0.0
+                    });
+                }
+            };
+            grid.for_each_run_in_marks(
+                body_marks,
+                tile_marks,
+                aabb,
+                #[inline(always)]
+                |mut run| {
+                    run.each(Some(member), |other| {
+                        let flags = pair_flags[other as usize];
+                        if flags & PAIR_REPAIRED != 0
+                            || !bounds_overlap(query, pair_bounds[other as usize])
+                            || !layers.meet(member as usize, other as usize)
+                        {
+                            return;
+                        }
+                        if flags & PAIR_AWAKE != 0 && other < member {
+                            admit(other, member, other);
+                        } else {
+                            admit(member, other, other);
+                        }
+                    });
+                },
+            );
+            repair_grid.for_each_run_in_shared(
+                repair_marks,
+                aabb,
+                0,
+                #[inline(always)]
+                |mut run| {
+                    run.each(Some(member), |other| {
+                        let member_too = pair_flags[other as usize] & PAIR_TRIPPED != 0;
+                        if (member_too && other < member)
+                            || !bounds_overlap(query, pair_bounds[other as usize])
+                            || !layers.meet(member as usize, other as usize)
+                        {
+                            return;
+                        }
+                        if other < member {
+                            admit(other, member, other);
+                        } else {
+                            admit(member, other, other);
+                        }
+                    });
+                },
+            );
+            for &other in oversize {
+                if bounds_overlap(query, pair_bounds[other as usize])
+                    && layers.meet(member as usize, other as usize)
+                {
+                    if other < member {
+                        admit(other, member, other);
+                    } else {
+                        admit(member, other, other);
+                    }
+                }
+            }
+        }
+        spans.push((chunk as u32, start as u32, (pairs.len() - start) as u32));
+    }
+}
+
+/// [`repair_pairs`]' walks on the step's participants: the members in
+/// chunks, each chunk's pairs, sent flags, impulses and tangents appended in
+/// chunk order, which is the serial loop's order. Out of line, so
+/// [`repair_pairs`] holds one call for the fork and its serial loop's code
+/// stays as it was.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn repair_walks_forked(
+    fork: &mut super::pool::Fork,
+    buffers: (&mut PairGrid, &mut crate::physics::broadphase::SpatialGrid),
+    pair_flags: &mut Vec<u8>,
+    pair_bounds: &mut Vec<Vec4>,
+    pair_aabbs: &mut Vec<Aabb>,
+    layers: &mut super::ProxyLayers,
+    oversize: &mut Vec<u32>,
+    proxies: &mut Vec<super::Proxy>,
+    tripped: &mut Vec<u32>,
+    found: &mut PairSet,
+    carried_maps: (&mut ImpulseMap, &mut ImpulseMap),
+    outputs: PairColumns<'_>,
+    switches: (bool, bool, bool),
+) {
+    let (grid, repair_grid) = buffers;
+    let (repair_impulses, repair_tangents) = carried_maps;
+    let (pairs, sent_pairs, pair_impulses, pair_tangents) = outputs;
+    let (friction_on, carried, carried_tangents) = switches;
+    let chunk = fork.chunk(REPAIR_CHUNK, REPAIR_CHUNK_FORCED);
+    let chunks = tripped.len().div_ceil(chunk);
+    grid.prepare();
+    repair_grid.prepare();
+    let workers = fork.workers();
+    let data = workers.fork(super::pool::ForkData {
+        stage: super::pool::Stage::Repair {
+            chunk,
+            chunks,
+            friction_on,
+            carried,
+            carried_tangents,
+        },
+        grid: std::mem::take(grid),
+        repair_grid: std::mem::take(repair_grid),
+        pair_flags: std::mem::take(pair_flags),
+        pair_bounds: std::mem::take(pair_bounds),
+        pair_aabbs: std::mem::take(pair_aabbs),
+        layers: std::mem::take(layers),
+        oversize: std::mem::take(oversize),
+        proxies: std::mem::take(proxies),
+        list: std::mem::take(tripped),
+        found: std::mem::take(found),
+        repair_impulses: std::mem::take(repair_impulses),
+        repair_tangents: std::mem::take(repair_tangents),
+        ..Default::default()
+    });
+    *grid = data.grid;
+    *repair_grid = data.repair_grid;
+    *pair_flags = data.pair_flags;
+    *pair_bounds = data.pair_bounds;
+    *pair_aabbs = data.pair_aabbs;
+    *layers = data.layers;
+    *oversize = data.oversize;
+    *proxies = data.proxies;
+    *tripped = data.list;
+    *found = data.found;
+    *repair_impulses = data.repair_impulses;
+    *repair_tangents = data.repair_tangents;
+    workers.index_chunks(chunks, |scratch| &scratch.spans);
+    #[cfg(test)]
+    let admitted = pairs.len();
+    for &(participant, start, count) in &workers.chunk_at {
+        let from = &workers.scratches[participant as usize];
+        let (start, end) = (start as usize, (start + count) as usize);
+        pairs.extend_from_slice(&from.pairs[start..end]);
+        sent_pairs.extend_from_slice(&from.sent[start..end]);
+        pair_impulses.extend_from_slice(&from.impulses[start..end]);
+        if friction_on {
+            pair_tangents.extend_from_slice(&from.tangents[start..end]);
+        }
+    }
+    #[cfg(test)]
+    {
+        workers.repair_forks += 1;
+        workers.tangent_repairs += usize::from(carried_tangents);
+        workers.oversize_repairs +=
+            usize::from(pairs[admitted..].iter().any(|&(a, b)| {
+                (pair_flags[a as usize] | pair_flags[b as usize]) & PAIR_OVERSIZE != 0
+            }));
+    }
+}
 
 /// A participant's share of a forked build's walks: the next chunks free,
 /// each chunk's pairs as [`build_pairs`]' serial loop pushes them.
@@ -1352,6 +1776,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         removed_tangents,
         pair_bounds,
         sent,
+        fork,
         ..
     } = &mut **extra;
     let friction_on = !frictions.is_empty();
@@ -1364,40 +1789,53 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
     // friction, under its key.
     removed_impulses.clear();
     removed_tangents.clear();
-    let mut kept = 0;
-    for index in 0..pairs.len() {
-        let (a, b) = pairs[index];
-        let impulse = pair_impulses[index];
-        let tangent = if friction_on {
-            pair_tangents[index]
-        } else {
-            0.0
-        };
-        if (pair_flags[a as usize] | pair_flags[b as usize]) & PAIR_TRIPPED == 0 {
-            pairs[kept] = (a, b);
-            pair_impulses[kept] = impulse;
-            if friction_on {
-                pair_tangents[kept] = tangent;
-            }
-            sent.pairs[kept] = sent.pairs[index];
-            kept += 1;
-        } else {
-            // A removed pair that sent its event is found by its proxies
-            // when a member's query brings it back (D-270).
-            if sent.pairs[index] {
-                sent.found.insert(a, b);
-            }
-            if impulse != 0.0 || tangent != 0.0 {
-                let key = pair_key(proxies[a as usize].key, proxies[b as usize].key);
-                if impulse != 0.0 {
-                    removed_impulses.push((key, impulse));
+    let kept = if fork.splits(pairs.len(), REMOVAL_FORK_MIN) {
+        removal_forked(
+            fork,
+            (pairs, &mut sent.pairs, pair_impulses, pair_tangents),
+            pair_flags,
+            proxies,
+            &mut sent.found,
+            (removed_impulses, removed_tangents),
+            friction_on,
+        )
+    } else {
+        let mut kept = 0;
+        for index in 0..pairs.len() {
+            let (a, b) = pairs[index];
+            let impulse = pair_impulses[index];
+            let tangent = if friction_on {
+                pair_tangents[index]
+            } else {
+                0.0
+            };
+            if (pair_flags[a as usize] | pair_flags[b as usize]) & PAIR_TRIPPED == 0 {
+                pairs[kept] = (a, b);
+                pair_impulses[kept] = impulse;
+                if friction_on {
+                    pair_tangents[kept] = tangent;
                 }
-                if tangent != 0.0 {
-                    removed_tangents.push((key, tangent));
+                sent.pairs[kept] = sent.pairs[index];
+                kept += 1;
+            } else {
+                // A removed pair that sent its event is found by its proxies
+                // when a member's query brings it back (D-270).
+                if sent.pairs[index] {
+                    sent.found.insert(a, b);
+                }
+                if impulse != 0.0 || tangent != 0.0 {
+                    let key = pair_key(proxies[a as usize].key, proxies[b as usize].key);
+                    if impulse != 0.0 {
+                        removed_impulses.push((key, impulse));
+                    }
+                    if tangent != 0.0 {
+                        removed_tangents.push((key, tangent));
+                    }
                 }
             }
         }
-    }
+        kept
+    };
     pairs.truncate(kept);
     pair_impulses.truncate(kept);
     sent.pairs.truncate(kept);
@@ -1458,80 +1896,98 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
 
     let carried = !removed_impulses.is_empty();
     let carried_tangents = !removed_tangents.is_empty();
-    for &member in tripped.iter() {
-        let aabb = &pair_aabbs[member as usize];
-        let query = query_bounds(aabb);
-        let member_key = proxies[member as usize].key;
-        let mut admit = |a: u32, b: u32, other: u32| {
-            pairs.push((a, b));
-            sent.pairs.push(sent.found.contains(a, b));
-            let key = pair_key(member_key, proxies[other as usize].key);
-            pair_impulses.push(if carried {
-                repair_impulses.get(key)
-            } else {
-                0.0
-            });
-            if friction_on {
-                pair_tangents.push(if carried_tangents {
-                    repair_tangents.get(key)
+    if fork.splits(tripped.len(), REPAIR_FORK_MIN) {
+        repair_walks_forked(
+            fork,
+            (grid, repair_grid),
+            pair_flags,
+            pair_bounds,
+            pair_aabbs,
+            layers,
+            oversize,
+            proxies,
+            tripped,
+            &mut sent.found,
+            (repair_impulses, repair_tangents),
+            (pairs, &mut sent.pairs, pair_impulses, pair_tangents),
+            (friction_on, carried, carried_tangents),
+        );
+    } else {
+        for &member in tripped.iter() {
+            let aabb = &pair_aabbs[member as usize];
+            let query = query_bounds(aabb);
+            let member_key = proxies[member as usize].key;
+            let mut admit = |a: u32, b: u32, other: u32| {
+                pairs.push((a, b));
+                sent.pairs.push(sent.found.contains(a, b));
+                let key = pair_key(member_key, proxies[other as usize].key);
+                pair_impulses.push(if carried {
+                    repair_impulses.get(key)
                 } else {
                     0.0
                 });
-            }
-        };
-        // Only the members query, so this is not the build's initiator rule:
-        // an untripped awake body of lower index must still be paired here.
-        grid.for_each_run_in(
-            aabb,
-            #[inline(always)]
-            |mut run| {
-                run.each(Some(member), |other| {
-                    let flags = pair_flags[other as usize];
-                    if flags & PAIR_REPAIRED != 0
-                        || !bounds_overlap(query, pair_bounds[other as usize])
-                        || !layers.meet(member as usize, other as usize)
-                    {
-                        return;
-                    }
-                    if flags & PAIR_AWAKE != 0 && other < member {
-                        admit(other, member, other);
+                if friction_on {
+                    pair_tangents.push(if carried_tangents {
+                        repair_tangents.get(key)
                     } else {
-                        admit(member, other, other);
-                    }
-                });
-            },
-        );
-        repair_grid.for_each_run_in(
-            aabb,
-            0,
-            #[inline(always)]
-            |mut run| {
-                run.each(Some(member), |other| {
-                    // A pair between two members is added by the lower one.
-                    let member_too = pair_flags[other as usize] & PAIR_TRIPPED != 0;
-                    if (member_too && other < member)
-                        || !bounds_overlap(query, pair_bounds[other as usize])
-                        || !layers.meet(member as usize, other as usize)
-                    {
-                        return;
-                    }
+                        0.0
+                    });
+                }
+            };
+            // Only the members query, so this is not the build's initiator rule:
+            // an untripped awake body of lower index must still be paired here.
+            grid.for_each_run_in(
+                aabb,
+                #[inline(always)]
+                |mut run| {
+                    run.each(Some(member), |other| {
+                        let flags = pair_flags[other as usize];
+                        if flags & PAIR_REPAIRED != 0
+                            || !bounds_overlap(query, pair_bounds[other as usize])
+                            || !layers.meet(member as usize, other as usize)
+                        {
+                            return;
+                        }
+                        if flags & PAIR_AWAKE != 0 && other < member {
+                            admit(other, member, other);
+                        } else {
+                            admit(member, other, other);
+                        }
+                    });
+                },
+            );
+            repair_grid.for_each_run_in(
+                aabb,
+                0,
+                #[inline(always)]
+                |mut run| {
+                    run.each(Some(member), |other| {
+                        // A pair between two members is added by the lower one.
+                        let member_too = pair_flags[other as usize] & PAIR_TRIPPED != 0;
+                        if (member_too && other < member)
+                            || !bounds_overlap(query, pair_bounds[other as usize])
+                            || !layers.meet(member as usize, other as usize)
+                        {
+                            return;
+                        }
+                        if other < member {
+                            admit(other, member, other);
+                        } else {
+                            admit(member, other, other);
+                        }
+                    });
+                },
+            );
+            // The oversize proxies are in no grid and never members here.
+            for &other in oversize.iter() {
+                if bounds_overlap(query, pair_bounds[other as usize])
+                    && layers.meet(member as usize, other as usize)
+                {
                     if other < member {
                         admit(other, member, other);
                     } else {
                         admit(member, other, other);
                     }
-                });
-            },
-        );
-        // The oversize proxies are in no grid and never members here.
-        for &other in oversize.iter() {
-            if bounds_overlap(query, pair_bounds[other as usize])
-                && layers.meet(member as usize, other as usize)
-            {
-                if other < member {
-                    admit(other, member, other);
-                } else {
-                    admit(member, other, other);
                 }
             }
         }

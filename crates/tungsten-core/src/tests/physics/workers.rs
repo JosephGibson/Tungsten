@@ -1,6 +1,6 @@
 //! The step's forked stages against its serial step, in lockstep (`D-298`):
 //! every participant count must step to the serial step's bodies, sleep
-//! states and events, bit for bit.
+//! states, events and pair list, bit for bit.
 
 use super::*;
 use crate::Pcg32;
@@ -71,6 +71,41 @@ fn state(world: &World, bodies: &[Entity]) -> (Vec<[u32; 5]>, Vec<String>) {
     (rows, events)
 }
 
+/// The pair list after a step, as a forked build or repair laid it out,
+/// which bodies do not show where a pair makes no contact: each column by
+/// name, an entry a pair, its pair, sent flag and impulse and tangent bits.
+fn pair_columns(world: &World) -> [(&'static str, Vec<u64>); 4] {
+    let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+    let bits = |values: &[f32]| {
+        values
+            .iter()
+            .map(|value| u64::from(value.to_bits()))
+            .collect()
+    };
+    [
+        (
+            "pairs",
+            buffers
+                .pairs
+                .iter()
+                .map(|&(a, b)| (u64::from(a) << 32) | u64::from(b))
+                .collect(),
+        ),
+        (
+            "sent flags",
+            buffers
+                .extra
+                .sent
+                .pairs
+                .iter()
+                .map(|&sent| u64::from(sent))
+                .collect(),
+        ),
+        ("impulses", bits(&buffers.pair_impulses)),
+        ("tangents", bits(&buffers.extra.pair_tangents)),
+    ]
+}
+
 fn flush(world: &mut World) {
     world
         .get_resource_mut::<EventQueue<CollisionEvent>>()
@@ -89,7 +124,9 @@ fn flush(world: &mut World) {
 /// What a forced world's pool ran: its forks, and the arrival rounds and the
 /// narrow phases among them; the narrow chunks the pair loop's own thread
 /// computed and those it waited for; the wakes and keeps its byte decided;
-/// the builds whose carry remap ran beside the walks.
+/// the builds whose carry remap ran beside the walks; the repairs whose walks
+/// forked, and those whose removal did; the forked removals with tangents
+/// and the forked walks with carried tangents or an oversize proxy's pair.
 #[derive(Debug, Default, Clone, Copy)]
 struct Forked {
     forks: usize,
@@ -100,6 +137,11 @@ struct Forked {
     woken: usize,
     kept: usize,
     remaps: usize,
+    repairs: usize,
+    removals: usize,
+    tangent_removals: usize,
+    tangent_repairs: usize,
+    oversize_repairs: usize,
 }
 
 /// Steps one serial world and one forced world a count of [`COUNTS`] and a
@@ -132,7 +174,25 @@ fn lockstep(
             physics_step(world);
         }
         let (rows, events) = state(&worlds[0].1, &worlds[0].2);
+        let columns = pair_columns(&worlds[0].1);
         for (count, world, bodies) in &worlds[1..] {
+            for ((column, got), (_, want)) in pair_columns(world).iter().zip(&columns) {
+                if got != want {
+                    let at = got
+                        .iter()
+                        .zip(want)
+                        .position(|(got, want)| got != want)
+                        .unwrap_or(got.len().min(want.len()));
+                    panic!(
+                        "{name}: {column} at step {step}, {count} participants: entry {at} of {} \
+                         reads {:?}, the serial step's {:?} of {}",
+                        got.len(),
+                        got.get(at),
+                        want.get(at),
+                        want.len(),
+                    );
+                }
+            }
             let (got_rows, got_events) = state(world, bodies);
             assert_eq!(
                 got_rows.len(),
@@ -171,6 +231,11 @@ fn lockstep(
                     woken: pool.woken_by_byte,
                     kept: pool.kept_by_byte,
                     remaps: pool.remaps_overlapped,
+                    repairs: pool.repair_forks,
+                    removals: pool.removal_forks,
+                    tangent_removals: pool.tangent_removals,
+                    tangent_repairs: pool.tangent_repairs,
+                    oversize_repairs: pool.oversize_repairs,
                 })
         })
         .collect()
@@ -275,14 +340,76 @@ fn a_pile_in_a_tile_pit_steps_alike_at_every_count_split_merged_and_as_built() {
             },
         );
         // The blast knocks bodies into neighbours no contact admitted, so
-        // the arrival pass lists them and its rounds fork too.
+        // the arrival pass lists them and its rounds fork too; the pile's
+        // trips repair, and each repair's walks and removal fork.
         assert!(
             forks.iter().all(|f| {
-                f.forks > f.rounds + f.narrow && f.rounds > 0 && f.narrow > 0 && f.remaps > 0
+                f.forks > f.rounds + f.narrow
+                    && f.rounds > 0
+                    && f.narrow > 0
+                    && f.remaps > 0
+                    && f.repairs > 0
+                    && f.removals > 0
             }),
             "{name}: {forks:?}"
         );
     }
+}
+
+/// The kinematic sweeper's speed: 2,500 px a step, past the 2,048 px of
+/// 64 cells that makes a proxy oversize.
+const SWEEP: f32 = 150_000.0;
+
+#[test]
+fn a_pile_with_friction_and_an_oversize_sweeper_steps_alike_at_every_count() {
+    let forks = lockstep(
+        "friction",
+        90,
+        |world| {
+            spawn_pit(world, 12);
+            let mut bodies = spawn_mixed(world, &mut Pcg32::seeded(0xF41C), 260);
+            for &body in &bodies {
+                world.get_mut::<RigidBody>(body).unwrap().friction = 0.6;
+            }
+            // High over the pit, its inflated box over every body in it.
+            bodies.push(spawn_body(
+                world,
+                Vec2::new(0.0, -1_600.0),
+                Vec2::new(SWEEP, 0.0),
+                RigidBody::kinematic(),
+                Collider::aabb(Vec2::new(20.0, 4.0)),
+            ));
+            bodies
+        },
+        |world, step, bodies| {
+            // It turns back each step, so it stays over the pit.
+            let sweeper = *bodies.last().unwrap();
+            world.get_mut::<Velocity>(sweeper).unwrap().0.x =
+                if step % 2 == 0 { SWEEP } else { -SWEEP };
+            if step == 60 {
+                apply_radial_impulse(
+                    world,
+                    Vec2::new(320.0, 280.0),
+                    200.0,
+                    9_000.0,
+                    &SpatialFilter::default(),
+                );
+            }
+        },
+    );
+    // The pile's trips repair with tangents to carry, and the walks of a
+    // repair after the frame's first build meet the sweeper through the
+    // oversize list (a later build's shorter time leaves it in the grid).
+    assert!(
+        forks.iter().all(|f| {
+            f.repairs > 0
+                && f.removals > 0
+                && f.tangent_removals > 0
+                && f.tangent_repairs > 0
+                && f.oversize_repairs > 0
+        }),
+        "{forks:?}"
+    );
 }
 
 #[test]
@@ -304,7 +431,7 @@ fn bullets_sleepers_spawns_and_despawns_step_alike_at_every_count() {
                 );
                 let mut rng = Pcg32::seeded(0x00B0_11E7 + seed);
                 let mut bodies = spawn_mixed(world, &mut rng, 120);
-                // A bullet fast enough to query past the grid's oversize bound.
+                // A bullet of up to 15,000 px/s, many cells a step.
                 bodies.push(spawn_body(
                     world,
                     Vec2::new(-300.0, 240.0),
@@ -338,9 +465,15 @@ fn bullets_sleepers_spawns_and_despawns_step_alike_at_every_count() {
                 _ => {}
             },
         );
+        // Seed 0 never repairs: each of its refreshes rebuilds. The others'
+        // trips and wakes repair, and each repair's walks and removal fork.
         assert!(
             forks.iter().all(|f| {
-                f.forks > f.rounds + f.narrow && f.rounds > 0 && f.narrow > 0 && f.remaps > 0
+                f.forks > f.rounds + f.narrow
+                    && f.rounds > 0
+                    && f.narrow > 0
+                    && f.remaps > 0
+                    && (seed == 0 || f.repairs > 0 && f.removals > 0)
             }),
             "seed {seed}: {forks:?}"
         );
