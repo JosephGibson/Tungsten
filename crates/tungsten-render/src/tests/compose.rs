@@ -624,9 +624,8 @@ fn a_pass_ends_in_the_tail_and_the_tail_stands_alone() {
              color = tungsten_tail(color, in.position.xy);\n    \
              return color;\n}\n"
         );
-        // An sRGB output dithers the value it stores.
-        assert_eq!(module.contains("fn tungsten_tail_encode("), srgb);
-        assert_eq!(module.contains("fn tungsten_tail_decode("), srgb);
+        // An sRGB output's noise is scaled to the value it stores.
+        assert_eq!(module.contains("fn tungsten_tail_slope("), srgb);
 
         // The tail alone: the source's own pixel, clamped and dithered.
         let alone = generate(&[], Between::Nothing, tail);
@@ -645,36 +644,59 @@ fn a_pass_ends_in_the_tail_and_the_tail_stands_alone() {
     let plain = generate(&[vignette], Between::Nothing, Finish::Plain);
     assert!(!plain.contains("tungsten_tail"));
 
-    // The noise is the sixteen Bayer levels about zero, scaled by the span:
-    // each within 0.3 of an 8-bit step either way, so a colour within a
-    // fifth of a step of a value 8 bits hold is stored as that value. The
-    // shader's own lines are read, not a copy of their arithmetic.
+    // The noise is the sixteen levels of the 4 × 4 Bayer matrix about zero,
+    // scaled by the span: each within 0.3 of an 8-bit step either way, so a
+    // colour within a fifth of a step of a value 8 bits hold is stored as
+    // that value. The shader's own lines are read, and their arithmetic done
+    // here over the sixteen cells.
     let module = generate(&[], Between::Nothing, Finish::Tail { srgb: true });
     let lines: Vec<&str> = module.lines().map(str::trim).collect();
-    assert!(
-        lines.contains(
-            &"let level = (TUNGSTEN_TAIL_BAYER[cell.y * 4u + cell.x] + 0.5) / 16.0 - 0.5;"
-        ),
-        "the level's line moved: update this test's arithmetic with it"
-    );
     let scale = format!("return level * {TAIL_NOISE_SPAN:?} / 255.0;");
-    assert!(
-        lines.contains(&scale.as_str()),
-        "the tail no longer reads `{scale}`"
-    );
-    let start = module.find("array<f32, 16>(").expect("the matrix") + "array<f32, 16>(".len();
-    let end = start + module[start..].find(");").expect("its end");
-    let mut levels: Vec<f32> = module[start..end]
-        .split(',')
-        .filter_map(|level| level.trim().parse().ok())
-        .collect();
-    assert_eq!(levels.len(), 16);
-    for level in &levels {
-        let noise = ((level + 0.5) / 16.0 - 0.5) * TAIL_NOISE_SPAN;
-        assert!(noise.abs() < 0.3, "{noise}");
+    for expected in [
+        "let x = cell.x ^ cell.y;",
+        "let bits = ((x & 1u) << 3u) | ((cell.y & 1u) << 2u) | (x & 2u) | ((cell.y & 2u) >> 1u);",
+        "let level = (f32(bits) + 0.5) / 16.0 - 0.5;",
+        scale.as_str(),
+    ] {
+        assert!(
+            lines.contains(&expected),
+            "the tail no longer reads `{expected}`: update this test's arithmetic with it"
+        );
     }
-    levels.sort_by(f32::total_cmp);
-    assert_eq!(levels, (0..16u8).map(f32::from).collect::<Vec<_>>());
+    let mut levels = Vec::new();
+    for cell_y in 0..4u32 {
+        for cell_x in 0..4u32 {
+            let x = cell_x ^ cell_y;
+            let bits = ((x & 1) << 3) | ((cell_y & 1) << 2) | (x & 2) | ((cell_y & 2) >> 1);
+            let noise = ((bits as f32 + 0.5) / 16.0 - 0.5) * TAIL_NOISE_SPAN;
+            assert!(noise.abs() < 0.3, "{noise}");
+            levels.push(bits);
+        }
+    }
+    // The matrix: every level once, a row and a column never two that
+    // are neighbours in value.
+    assert_eq!(levels[..4], [0, 8, 2, 10]);
+    assert_eq!(levels[4..8], [12, 4, 14, 6]);
+    assert_eq!(levels[8..12], [3, 11, 1, 9]);
+    assert_eq!(levels[12..], [15, 7, 13, 5]);
+
+    // Over an sRGB output the noise is scaled by the slope of the output's
+    // decode, taken low: the shader's line, done here over every 8-bit
+    // value, is never over the curve's own slope and never under six
+    // tenths of it, so the noise stays within its span at every light.
+    assert!(lines.contains(&"return max(1.4 * sqrt(light), vec3<f32>(0.0774));"));
+    for code in 0..=255u32 {
+        let stored = code as f32 / 255.0;
+        let (light, slope) = if stored <= 0.04045 {
+            (stored / 12.92, 1.0 / 12.92)
+        } else {
+            let base = (stored + 0.055) / 1.055;
+            (base.powf(2.4), 2.4 / 1.055 * base.powf(1.4))
+        };
+        let taken = (1.4 * light.sqrt()).max(0.0774);
+        let share = taken / slope;
+        assert!((0.6..=1.0005).contains(&share), "code {code}: {share}");
+    }
 }
 
 #[test]

@@ -611,47 +611,43 @@ pub(crate) enum Finish {
 pub(crate) const TAIL_NOISE_SPAN: f32 = 0.6;
 
 /// The tail's functions; `NOISE_SPAN` stands for [`TAIL_NOISE_SPAN`], which
-/// [`generate`] writes in.
-const TAIL: &str = "const TUNGSTEN_TAIL_BAYER: array<f32, 16> = array<f32, 16>(
-    0.0, 8.0, 2.0, 10.0,
-    12.0, 4.0, 14.0, 6.0,
-    3.0, 11.0, 1.0, 9.0,
-    15.0, 7.0, 13.0, 5.0,
-);
-
-fn tungsten_tail_noise(position: vec2<f32>) -> f32 {
-    let cell = vec2<u32>(position) % vec2<u32>(4u);
-    let level = (TUNGSTEN_TAIL_BAYER[cell.y * 4u + cell.x] + 0.5) / 16.0 - 0.5;
+/// [`generate`] writes in. The level is the 4 × 4 Bayer matrix's, sixteen
+/// values about zero, from the pixel's bits: a table would be copied for
+/// every fragment that indexes it.
+const TAIL: &str = "fn tungsten_tail_noise(position: vec2<f32>) -> f32 {
+    let cell = vec2<u32>(position);
+    let x = cell.x ^ cell.y;
+    let bits = ((x & 1u) << 3u) | ((cell.y & 1u) << 2u) | (x & 2u) | ((cell.y & 2u) >> 1u);
+    let level = (f32(bits) + 0.5) / 16.0 - 0.5;
     return level * NOISE_SPAN / 255.0;
 }
 ";
 
-/// The tail over an output that stores what a pass writes.
+/// The tail over an output that stores what a pass writes. The output's
+/// target clamps what it is handed to 0..1, so the tail does not.
 const TAIL_PLAIN: &str = "fn tungsten_tail(color: vec4<f32>, position: vec2<f32>) -> vec4<f32> {
-    let rgb = clamp(color.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
-    let stored = rgb + vec3<f32>(tungsten_tail_noise(position));
-    return vec4<f32>(clamp(stored, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+    return vec4<f32>(color.rgb + vec3<f32>(tungsten_tail_noise(position)), color.a);
 }
 ";
 
-/// The tail over an sRGB output: the noise is added to the value the output
-/// stores, and the sum decoded for the output to encode again.
-const TAIL_SRGB: &str = "fn tungsten_tail_encode(linear: vec3<f32>) -> vec3<f32> {
-    let low = linear * 12.92;
-    let high = 1.055 * pow(linear, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055);
-    return select(high, low, linear <= vec3<f32>(0.0031308));
-}
-
-fn tungsten_tail_decode(stored: vec3<f32>) -> vec3<f32> {
-    let low = stored / 12.92;
-    let high = pow((stored + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
-    return select(high, low, stored <= vec3<f32>(0.04045));
+/// The tail over an sRGB output, which encodes what a pass writes: the noise
+/// is a share of a step in the value the output stores, so in light it is
+/// scaled by the slope of the output's decode there, `2.4 / 1.055 ×
+/// light^(1.4 / 2.4)`, and its straight foot's `1 / 12.92`. The slope is
+/// taken low, `1.4 × light^0.5`, one square root a channel: all of the
+/// curve's own in the dark, where a gradient bands most, falling to 0.62 of
+/// it at white, so the noise never passes its span. The output's target
+/// clamps the sum to 0..1. Every operation here is paid 8 million times a
+/// frame at 2160p: an encode and a decode of the pixel in the slope's place
+/// read 2.5 ms on the reference machine, and three square roots a channel
+/// with two clamps 1.5.
+const TAIL_SRGB: &str = "fn tungsten_tail_slope(light: vec3<f32>) -> vec3<f32> {
+    return max(1.4 * sqrt(light), vec3<f32>(0.0774));
 }
 
 fn tungsten_tail(color: vec4<f32>, position: vec2<f32>) -> vec4<f32> {
-    let rgb = clamp(color.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
-    let stored = tungsten_tail_encode(rgb) + vec3<f32>(tungsten_tail_noise(position));
-    return vec4<f32>(tungsten_tail_decode(clamp(stored, vec3<f32>(0.0), vec3<f32>(1.0))), color.a);
+    let rgb = max(color.rgb, vec3<f32>(0.0));
+    return vec4<f32>(rgb + tungsten_tail_slope(rgb) * tungsten_tail_noise(position), color.a);
 }
 ";
 
