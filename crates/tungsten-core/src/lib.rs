@@ -34,15 +34,16 @@ pub use assets::{
     LoadedManifest, ManifestError, MapCursor, MapObject, MaterialAssetId, MaterialRegistry,
     MaterialUniformDefaults, ObjectLayer, ParticleActive, ParticleBudget, ParticleConfig,
     ParticleConfigError, ParticleConfigRegistry, ParticleEntry, ParticleMesh, ParticleMeshAssetId,
-    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, PrefabData, PrefabEntry, PrefabError,
-    PrefabRegistry, PreparedPrefab, Range, ResolvedDataEntry, ResolvedFont, ResolvedFontFamily,
-    ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab,
-    ResolvedSound, ResolvedUiTheme, Room, RoomCommand, RoomError, RoomGenerator, RoomGenerators,
-    RoomJournal, RoomRegistry, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform,
-    SceneTween, SceneTweenChannel, SceneTweenRepeat, Slope, SlopeCorner, SlopeRise, SoundData,
-    SoundEntry, SoundRegistry, SpawnedRoom, SpriteAlpha, SpriteAsset, SpriteAssetId, StagedLoad,
-    StagedLoadError, TextureHandle, TileChanges, TileDamage, TileIndex, TileProps, TilemapData,
-    TilemapInstance, TilemapLayer, TilemapRegistry, Tileset, UiThemeEntry, WorldRngSeed,
+    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, PostEffectId, PostEffectRegistry,
+    PrefabData, PrefabEntry, PrefabError, PrefabRegistry, PreparedPrefab, Range, ResolvedDataEntry,
+    ResolvedFont, ResolvedFontFamily, ResolvedManifest, ResolvedMaterial, ResolvedParticle,
+    ResolvedParticleMesh, ResolvedPrefab, ResolvedSound, ResolvedUiTheme, Room, RoomCommand,
+    RoomError, RoomGenerator, RoomGenerators, RoomJournal, RoomRegistry, SceneData, SceneEntry,
+    SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel, SceneTweenRepeat,
+    Slope, SlopeCorner, SlopeRise, SoundData, SoundEntry, SoundRegistry, SpawnedRoom, SpriteAlpha,
+    SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileChanges,
+    TileDamage, TileIndex, TileProps, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry,
+    Tileset, UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioBus, AudioCommand, AudioCommands, MAX_VOICES, Voice};
 pub use camera::{
@@ -87,8 +88,8 @@ pub use physics::{
     aabb_vs_circle, circle_vs_circle, physics_prev_snapshot, physics_step, physics_sync,
 };
 pub use post::{
-    BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherMode, DitherParams,
-    FadeParams, FilmGrainParams, FogParams, GlitchParams, GodRaysParams, LutParams,
+    BloomParams, ColorAdjustParams, CrtParams, CustomPost, DissolveParams, DitherMode,
+    DitherParams, FadeParams, FilmGrainParams, FogParams, GlitchParams, GodRaysParams, LutParams,
     PixelOutlineParams, PostPass, PostStack, ToneMonoMode, ToneMonoParams, TonemapMode,
     TonemapParams, VignetteParams, WipeRadialParams,
 };

@@ -10,9 +10,9 @@ use std::time::Instant;
 use tungsten_core::assets::{
     AnimationData, AnimationRegistry, FilterMode, FontRegistry, LoadedManifest, MaterialAssetId,
     MaterialRegistry, MaterialUniformDefaults, ParticleConfig, ParticleConfigRegistry,
-    ParticleMeshAssetId, ParticleMeshRegistry, ParticleRender, ResolvedFontFamily,
-    ResolvedManifest, ShaderAssetId, ShaderRegistry, SoundData, SoundRegistry, TextureHandle,
-    TilemapData, TilemapRegistry, UvRect,
+    ParticleMeshAssetId, ParticleMeshRegistry, ParticleRender, PostEffectId, PostEffectRegistry,
+    ResolvedFontFamily, ResolvedManifest, ShaderAssetId, ShaderRegistry, SoundData, SoundRegistry,
+    TextureHandle, TilemapData, TilemapRegistry, UvRect,
 };
 use tungsten_core::physics::{PhysicsLayers, PhysicsMaterials};
 use tungsten_core::ui::{ScreenFile, Theme, ThemeFile, UiScreenRegistry, UiThemeRegistry};
@@ -498,6 +498,64 @@ fn load_shaders_into(
     world.insert_resource(registry);
 }
 
+/// Allocates the manifest's `post_effects` in the World's
+/// [`PostEffectRegistry`], in ID order, each with its shader and defaults:
+/// an effect the registry holds takes the manifest's, so a reload changes
+/// what `PostEffectRegistry::pass` builds next. Returns each effect's ID,
+/// name and shader.
+pub(crate) fn allocate_post_effects(
+    manifest: &ResolvedManifest,
+    world: &mut World,
+) -> Vec<(PostEffectId, String, String)> {
+    let mut registry = world
+        .remove_resource::<PostEffectRegistry>()
+        .unwrap_or_default();
+    let mut ids: Vec<&String> = manifest.post_effects.keys().collect();
+    ids.sort();
+    let allocated = ids
+        .into_iter()
+        .map(|id| {
+            let effect = &manifest.post_effects[id];
+            let asset = registry.allocate(
+                id,
+                effect.source_manifest.clone(),
+                effect.shader.clone(),
+                effect.uniform_defaults,
+            );
+            (asset, id.clone(), effect.shader.clone())
+        })
+        .collect();
+    world.insert_resource(registry);
+    allocated
+}
+
+/// Registers the manifest's `post_effects` (`D-308`): allocates each a
+/// `PostEffectId` and builds its pipeline on the renderer. Call after
+/// `load_shaders`, which loads the modules they draw with. An effect whose
+/// module does not build is logged and has no pipeline: a frame leaves its
+/// pass out until a reload of its shader builds it.
+pub fn load_post_effects(
+    manifest: &ResolvedManifest,
+    world: &mut World,
+    renderer: &mut Renderer,
+) -> anyhow::Result<()> {
+    load_post_effects_into(manifest, world, renderer);
+    Ok(())
+}
+
+fn load_post_effects_into(
+    manifest: &ResolvedManifest,
+    world: &mut World,
+    renderer: &mut dyn LoadTarget,
+) {
+    for (asset, id, shader) in allocate_post_effects(manifest, world) {
+        match renderer.upload_post_effect(asset, &id, &shader) {
+            Ok(()) => log::info!("Loaded post_effects '{id}' (shader={shader})"),
+            Err(e) => log::error!("load_post_effects '{id}': {e}"),
+        }
+    }
+}
+
 /// Register manifest-tracked materials: allocate `MaterialAssetId`, resolve
 /// the shader cross-ref, and build the `MaterialPipeline` on the renderer.
 /// Call after `load_shaders` so shader-id resolution can succeed.
@@ -838,6 +896,12 @@ pub(crate) trait LoadTarget {
         shader: &str,
         defaults: MaterialUniformDefaults,
     ) -> anyhow::Result<()>;
+    fn upload_post_effect(
+        &mut self,
+        asset: PostEffectId,
+        id: &str,
+        shader: &str,
+    ) -> anyhow::Result<()>;
     fn upload_particle_mesh(
         &mut self,
         asset: ParticleMeshAssetId,
@@ -907,6 +971,14 @@ impl LoadTarget for Renderer {
     ) -> anyhow::Result<()> {
         Renderer::upload_material(self, asset, id, shader, defaults).map_err(anyhow::Error::from)
     }
+    fn upload_post_effect(
+        &mut self,
+        asset: PostEffectId,
+        id: &str,
+        shader: &str,
+    ) -> anyhow::Result<()> {
+        Renderer::upload_post_effect(self, asset, id, shader).map_err(anyhow::Error::from)
+    }
     fn upload_particle_mesh(
         &mut self,
         asset: ParticleMeshAssetId,
@@ -965,6 +1037,9 @@ impl LoadTarget for NoDevice {
         _: &str,
         _: MaterialUniformDefaults,
     ) -> anyhow::Result<()> {
+        unreachable!("a headless load uploads nothing")
+    }
+    fn upload_post_effect(&mut self, _: PostEffectId, _: &str, _: &str) -> anyhow::Result<()> {
         unreachable!("a headless load uploads nothing")
     }
     fn upload_particle_mesh(&mut self, _: ParticleMeshAssetId, _: &[[f32; 2]], _: &[u16]) {
@@ -1035,6 +1110,9 @@ impl LoadTarget for HeadlessTarget {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn upload_post_effect(&mut self, _: PostEffectId, _: &str, _: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn upload_particle_mesh(&mut self, _: ParticleMeshAssetId, _: &[[f32; 2]], _: &[u16]) {}
 }
 
@@ -1059,6 +1137,8 @@ pub enum LoadUnit {
     Shaders,
     /// The materials.
     Materials,
+    /// The game's own post effects (`D-308`).
+    PostEffects,
     /// One sound decoded.
     Sound(String),
     /// One tilemap.
@@ -1161,6 +1241,7 @@ impl LoadPlan {
             LoadUnit::Themes,
             LoadUnit::Shaders,
             LoadUnit::Materials,
+            LoadUnit::PostEffects,
         ]);
         units.extend(named(sorted_keys(&manifest.sounds), LoadUnit::Sound));
         units.extend(named(sorted_keys(&manifest.tilemaps), LoadUnit::Tilemap));
@@ -1245,8 +1326,8 @@ impl LoadPlan {
     /// Runs every unit left with no renderer (redo 7.9), as the `boot` row's
     /// counter guard measures a load: sprite files decode and the sounds,
     /// animations, themes, maps, particles, physics names and prefabs load
-    /// as a window's load does, while the packs, fonts, shaders, materials
-    /// and particle meshes, which need a device, are skipped, so no sprite
+    /// as a window's load does, while the packs, fonts, shaders, materials,
+    /// post effects and particle meshes, which need a device, are skipped, so no sprite
     /// registers, and with them the cross-checks, which read the packed
     /// sprites. It gives the manifest back.
     ///
@@ -1262,6 +1343,7 @@ impl LoadPlan {
                     | LoadUnit::FontFamilies
                     | LoadUnit::Shaders
                     | LoadUnit::Materials
+                    | LoadUnit::PostEffects
                     | LoadUnit::ParticleMeshes
                     | LoadUnit::CrossChecks
             ) {
@@ -1324,6 +1406,7 @@ impl LoadPlan {
             }
             LoadUnit::Shaders => load_shaders_into(manifest, world, target),
             LoadUnit::Materials => load_materials_into(manifest, world, target),
+            LoadUnit::PostEffects => load_post_effects_into(manifest, world, target),
             LoadUnit::Sound(id) => load_sound_unit(manifest, id, world)?,
             LoadUnit::Tilemap(id) => load_tilemap_unit(manifest, id, world)?,
             LoadUnit::ParticleMeshes => load_particle_meshes_into(manifest, world, target),

@@ -181,6 +181,7 @@ impl Harness {
         asset_loader::allocate_engine_glow(&mut materials);
         asset_loader::allocate_hit_flash(&manifest, &mut materials);
         world.insert_resource(materials);
+        asset_loader::allocate_post_effects(&manifest, world);
         asset_loader::load_sounds(&manifest, world)?;
         asset_loader::load_tilemaps(&manifest, world)?;
         asset_loader::load_particles(&manifest, world)?;

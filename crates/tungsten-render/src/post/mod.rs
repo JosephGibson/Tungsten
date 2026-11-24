@@ -6,7 +6,9 @@
 //! stack's last two stages draw in one pass where the composer's rule joins
 //! them (`compose`, `D-307`); `record_fused` draws that one.
 
-use tungsten_core::assets::ShaderAssetId;
+use std::collections::HashMap;
+
+use tungsten_core::assets::{PostEffectId, ShaderAssetId};
 use tungsten_core::post::PostPass;
 use tungsten_core::tween::UniformOverrideBlock;
 
@@ -101,7 +103,8 @@ pub(crate) const STOCK_MATERIAL_SHADERS: [(&str, &str); 2] = [
 ];
 
 /// Row of `STOCK_SHADERS` that draws `pass`. Bloom has none: it owns four
-/// stage shaders and records its own passes.
+/// stage shaders and records its own passes. A game's effect has none: its
+/// pipeline is its own (`D-308`).
 fn stock_index(pass: &PostPass) -> Option<usize> {
     Some(match pass {
         PostPass::Tonemap(_) => 0,
@@ -121,12 +124,12 @@ fn stock_index(pass: &PostPass) -> Option<usize> {
         PostPass::Pixelate(_) => 14,
         PostPass::Fog(_) => 15,
         PostPass::GodRays(_) => 16,
-        PostPass::Bloom(_) => return None,
+        PostPass::Bloom(_) | PostPass::Custom(_) => return None,
     })
 }
 
 /// The shader that draws stock pass `pass`, by its `STOCK_SHADERS` name;
-/// `None` for bloom, whose four stages are its own.
+/// `None` for bloom, whose four stages are its own, and for a game's effect.
 pub(crate) fn stock_shader_name(pass: &PostPass) -> Option<&'static str> {
     stock_index(pass).map(|index| STOCK_SHADERS[index].0)
 }
@@ -330,19 +333,49 @@ pub struct PostStackRenderer {
     /// The fused pass being recorded: its stages' blocks in a row. Kept for
     /// its allocation.
     fused_payload: Vec<u8>,
+    /// The game's own effects, by ID (`D-308`).
+    custom: HashMap<PostEffectId, CustomEffect>,
+    /// The effect IDs no load knows that a frame has already named.
+    unknown_warned: Vec<PostEffectId>,
     counts: Box<Counts>,
 }
 
-/// The number a fused pass's signature holds for bloom's composite, after
-/// the stock effects' rows of [`STOCK_SHADERS`].
-const COMPOSITE_EFFECT: u8 = STOCK_SHADERS.len() as u8;
+/// What draws one stage of a fused pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Effect {
+    /// A stock effect, by its row of [`STOCK_SHADERS`].
+    Stock(u8),
+    /// Bloom's composite, which only ever leads.
+    Composite,
+    /// A game's own effect (`D-308`).
+    Custom(PostEffectId),
+}
+
+impl Effect {
+    fn of(pass: &PostPass) -> Self {
+        match (stock_index(pass), pass) {
+            (Some(row), _) => Self::Stock(row as u8),
+            (None, PostPass::Custom(custom)) => Self::Custom(custom.effect),
+            (None, _) => Self::Composite,
+        }
+    }
+
+    /// The name the effect's stage goes by in a pass's label: a stock
+    /// effect's, the composite's, or `custom` for any game's effect.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Stock(row) => STOCK_SHADERS[usize::from(row)].0,
+            Self::Composite => bloom::BLOOM_COMPOSITE_SECTION,
+            Self::Custom(_) => "custom",
+        }
+    }
+}
 
 /// The stages a fused pass draws, in order, and what joins them: what its
-/// module and pipeline are generated from. A stage is a stock effect's row
-/// of [`STOCK_SHADERS`] or bloom's composite, which only ever leads.
+/// module and pipeline are generated from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Signature {
-    effects: [u8; compose::MAX_STAGES],
+    effects: [Effect; compose::MAX_STAGES],
     len: u8,
     between: compose::Between,
 }
@@ -354,13 +387,13 @@ impl Signature {
         if stages.is_empty() || stages.len() > compose::MAX_STAGES {
             return None;
         }
-        let mut effects = [0; compose::MAX_STAGES];
+        let mut effects = [Effect::Composite; compose::MAX_STAGES];
         for (index, stage) in stages.iter().enumerate() {
-            effects[index] = match stock_index(stage) {
-                Some(row) => row as u8,
-                None if index == 0 => COMPOSITE_EFFECT,
-                None => return None,
-            };
+            let effect = Effect::of(stage);
+            if effect == Effect::Composite && index != 0 {
+                return None;
+            }
+            effects[index] = effect;
         }
         Some(Self {
             effects,
@@ -369,61 +402,149 @@ impl Signature {
         })
     }
 
-    fn effects(&self) -> &[u8] {
+    fn effects(&self) -> &[Effect] {
         &self.effects[..usize::from(self.len)]
     }
 
     /// Whether bloom's composite leads the pass, which then binds the
     /// pyramid beside the source.
     fn led_by_composite(&self) -> bool {
-        self.effects[0] == COMPOSITE_EFFECT
+        self.effects[0] == Effect::Composite
     }
 
-    /// The names of the pass's stages, as its sections and its label hold
-    /// them.
+    /// The names of the pass's stages, as its label holds them.
     fn names(&self) -> Vec<&'static str> {
-        self.effects()
-            .iter()
-            .map(|effect| effect_name(*effect))
-            .collect()
+        self.effects().iter().map(|effect| effect.label()).collect()
     }
 
-    /// Whether the pass draws the effect whose shader is `name`.
+    /// Whether the pass draws the engine effect whose shader is `name`.
     pub(crate) fn holds(&self, name: &str) -> bool {
-        self.effects()
-            .iter()
-            .any(|effect| effect_shader(*effect) == name)
+        self.effects().iter().any(|effect| match effect {
+            Effect::Stock(row) => STOCK_SHADERS[usize::from(*row)].0 == name,
+            Effect::Composite => name == bloom::BLOOM_COMPOSITE_SHADER_NAME,
+            Effect::Custom(_) => false,
+        })
+    }
+
+    /// Whether the pass draws the game's effect `effect`.
+    fn holds_custom(&self, effect: PostEffectId) -> bool {
+        self.effects().contains(&Effect::Custom(effect))
     }
 }
 
-/// The name an effect's section declares its names under.
-fn effect_name(effect: u8) -> &'static str {
-    STOCK_SHADERS
-        .get(usize::from(effect))
-        .map_or(bloom::BLOOM_COMPOSITE_SECTION, |(name, _)| name)
-}
-
-/// The shader that holds an effect's section, by its manifest name.
-fn effect_shader(effect: u8) -> &'static str {
-    STOCK_SHADERS
-        .get(usize::from(effect))
-        .map_or(bloom::BLOOM_COMPOSITE_SHADER_NAME, |(name, _)| name)
-}
-
-/// The section of an effect, read from the engine's compiled-in text: the
-/// only text a stage of a fused pass draws with, since a replaced file's
-/// stage draws alone.
-fn effect_section(effect: u8) -> Result<compose::Section, String> {
-    let (class, source) = match STOCK_SHADERS.get(usize::from(effect)) {
-        Some((_, source)) => (STOCK_CLASSES[usize::from(effect)], *source),
-        None => (compose::Class::Head, bloom::BLOOM_SHADERS[3].1),
+/// The section of an effect: an engine effect's from its compiled-in text,
+/// the only text its stage of a fused pass draws with, since a replaced
+/// file's stage draws alone; a game's as its shader's load read it.
+fn effect_section(
+    effect: Effect,
+    custom: &HashMap<PostEffectId, CustomEffect>,
+) -> Result<compose::Section, String> {
+    let (name, class, source) = match effect {
+        Effect::Stock(row) => {
+            let row = usize::from(row);
+            (
+                STOCK_SHADERS[row].0,
+                STOCK_CLASSES[row],
+                STOCK_SHADERS[row].1,
+            )
+        }
+        Effect::Composite => (
+            bloom::BLOOM_COMPOSITE_SECTION,
+            compose::Class::Head,
+            bloom::BLOOM_SHADERS[3].1,
+        ),
+        Effect::Custom(id) => {
+            return custom
+                .get(&id)
+                .and_then(|effect| effect.section.clone())
+                .ok_or_else(|| "a game's effect without a section".to_string());
+        }
     };
     let (_, text) = compose::section_text(source)?;
     Ok(compose::Section {
-        name: effect_name(effect).to_string(),
+        name: name.to_string(),
         class,
         text: text.to_string(),
     })
+}
+
+/// A game's own post effect (`D-308`): a manifest `post_effects` entry.
+pub(crate) struct CustomEffect {
+    /// Its manifest ID, which its section's names start with.
+    name: String,
+    /// The `shaders` ID of its module.
+    shader_name: String,
+    /// Its pipeline on the stock effects' layouts; `None` until its module
+    /// builds on them, and its stage is left out of the frame meanwhile.
+    pipeline: Option<wgpu::RenderPipeline>,
+    /// Its `@fx` section, when its module marks a valid one: without one
+    /// its stage always draws alone.
+    section: Option<compose::Section>,
+    /// Whether a frame has logged that it leaves the effect out.
+    warned: bool,
+}
+
+/// The section of a game's effect `name` in its module's text `wgsl`: `None`
+/// for a module that marks none, and, with the reason logged, for one whose
+/// section is refused or whose name is an engine effect's, since a fused
+/// module holds each name's section once.
+pub(crate) fn custom_section(name: &str, wgsl: &str) -> Option<compose::Section> {
+    if !wgsl.contains("// @fx begin") {
+        return None;
+    }
+    // A fused pass draws the section on the engine's prefix: a module on
+    // another one (its block's lanes in another order, say) would draw one
+    // thing alone and another fused.
+    if !wgsl.contains(compose::prefix()) {
+        log::warn!(
+            "post effect '{name}': its module does not open with the stock post prefix byte for byte, so its `@fx` section is not read and it draws in a pass of its own"
+        );
+        return None;
+    }
+    let taken = name == bloom::BLOOM_COMPOSITE_SECTION
+        || STOCK_SHADERS.iter().any(|(stock, _)| *stock == name);
+    if taken {
+        log::warn!(
+            "post effect '{name}': an engine effect has that name, so its `@fx` section is not read and it draws in a pass of its own"
+        );
+        return None;
+    }
+    match compose::read_section(name, wgsl) {
+        Ok(section) => Some(section),
+        Err(reason) => {
+            log::warn!(
+                "post effect '{name}': its `@fx` section is refused and it draws in a pass of its own: {reason}"
+            );
+            None
+        }
+    }
+}
+
+/// Why the module `wgsl` cannot draw as a post effect though its pipeline
+/// builds: the uniform block it reads at group 1, binding 0 is larger than
+/// the 256 bytes a pass binds there. The layout sets no least size, so wgpu
+/// would refuse the draw, not the pipeline, and a refused draw is a panic.
+pub(crate) fn block_fault(wgsl: &str) -> Option<String> {
+    use wgpu::naga;
+    let module = naga::front::wgsl::parse_str(wgsl).ok()?;
+    let block = module.global_variables.iter().find_map(|(_, variable)| {
+        let binding = variable.binding.as_ref()?;
+        (binding.group == 1 && binding.binding == 0).then_some(variable.ty)
+    })?;
+    let size = module.types[block].inner.size(module.to_ctx());
+    (size > 256)
+        .then(|| format!("its block at group 1, binding 0 is {size} bytes, and a pass binds 256"))
+}
+
+/// `stack` without the passes `draws` refuses, into `drawn`: the stack a
+/// frame draws when a game's effect has no pipeline.
+pub(crate) fn drawn_stack(
+    stack: &[PostPass],
+    draws: impl Fn(&PostPass) -> bool,
+    drawn: &mut Vec<PostPass>,
+) {
+    drawn.clear();
+    drawn.extend(stack.iter().filter(|pass| draws(pass)).copied());
 }
 
 /// The class of the section of the stock effect that draws `pass`; `None`
@@ -438,7 +559,7 @@ pub(crate) fn stock_class(pass: &PostPass) -> Option<compose::Class> {
 pub(crate) fn stage_info(pass: &PostPass, own: bool) -> compose::StageInfo {
     let class = stock_class(pass).unwrap_or(compose::Class::Head);
     compose::StageInfo {
-        class: own.then_some(class),
+        class: (own && !matches!(pass, PostPass::Custom(_))).then_some(class),
         bounded: compose::bounded(pass),
     }
 }
@@ -529,6 +650,8 @@ impl PostStackRenderer {
             fused: compose::Fused::default(),
             fused_params: Vec::new(),
             fused_payload: Vec::new(),
+            custom: HashMap::new(),
+            unknown_warned: Vec::new(),
             counts: Counts::boxed(),
         }
     }
@@ -547,18 +670,141 @@ impl PostStackRenderer {
             return false;
         };
         let (resources, bloom, format) = (&self.resources, &self.bloom, self.format);
+        let custom = &self.custom;
         self.fused
             .get_or_build(signature, || {
-                build_fused(device, resources, bloom, format, signature)
+                build_fused(device, resources, bloom, custom, format, signature)
             })
             .is_some()
     }
 
-    /// Drops every fused pass that draws the effect whose shader is `name`,
-    /// whose file reloaded: the pass is built again at its next use, which
-    /// gives one whose build failed another try. An engine effect's section
-    /// is read from the compiled-in text either way: while its file is a
-    /// replacement its stage draws alone, and no pass holds it.
+    /// What the composer's rule reads of `pass`: an engine effect's class
+    /// while its text is the engine's `own`, a game's effect's by the
+    /// section its shader's load read.
+    pub(crate) fn stage_info(&self, pass: &PostPass, own: bool) -> compose::StageInfo {
+        match pass {
+            PostPass::Custom(custom) => compose::StageInfo {
+                class: self
+                    .custom
+                    .get(&custom.effect)
+                    .and_then(|effect| effect.section.as_ref())
+                    .map(|section| section.class),
+                bounded: true,
+            },
+            _ => stage_info(pass, own),
+        }
+    }
+
+    /// Makes game effect `id` known, with nothing to draw it yet: its
+    /// shader has no module, and builds the effect when one loads.
+    pub(crate) fn register_custom(&mut self, id: PostEffectId, name: &str, shader_name: &str) {
+        let effect = self.custom.entry(id).or_insert_with(|| CustomEffect {
+            name: String::new(),
+            shader_name: String::new(),
+            pipeline: None,
+            section: None,
+            warned: false,
+        });
+        effect.name = name.to_string();
+        effect.shader_name = shader_name.to_string();
+    }
+
+    /// Builds game effect `id`'s pipeline from its shader's `module` on the
+    /// stock effects' layouts, inside a validation scope, and reads its
+    /// section from the module's text `wgsl` (`D-308`). A module that does
+    /// not build is `Err` with wgpu's report, and the effect keeps the
+    /// pipeline it had, or none. Every fused pass that holds the effect is
+    /// generated again at its next use.
+    pub(crate) fn upload_custom(
+        &mut self,
+        device: &wgpu::Device,
+        id: PostEffectId,
+        name: &str,
+        shader_name: &str,
+        wgsl: &str,
+        module: &wgpu::ShaderModule,
+    ) -> Result<(), String> {
+        self.register_custom(id, name, shader_name);
+        self.fused.forget(|signature| signature.holds_custom(id));
+        if let Some(fault) = block_fault(wgsl) {
+            return Err(fault);
+        }
+        let label = format!("post_custom_{name}");
+        let (layouts, format) = (&self.resources.layouts, self.format);
+        let pipeline = crate::shader_hot_reload::build_validated(device, || {
+            fullscreen::build_pipeline_with_module(device, layouts, &label, module, format)
+        })?;
+        let section = custom_section(name, wgsl);
+        if let Some(effect) = self.custom.get_mut(&id) {
+            effect.section = section;
+            effect.pipeline = Some(pipeline);
+            effect.warned = false;
+        }
+        Ok(())
+    }
+
+    /// The game effects whose module is shader `shader_name`, each with its
+    /// manifest name: those a reload of that shader builds again.
+    pub(crate) fn custom_on_shader(&self, shader_name: &str) -> Vec<(PostEffectId, String)> {
+        let mut effects: Vec<(PostEffectId, String)> = self
+            .custom
+            .iter()
+            .filter(|(_, effect)| effect.shader_name == shader_name)
+            .map(|(id, effect)| (*id, effect.name.clone()))
+            .collect();
+        effects.sort_by_key(|(id, _)| id.0);
+        effects
+    }
+
+    /// Whether `pass` has a pipeline to draw it: every engine pass, and a
+    /// game's effect whose module built.
+    pub(crate) fn draws(&self, pass: &PostPass) -> bool {
+        match pass {
+            PostPass::Custom(custom) => self
+                .custom
+                .get(&custom.effect)
+                .is_some_and(|effect| effect.pipeline.is_some()),
+            _ => true,
+        }
+    }
+
+    /// Logs, once an effect, each game effect in `stack` that a frame leaves
+    /// out for want of a pipeline.
+    pub(crate) fn warn_left_out(&mut self, stack: &[PostPass]) {
+        for pass in stack {
+            let PostPass::Custom(custom) = pass else {
+                continue;
+            };
+            match self.custom.get_mut(&custom.effect) {
+                Some(effect) if effect.pipeline.is_none() && !effect.warned => {
+                    effect.warned = true;
+                    log::error!(
+                        "post effect '{}' has no pipeline (its shader '{}' did not build as a post effect): the frame leaves its pass out",
+                        effect.name,
+                        effect.shader_name
+                    );
+                }
+                Some(_) => {}
+                None => {
+                    if !self.unknown_warned.contains(&custom.effect) {
+                        self.unknown_warned.push(custom.effect);
+                        log::error!(
+                            "post effect {:?} is no effect a manifest loaded: the frame leaves its pass out",
+                            custom.effect
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Drops every fused pass that draws the engine effect whose shader is
+    /// `name`, whose file reloaded: the pass is built again at its next use,
+    /// which gives one whose build failed another try. An engine effect's
+    /// section is read from the compiled-in text either way: while its file
+    /// is a replacement its stage draws alone, and no pass holds it. A
+    /// game's effect drops its own passes as its shader loads
+    /// ([`Self::upload_custom`]), where its section is read again.
     pub(crate) fn forget_fused(&mut self, name: &str) {
         self.fused.forget(|signature| signature.holds(name));
     }
@@ -696,11 +942,17 @@ impl PostStackRenderer {
         self.bloom.forget_targets(freed);
     }
 
-    fn pipeline_for(&self, pass: &PostPass) -> &StockPipeline {
-        let Some(index) = stock_index(pass) else {
-            unreachable!("PostPass::Bloom is drawn by its own passes, not record_pass")
-        };
-        &self.stock[index]
+    /// The pipeline that draws `pass` alone: a stock effect's, or a game
+    /// effect's own; `None` for bloom, drawn by its own passes, and for a
+    /// game's effect that has none.
+    fn pipeline_for(&self, pass: &PostPass) -> Option<&wgpu::RenderPipeline> {
+        match pass {
+            PostPass::Custom(custom) => self
+                .custom
+                .get(&custom.effect)
+                .and_then(|effect| effect.pipeline.as_ref()),
+            _ => stock_index(pass).map(|index| &self.stock[index].pipeline),
+        }
     }
 
     /// Hot-reload entry: when `name` is a stock effect's shader, rebuild that
@@ -825,6 +1077,12 @@ impl PostStackRenderer {
             // Bloom is multi-subpass; UBO packing happens per sub-pass inside
             // `BloomPipeline::prepare_slot` via `bloom::pack_params`.
             PostPass::Bloom(_) => {}
+            // A game's effect: its lanes are the block's.
+            PostPass::Custom(custom) => {
+                block.vec4 = custom.vec4;
+                block.f32s = custom.f32s;
+                block.i32s = custom.i32s;
+            }
         }
         block
     }
@@ -834,7 +1092,8 @@ impl PostStackRenderer {
     /// they changed, binds the cached source group, sets the pipeline and
     /// draws. `source` is the pooled texture the pass samples, with its
     /// identity; `slot` is the pass's index in the post stack: each slot
-    /// keeps a params buffer of its own.
+    /// keeps a params buffer of its own. Returns whether it drew: `false`
+    /// for a pass with no pipeline, which the frame's stack leaves out.
     pub(crate) fn record_pass(
         &mut self,
         device: &wgpu::Device,
@@ -843,7 +1102,7 @@ impl PostStackRenderer {
         source: (u64, &wgpu::TextureView),
         pass: &PostPass,
         slot: usize,
-    ) {
+    ) -> bool {
         let payload = Self::pack(pass).to_bytes();
         let resources = &self.resources;
         let source_bg = self
@@ -870,10 +1129,14 @@ impl PostStackRenderer {
             counters::write_buffer(&self.counts, queue, &params.ubo, 0, &payload);
         }
         let params_bg = params.bind_group.clone();
-        render_pass.set_pipeline(&self.pipeline_for(pass).pipeline);
+        let Some(pipeline) = self.pipeline_for(pass) else {
+            return false;
+        };
+        render_pass.set_pipeline(pipeline);
         render_pass.set_bind_group(0, &source_bg, &[]);
         render_pass.set_bind_group(1, &params_bg, &[]);
         counters::draw(&self.counts, render_pass, 0..3, 0..1);
+        true
     }
 }
 
@@ -885,6 +1148,7 @@ fn build_fused(
     device: &wgpu::Device,
     resources: &StockResources,
     bloom: &BloomPipeline,
+    custom: &HashMap<PostEffectId, CustomEffect>,
     format: wgpu::TextureFormat,
     signature: Signature,
 ) -> Option<wgpu::RenderPipeline> {
@@ -893,7 +1157,7 @@ fn build_fused(
     let sections: Result<Vec<compose::Section>, String> = signature
         .effects()
         .iter()
-        .map(|effect| effect_section(*effect))
+        .map(|effect| effect_section(*effect, custom))
         .collect();
     let sections = match sections {
         Ok(sections) => sections,
@@ -905,6 +1169,12 @@ fn build_fused(
         }
     };
     let stages: Vec<&compose::Section> = sections.iter().collect();
+    // A game's effect by its manifest name, where the label says `custom`.
+    let names = stages
+        .iter()
+        .map(|section| section.name.as_str())
+        .collect::<Vec<_>>()
+        .join(" + ");
     let wgsl = compose::generate(&stages, signature.between);
     let label = format!("post_fused_{}", signature.names().join("_"));
     let composite_layouts = bloom.composite_layouts();

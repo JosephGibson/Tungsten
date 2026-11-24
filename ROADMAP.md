@@ -11,6 +11,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Later
 
+- A room file's `post` naming a game's post effect by its manifest ID: `PostPass::Custom` holds the session's ID and has no file form, so a room's stack is stock passes only (`D-308`, the GPU foundation pass's Q7).
 - A kit cone whose rays are beams stopping at their first body, meeting bodies with no hurtbox by tags each step, from a held cast; and a front widening its angle through walls, meeting moving targets once by their motion with per-kind throws; so 01's sprays and force push are kit cones (S-15, `D-283`).
 - A tween's data form (`SceneTween`) taking a channel's own easing, once a prefab or scene needs one (`D-283`, 7.13d's toys and data's F2).
 - A kit place a game's code calls with no use, landing at once with its entity, with a room filter by tags and the user, no source and a prefab picked per use, so 01's summons, iron and black hole are set down by the kit with their opening sounds (S-17, `D-282`).

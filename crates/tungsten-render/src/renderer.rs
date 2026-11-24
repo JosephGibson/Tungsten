@@ -29,7 +29,7 @@ use crate::post::smaa::{
     SMAA_SHADERS, SmaaPipeline, SmaaShaderIds,
 };
 use crate::post::{
-    PostStackRenderer, STOCK_MATERIAL_SHADERS, STOCK_SHADERS, stage_info, whole_target,
+    PostStackRenderer, STOCK_MATERIAL_SHADERS, STOCK_SHADERS, drawn_stack, whole_target,
 };
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{
@@ -53,8 +53,8 @@ use crate::timing::{Ring, TimingLayout, TimingResources};
 use crate::ui::{DrawItem, UiPipeline, attachment_scissor};
 use thiserror::Error;
 use tungsten_core::assets::{
-    FilterMode, MaterialAssetId, MaterialUniformDefaults, ParticleMeshAssetId, ResolvedFontFamily,
-    ShaderAssetId, TextureHandle,
+    FilterMode, MaterialAssetId, MaterialUniformDefaults, ParticleMeshAssetId, PostEffectId,
+    ResolvedFontFamily, ShaderAssetId, TextureHandle,
 };
 use tungsten_core::config::{
     BloomBase, DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
@@ -88,6 +88,10 @@ pub enum RenderError {
     Surface(String),
     #[error("shader error: {0}")]
     Shader(#[from] ShaderError),
+    /// A game's post effect that cannot draw (`D-308`): its shader has no
+    /// module, or its module does not build as a post pass.
+    #[error("post effect '{name}': {reason}")]
+    PostEffect { name: String, reason: String },
 }
 
 /// What one `render_frame*` call did with its frame (`D-142`). A failed frame
@@ -184,6 +188,9 @@ pub struct Renderer {
     /// The stages of the stack being planned, as the composer's rule reads
     /// them. Kept for its allocation.
     stage_infos: Vec<StageInfo>,
+    /// The stack a frame draws when a game's effect has no pipeline: the
+    /// frame's own without that effect's passes. Kept for its allocation.
+    stack_scratch: PostStack,
     /// M29 lit sprite pipeline; rebuilt on `lit_sprite` shader hot-reload.
     lit_sprite_pipeline: LitSpritePipeline,
     /// M29 per-frame lighting UBO + bind group bound at group 2 of the lit
@@ -694,6 +701,7 @@ impl Renderer {
             bloom_base,
             post_fuse: config.post_fuse,
             stage_infos: Vec::new(),
+            stack_scratch: PostStack::default(),
             lit_sprite_pipeline,
             lighting,
             materials: HashMap::new(),
@@ -1029,6 +1037,7 @@ impl Renderer {
         {
             self.rebuild_materials_for_shader(name);
         }
+        self.rebuild_post_effects_for_shader(name);
         Ok(())
     }
 
@@ -1130,6 +1139,57 @@ impl Renderer {
             );
         }
         result
+    }
+
+    /// Builds the game's post effect `id`, manifest entry `name`, on the
+    /// module of shader `shader_name`: a whole module on the stock post
+    /// prefix, drawn as `PostPass::Custom` (`D-308`). A shader that is not
+    /// loaded, or a module that does not build on the post layouts, is an
+    /// error; the effect is then built when its shader next loads, and a
+    /// frame leaves its pass out until it has a pipeline.
+    pub fn upload_post_effect(
+        &mut self,
+        id: PostEffectId,
+        name: &str,
+        shader_name: &str,
+    ) -> Result<(), RenderError> {
+        self.post_stack.register_custom(id, name, shader_name);
+        let loaded = self
+            .shader_ids
+            .get(shader_name)
+            .copied()
+            .and_then(|shader| {
+                Some((
+                    self.shader_cache.text(shader)?,
+                    self.shader_cache.get(shader)?,
+                ))
+            });
+        let Some((wgsl, module)) = loaded else {
+            return Err(RenderError::PostEffect {
+                name: name.to_string(),
+                reason: format!(
+                    "its shader '{shader_name}' has no module yet; it is built when the shader loads"
+                ),
+            });
+        };
+        self.post_stack
+            .upload_custom(&self.device, id, name, shader_name, wgsl, module)
+            .map_err(|reason| RenderError::PostEffect {
+                name: name.to_string(),
+                reason: format!(
+                    "its shader '{shader_name}' does not draw as a post pass: {reason}"
+                ),
+            })
+    }
+
+    /// Builds again every game post effect on shader `shader_name`, whose
+    /// module just changed.
+    fn rebuild_post_effects_for_shader(&mut self, shader_name: &str) {
+        for (id, name) in self.post_stack.custom_on_shader(shader_name) {
+            if let Err(e) = self.upload_post_effect(id, &name, shader_name) {
+                log::error!("post effect '{name}' rebuild after shader reload failed: {e}");
+            }
+        }
     }
 
     fn build_material(
@@ -1321,7 +1381,7 @@ impl Renderer {
                         Stage::Stock { own, .. } => *own,
                         Stage::Bloom => composite,
                     };
-                    stage_info(pass, own)
+                    self.post_stack.stage_info(pass, own)
                 }));
             if let Some(pair) = compose::fused_pair(&self.stage_infos, self.post_fuse, shape.smaa)
                 && self.post_stack.fused_ready(
@@ -1576,17 +1636,43 @@ impl Renderer {
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
         self.gpu_timings.clear_durations();
-        self.render_frame_internal(
-            view_proj,
-            quads,
-            sprite_batches,
-            debug_quads,
-            debug_lines,
-            text_sections,
-            ui,
-            post_stack,
-            None,
-        )
+        self.with_drawn_stack(post_stack, |renderer, post_stack| {
+            renderer.render_frame_internal(
+                view_proj,
+                quads,
+                sprite_batches,
+                debug_quads,
+                debug_lines,
+                text_sections,
+                ui,
+                post_stack,
+                None,
+            )
+        })
+    }
+
+    /// Runs `frame` with the stack this frame draws: `post_stack`, less the
+    /// passes of a game's effect that has no pipeline (`D-308`). Its module
+    /// did not build, so the frame is declared, timed and drawn without it,
+    /// and the effect is named in the log once.
+    fn with_drawn_stack<R>(
+        &mut self,
+        post_stack: &PostStack,
+        frame: impl FnOnce(&mut Self, &PostStack) -> R,
+    ) -> R {
+        if post_stack.0.iter().all(|pass| self.post_stack.draws(pass)) {
+            return frame(self, post_stack);
+        }
+        self.post_stack.warn_left_out(&post_stack.0);
+        let mut drawn = std::mem::take(&mut self.stack_scratch);
+        drawn_stack(
+            &post_stack.0,
+            |pass| self.post_stack.draws(pass),
+            &mut drawn.0,
+        );
+        let outcome = frame(self, &drawn);
+        self.stack_scratch = drawn;
+        outcome
     }
 
     /// The app's number for the frame it renders next, which a timed
@@ -1633,6 +1719,33 @@ impl Renderer {
     /// As [`Renderer::render_frame_full`].
     #[allow(clippy::too_many_arguments)]
     pub fn render_frame_full_timed(
+        &mut self,
+        view_proj: &glam::Mat4,
+        quads: &[QuadInstance],
+        sprite_batches: &[SpriteBatch],
+        debug_quads: &[QuadInstance],
+        debug_lines: &[DebugLineInstance],
+        text_sections: &[TextSection],
+        ui: &PaintList,
+        post_stack: &PostStack,
+    ) -> Result<RenderOutcome, RenderError> {
+        self.with_drawn_stack(post_stack, |renderer, post_stack| {
+            renderer.render_frame_timed(
+                view_proj,
+                quads,
+                sprite_batches,
+                debug_quads,
+                debug_lines,
+                text_sections,
+                ui,
+                post_stack,
+            )
+        })
+    }
+
+    /// [`Self::render_frame_full_timed`] over the stack the frame draws.
+    #[allow(clippy::too_many_arguments)]
+    fn render_frame_timed(
         &mut self,
         view_proj: &glam::Mat4,
         quads: &[QuadInstance],
@@ -2087,8 +2200,7 @@ impl Renderer {
                                 source,
                                 post_pass,
                                 slot,
-                            );
-                            true
+                            )
                         } else {
                             self.post_stack.record_fused(
                                 &self.device,

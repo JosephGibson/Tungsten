@@ -17,6 +17,7 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 | Tilemap | `assets/tilemaps/` | `tilemaps` | ID; a Tiled `.tmj` with one embedded tileset whose tiles name sprite IDs in a `sprite_id` property, with optional tile properties `material` (a string, not empty), `health` (finite, above 0), `broken` (the sprite of the tile a broken cell becomes; needs `health`), `one_way` (a bool: in a collision layer, solid through its top face alone, from above), `slope` (a string: in a collision layer, the slope its cell is instead of a full box, its rise `45`, `2:1 low` or `2:1 high` and the corner its solid part holds, `br`, `bl`, `tr` or `tl`, as `"45 br"`, solid below the diagonal from the bottom-left corner to the top-right; a `2:1 low` cell is a triangle half a cell high and a `2:1 high` one a trapezoid from half a cell to a cell, so the two side by side make one surface, and `tr` and `tl` are ceilings; not with `one_way`), `style` (its auto-tile style), `mask` (0 to 15, a variant's open sides: 1 up, 2 right, 4 down, 8 left; needs `style`, and a styled tile without one or a `slope` is the style's brush, one per style, while a styled `slope` tile without one is one of the style's slope tiles, its style to its neighbours' sides and never picked) and `weight` (at least 1, a variant's draw weight; needs `mask`), brushes resolved to their variants at load; tile layers (a `kind` property `collision` for collision, whose `layers` and `mask`, strings of comma-separated layer numbers 0 to 31, are the physics layers its tiles are in and meet, `"0"` and every layer when absent; a render layer's `z`, a whole number, draws it among the sprites, after every sprite of a lower `z_order` and before the rest, under every sprite when absent, its `unlit`, a bool, draws a lit tileset on the stock pipeline, and Tiled's own `tintcolor`, `#rrggbb` or `#aarrggbb`, multiplies into each tile's colour) and object layers, whose object classes name prefabs (`D-032`, `D-157`); under `World::spawn_area` a classed object with a Tiled name takes that name as its save identity in the area (`SaveId::authored`; names are unique across a game's areas), and one without spawns unsaved; a property of the wrong type or out of range fails the load |
 | Shader | `assets/shaders/` | `shaders` | ID (`D-057`) |
 | Material | manifest only | `materials` | `shader` ID, `uniform_defaults` (`D-058`); a shader with an `fs_main` and no `vs_main` is fragment-only and compiles after the engine's material prelude (the camera, texture and `material` bindings, the instance layout and a `vs_main` passing `uv`, `color` and the quad-local `local`, 0 to 1); `engine_glow`, the stock glow on shader `glow` (`v0` its colour, `f32s` its falloff, core boost, dither and peak alpha), and the 1 × 1 white sprite `engine_white`, which it and flat quads draw on, are reserved: a manifest material or sprite of either name fails the load |
+| Post effect | manifest only | `post_effects` | `shader` ID, `uniform_defaults` (`D-308`): a game's own full-screen effect, drawn in the post stack as `PostPass::Custom`. `PostEffectRegistry::pass("<id>")` builds its pass with the defaults in its lanes (`vec4`, `f32s`, `i32s`), which a field or `set_vec4`, `set_f32` and `set_i32` change. The shader is a whole module on the stock post prefix ([below](#a-post-effects-module)); one whose shader is missing fails the load, and one whose module does not build is logged and left out of the frame |
 | Physics layer | manifest only | `physics_layers` | a name, `[a-z][a-z0-9_]*`, and its layer, 0 to 31: `"physics_layers": { "walls": 3 }`; a name or a layer given twice across loaded manifests fails the load; `rigid_body`'s `layers` and `mask` name layers by number or by name, checked against the World at load (`D-178`) |
 | Physics material | manifest only | `physics_materials` | a name and its contact coefficients, each optional: `friction` (finite, at least 0), `restitution` (0 to 1) and `rolling` (finite, at least 0), 0 by default; unknown fields fail; `rigid_body`'s `material` names one, checked against the World at load, and its own `friction`, `restitution` and `rolling` stand over the material's (`materials` are the render's, `D-058`) |
 | Particle | `assets/particles/` | `particles` | ID, `path`; a config: `sprite` (or a `render` of kind `mesh`), `max_alive`, `emission`, `lifetime` and `initial_velocity`, with optional curves, `gravity`, `drag_per_sec` and `tint`; optional `z_order` (the newborn's depth), `clip` (an animation ID the particle steps through by its age), `stretch` (seconds, at least 0: its length along its velocity grows by \|v\| × `stretch` px), `stop` (`{ "mask": [...] }`, layers by number or by `physics_layers` name: its life ends where its first velocity meets a body or tile on them), `attractor` (`{ "pull", "swirl" }` in px/s², toward the live emitter) and `start_color` (`{ "range": [a, b] }`, one draw between two colours, or `{ "by_direction": curve }` over the first velocity's angle in turns), multiplied into `tint`; a mesh particle refuses `z_order`, `clip` and `stretch` (`D-093`), and an unknown clip or layer name fails the load |
@@ -39,3 +40,64 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 ## Coverage exceptions
 
 Asset coverage exceptions are explicit: complete font families and their inventory README; four vendored LYGIA helper fragments and their license; and the fixtures crate's explicitly loaded `scene.json` (`D-046`). A new exception needs review in the checker (`ASSET_EXCEPTIONS` in `scripts/check-repo.py`), not a broad ignored extension.
+
+## A post effect's module
+
+A `post_effects` entry's shader is a whole WGSL module, `vs_main` and `fs_main`, that opens with the prefix every stock post effect opens with: the 96-byte block of the pass's lanes, the frame before the pass and its sampler, and a full-screen triangle.
+
+```wgsl
+struct Params {
+    v0: vec4<f32>,
+    v1: vec4<f32>,
+    v2: vec4<f32>,
+    v3: vec4<f32>,
+    f: vec4<f32>,
+    i: vec4<i32>,
+};
+
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var src_sampler: sampler;
+@group(1) @binding(0) var<uniform> params: Params;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
+    var uv = vec2<f32>(f32((vi << 1u) & 2u), f32(vi & 2u));
+    var out: VertexOutput;
+    out.position = vec4<f32>(uv * 2.0 - 1.0, 0.0, 1.0);
+    out.uv = vec2<f32>(uv.x, 1.0 - uv.y);
+    return out;
+}
+```
+
+`Params`' `v0` to `v3` are the pass's `vec4` lanes, `f` its `f32s` and `i` its `i32s`. The pass replaces every pixel of its target with what `fs_main` returns, with no blending. The block does not grow: a pass binds 256 bytes there, and a module whose block at group 1, binding 0 is larger is refused at its load, its effect left out of the frame.
+
+A module may mark one section, which lets the engine draw the effect in one pass with the stage beside it (`D-307`): the lines between `// @fx begin <class>` and `// @fx end`, holding one function and its helpers, every function, constant and struct named `<id>_…` after the effect's manifest ID. `fs_main` calls that function and adds nothing to it.
+
+| Class | The function | It may |
+| --- | --- | --- |
+| `mix` | `fn <id>_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32>` | scale each colour channel of `color` by a factor from 0 to 1 and add a constant from 0 up, neither following the colour, and return `color.a` as it came |
+| `pixel` | `fn <id>_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32>` | compute anything from `color` that is continuous in it |
+| `steps` | `fn <id>_head(uv: vec2<f32>, p: Params) -> vec4<f32>` | sample `src` at `uv` and quantise or branch on it |
+| `head` | `fn <id>_head(uv: vec2<f32>, p: Params) -> vec4<f32>` | sample `src` anywhere |
+
+A `mix` or `pixel` function names nothing outside the section but `Params`: no `src`, no `params`. A `steps` or `head` function samples `src` and reads the block through its `p`, never `params`. A section holds no entry point. A `mix` that ends the stack draws in the pass of the stage before it, when that stage has a section too; the other classes only lead such a pass. A section is read only from a module that holds the prefix above byte for byte, since a fused pass draws the section on the engine's copy of it. The engine checks the markers, the names, the signature, what a section may name, and that a `mix` returns `color.a` on every path, as the last component of the `vec4<f32>` it returns, and reads `color` only for its colour channels. It cannot check the rest of a `mix`'s promise: one that amplifies a channel, subtracts from it or follows the colour can differ from its own unfused pass by more than one 8-bit step. A section the engine refuses is logged and the effect draws in a pass of its own, as a module without a section does, and as an effect whose ID is a stock effect's does.
+
+```wgsl
+// @fx begin mix
+fn tint_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let amount = clamp(p.f.x, 0.0, 1.0);
+    let tint = clamp(p.v0.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    return vec4<f32>(color.rgb * mix(vec3<f32>(1.0), tint, amount), color.a);
+}
+// @fx end
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return tint_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
+}
+```

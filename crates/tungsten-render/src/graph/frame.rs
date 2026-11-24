@@ -191,7 +191,9 @@ impl Replaced {
     /// Whether the stock effect that draws `pass` is on the engine's own
     /// text. Bloom's stages are [`Self::stages`]'.
     pub(crate) fn own(&self, pass: &PostPass) -> bool {
-        !stock_shader_name(pass).is_some_and(|name| self.holds(name))
+        // A game's effect is never the engine's text: it may discard.
+        !matches!(pass, PostPass::Custom(_))
+            && !stock_shader_name(pass).is_some_and(|name| self.holds(name))
     }
 
     /// The stages of bloom and SMAA the record holds.

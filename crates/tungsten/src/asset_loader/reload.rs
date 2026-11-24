@@ -17,8 +17,8 @@ use tungsten_render::Renderer;
 
 use super::prefab::{MANIFEST_HINT, failure, reload_prefabs_and_data};
 use super::{
-    UiScreenPaths, UiThemePaths, diff_particle_meshes, missing_particle_render_ref,
-    rebuild_atlas_for_filter, warn_unknown_font_tokens,
+    UiScreenPaths, UiThemePaths, allocate_post_effects, diff_particle_meshes,
+    missing_particle_render_ref, rebuild_atlas_for_filter, warn_unknown_font_tokens,
 };
 
 /// Hot-reload one `ui_themes` file (M46, `D-148`): the registry entry is
@@ -1013,6 +1013,29 @@ pub fn reload_manifest(
                 );
             } else {
                 log::info!("Manifest reload: loaded new material '{id}'");
+            }
+        }
+    }
+
+    // A game's post effects (`D-308`): each the manifest names takes its
+    // shader and defaults, which the registry's next `pass` gives, and is
+    // built again; a new one is allocated first; one the manifest dropped
+    // stays as it was.
+    {
+        let known: Vec<String> = world
+            .get_resource::<tungsten_core::assets::PostEffectRegistry>()
+            .map(|registry| registry.iter().map(|(name, _)| name.to_string()).collect())
+            .unwrap_or_default();
+        for id in &known {
+            if !new_manifest.post_effects.contains_key(id.as_str()) {
+                log::warn!("Manifest reload: post effect '{id}' removed — keeping stale");
+            }
+        }
+        for (asset, id, shader) in allocate_post_effects(&new_manifest, world) {
+            if let Err(e) = renderer.upload_post_effect(asset, &id, &shader) {
+                log::error!(
+                    "Manifest reload: post effect '{id}' did not build: {e}; keeping stale"
+                );
             }
         }
     }

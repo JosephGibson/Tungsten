@@ -979,6 +979,63 @@ fn no_frame_of_the_matrix_drops_a_pass() {
 }
 
 #[test]
+fn a_games_effect_is_a_pass_that_clears_under_the_label_custom() {
+    // The record never takes a game's effect for the engine's own text
+    // (`D-308`): its module may discard, so its pass clears, on the output
+    // and offscreen, and a pass that draws it beside a stock stage does.
+    let custom = PostPass::Custom(tungsten_core::post::CustomPost::new(
+        tungsten_core::assets::PostEffectId(3),
+        tungsten_core::assets::MaterialUniformDefaults::default(),
+    ));
+    let record = Replaced::default();
+    assert!(!record.own(&custom));
+    assert!(record.own(&PostPass::Vignette(
+        tungsten_core::post::VignetteParams::default()
+    )));
+    let mut declared = shape(&[]);
+    declared.set_stages(
+        &PostStack(vec![
+            custom,
+            PostPass::Fade(tungsten_core::post::FadeParams::default()),
+        ]),
+        |pass| record.own(pass),
+    );
+    assert_eq!(
+        declared.stages,
+        [
+            Stage::Stock {
+                name: "custom",
+                own: false,
+                joined: false
+            },
+            F
+        ]
+    );
+    let passes = |shape: &Shape| -> Vec<(String, Load)> {
+        let compiled = declare(shape).compile().expect("compiles");
+        compiled
+            .passes
+            .iter()
+            .filter(|pass| matches!(pass.kind, PassKind::Post { .. }))
+            .map(|pass| (pass.timing.clone(), pass.color.load))
+            .collect()
+    };
+    let clear = Load::Clear(wgpu::Color::TRANSPARENT);
+    assert_eq!(
+        passes(&declared),
+        [
+            ("post0_custom".to_string(), clear),
+            ("post1_fade".to_string(), Load::Nothing)
+        ]
+    );
+    declared.join(0..2);
+    assert_eq!(
+        passes(&declared),
+        [("post0_custom_fade".to_string(), clear)]
+    );
+}
+
+#[test]
 fn a_run_of_joined_stages_is_one_pass_under_its_stages_names() {
     let passes = |shape: &Shape| -> Vec<(PassKind, String)> {
         let compiled = declare(shape).compile().expect("compiles");

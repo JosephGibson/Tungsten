@@ -1,12 +1,15 @@
 use super::compose::{self, Between, Class};
 use super::{
-    InertParam, ParamSlots, STOCK_CLASSES, STOCK_SHADERS, Signature, SourceGroups, effect_section,
-    inert_param, stage_info, stock_class, stock_index,
+    CustomEffect, Effect, InertParam, ParamSlots, STOCK_CLASSES, STOCK_SHADERS, Signature,
+    SourceGroups, block_fault, custom_section, drawn_stack, effect_section, inert_param,
+    stage_info, stock_class, stock_index,
 };
+use std::collections::HashMap;
+use tungsten_core::assets::{MaterialUniformDefaults, PostEffectId};
 use tungsten_core::post::{
-    BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
-    FilmGrainParams, FogParams, GlitchParams, GodRaysParams, LutParams, PixelOutlineParams,
-    PostPass, ToneMonoParams, TonemapParams, VignetteParams, WipeRadialParams,
+    BloomParams, ColorAdjustParams, CrtParams, CustomPost, DissolveParams, DitherParams,
+    FadeParams, FilmGrainParams, FogParams, GlitchParams, GodRaysParams, LutParams,
+    PixelOutlineParams, PostPass, ToneMonoParams, TonemapParams, VignetteParams, WipeRadialParams,
 };
 
 #[test]
@@ -119,6 +122,7 @@ fn stock_shader_table_covers_every_post_pass() {
         PostPass::Fog(FogParams::default()),
         PostPass::GodRays(GodRaysParams::default()),
         PostPass::Bloom(BloomParams::default()),
+        custom_pass(0),
     ];
 
     let mut rows = Vec::new();
@@ -126,7 +130,7 @@ fn stock_shader_table_covers_every_post_pass() {
         // No wildcard: a new `PostPass` variant stops this test compiling
         // until it is listed here and in `passes`.
         let stock = match pass {
-            PostPass::Bloom(_) => false,
+            PostPass::Bloom(_) | PostPass::Custom(_) => false,
             PostPass::Tonemap(_)
             | PostPass::Vignette(_)
             | PostPass::Lut(_)
@@ -154,6 +158,7 @@ fn stock_shader_table_covers_every_post_pass() {
             rows.push(row);
         }
     }
+    assert_eq!(custom_pass(0).kind_name(), "custom");
 
     // Every row is used by exactly one variant.
     rows.sort_unstable();
@@ -310,12 +315,11 @@ fn a_fused_pass_is_known_by_its_stages_and_not_their_values() {
 fn every_effect_of_a_signature_has_its_section_in_the_compiled_in_text() {
     // The 17 stock rows and bloom's composite, each under its class and
     // its own name.
-    for effect in 0..=17u8 {
-        let section = effect_section(effect).expect("a section");
-        let class = STOCK_CLASSES
-            .get(usize::from(effect))
-            .copied()
-            .unwrap_or(Class::Head);
+    let none = HashMap::new();
+    let effects = (0..17u8).map(Effect::Stock).chain([Effect::Composite]);
+    for (row, effect) in effects.enumerate() {
+        let section = effect_section(effect, &none).expect("a section");
+        let class = STOCK_CLASSES.get(row).copied().unwrap_or(Class::Head);
         assert_eq!(section.class, class, "{}", section.name);
         let entry = if class.follows() { "_fx(" } else { "_head(" };
         assert!(
@@ -327,11 +331,207 @@ fn every_effect_of_a_signature_has_its_section_in_the_compiled_in_text() {
         );
     }
     assert_eq!(
-        effect_section(17).expect("a section").name,
+        effect_section(Effect::Composite, &none)
+            .expect("a section")
+            .name,
         "bloom_composite"
     );
     assert_eq!(
-        effect_section(1).expect("a section").name,
+        effect_section(Effect::Stock(1), &none)
+            .expect("a section")
+            .name,
         STOCK_SHADERS[1].0
     );
+    // A game's effect has the section its shader's load read, or none.
+    assert!(effect_section(Effect::Custom(PostEffectId(0)), &none).is_err());
+}
+
+/// The pass of game effect `id`, its lanes zero.
+fn custom_pass(id: u32) -> PostPass {
+    PostPass::Custom(CustomPost::new(
+        PostEffectId(id),
+        MaterialUniformDefaults::default(),
+    ))
+}
+
+/// A game's post module on the stock prefix: `section` between the markers
+/// of `class`, and an `fs_main` that calls `call`.
+fn game_module(class: &str, section: &str, call: &str) -> String {
+    format!(
+        "{}// @fx begin {class}\n{section}\n// @fx end\n\n@fragment\nfn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{\n    return {call};\n}}\n",
+        compose::prefix()
+    )
+}
+
+const TINT: &str = "fn tint_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    return vec4<f32>(color.rgb * clamp(p.f.x, 0.0, 1.0), color.a);
+}";
+const TINT_CALL: &str = "tint_fx(textureSample(src, src_sampler, in.uv), in.uv, params)";
+
+#[test]
+fn a_games_effect_is_read_by_its_section() {
+    // A `mix` section named after the effect, in a module that validates
+    // whole and whose `fs_main` calls it.
+    let module = game_module("mix", TINT, TINT_CALL);
+    crate::shader_hot_reload::validate_wgsl_source("tint", &module).expect("a whole module");
+    let section = custom_section("tint", &module).expect("a section");
+    assert_eq!((section.name.as_str(), section.class), ("tint", Class::Mix));
+
+    // A module that marks none stands alone, and so does one whose section
+    // is refused: a `pixel` that samples the source reads the run's input,
+    // not the stage before it.
+    let plain = module
+        .replace("// @fx begin mix\n", "")
+        .replace("// @fx end\n", "");
+    assert!(plain.contains("fn tint_fx(") && custom_section("tint", &plain).is_none());
+    let sampling = game_module(
+        "pixel",
+        "fn peek_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    return textureSample(src, src_sampler, uv) + color * p.f.x;
+}",
+        "peek_fx(textureSample(src, src_sampler, in.uv), in.uv, params)",
+    );
+    crate::shader_hot_reload::validate_wgsl_source("peek", &sampling).expect("a whole module");
+    assert!(custom_section("peek", &sampling).is_none());
+    // Its names are the effect's: another effect's ID finds no function.
+    assert!(custom_section("glow", &module).is_none());
+    // A module on another prefix, its block's lanes in another order, would
+    // draw one thing alone and another fused: its section is not read.
+    let reordered = module.replace(
+        "    v0: vec4<f32>,\n    v1: vec4<f32>,",
+        "    v1: vec4<f32>,\n    v0: vec4<f32>,",
+    );
+    assert_ne!(reordered, module);
+    crate::shader_hot_reload::validate_wgsl_source("tint", &reordered).expect("a whole module");
+    assert!(custom_section("tint", &reordered).is_none());
+    // An engine effect's name is taken: a fused module holds each name's
+    // section once.
+    let fade = module.replace("tint_fx", "fade_fx");
+    assert!(custom_section("fade", &fade).is_none());
+    let composite = module.replace("tint_fx", "bloom_composite_fx");
+    assert!(custom_section("bloom_composite", &composite).is_none());
+}
+
+#[test]
+fn a_module_whose_block_passes_256_bytes_is_refused_before_it_draws() {
+    // The pass binds 256 bytes at group 1, binding 0, and the layout sets
+    // no least size: wgpu would build the pipeline and refuse the draw,
+    // which is a panic. The module's own block is read instead.
+    let module = game_module("mix", TINT, TINT_CALL);
+    assert_eq!(block_fault(&module), None);
+    for (_, stock) in STOCK_SHADERS {
+        assert_eq!(block_fault(stock), None);
+    }
+    // 96 bytes of lanes and 256 more.
+    let wide = module.replace(
+        "    i: vec4<i32>,\n};",
+        "    i: vec4<i32>,\n    extra: array<vec4<f32>, 16>,\n};",
+    );
+    assert_ne!(wide, module);
+    crate::shader_hot_reload::validate_wgsl_source("tint", &wide).expect("valid WGSL");
+    let fault = block_fault(&wide).expect("too wide a block");
+    assert!(
+        fault.contains("352 bytes") && fault.contains("256"),
+        "{fault}"
+    );
+    // Exactly 256 bytes fits.
+    let full = module.replace(
+        "    i: vec4<i32>,\n};",
+        "    i: vec4<i32>,\n    extra: array<vec4<f32>, 10>,\n};",
+    );
+    crate::shader_hot_reload::validate_wgsl_source("tint", &full).expect("valid WGSL");
+    assert_eq!(block_fault(&full), None);
+    // A module with no block there, or that is no WGSL, has nothing to
+    // refuse here: its pipeline's build says the rest.
+    assert_eq!(block_fault("fn main() {}"), None);
+    assert_eq!(block_fault("not wgsl"), None);
+}
+
+#[test]
+fn a_games_section_fuses_by_its_class() {
+    let stage = |class: Option<Class>| compose::StageInfo {
+        class,
+        bounded: true,
+    };
+    let stock = |pass: &PostPass| stage_info(pass, true);
+    let vignette = PostPass::Vignette(VignetteParams::default());
+    let fade = PostPass::Fade(FadeParams::default());
+    let pair = |first: compose::StageInfo, last: compose::StageInfo| {
+        compose::runs(&[first, last], false).len() == 1
+    };
+    // A game's `mix` ends a pair behind any section, a game's among them.
+    assert!(pair(stock(&vignette), stage(Some(Class::Mix))));
+    assert!(pair(stage(Some(Class::Head)), stage(Some(Class::Mix))));
+    // Its `pixel`, `steps` or `head` only leads one.
+    for class in [Class::Pixel, Class::Steps, Class::Head] {
+        assert!(pair(stage(Some(class)), stock(&fade)), "{class:?} first");
+        assert!(
+            !pair(stock(&vignette), stage(Some(class))),
+            "{class:?} last"
+        );
+    }
+    // Without a section it stands alone on either side.
+    assert!(!pair(stage(None), stock(&fade)));
+    assert!(!pair(stock(&vignette), stage(None)));
+    // The engine's reading of a game's pass is never an engine class.
+    assert_eq!(stage_info(&custom_pass(0), true).class, None);
+
+    // The pass is known by the effect, not by its lanes; its label says
+    // `custom`.
+    let one = Signature::of(&[custom_pass(1), fade], Between::Clamp).expect("a pair");
+    let mut louder = CustomPost::new(PostEffectId(1), MaterialUniformDefaults::default());
+    louder.set_f32(0, 0.5).set_vec4(1, [1.0; 4]).set_i32(3, 7);
+    assert_eq!(
+        (louder.f32s[0], louder.vec4[1], louder.i32s[3]),
+        (0.5, [1.0; 4], 7)
+    );
+    louder.set_f32(9, 1.0).set_vec4(4, [2.0; 4]).set_i32(4, 1);
+    assert_eq!(
+        Signature::of(&[PostPass::Custom(louder), fade], Between::Clamp),
+        Some(one)
+    );
+    assert_ne!(
+        Signature::of(&[custom_pass(2), fade], Between::Clamp),
+        Some(one)
+    );
+    assert!(one.holds_custom(PostEffectId(1)) && !one.holds_custom(PostEffectId(2)));
+    assert!(one.holds("fade") && !one.holds("custom"));
+    assert_eq!(compose::label(2, &one.names()), "post2_custom_fade");
+
+    // The generated pass: the game's section, then the stock one.
+    let module = game_module("mix", TINT, TINT_CALL);
+    let mut effects = HashMap::new();
+    effects.insert(
+        PostEffectId(1),
+        CustomEffect {
+            name: "tint".to_string(),
+            shader_name: "tint".to_string(),
+            pipeline: None,
+            section: custom_section("tint", &module),
+            warned: false,
+        },
+    );
+    let tint = effect_section(Effect::Custom(PostEffectId(1)), &effects).expect("its section");
+    let fade_section = effect_section(Effect::Stock(10), &effects).expect("fade");
+    for stages in [
+        [&fade_section, &tint],
+        [&tint, &fade_section],
+        [&tint, &tint],
+    ] {
+        let fused = compose::generate(&stages, Between::Clamp);
+        crate::shader_hot_reload::validate_wgsl_source("fused", &fused)
+            .unwrap_or_else(|error| panic!("{error}\n{fused}"));
+    }
+}
+
+#[test]
+fn a_frame_leaves_out_the_passes_with_no_pipeline() {
+    let vignette = PostPass::Vignette(VignetteParams::default());
+    let stack = [custom_pass(0), vignette, custom_pass(1), custom_pass(0)];
+    let built = |pass: &PostPass| !matches!(pass, PostPass::Custom(custom) if custom.effect == PostEffectId(0));
+    let mut drawn = vec![vignette; 5];
+    drawn_stack(&stack, built, &mut drawn);
+    assert_eq!(drawn, [vignette, custom_pass(1)]);
+    drawn_stack(&stack, |_| true, &mut drawn);
+    assert_eq!(drawn, stack);
 }

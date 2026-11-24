@@ -24,7 +24,8 @@ fn write(path: &Path, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
-/// A game folder with one sprite, one prefab and a manifest naming both.
+/// A game folder with one sprite, one prefab, one post effect on a shader
+/// of its own, and a manifest naming them.
 fn game_folder() -> PathBuf {
     let dir = tempdir();
     let png = dir.join("assets/sprites/dot.png");
@@ -35,10 +36,16 @@ fn game_folder() -> PathBuf {
         r#"{ "sprite": { "asset_id": "dot" }, "components": { "lifetime": { "seconds": 2.0 } } }"#,
     );
     write(
+        &dir.join("assets/shaders/heat.wgsl"),
+        "@fragment\nfn fs_main() -> @location(0) vec4<f32> {\n    return vec4<f32>(1.0);\n}\n",
+    );
+    write(
         &dir.join("assets/manifest.json"),
         r#"{
             "sprites": { "dot": { "path": "sprites/dot.png" } },
-            "prefabs": { "goblin": { "path": "prefabs/goblin.json" } }
+            "prefabs": { "goblin": { "path": "prefabs/goblin.json" } },
+            "shaders": { "heat": { "path": "shaders/heat.wgsl" } },
+            "post_effects": { "heat": { "shader": "heat" } }
         }"#,
     );
     dir
@@ -111,6 +118,7 @@ fn a_description_lists_components_with_kit_fields_hooks_and_manifest_ids() {
     assert_eq!(description["assets"]["sprites"], json!(["dot"]));
     assert_eq!(description["assets"]["prefabs"], json!(["goblin"]));
     assert_eq!(description["assets"]["sounds"], json!([]));
+    assert_eq!(description["assets"]["post_effects"], json!(["heat"]));
     let _ = fs::remove_dir_all(&dir);
 }
 

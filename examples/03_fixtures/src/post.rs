@@ -10,8 +10,13 @@
 //!   - `B` / `[`  → previous effect
 //!   - `C` / `Backspace` → clear stack (M25-byte-identical output)
 //!
-//! Env `TUNGSTEN_POST_STACK_FIXTURE={all|retro_arcade|dreamy|glitch_boss|bloom_only|fade_pair|fade_twice|bloom_vignette|bloom_vignette_fade|fog_fade|fog_bloom_vignette|pair:<kind>:<kind>|empty}`
-//! preloads a fixed stack and **disables** the cycle. `fade_pair` and
+//! Env `TUNGSTEN_POST_STACK_FIXTURE={all|retro_arcade|dreamy|glitch_boss|bloom_only|fade_pair|fade_twice|bloom_vignette|bloom_vignette_fade|fog_fade|fog_bloom_vignette|game_tint|game_none|game_wave|game_wave_fade|pair:<kind>:<kind>|empty}`
+//! preloads a fixed stack and **disables** the cycle. `game_tint` and
+//! `game_wave` draw the fixtures' own post effects, manifest entries `tint`
+//! (a `mix` section, behind a vignette) and `wave` (no section) (`D-308`);
+//! `game_none` is `game_tint`'s stack less its effect, and `game_wave_fade`
+//! puts a fade behind the wave, which a module without a section never
+//! fuses with. `fade_pair` and
 //! `fade_twice` stack the same effect twice for `tests/integration/post_regression.rs`.
 //! `TUNGSTEN_POST_AA_FIXTURE` picks the SMAA preset before the renderer
 //! starts, and `TUNGSTEN_BLOOM_FIXTURE=on` turns on bloom over the emissive
@@ -51,8 +56,8 @@ use tungsten::core::{
     ActionMap, AssetRegistry, BlendMode, CameraController, CommandBuffer, Config, Curve, Easing,
     EmissionKind, Entity, EventQueue, FollowRig, InitialVelocity, InputState, MaterialRegistry,
     ParallaxLayer, ParticleConfig, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState,
-    ParticleRender, Pcg32, Range, RigKind, ShakeEvent, Sprite, SpriteAssetId, SpriteSquashStretch,
-    SquashEvent, SquashTrigger, Time, Transform, Visibility, With, World,
+    ParticleRender, Pcg32, PostEffectRegistry, Range, RigKind, ShakeEvent, Sprite, SpriteAssetId,
+    SpriteSquashStretch, SquashEvent, SquashTrigger, Time, Transform, Visibility, With, World,
 };
 use tungsten::particles::spawn_particle_via;
 use tungsten::{App, PostAaState, render::TextSection, request_post_aa};
@@ -205,9 +210,30 @@ pub fn run() -> anyhow::Result<()> {
 
         let fixture = std::env::var("TUNGSTEN_POST_STACK_FIXTURE").unwrap_or_default();
         let bloom_fixture = std::env::var("TUNGSTEN_BLOOM_FIXTURE").unwrap_or_default() == "on";
+        // The fixtures' own post effects, by their manifest IDs (`D-308`).
+        let game_effect = |world: &World, name: &str| -> Option<PostPass> {
+            let pass = world
+                .get_resource::<PostEffectRegistry>()
+                .and_then(|effects| effects.pass(name));
+            if pass.is_none() {
+                eprintln!("post effect '{name}' is not in the manifest");
+            }
+            pass.map(PostPass::Custom)
+        };
+        let (tint, wave) = (game_effect(world, "tint"), game_effect(world, "wave"));
         if !fixture.is_empty() && fixture != "empty" {
             if let Some(stack) = world.get_resource_mut::<PostStack>() {
                 match fixture.as_str() {
+                    "game_tint" => {
+                        stack.push(PostPass::Vignette(VignetteParams::default()));
+                        stack.0.extend(tint);
+                    }
+                    "game_none" => stack.push(PostPass::Vignette(VignetteParams::default())),
+                    "game_wave" => stack.0.extend(wave),
+                    "game_wave_fade" => {
+                        stack.0.extend(wave);
+                        stack.push(half_fade());
+                    }
                     "all" => push_every_effect(stack),
                     "retro_arcade" => push_retro_arcade(stack),
                     "dreamy" => push_dreamy(stack),

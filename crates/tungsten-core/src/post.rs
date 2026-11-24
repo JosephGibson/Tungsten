@@ -1,13 +1,17 @@
 //! M26 post-processing stack model (core side).
 //!
 //! `PostPass` is a closed enum of the 18 stock effects — same closed-enum
-//! reasoning as `Easing` (`D-054`). Adding an effect is a three-point change:
-//! new variant here, new pipeline in `tungsten-render/src/post/`, new entry in
-//! the stock roster. The umbrella `PostStack(Vec<PostPass>)` resource is what
+//! reasoning as `Easing` (`D-054`) — and `Custom`, a game's own effect from
+//! its manifest's `post_effects` (`D-308`). Adding a stock effect is a
+//! three-point change: new variant here, new pipeline in
+//! `tungsten-render/src/post/`, new entry in the stock roster. The umbrella `PostStack(Vec<PostPass>)` resource is what
 //! user code mutates at runtime; the renderer reads it each frame and splices
 //! it into the default pass order.
 
 use serde::{Deserialize, Serialize};
+
+use crate::assets::material::MaterialUniformDefaults;
+use crate::assets::post_effect::PostEffectId;
 
 /// Tonemapping curve family.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -344,8 +348,64 @@ impl Default for BloomParams {
     }
 }
 
-/// Closed enum of the 18 stock post-processing passes shipped with M26 + M28.
-/// Adding a new effect touches the variant and `kind_name` here; the
+/// A game's own post effect in the stack (`D-308`): the effect, a manifest
+/// `post_effects` entry by its session ID, and the public lanes of the
+/// 256-byte block its shader reads as `Params` (`v0`..`v3`, `f`, `i`).
+/// [`PostEffectRegistry::pass`](crate::assets::PostEffectRegistry::pass)
+/// builds one with the manifest's `uniform_defaults`; a pass a game holds
+/// keeps its lanes over a manifest reload.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct CustomPost {
+    /// The effect, from [`PostEffectRegistry`](crate::assets::PostEffectRegistry).
+    pub effect: PostEffectId,
+    /// `Params`' `v0`..`v3`.
+    pub vec4: [[f32; 4]; 4],
+    /// `Params`' `f`.
+    pub f32s: [f32; 4],
+    /// `Params`' `i`.
+    pub i32s: [i32; 4],
+}
+
+impl CustomPost {
+    /// The pass of `effect` with `defaults` in its lanes.
+    #[must_use]
+    pub fn new(effect: PostEffectId, defaults: MaterialUniformDefaults) -> Self {
+        Self {
+            effect,
+            vec4: defaults.vec4,
+            f32s: defaults.f32s,
+            i32s: defaults.i32s,
+        }
+    }
+
+    /// Sets `Params`' `v<lane>`; a lane past 3 is ignored.
+    pub fn set_vec4(&mut self, lane: usize, value: [f32; 4]) -> &mut Self {
+        if let Some(slot) = self.vec4.get_mut(lane) {
+            *slot = value;
+        }
+        self
+    }
+
+    /// Sets component `lane` of `Params`' `f`; a lane past 3 is ignored.
+    pub fn set_f32(&mut self, lane: usize, value: f32) -> &mut Self {
+        if let Some(slot) = self.f32s.get_mut(lane) {
+            *slot = value;
+        }
+        self
+    }
+
+    /// Sets component `lane` of `Params`' `i`; a lane past 3 is ignored.
+    pub fn set_i32(&mut self, lane: usize, value: i32) -> &mut Self {
+        if let Some(slot) = self.i32s.get_mut(lane) {
+            *slot = value;
+        }
+        self
+    }
+}
+
+/// The 18 stock post-processing passes shipped with M26 + M28, a closed set,
+/// and `Custom`, a game's own effect (`D-308`).
+/// Adding a stock effect touches the variant and `kind_name` here; the
 /// `STOCK_SHADERS` row, `stock_index` arm and uniform packing in
 /// `tungsten-render`'s `post` module; and the stock WGSL with its
 /// `assets/shaders/stock/` mirror. See `D-054` for the closed-enum reasoning
@@ -371,6 +431,11 @@ pub enum PostPass {
     Fog(FogParams),
     GodRays(GodRaysParams),
     Bloom(BloomParams),
+    /// A game's own effect. It is written, so a room built in code keeps
+    /// its canonical form and its hash, and never read: an effect's ID is
+    /// the session's, so a room file cannot name one.
+    #[serde(skip_deserializing)]
+    Custom(CustomPost),
 }
 
 impl PostPass {
@@ -396,6 +461,7 @@ impl PostPass {
             Self::Fog(_) => "fog",
             Self::GodRays(_) => "god_rays",
             Self::Bloom(_) => "bloom",
+            Self::Custom(_) => "custom",
         }
     }
 }

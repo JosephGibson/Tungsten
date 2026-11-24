@@ -13,7 +13,6 @@ use std::fmt::Write as _;
 use std::ops::Range;
 
 use tungsten_core::post::PostPass;
-#[cfg(test)]
 use wgpu::naga;
 
 /// What a section's function does, which decides where its stage may sit in
@@ -80,7 +79,6 @@ pub(crate) fn prefix() -> &'static str {
 
 /// The prefix's `Params` struct alone: all a section that follows another
 /// stage may name beyond its own declarations.
-#[cfg(test)]
 fn params_struct() -> &'static str {
     let prefix = prefix();
     &prefix[..prefix.find("@group(0)").unwrap_or(prefix.len())]
@@ -136,18 +134,29 @@ pub(crate) fn section_text(wgsl: &str) -> Result<(Class, &str), String> {
 /// - a `mix` hands on the alpha it is given ([`mix_alpha_fault`]).
 ///
 /// The engine's own files are held to this by the tests, and read at run
-/// time by [`section_text`] alone.
+/// time by [`section_text`] alone; a game's effect is read through here when
+/// its shader loads (`D-308`).
 ///
 /// # Errors
 ///
 /// What the section breaks, as one line or Naga's report.
-#[cfg(test)]
 pub(crate) fn read_section(name: &str, wgsl: &str) -> Result<Section, String> {
     let (class, text) = section_text(wgsl)?;
+    let code = uncommented(text);
+    for entry in ["@fragment", "@vertex", "@compute"] {
+        if code.contains(entry) {
+            return Err(format!(
+                "a section holds no entry point: it declares `{entry}`"
+            ));
+        }
+    }
+    // What a generated pass gives a section: `Params` alone for one that
+    // follows another stage, and for one that leads the prefix without its
+    // own block, which a generated module replaces with a block a stage.
     let scope = if class.follows() {
-        params_struct()
+        params_struct().to_string()
     } else {
-        prefix()
+        prefix().replace(PARAMS_BINDING, "")
     };
     let module_text = format!("{scope}\n{text}");
     let module = naga::front::wgsl::parse_str(&module_text)
@@ -155,12 +164,10 @@ pub(crate) fn read_section(name: &str, wgsl: &str) -> Result<Section, String> {
     crate::shader_hot_reload::validate_wgsl_source(name, &module_text)
         .map_err(|error| error.to_string())?;
 
+    // A constant is often upper case: names compare without their case.
+    let prefix = format!("{}_", name.to_ascii_lowercase());
     let own = |declared: Option<&str>| {
-        declared.is_some_and(|declared| {
-            declared
-                .to_ascii_lowercase()
-                .starts_with(&format!("{name}_"))
-        })
+        declared.is_some_and(|declared| declared.to_ascii_lowercase().starts_with(&prefix))
     };
     let outside = |kind: &str, declared: Option<&str>| {
         format!(
@@ -180,14 +187,17 @@ pub(crate) fn read_section(name: &str, wgsl: &str) -> Result<Section, String> {
     }
     for (_, variable) in module.global_variables.iter() {
         let declared = variable.name.as_deref();
-        if matches!(declared, Some("src" | "src_sampler" | "params")) {
-            continue;
-        }
+        // A section that follows another stage is read beside `Params`
+        // alone, so every variable here is its own.
         if class.follows() {
             return Err(format!(
                 "a `{}` section declares no module-scope variable",
                 if class == Class::Mix { "mix" } else { "pixel" }
             ));
+        }
+        // The prefix's own, which a leading section may name.
+        if matches!(declared, Some("src" | "src_sampler")) && !code.contains("var src") {
+            continue;
         }
         if !own(declared) {
             return Err(outside("variable", declared));
@@ -244,7 +254,7 @@ pub(crate) fn read_section(name: &str, wgsl: &str) -> Result<Section, String> {
         });
     }
     if class == Class::Mix
-        && let Some(fault) = mix_alpha_fault(function, &function_text(text, &entry))
+        && let Some(fault) = mix_alpha_fault(function, &function_text(&code, &entry))
     {
         return Err(fault);
     }
@@ -256,7 +266,6 @@ pub(crate) fn read_section(name: &str, wgsl: &str) -> Result<Section, String> {
 }
 
 /// The values `block` returns, through every block nested in it.
-#[cfg(test)]
 fn returned(block: &naga::Block, values: &mut Vec<Option<naga::Handle<naga::Expression>>>) {
     for statement in block {
         match statement {
@@ -282,16 +291,54 @@ fn returned(block: &naga::Block, values: &mut Vec<Option<naga::Handle<naga::Expr
     }
 }
 
-/// The source of function `entry` in the section `text`, from its name to
-/// its closing brace, line comments left out; empty when it is not found.
-#[cfg(test)]
-fn function_text(text: &str, entry: &str) -> String {
-    let code: Vec<&str> = text
-        .lines()
-        .map(|line| line.split("//").next().unwrap_or(""))
-        .collect();
-    let code = code.join("\n");
-    let Some(start) = code.find(&format!("fn {entry}(")) else {
+/// `text` without its comments, line and block, a block's nesting counted:
+/// what the reader's textual checks scan, so that no comment decoys them.
+fn uncommented(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut code = String::with_capacity(text.len());
+    let (mut at, mut depth) = (0, 0usize);
+    while at < bytes.len() {
+        let pair = &bytes[at..(at + 2).min(bytes.len())];
+        if pair == b"/*" {
+            depth += 1;
+            at += 2;
+        } else if depth > 0 && pair == b"*/" {
+            depth -= 1;
+            at += 2;
+        } else if depth > 0 {
+            at += 1;
+        } else if pair == b"//" {
+            while at < bytes.len() && bytes[at] != b'\n' {
+                at += 1;
+            }
+        } else {
+            // A comment starts and ends on ASCII, so this is a char's start.
+            let ch = text[at..].chars().next().unwrap_or(' ');
+            code.push(ch);
+            at += ch.len_utf8();
+        }
+    }
+    code
+}
+
+/// The source of function `entry` in `code`, a section's text without its
+/// comments, from its name to its closing brace; empty when it is not found.
+fn function_text(code: &str, entry: &str) -> String {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    // `fn`, then the name as a whole word, then its parameters, however
+    // they are spaced.
+    let start = code.match_indices(entry).map(|(at, _)| at).find(|&at| {
+        let before = code[..at].trim_end();
+        let after = code[at + entry.len()..].trim_start();
+        code[..at].ends_with(char::is_whitespace)
+            && before.ends_with("fn")
+            && !before[..before.len() - 2]
+                .chars()
+                .next_back()
+                .is_some_and(word)
+            && after.starts_with('(')
+    });
+    let Some(start) = start else {
         return String::new();
     };
     let body = &code[start..];
@@ -327,7 +374,6 @@ fn function_text(text: &str, entry: &str) -> String {
 /// for each such vector, and whole once for each such return and once in
 /// the signature. A helper handed the whole colour, or a factor computed
 /// from the alpha, is refused.
-#[cfg(test)]
 fn mix_alpha_fault(function: &naga::Function, source: &str) -> Option<String> {
     let mut values = Vec::new();
     returned(&function.body, &mut values);
@@ -371,7 +417,11 @@ fn mix_alpha_fault(function: &naga::Function, source: &str) -> Option<String> {
         let start = at + found;
         let end = start + name.len();
         at = end;
-        if source[..start].chars().next_back().is_some_and(word)
+        // Another name that holds this one, or another value's field.
+        if source[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|c| word(c) || c == '.')
             || source[end..].chars().next().is_some_and(word)
         {
             continue;
@@ -382,6 +432,18 @@ fn mix_alpha_fault(function: &naga::Function, source: &str) -> Option<String> {
         };
         let channels: String = accessor.chars().take_while(|c| word(*c)).collect();
         if channels == "a" || channels == "w" {
+            // The alpha is named only where it is handed on: the last
+            // component of a vector, at that vector's end. Bound to a name
+            // first, it could reach the colour.
+            let handed = source[..start].trim_end().ends_with(',')
+                && source[end + 1 + channels.len()..]
+                    .trim_start()
+                    .starts_with(')');
+            if !handed {
+                return Some(format!(
+                    "a `mix` names `{name}.{channels}` only as the last component of the vector it returns"
+                ));
+            }
             alpha += 1;
         } else if channels.is_empty() || !channels.chars().all(|c| "rgbxyz".contains(c)) {
             return Some(format!(

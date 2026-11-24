@@ -52,8 +52,9 @@ echo
 # Shortest wall time in milliseconds a passing run may take; 0 means no
 # minimum. Set around a row whose run must not finish early.
 min_run_ms=0
-# The folder a run starts in, and a fixed string a passing run's log must
-# not hold. Set around a row that runs as a game outside the root does.
+# The folder a run starts in, and the fixed strings a passing run's log must
+# not hold, one a line. Set around a row that runs as a game outside the root
+# does, or whose failure the run survives.
 run_in=.
 log_forbids=""
 
@@ -71,7 +72,7 @@ now_ms() {
 # and returns the run's exit status. Without --preserve-status, `timeout`
 # reports 124 when the limit is hit (137 if the SIGKILL grace period also
 # expired). A run that exits 0 in less than min_run_ms, or whose log holds
-# log_forbids, fails with status 1.
+# one of log_forbids' strings, fails with status 1.
 run_row() {
   local label="$1" log_file="$2" pkg="$3"
   shift 3
@@ -86,9 +87,13 @@ run_row() {
     echo "FAIL (${elapsed_ms} ms, expected at least ${min_run_ms} ms)"
     return 1
   fi
-  if [ "$code" -eq 0 ] && [ -n "$log_forbids" ] && grep -qF -- "$log_forbids" "$log_file"; then
-    echo "FAIL (log has '$log_forbids')"
-    return 1
+  if [ "$code" -eq 0 ] && [ -n "$log_forbids" ]; then
+    local found
+    found="$(grep -oF -m1 -- "$log_forbids" "$log_file" | head -n1 || true)"
+    if [ -n "$found" ]; then
+      echo "FAIL (log has '$found')"
+      return 1
+    fi
   fi
   case "$code" in
     0) echo "OK" ;;
@@ -198,7 +203,17 @@ for fixture in empty all; do
   row "fixture=${fixture}" "$log_dir/${fixtures_pkg}-post-${fixture}.log" "$fixtures_pkg" \
     TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE="$fixture"
 done
-end_section "Post-stack passed" "Post-stack failures" 2
+# The fixtures' own post effects (`D-308`): one with an `@fx` section behind a
+# vignette, one without. An effect the manifest lacks, one whose module does
+# not build as a post effect, and a fused pass that does not build each fail
+# the row.
+log_forbids="post effect '"$'\n'"failed to build"
+for fixture in game_tint game_wave; do
+  row "fixture=${fixture}" "$log_dir/${fixtures_pkg}-post-${fixture}.log" "$fixtures_pkg" \
+    TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE="$fixture"
+done
+log_forbids=""
+end_section "Post-stack passed" "Post-stack failures" 4
 
 # M27: post-AA fixture row. Pins TUNGSTEN_POST_STACK_FIXTURE=empty so the SMAA
 # tail is the only added work, then runs once with the High preset.

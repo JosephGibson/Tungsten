@@ -82,54 +82,66 @@ fn mirror(from: &Path, to: &Path, skip: &str) {
 }
 
 /// A directory the scene can run in: everything it reads is a link into
-/// the workspace, except the stock shader `name`, whose source went through
-/// `edit`.
+/// the workspace, except `file`, a path from the workspace root under one of
+/// the scene's two asset trees, whose text went through `edit`.
 #[cfg(unix)]
-fn stage_with_edited_stock_shader(name: &str, edit: impl Fn(&str) -> String) -> PathBuf {
+fn stage_with_edited_file(file: &str, edit: impl Fn(&str) -> String) -> PathBuf {
     use std::os::unix::fs::symlink;
 
     let root = workspace_root()
         .canonicalize()
         .expect("canonical workspace root");
-    // Tests run in parallel and two may stage the same shader: one directory
+    // Tests run in parallel and two may stage the same file: one directory
     // per call.
     static STAGES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let stem = Path::new(file)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .expect("the staged file's name");
     let stage = std::env::temp_dir().join(format!(
-        "tungsten-post-regression-stage-{name}-{}-{}",
+        "tungsten-post-regression-stage-{stem}-{}-{}",
         std::process::id(),
         STAGES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     let _ = std::fs::remove_dir_all(&stage);
-
-    let example_assets = Path::new("examples/03_fixtures/assets");
-    std::fs::create_dir_all(stage.join(example_assets).parent().unwrap())
-        .expect("create the staged example directory");
-    symlink(root.join(example_assets), stage.join(example_assets))
-        .expect("link the example assets");
+    std::fs::create_dir_all(&stage).expect("create the stage");
     for config in ["tungsten.json", "input.json"] {
         symlink(root.join(config), stage.join(config)).expect("link a config file");
     }
 
-    let file = format!("{name}.wgsl");
-    mirror(&root.join("assets"), &stage.join("assets"), "shaders");
-    mirror(
-        &root.join("assets/shaders"),
-        &stage.join("assets/shaders"),
-        "stock",
-    );
-    mirror(
-        &root.join("assets/shaders/stock"),
-        &stage.join("assets/shaders/stock"),
-        &file,
-    );
-    let source = std::fs::read_to_string(root.join("assets/shaders/stock").join(&file))
-        .expect("read the stock shader");
-    std::fs::write(
-        stage.join("assets/shaders/stock").join(&file),
-        edit(&source),
-    )
-    .expect("write the edited stock shader");
+    let mut staged = false;
+    for tree in ["assets", "examples/03_fixtures/assets"] {
+        let (from, to) = (root.join(tree), stage.join(tree));
+        std::fs::create_dir_all(to.parent().expect("a tree has a parent"))
+            .expect("create the staged tree's parent");
+        let Ok(inside) = Path::new(file).strip_prefix(tree) else {
+            symlink(&from, &to).expect("link an asset tree");
+            continue;
+        };
+        // Each directory down to the file is a directory of links, less the
+        // entry the next level stands in for.
+        let mut below = PathBuf::new();
+        for part in inside.components() {
+            mirror(
+                &from.join(&below),
+                &to.join(&below),
+                part.as_os_str().to_str().expect("a UTF-8 path"),
+            );
+            below.push(part);
+        }
+        staged = true;
+    }
+    assert!(staged, "{file} is under neither asset tree");
+
+    let source = std::fs::read_to_string(root.join(file)).expect("read the file to stage");
+    std::fs::write(stage.join(file), edit(&source)).expect("write the edited file");
     stage
+}
+
+/// [`stage_with_edited_file`] for the stock shader `name`.
+#[cfg(unix)]
+fn stage_with_edited_stock_shader(name: &str, edit: impl Fn(&str) -> String) -> PathBuf {
+    stage_with_edited_file(&format!("assets/shaders/stock/{name}.wgsl"), edit)
 }
 
 /// Pixels of `lhs` and `rhs` further apart than 8, and the frame's pixel count.
@@ -393,6 +405,154 @@ fn a_fused_pair_stays_within_one_step_of_its_passes() {
         assert!(
             !differing.iter().any(|stack| stack == alone),
             "{alone} must not fuse"
+        );
+    }
+}
+
+/// A game's own post effects draw (`D-308`): the fixtures' manifest declares
+/// `tint`, whose `mix` section fuses behind a vignette, and `wave`, which
+/// marks no section. Each changes the frame; the fused `tint` stays within
+/// one step of its own pass, and `wave` draws the same bytes either way.
+#[test]
+fn a_games_effect_draws() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let root = workspace_root();
+    let draw_logged = |stack: &str, fuse: &str| {
+        let name = format!("game-{fuse}-{}", stack.replace(':', "-"));
+        capture_logged(
+            &name,
+            stack,
+            &root,
+            &[
+                ("TUNGSTEN_POST_BACKDROP_FIXTURE", "gradient"),
+                ("TUNGSTEN_POST_TEXT_FIXTURE", "off"),
+                ("TUNGSTEN_RENDER_POST_FUSE", fuse),
+            ],
+        )
+    };
+    let draw = |stack: &str, fuse: &str| draw_logged(stack, fuse).0;
+    let plain = draw("empty", "true");
+
+    // `wave` shifts rows sideways: many pixels move.
+    let wave = draw("game_wave", "true");
+    let (moved, total) = pixels_apart(&plain, &wave);
+    assert!(
+        moved * 50 > total,
+        "the wave drew nothing: {moved} of {total} pixels differ"
+    );
+    // A module without a section draws alone, a fade behind it too, though
+    // a fade ends a fused pair behind any section.
+    let (waved, waved_log) = draw_logged("game_wave_fade", "true");
+    assert!(
+        !waved_log.contains(FUSED_LINE),
+        "a module without a section fused:\n{waved_log}"
+    );
+    let report =
+        compare_png(&waved, &draw("game_wave_fade", "false"), 0).expect("compare the two captures");
+    assert_eq!(
+        report.pixels_above_tolerance, 0,
+        "a module without a section draws alone either way"
+    );
+
+    // `tint` darkens green and blue over the whole frame, in the vignette's
+    // pass when the stack fuses.
+    let (fused, fused_log) = draw_logged("game_tint", "true");
+    let (alone, alone_log) = draw_logged("game_tint", "false");
+    assert!(
+        fused_log.contains(FUSED_LINE),
+        "the tint's section did not fuse behind the vignette:\n{fused_log}"
+    );
+    assert!(
+        !alone_log.contains(FUSED_LINE),
+        "the tint fused with fusing off:\n{alone_log}"
+    );
+    let (tinted, total) = pixels_apart(&plain, &fused);
+    assert!(
+        tinted * 2 > total,
+        "the tint drew nothing: {tinted} of {total} pixels differ"
+    );
+    let report = compare_png(&fused, &alone, 1).expect("compare the two captures");
+    assert_eq!(
+        report.pixels_above_tolerance, 0,
+        "the fused tint is {} pixels more than one step from its own pass, the furthest {}",
+        report.pixels_above_tolerance, report.max_delta
+    );
+    assert!(
+        report.max_delta > 0,
+        "the tint did not fuse behind the vignette"
+    );
+}
+
+/// A game's effect whose module cannot draw as a post pass is left out of the
+/// frame, which draws the rest of its stack, and the log says so (`D-308`).
+/// Two modules that pass Naga: one reads a block of 272 bytes where a pass
+/// binds 256, which would build and then fail its draw; one has no `fs_main`,
+/// which fails its pipeline inside the validation scope.
+#[cfg(unix)]
+#[test]
+fn a_games_effect_that_cannot_draw_is_left_out() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let root = workspace_root();
+    let env = [
+        ("TUNGSTEN_POST_BACKDROP_FIXTURE", "gradient"),
+        ("TUNGSTEN_POST_TEXT_FIXTURE", "off"),
+    ];
+    let without = capture("game-none", "game_none", &root, &env);
+    let with = capture("game-tint-whole", "game_tint", &root, &env);
+    let report = compare_png(&with, &without, 0).expect("compare the two captures");
+    assert!(
+        report.pixels_above_tolerance > 0,
+        "the tint draws nothing, so leaving it out shows nothing"
+    );
+
+    let edits: [(&str, &str, &str, &str); 2] = [
+        (
+            "block",
+            "    i: vec4<i32>,\n};",
+            "    i: vec4<i32>,\n    more: array<vec4<f32>, 11>,\n};",
+            "is 272 bytes",
+        ),
+        (
+            "entry",
+            "fn fs_main(",
+            "fn fs_other(",
+            "does not draw as a post pass",
+        ),
+    ];
+    for (name, old, new, reason) in edits {
+        let stage = stage_with_edited_file(
+            "examples/03_fixtures/assets/shaders/game_tint.wgsl",
+            |source| {
+                assert_eq!(
+                    source.matches(old).count(),
+                    1,
+                    "game_tint.wgsl no longer holds {old:?} once; pick another edit"
+                );
+                source.replace(old, new)
+            },
+        );
+        let (left_out, log) =
+            capture_logged(&format!("game-left-out-{name}"), "game_tint", &stage, &env);
+        let _ = std::fs::remove_dir_all(&stage);
+        assert!(
+            log.contains(reason),
+            "{name}: the load did not say {reason:?}:\n{log}"
+        );
+        assert!(
+            log.contains("post effect 'tint' has no pipeline"),
+            "{name}: the frame did not say it left the effect out:\n{log}"
+        );
+        let report = compare_png(&left_out, &without, 0).expect("compare the two captures");
+        assert_eq!(
+            report.pixels_above_tolerance, 0,
+            "{name}: the stack without its effect is {} pixels from the vignette alone",
+            report.pixels_above_tolerance
         );
     }
 }

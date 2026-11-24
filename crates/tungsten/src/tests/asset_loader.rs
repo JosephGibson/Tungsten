@@ -1640,6 +1640,7 @@ fn a_plan_lists_load_alls_units_in_order() {
         LoadUnit::Themes,
         LoadUnit::Shaders,
         LoadUnit::Materials,
+        LoadUnit::PostEffects,
         LoadUnit::Sound("hum".into()),
         LoadUnit::Sound("step".into()),
         LoadUnit::Tilemap("level".into()),

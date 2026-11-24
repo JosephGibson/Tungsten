@@ -267,7 +267,10 @@ fn a_mix_hands_on_the_alpha_it_is_given() {
     // The alpha read for the colour, the whole colour scaled, the alpha in
     // a wider accessor.
     let more = "for more than handing it on";
-    assert!(fault("    return vec4<f32>(color.rgb * color.a, color.a);").contains(more));
+    assert!(
+        fault("    return vec4<f32>(color.rgb * color.a, color.a);")
+            .contains("only as the last component")
+    );
     assert!(
         fault(&format!(
             "{t}    let dim = color * t;\n    return vec4<f32>(dim.rgb, color.a);"
@@ -278,6 +281,33 @@ fn a_mix_hands_on_the_alpha_it_is_given() {
         fault("    let all = color.rgba;\n    return vec4<f32>(all.rgb, color.a);")
             .contains("reads `color.rgba`")
     );
+    // The alpha bound to a name first could reach the colour through it:
+    // it is named only where it is handed on.
+    assert!(
+        fault("    let a = color.a;\n    return vec4<f32>(color.rgb * a, a);")
+            .contains("only as the last component")
+    );
+    assert!(
+        fault(&format!(
+            "{t}    return vec4<f32>(color.rgb * t, color.a * 1.0);"
+        ))
+        .contains(another)
+    );
+    // A comment cannot stand in for the function, nor trip the count; the
+    // name may be spaced as rustfmt would never space it; the colour may go
+    // by another name, a block's field of the same name beside it.
+    let spaced = "/* fn fade_fx(color: vec4<f32>) { return color.a; } */\n\
+                  fn  fade_fx (c: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
+                  // c.a is handed on, c is not scaled whole\n    \
+                  return vec4<f32>(c.rgb * p.v0.c * p.f.x, c.a);\n}\n";
+    let spaced = spaced.replace("p.v0.c", "p.v0.r");
+    assert_eq!(
+        read_section("fade", &with_section("mix", &spaced)).map(|section| section.class),
+        Ok(Class::Mix)
+    );
+    let field = "fn fade_fx(x: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
+                 return vec4<f32>(x.rgb * p.f.x, x.a);\n}\n";
+    assert!(read_section("fade", &with_section("mix", field)).is_ok());
     // A `pixel` is not held to it: it never ends a pass under 8-bit targets.
     let scaled = "fn fade_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
                   return color * p.f.x;\n}\n";
@@ -480,6 +510,29 @@ fn a_section_that_follows_another_stage_names_no_module_scope_variable() {
     let error = read_section("fade", &with_section("pixel", own)).expect_err("refused");
     assert!(error.contains("module-scope variable"), "{error}");
 
+    // A `pixel` that declares the source itself would declare it twice in
+    // a generated module.
+    let redeclared = "@group(0) @binding(0) var src: texture_2d<f32>;\n\
+                      fn fade_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
+                      return color;\n}\n";
+    let error = read_section("fade", &with_section("pixel", redeclared)).expect_err("refused");
+    assert!(error.contains("module-scope variable"), "{error}");
+    // A leading section may name the source, not the module's own block: a
+    // generated module holds a block a stage in its place.
+    let own_block = "fn fade_head(uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
+                     return textureSample(src, src_sampler, uv) * params.f.x;\n}\n";
+    for class in ["head", "steps"] {
+        let error = read_section("fade", &with_section(class, own_block)).expect_err("refused");
+        assert!(error.contains("params"), "{class}: {error}");
+    }
+    // A section holds no entry point.
+    let entry = "fn fade_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
+                 return color;\n}\n\
+                 @fragment\nfn fade_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {\n    \
+                 return vec4<f32>(uv, 0.0, 1.0);\n}\n";
+    let error = read_section("fade", &with_section("pixel", entry)).expect_err("refused");
+    assert!(error.contains("no entry point"), "{error}");
+
     // A class that leads a pass may name the source: the same text is a
     // `head`, under the leading signature.
     let head = "fn fade_head(uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
@@ -508,6 +561,15 @@ fn a_section_is_refused_for_its_markers_its_names_or_its_signature() {
                     fn fade_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
                     return color * LEVELS;\n}\n";
     assert!(refused("pixel", constant).contains("constant `LEVELS`"));
+    // Names compare without their case, the effect's own included: a
+    // constant in capitals, an effect whose ID holds one.
+    let capitals = "const FADE_LEVELS: f32 = 4.0;\n\
+                    fn fade_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
+                    return color * FADE_LEVELS;\n}\n";
+    assert!(read_section("fade", &with_section("pixel", capitals)).is_ok());
+    let tinted = "fn Tint_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
+                  return color;\n}\n";
+    assert!(read_section("Tint", &with_section("pixel", tinted)).is_ok());
     // The function's name and shape.
     let misnamed = "fn fade_apply(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {\n    \
                     return color;\n}\n";
