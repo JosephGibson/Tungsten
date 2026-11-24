@@ -17,7 +17,7 @@ Compare two captures only when they measure the same row with the same workload 
 | Frames | the row's warm-up, setup frames included, then 300 measured frames, `e01-play` 1,200 |
 | Repeats | the row's (5, the area rows 3) |
 | GPU timing | only in a GPU run, beside each timing run or alone, never in a timing run |
-| Physics workers | the engine's own count for the machine (`physics.workers` 0: half the logical CPUs, at most 6, `D-298`), recorded as `physics_workers_env: auto`. `TUNGSTEN_PHYSICS_WORKERS=N` before `just perf` pins both sides of a sitting to N, 1 being the serial step; a base from before the pool ignores it |
+| Physics workers | the engine's own count for the machine (`physics.workers` 0: half the logical CPUs, at most 6, `D-298`), recorded as `physics_workers_env: auto`. `TUNGSTEN_PHYSICS_WORKERS=N` before `just perf` pins both sides of a sitting to N, 1 being the serial step and the systems' serial maps (`D-311`); a base from before the pool ignores it |
 | Machine | governor `performance`; nothing else using the CPU, the GPU or the screen |
 
 **No remote-desktop encoder during a capture.** A connected NoMachine client runs `nxcodec.bin`, which encodes the screen and competes for memory bandwidth with the integrated GPU: it slowed every third frame of `ecs`, `total` p95 11.5 → 18.2 ms, while every guard passed and the digests matched. `run` refuses it, and `cargo` or `rustc` outside the runner's own process tree, before building (`D-141`); a sitting's start check refuses more (below). Every measured run is scanned before, once a second during and after, and a run it overlaps is invalid.

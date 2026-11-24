@@ -11,6 +11,8 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Later
 
+- A key for the systems' map's own worker count (`D-311`): `physics.workers` sets both pools today.
+- A borrowing fork for systems whose inputs are World columns (`D-311`): `ball_look` and `effect_tick` are pure per row and would take about 0.9 and 0.8 ms off `e01-stress` (the CPU pass's map review), through `std::thread::scope` over column slices and a mutable slice query.
 - A perf row whose frames pack more than 16 lights, so the tile walk and its `light_tiles` pass have an owned metric (`D-310`; the lamp grid of the fixtures' `lighting` scene is the by-hand subject).
 - A room file's `post` naming a game's post effect by its manifest ID: `PostPass::Custom` holds the session's ID and has no file form, so a room's stack is stock passes only (`D-308`, the GPU foundation pass's Q7).
 - A kit cone whose rays are beams stopping at their first body, meeting bodies with no hurtbox by tags each step, from a held cast; and a front widening its angle through walls, meeting moving targets once by their motion with per-kind throws; so 01's sprays and force push are kit cones (S-15, `D-283`).

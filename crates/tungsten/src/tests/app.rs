@@ -64,6 +64,44 @@ fn a_windows_run_writes_its_saves_behind_and_new_writes_each_before_it_returns()
 }
 
 #[test]
+fn a_windows_run_gives_the_world_system_workers_at_the_steps_count() {
+    use tungsten_core::physics::PhysicsWorkers;
+    use tungsten_core::workers::SystemWorkers;
+
+    let count = |app: &App| {
+        app.world()
+            .get_resource::<SystemWorkers>()
+            .map(SystemWorkers::participants)
+    };
+    let config: Config = serde_json::from_str(r#"{ "physics": { "workers": 3 } }"#).unwrap();
+    let mut app = App::new(config).expect("App::new failed");
+    assert_eq!(
+        count(&app),
+        None,
+        "App::new maps serially, as the harness and the guards do"
+    );
+    app.start_workers();
+    assert_eq!(count(&app), Some(3));
+
+    // A game's own physics count sets the map's; its own map count stands.
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.world_mut().insert_resource(PhysicsWorkers::new(5));
+    app.start_workers();
+    assert_eq!(count(&app), Some(5));
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.world_mut().insert_resource(SystemWorkers::new(2));
+    app.start_workers();
+    assert_eq!(count(&app), Some(2));
+    assert!(
+        !app.world()
+            .get_resource::<SystemWorkers>()
+            .unwrap()
+            .started(),
+        "no thread starts before a map forks"
+    );
+}
+
+#[test]
 fn a_windows_run_gives_the_world_its_physics_workers_and_new_gives_none() {
     use tungsten_core::physics::PhysicsWorkers;
 

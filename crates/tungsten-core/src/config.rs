@@ -905,9 +905,10 @@ pub struct PhysicsSection {
     /// unless set, finite and above 0.
     pub broadphase_cell: f32,
     /// `physics.workers`: the threads the step's forked stages run on, the
-    /// main thread among them. 0, the default, picks half the machine's
-    /// logical CPUs, at most 6; 1 is the serial step; the step takes at
-    /// most 16. Every count steps to the same result, bit for bit.
+    /// main thread among them, and as many for the systems' maps (`D-311`).
+    /// 0, the default, picks half the machine's logical CPUs, at most 6; 1 is
+    /// the serial step and serial maps; the step takes at most 16. Every
+    /// count steps and maps to the same result, bit for bit.
     /// `TUNGSTEN_PHYSICS_WORKERS` overrides the file.
     pub workers: u32,
     /// `physics.worker_spin_ms`: how long a worker spins for its step's

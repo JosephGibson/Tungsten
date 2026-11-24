@@ -18779,6 +18779,27 @@ pub fn tungsten_core::ui::contrast_ratio([u8; 4], [u8; 4]) -> f32
 pub fn tungsten_core::ui::to_physical(tungsten_core::ui::geometry::Rect, f32) -> tungsten_core::ui::paint::ClipRect
 pub fn tungsten_core::ui::ui_animate_system(&mut tungsten_core::World)
 pub fn tungsten_core::ui::ui_route_system(&mut tungsten_core::World)
+pub mod tungsten_core::workers
+pub struct tungsten_core::workers::SystemWorkers
+impl tungsten_core::workers::SystemWorkers
+pub const tungsten_core::workers::SystemWorkers::MAX: usize
+pub fn tungsten_core::workers::SystemWorkers::forced(usize, usize) -> Self
+pub fn tungsten_core::workers::SystemWorkers::forks(&self, usize, usize, usize) -> bool
+pub fn tungsten_core::workers::SystemWorkers::map<S, O>(&mut self, S, usize, usize, usize, &mut alloc::vec::Vec<O>, fn(&S, core::ops::range::Range<usize>, &mut alloc::vec::Vec<O>)) -> S where S: core::marker::Send + core::marker::Sync + 'static, O: core::marker::Send + 'static
+pub fn tungsten_core::workers::SystemWorkers::new(usize) -> Self
+pub fn tungsten_core::workers::SystemWorkers::participants(&self) -> usize
+pub fn tungsten_core::workers::SystemWorkers::started(&self) -> bool
+impl core::fmt::Debug for tungsten_core::workers::SystemWorkers
+pub fn tungsten_core::workers::SystemWorkers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::workers::SystemWorkers
+impl core::marker::Send for tungsten_core::workers::SystemWorkers
+impl core::marker::Sync for tungsten_core::workers::SystemWorkers
+impl core::marker::Unpin for tungsten_core::workers::SystemWorkers
+impl core::marker::UnsafeUnpin for tungsten_core::workers::SystemWorkers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::workers::SystemWorkers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::workers::SystemWorkers
+pub fn tungsten_core::workers::forks(&tungsten_core::World, usize, usize, usize) -> bool
+pub fn tungsten_core::workers::map<S, O>(&mut tungsten_core::World, S, usize, usize, usize, &mut alloc::vec::Vec<O>, fn(&S, core::ops::range::Range<usize>, &mut alloc::vec::Vec<O>)) -> S where S: core::marker::Send + core::marker::Sync + 'static, O: core::marker::Send + 'static
 pub enum tungsten_core::ActionMapError
 pub tungsten_core::ActionMapError::Io
 pub tungsten_core::ActionMapError::Io::path: alloc::string::String
@@ -24945,6 +24966,24 @@ impl core::marker::Unpin for tungsten_core::schedule::SystemDesc
 impl core::marker::UnsafeUnpin for tungsten_core::schedule::SystemDesc
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::SystemDesc
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::SystemDesc
+pub struct tungsten_core::SystemWorkers
+impl tungsten_core::workers::SystemWorkers
+pub const tungsten_core::workers::SystemWorkers::MAX: usize
+pub fn tungsten_core::workers::SystemWorkers::forced(usize, usize) -> Self
+pub fn tungsten_core::workers::SystemWorkers::forks(&self, usize, usize, usize) -> bool
+pub fn tungsten_core::workers::SystemWorkers::map<S, O>(&mut self, S, usize, usize, usize, &mut alloc::vec::Vec<O>, fn(&S, core::ops::range::Range<usize>, &mut alloc::vec::Vec<O>)) -> S where S: core::marker::Send + core::marker::Sync + 'static, O: core::marker::Send + 'static
+pub fn tungsten_core::workers::SystemWorkers::new(usize) -> Self
+pub fn tungsten_core::workers::SystemWorkers::participants(&self) -> usize
+pub fn tungsten_core::workers::SystemWorkers::started(&self) -> bool
+impl core::fmt::Debug for tungsten_core::workers::SystemWorkers
+pub fn tungsten_core::workers::SystemWorkers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::workers::SystemWorkers
+impl core::marker::Send for tungsten_core::workers::SystemWorkers
+impl core::marker::Sync for tungsten_core::workers::SystemWorkers
+impl core::marker::Unpin for tungsten_core::workers::SystemWorkers
+impl core::marker::UnsafeUnpin for tungsten_core::workers::SystemWorkers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::workers::SystemWorkers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::workers::SystemWorkers
 pub struct tungsten_core::Tag
 pub tungsten_core::Tag::name: alloc::string::String
 impl tungsten_core::components::Tag

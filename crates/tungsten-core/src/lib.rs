@@ -25,6 +25,7 @@ pub mod text;
 pub mod time;
 pub mod tween;
 pub mod ui;
+pub mod workers;
 
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
@@ -110,3 +111,4 @@ pub use tween::{
 pub use ui::{
     PaintList, UiDebug, UiEvent, UiProperty, UiRouter, UiThemeRegistry, UiTrack, UiTree, WidgetId,
 };
+pub use workers::SystemWorkers;

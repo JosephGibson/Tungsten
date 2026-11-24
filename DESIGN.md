@@ -55,7 +55,7 @@ Reject crates that would hand over work this project is supposed to build. Examp
 
 ### Frame Loop
 
-The app runs synchronously on the main thread; the audio callback, the file watcher and the gamepad backend (`D-220`) provide the three engine background paths, the physics step forks its pure stages on worker threads of its own, each fork joined before the step goes on (`D-298`), and a window's run commits its saves on a writer thread, which takes a staged save's sync and rename off the frame (`D-303`). `crates/tungsten/src/app.rs` owns the order:
+The app runs synchronously on the main thread; the audio callback, the file watcher and the gamepad backend (`D-220`) provide the three engine background paths, the physics step forks its pure stages on worker threads of its own, each fork joined before the step goes on (`D-298`), a system's map forks its chunks on a pool of its own beside them, laid out in index order so every count gives the serial call's output (`tungsten_core::workers`, `D-311`), and a window's run commits its saves on a writer thread, which takes a staged save's sync and rename off the frame (`D-303`). `crates/tungsten/src/app.rs` owns the order:
 
 ```text
 setup:      parse config → construct App/World and resources

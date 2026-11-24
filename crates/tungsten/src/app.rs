@@ -44,6 +44,7 @@ use tungsten_core::save::SaveOptions;
 use tungsten_core::ui::{
     CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree, WindowPlacements,
 };
+use tungsten_core::workers::SystemWorkers;
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, Binding, CameraController, CameraState,
     CommandBuffer, ComponentRegistry, Config, ConfigError, DebugDraw, DebugShape, DisplayMode,
@@ -1198,8 +1199,9 @@ impl App {
         self.startup_clock.started = Some(Instant::now());
         self.resolve_schedule()
             .inspect_err(|err| log::error!("{err}"))?;
-        // A script run forks its physics step too: the perf rows are scripts.
-        self.start_physics_workers();
+        // A script run forks its physics step and its systems' maps too: the
+        // perf rows are scripts.
+        self.start_workers();
         // And it writes its saves behind, as a played run does.
         self.start_saves_writer();
         if self.script.is_none() {
@@ -1640,6 +1642,30 @@ impl App {
             self.config.physics.worker_spin_ms
         );
         self.world.insert_resource(workers);
+    }
+
+    /// Gives the World its physics workers, then its systems' map workers at
+    /// the step's count (`D-298`, `D-311`): the order matters, since the map
+    /// reads the step's.
+    fn start_workers(&mut self) {
+        self.start_physics_workers();
+        self.start_system_workers();
+    }
+
+    /// Gives the World its [`SystemWorkers`] at its [`PhysicsWorkers`]'
+    /// count (`D-311`), unless the game inserted its own: a window's run
+    /// forks its systems' maps as it forks its step. `App::new` inserts
+    /// none, so the harness, the checks and every test map serially.
+    fn start_system_workers(&mut self) {
+        if self.world.has_resource::<SystemWorkers>() {
+            return;
+        }
+        let participants = self
+            .world
+            .get_resource::<PhysicsWorkers>()
+            .map_or(1, |workers| workers.participants());
+        log::debug!("systems' maps: {participants} participants");
+        self.world.insert_resource(SystemWorkers::new(participants));
     }
 
     /// Turns the World's [`SaveSlots`] to writing behind (`D-303`): a save
