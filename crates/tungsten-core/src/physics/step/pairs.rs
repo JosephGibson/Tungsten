@@ -53,9 +53,6 @@ pub(super) struct WorkerScratch {
     pub(super) spans: Vec<(u32, u32, u32)>,
     /// Its share of an arrival round's search.
     pub(super) arrival: super::arrival::ArrivalWorker,
-    /// The contacts of the narrow-phase chunks it took, a chunk after
-    /// another.
-    pub(super) narrow: Vec<Option<crate::physics::collision::Contact>>,
 }
 
 /// The entity proxies a participant takes at a time in a forked build, and
@@ -130,9 +127,11 @@ pub(super) fn build_work(
 
 /// [`build_pairs`]' walks on the step's participants: the entity proxies in
 /// chunks, each chunk's pairs appended to `pairs` in chunk order, which is
-/// the serial loop's order. Out of line with the pool's start inside it, so
-/// [`build_pairs`] holds one call for the fork and its serial loop's code
-/// stays as it was.
+/// the serial loop's order. The calling thread runs `before`, the carry's
+/// remap when it is due, while the workers walk, then walks chunks of its
+/// own (OVERLAP-1); `before` says whether it remapped. Out of line with the
+/// pool's start inside it, so [`build_pairs`] holds one call for the fork
+/// and its serial loop's code stays as it was.
 #[inline(never)]
 #[allow(clippy::too_many_arguments)]
 fn build_walks_forked(
@@ -144,24 +143,38 @@ fn build_walks_forked(
     pair_aabbs: &mut Vec<Aabb>,
     layers: &mut super::ProxyLayers,
     pairs: &mut Vec<(u32, u32)>,
+    before: impl FnOnce() -> bool,
 ) {
     let chunk = fork.chunk(BUILD_CHUNK, BUILD_CHUNK_FORCED);
     let workers = fork.workers();
     grid.prepare();
     let chunks = bodies.div_ceil(chunk);
-    let data = workers.fork(super::pool::ForkData {
-        stage: super::pool::Stage::Build {
-            bodies,
-            chunk,
-            chunks,
+    let (data, remapped) = workers.fork_with(
+        super::pool::ForkData {
+            stage: super::pool::Stage::Build {
+                bodies,
+                chunk,
+                chunks,
+            },
+            grid: std::mem::take(grid),
+            pair_flags: std::mem::take(pair_flags),
+            pair_bounds: std::mem::take(pair_bounds),
+            pair_aabbs: std::mem::take(pair_aabbs),
+            layers: std::mem::take(layers),
+            ..Default::default()
         },
-        grid: std::mem::take(grid),
-        pair_flags: std::mem::take(pair_flags),
-        pair_bounds: std::mem::take(pair_bounds),
-        pair_aabbs: std::mem::take(pair_aabbs),
-        layers: std::mem::take(layers),
-        ..Default::default()
-    });
+        |data, scratch, _| {
+            let remapped = before();
+            build_work(data, scratch, bodies, chunk, chunks);
+            remapped
+        },
+    );
+    #[cfg(test)]
+    {
+        workers.remaps_overlapped += usize::from(remapped);
+    }
+    #[cfg(not(test))]
+    let _ = remapped;
     *grid = data.grid;
     *pair_flags = data.pair_flags;
     *pair_bounds = data.pair_bounds;
@@ -1120,15 +1133,17 @@ pub(super) fn build_pairs(
             grid.bodies.insert(id as ProxyId, &aabb);
         }
     }
-    if check_carry {
-        if same {
-            #[cfg(test)]
-            {
-                carry.kept += 1;
-            }
-        } else if !carry.remap(proxies, bodies, tiles.version(), carry_remap) {
-            carry.rekey(proxies, bodies, tiles.version(), impulses, tangents);
+    // A build that forks remaps the carry on its own thread while the
+    // workers walk (OVERLAP-1): the walks read none of what it writes.
+    let forks = fork.splits(moving, BUILD_FORK_MIN);
+    let remap_due = check_carry && !same;
+    if check_carry && same {
+        #[cfg(test)]
+        {
+            carry.kept += 1;
         }
+    } else if remap_due && !forks && !carry.remap(proxies, bodies, tiles.version(), carry_remap) {
+        carry.rekey(proxies, bodies, tiles.version(), impulses, tangents);
     }
     // The tiles: static, never awake, grown by the static radius; staged
     // once for the cache and kept across builds, and into the entity grid
@@ -1162,7 +1177,8 @@ pub(super) fn build_pairs(
         },
     );
     pair_flags.resize(proxies.len(), 0);
-    if fork.splits(moving, BUILD_FORK_MIN) {
+    if forks {
+        let tile_version = tiles.version();
         build_walks_forked(
             fork,
             bodies,
@@ -1172,6 +1188,12 @@ pub(super) fn build_pairs(
             pair_aabbs,
             layers,
             pairs,
+            || {
+                if remap_due && !carry.remap(proxies, bodies, tile_version, carry_remap) {
+                    carry.rekey(proxies, bodies, tile_version, impulses, tangents);
+                }
+                remap_due
+            },
         );
     } else {
         for (a_idx, aabb) in pair_aabbs[..bodies].iter().enumerate() {

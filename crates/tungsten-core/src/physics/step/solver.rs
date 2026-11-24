@@ -1,8 +1,7 @@
 //! Warm-started soft contact solver (D-063) and the signed-distance narrow
 //! phase that admits speculative contacts (D-064).
 
-use super::pairs::WorkerScratch;
-use super::pool::{Ahead, Fork, ForkData, Stage};
+use super::pool::ForkData;
 use super::slope;
 use super::{ContactConstraint, FrictionConstraint, NO_SPIN, Proxy, RollingConstraint, SpinState};
 use crate::physics::PhysicsConfig;
@@ -273,72 +272,71 @@ pub(super) fn narrow_phase(a: &Proxy, b: &Proxy, margin: f32) -> Option<Contact>
 
 /// The pairs a participant takes at a time in a forked narrow phase, and in
 /// one the lockstep tests force; and the fewest pairs whose narrow phase runs
-/// ahead of the pair loop (`D-298`).
-const NARROW_CHUNK: usize = 1024;
-const NARROW_CHUNK_FORCED: usize = 8;
+/// beside the pair loop (`D-298`).
+pub(super) const NARROW_CHUNK: usize = 1024;
+pub(super) const NARROW_CHUNK_FORCED: usize = 8;
 pub(super) const NARROW_FORK_MIN: usize = 4096;
 
-/// A participant's share of a forked narrow phase: for each pair of the
-/// chunks it takes, the contact the substep's pair loop computes, at the
-/// margin it computes.
+/// A worker's share of a forked narrow phase: the chunks it takes, each
+/// computed into its slot.
 pub(super) fn narrow_work(
     data: &ForkData,
-    scratch: &mut WorkerScratch,
     sub_dt: f32,
     slack: f32,
     chunk_size: usize,
     chunks: usize,
 ) {
-    let (proxies, pairs) = (&data.proxies[..], &data.pairs[..]);
-    let WorkerScratch { narrow, spans, .. } = scratch;
-    narrow.clear();
-    spans.clear();
-    while let Some(chunk) = data.take_chunk(chunks) {
-        let start = narrow.len();
-        let from = chunk * chunk_size;
-        let to = (from + chunk_size).min(pairs.len());
-        for &(a, b) in &pairs[from..to] {
-            let (a, b) = (&proxies[a as usize], &proxies[b as usize]);
-            let margin = (a.velocity - b.velocity).length() * sub_dt + slack;
-            narrow.push(narrow_phase(a, b, margin));
+    while let Some(chunk) = claim_narrow(data, chunks) {
+        #[cfg(test)]
+        {
+            assert!(
+                data.fail_narrow != Some(chunk),
+                "a test's narrow chunk fails"
+            );
+            if !data.publish_delay.is_zero() {
+                std::thread::sleep(data.publish_delay);
+            }
         }
-        spans.push((chunk as u32, start as u32, (to - from) as u32));
+        narrow_slot(data, chunk, chunk_size, sub_dt, slack);
     }
 }
 
-/// The substep's narrow phase on the step's participants, ahead of its pair
-/// loop: the pairs in chunks, a contact a pair, lent back in pair order. Out
-/// of line, so the substep holds one call for the fork.
-#[inline(never)]
-pub(super) fn narrow_ahead(
-    fork: &mut Fork,
-    proxies: &mut Vec<Proxy>,
-    pairs: &mut Vec<(u32, u32)>,
+/// A worker's next narrow chunk. Tests: a slow worker waits before it
+/// claims, leaving the chunks to the pair loop's own thread.
+fn claim_narrow(data: &ForkData, chunks: usize) -> Option<usize> {
+    #[cfg(test)]
+    if !data.claim_delay.is_zero() {
+        std::thread::sleep(data.claim_delay);
+    }
+    data.take_chunk(chunks)
+}
+
+/// Chunk `chunk`'s contacts, the contact the substep's pair loop computes for
+/// each of its pairs at the margin it computes, into its slot, then the slot
+/// marked whole.
+pub(super) fn narrow_slot(
+    data: &ForkData,
+    chunk: usize,
+    chunk_size: usize,
     sub_dt: f32,
     slack: f32,
-) -> Ahead {
-    let chunk = fork.chunk(NARROW_CHUNK, NARROW_CHUNK_FORCED);
-    let chunks = pairs.len().div_ceil(chunk);
-    let workers = fork.workers();
-    let data = workers.fork(ForkData {
-        stage: Stage::Narrow {
-            sub_dt,
-            slack,
-            chunk,
-            chunks,
-        },
-        proxies: std::mem::take(proxies),
-        pairs: std::mem::take(pairs),
-        ..Default::default()
-    });
-    *proxies = data.proxies;
-    *pairs = data.pairs;
-    workers.index_chunks(chunks, |scratch| &scratch.spans);
-    #[cfg(test)]
-    {
-        workers.narrow_forks += 1;
+) {
+    let (proxies, pairs) = (&data.proxies[..], &data.pairs[..]);
+    let slot = &data.narrow_slots[chunk];
+    let mut contacts = slot
+        .contacts
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    contacts.clear();
+    let from = chunk * chunk_size;
+    let to = (from + chunk_size).min(pairs.len());
+    for &(a, b) in &pairs[from..to] {
+        let (a, b) = (&proxies[a as usize], &proxies[b as usize]);
+        let margin = (a.velocity - b.velocity).length() * sub_dt + slack;
+        contacts.push(narrow_phase(a, b, margin));
     }
-    fork.lend()
+    drop(contacts);
+    slot.done.store(true, std::sync::atomic::Ordering::Release);
 }
 
 /// `narrow_phase` with the two bodies placed at `a_center` and `b_center`.

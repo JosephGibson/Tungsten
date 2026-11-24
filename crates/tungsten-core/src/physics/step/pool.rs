@@ -7,9 +7,11 @@
 //! when all have answered. A stage cuts its work into fixed chunks which the
 //! participants claim through [`ForkData::next`]; each writes into its own
 //! [`WorkerScratch`] with the chunk's index, and the caller lays the chunks
-//! out in index order. What the step reads after a fork is therefore what
-//! its serial loop writes, whichever thread took a chunk and however many
-//! there are.
+//! out in index order. The narrow phase writes each chunk into its own
+//! [`NarrowSlot`] instead, which the substep's pair loop consumes in index
+//! order while the fork runs ([`Workers::fork_with`]). What the step reads
+//! after a fork is therefore what its serial loop writes, whichever thread
+//! took a chunk and however many there are.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
@@ -43,7 +45,8 @@ pub(super) enum Stage {
     },
     /// An arrival round's search for the pairs its listed bodies reach.
     Arrival(Round),
-    /// The pair loop's narrow phase, in `chunks` chunks of `chunk` pairs.
+    /// The pair loop's narrow phase, in `chunks` chunks of `chunk` pairs, a
+    /// chunk's contacts written to its [`NarrowSlot`].
     Narrow {
         sub_dt: f32,
         slack: f32,
@@ -56,7 +59,8 @@ pub(super) enum Stage {
 }
 
 /// The step's buffers a fork's participants read, moved in for the fork and
-/// back after it, with the stage and its chunk counter.
+/// back after it, with the stage and its chunk counter, and the narrow
+/// phase's slots, which its participants write.
 #[derive(Debug, Default)]
 pub(super) struct ForkData {
     pub(super) stage: Stage,
@@ -75,6 +79,44 @@ pub(super) struct ForkData {
     pub(super) list: Vec<u32>,
     /// The substep's pair list.
     pub(super) pairs: Vec<(u32, u32)>,
+    /// The narrow phase's chunks, a slot a chunk, each filled by the
+    /// participant that takes it and marked whole: the pair loop consumes a
+    /// chunk as soon as it is.
+    pub(super) narrow_slots: Vec<NarrowSlot>,
+    /// Tests: the narrow chunk whose worker panics after taking it.
+    #[cfg(test)]
+    pub(super) fail_narrow: Option<usize>,
+    /// Tests: how long a worker waits before each narrow claim, and between a
+    /// claim and its chunk.
+    #[cfg(test)]
+    pub(super) claim_delay: Duration,
+    #[cfg(test)]
+    pub(super) publish_delay: Duration,
+}
+
+/// A narrow chunk's contacts, a contact a pair, and whether they are whole.
+#[derive(Debug, Default)]
+pub(super) struct NarrowSlot {
+    pub(super) done: AtomicBool,
+    pub(super) contacts: Mutex<Vec<Option<Contact>>>,
+}
+
+/// Waits for a narrow chunk another participant took. A worker whose share
+/// unwound fails the step here, instead of leaving its chunk unmarked and
+/// this wait unending.
+pub(super) fn wait_slot(slot: &NarrowSlot, shared: &Shared) {
+    let waited = Instant::now();
+    while !slot.done.load(Ordering::Acquire) {
+        assert!(
+            !shared.failed.load(Ordering::Acquire),
+            "a physics worker's share of the step panicked"
+        );
+        if waited.elapsed() < ANSWER_SPIN {
+            std::hint::spin_loop();
+        } else {
+            std::thread::yield_now();
+        }
+    }
 }
 
 impl ForkData {
@@ -103,7 +145,7 @@ fn work(data: &ForkData, scratch: &mut WorkerScratch, participant: usize) {
             slack,
             chunk,
             chunks,
-        } => super::solver::narrow_work(data, scratch, sub_dt, slack, chunk, chunks),
+        } => super::solver::narrow_work(data, sub_dt, slack, chunk, chunks),
         #[cfg(test)]
         Stage::Fail {
             participant: failing,
@@ -158,50 +200,10 @@ impl Fork {
         }
     }
 
-    /// The last fork's output, lent out of the pool while the substep's
-    /// pair loop reads it: no stage forks until [`Self::take_back`].
-    pub(super) fn lend(&mut self) -> Ahead {
-        let workers = self.workers();
-        Ahead {
-            scratches: std::mem::take(&mut workers.scratches),
-            chunk_at: std::mem::take(&mut workers.chunk_at),
-        }
-    }
-
-    /// Returns what [`Self::lend`] lent.
-    pub(super) fn take_back(&mut self, ahead: Ahead) {
-        let workers = self.workers();
-        workers.scratches = ahead.scratches;
-        workers.chunk_at = ahead.chunk_at;
-    }
-
     /// The pool, once a stage has forked.
     #[cfg(test)]
     pub(super) fn pool(&self) -> Option<&Workers> {
         self.workers.as_deref()
-    }
-}
-
-/// The pair loop's contacts from a forked narrow phase, out of the pool for
-/// the loop's time: each participant's scratch, and the table that puts
-/// their chunks in pair order.
-#[derive(Debug)]
-pub(super) struct Ahead {
-    scratches: Vec<WorkerScratch>,
-    chunk_at: Vec<(u32, u32, u32)>,
-}
-
-impl Ahead {
-    /// A contact a pair, in pair order.
-    pub(super) fn contacts(&self) -> impl Iterator<Item = Option<Contact>> + '_ {
-        self.chunk_at
-            .iter()
-            .flat_map(|&(participant, start, count)| {
-                self.scratches[participant as usize].narrow
-                    [start as usize..(start + count) as usize]
-                    .iter()
-                    .copied()
-            })
     }
 }
 
@@ -221,10 +223,15 @@ struct Answering<'a> {
     answers: &'a mpsc::Sender<Answer>,
     worker: usize,
     scratch: Option<WorkerScratch>,
+    /// Set as the share unwinds, for a caller waiting on one of its chunks.
+    failed: &'a AtomicBool,
 }
 
 impl Drop for Answering<'_> {
     fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.failed.store(true, Ordering::Release);
+        }
         // The step went away with its receiver: nothing waits.
         let _ = self.answers.send((self.worker, self.scratch.take()));
     }
@@ -236,6 +243,9 @@ pub(super) struct Shared {
     /// Set by a fork and cleared at the step's end ([`Fork::rest`]): a
     /// worker spins for the next fork only while its step runs.
     stepping: AtomicBool,
+    /// Set by a worker whose share unwound, for a caller that waits on a
+    /// chunk of its ([`wait_slot`]); cleared at each fork.
+    pub(super) failed: AtomicBool,
     /// Tests: the forks a worker took out of its spin.
     #[cfg(test)]
     pub(super) spun: AtomicUsize,
@@ -293,6 +303,7 @@ fn worker_loop(
                 answers,
                 worker,
                 scratch: None,
+                failed: &shared.failed,
             };
             work(&data, &mut scratch, worker);
             // The caller takes the data back once every worker has answered.
@@ -343,9 +354,24 @@ pub(super) struct Workers {
     /// The arrival rounds forked, for the tests that must see one.
     #[cfg(test)]
     pub(super) arrival_forks: usize,
-    /// The narrow phases run ahead, likewise.
+    /// The narrow phases forked, likewise.
     #[cfg(test)]
     pub(super) narrow_forks: usize,
+    /// Tests: the narrow chunks the pair loop's own thread computed, having
+    /// found them untaken.
+    #[cfg(test)]
+    pub(super) caller_claims: usize,
+    /// Tests: the narrow chunks the pair loop's own thread waited for, and
+    /// the wakes and keeps its byte decided.
+    #[cfg(test)]
+    pub(super) caller_waits: usize,
+    #[cfg(test)]
+    pub(super) woken_by_byte: usize,
+    #[cfg(test)]
+    pub(super) kept_by_byte: usize,
+    /// Tests: the builds whose carry remap ran while the workers walked.
+    #[cfg(test)]
+    pub(super) remaps_overlapped: usize,
     /// The forks run, for the tests that must see a stage fork.
     #[cfg(test)]
     pub(super) forks: usize,
@@ -403,6 +429,16 @@ impl Workers {
             #[cfg(test)]
             narrow_forks: 0,
             #[cfg(test)]
+            caller_claims: 0,
+            #[cfg(test)]
+            caller_waits: 0,
+            #[cfg(test)]
+            woken_by_byte: 0,
+            #[cfg(test)]
+            kept_by_byte: 0,
+            #[cfg(test)]
+            remaps_overlapped: 0,
+            #[cfg(test)]
             forks: 0,
         }
     }
@@ -426,11 +462,29 @@ impl Workers {
     ///
     /// Panics when a worker's share panicked, as the serial loop would have.
     pub(super) fn fork(&mut self, data: ForkData) -> ForkData {
+        self.fork_with(data, |data, scratch, _| work(data, scratch, 0))
+            .0
+    }
+
+    /// [`Self::fork`] with `caller` in place of the calling thread's share:
+    /// it runs while the workers run theirs, with the fork's data, the
+    /// caller's scratch and what the step shares with its workers, and its
+    /// result comes back beside the data.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::fork`].
+    pub(super) fn fork_with<R>(
+        &mut self,
+        data: ForkData,
+        caller: impl FnOnce(&ForkData, &mut WorkerScratch, &Shared) -> R,
+    ) -> (ForkData, R) {
         #[cfg(test)]
         {
             self.forks += 1;
         }
         let data = Arc::new(data);
+        self.shared.failed.store(false, Ordering::Relaxed);
         // The step runs: a worker may spin for its next fork.
         self.shared.stepping.store(true, Ordering::Release);
         let threads = self
@@ -446,7 +500,7 @@ impl Workers {
                 .send(job)
                 .expect("a physics worker thread ended before its pool");
         }
-        work(&data, &mut self.scratches[0], 0);
+        let out = caller(&data, &mut self.scratches[0], &self.shared);
         let waited = Instant::now();
         // Workers that spin answer within their spin time or not at all.
         let patience = self.spin.max(ANSWER_SPIN);
@@ -472,7 +526,9 @@ impl Workers {
             }
         }
         assert!(!panicked, "a physics worker's share of the step panicked");
-        Arc::try_unwrap(data).expect("every physics worker drops the step's data before it answers")
+        let data = Arc::try_unwrap(data)
+            .expect("every physics worker drops the step's data before it answers");
+        (data, out)
     }
 
     /// Lays the last fork's chunks out in index order: `chunk_at[chunk]`

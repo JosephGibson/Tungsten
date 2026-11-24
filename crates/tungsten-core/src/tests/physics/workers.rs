@@ -41,7 +41,9 @@ fn seed_world(gravity: f32) -> World {
 }
 
 /// What a lockstep compares after a step: each body's position and velocity
-/// bits and its sleep state, then the step's events as they print.
+/// bits and its sleep state, then the step's events as they print and the
+/// bodies its kinematic movers kept awake, in the order the pair loops kept
+/// them.
 fn state(world: &World, bodies: &[Entity]) -> (Vec<[u32; 5]>, Vec<String>) {
     let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
     let rows = bodies
@@ -65,6 +67,7 @@ fn state(world: &World, bodies: &[Entity]) -> (Vec<[u32; 5]>, Vec<String>) {
     events.extend(entered.iter_current().map(|event| format!("{event:?}")));
     let exited = world.get_resource::<EventQueue<SensorExited>>().unwrap();
     events.extend(exited.iter_current().map(|event| format!("{event:?}")));
+    events.push(format!("kept {:?}", buffers.kept));
     (rows, events)
 }
 
@@ -83,17 +86,32 @@ fn flush(world: &mut World) {
         .flush();
 }
 
+/// What a forced world's pool ran: its forks, and the arrival rounds and the
+/// narrow phases among them; the narrow chunks the pair loop's own thread
+/// computed and those it waited for; the wakes and keeps its byte decided;
+/// the builds whose carry remap ran beside the walks.
+#[derive(Debug, Default, Clone, Copy)]
+struct Forked {
+    forks: usize,
+    rounds: usize,
+    narrow: usize,
+    claims: usize,
+    waits: usize,
+    woken: usize,
+    kept: usize,
+    remaps: usize,
+}
+
 /// Steps one serial world and one forced world a count of [`COUNTS`] and a
 /// spin of [`SPINS`] side by side, each built by `build` and driven by `drive`
-/// before every step, and compares them after every step. Returns the forks
-/// each forced world ran, and the arrival rounds and the narrow phases among
-/// them.
+/// before every step, and compares them after every step. Returns what each
+/// forced world's pool ran.
 fn lockstep(
     name: &str,
     steps: usize,
     build: impl Fn(&mut World) -> Vec<Entity>,
     drive: impl Fn(&mut World, usize, &mut Vec<Entity>),
-) -> Vec<(usize, usize, usize)> {
+) -> Vec<Forked> {
     let forced = SPINS
         .into_iter()
         .flat_map(|spin| COUNTS.map(|count| (count, Some(spin))));
@@ -140,9 +158,20 @@ fn lockstep(
         .iter()
         .map(|(_, world, _)| {
             let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
-            buffers.extra.fork.pool().map_or((0, 0, 0), |pool| {
-                (pool.forks, pool.arrival_forks, pool.narrow_forks)
-            })
+            buffers
+                .extra
+                .fork
+                .pool()
+                .map_or(Forked::default(), |pool| Forked {
+                    forks: pool.forks,
+                    rounds: pool.arrival_forks,
+                    narrow: pool.narrow_forks,
+                    claims: pool.caller_claims,
+                    waits: pool.caller_waits,
+                    woken: pool.woken_by_byte,
+                    kept: pool.kept_by_byte,
+                    remaps: pool.remaps_overlapped,
+                })
         })
         .collect()
 }
@@ -248,8 +277,8 @@ fn a_pile_in_a_tile_pit_steps_alike_at_every_count_split_merged_and_as_built() {
         // The blast knocks bodies into neighbours no contact admitted, so
         // the arrival pass lists them and its rounds fork too.
         assert!(
-            forks.iter().all(|&(forks, rounds, narrow)| {
-                forks > rounds + narrow && rounds > 0 && narrow > 0
+            forks.iter().all(|f| {
+                f.forks > f.rounds + f.narrow && f.rounds > 0 && f.narrow > 0 && f.remaps > 0
             }),
             "{name}: {forks:?}"
         );
@@ -310,8 +339,8 @@ fn bullets_sleepers_spawns_and_despawns_step_alike_at_every_count() {
             },
         );
         assert!(
-            forks.iter().all(|&(forks, rounds, narrow)| {
-                forks > rounds + narrow && rounds > 0 && narrow > 0
+            forks.iter().all(|f| {
+                f.forks > f.rounds + f.narrow && f.rounds > 0 && f.narrow > 0 && f.remaps > 0
             }),
             "seed {seed}: {forks:?}"
         );
@@ -353,13 +382,17 @@ fn layers_sensors_and_a_kinematic_mover_step_alike_at_every_count() {
                 RigidBody::sensor(),
                 Collider::aabb(Vec2::new(120.0, 60.0)),
             ));
-            bodies.push(spawn_body(
-                world,
-                Vec2::new(60.0, 285.0),
-                Vec2::new(180.0, 0.0),
-                RigidBody::kinematic().with_layers(0b110).with_mask(0b110),
-                Collider::aabb(Vec2::new(30.0, 8.0)),
-            ));
+            // Two movers side by side, so a body between them meets both in
+            // one substep and is kept awake once.
+            for x in [60.0, 122.0] {
+                bodies.push(spawn_body(
+                    world,
+                    Vec2::new(x, 285.0),
+                    Vec2::new(180.0, 0.0),
+                    RigidBody::kinematic().with_layers(0b110).with_mask(0b110),
+                    Collider::aabb(Vec2::new(30.0, 8.0)),
+                ));
+            }
             bodies
         },
         |_, _, _| {},
@@ -367,7 +400,7 @@ fn layers_sensors_and_a_kinematic_mover_step_alike_at_every_count() {
     assert!(
         forks
             .iter()
-            .all(|&(forks, _, narrow)| forks > narrow && narrow > 0),
+            .all(|f| f.forks > f.narrow && f.narrow > 0 && f.remaps > 0 && f.kept > 0),
         "{forks:?}"
     );
 }
@@ -556,6 +589,183 @@ fn a_share_that_panics_fails_the_fork_instead_of_hanging_it() {
     assert_eq!(message, "a physics worker's share of the step panicked");
     // Dropping the pool joins its threads, the one that panicked included.
     drop(workers);
+}
+
+/// A pile of `count` mixed bodies on a floor, `seed`'s.
+fn mixed_pile(world: &mut World, seed: u64, count: usize) -> Vec<Entity> {
+    let floor = world.spawn();
+    world.insert(floor, Position(Vec2::new(-400.0, 300.0)));
+    world.insert(floor, RigidBody::r#static());
+    world.insert(
+        floor,
+        Collider::aabb(Vec2::new(900.0, 20.0)).with_offset(Vec2::new(900.0, 20.0)),
+    );
+    let mut rng = Pcg32::seeded(seed);
+    spawn_mixed(world, &mut rng, count)
+}
+
+/// A floor and a row of `count` resting balls on it, a ball's width apart,
+/// each its own island.
+fn sleepers(world: &mut World, count: usize) -> Vec<Entity> {
+    let floor = world.spawn();
+    world.insert(floor, Position(Vec2::new(-400.0, 300.0)));
+    world.insert(floor, RigidBody::r#static());
+    world.insert(
+        floor,
+        Collider::aabb(Vec2::new(900.0, 20.0)).with_offset(Vec2::new(900.0, 20.0)),
+    );
+    (0..count)
+        .map(|i| {
+            spawn_body(
+                world,
+                Vec2::new(100.0 + i as f32 * 14.0, 295.0),
+                Vec2::ZERO,
+                RigidBody::dynamic(),
+                Collider::circle(5.0),
+            )
+        })
+        .collect()
+}
+
+/// Two balls falling onto each sleeper together, one either side of its top.
+fn rain(world: &mut World, sleepers: &[Entity]) -> Vec<Entity> {
+    let mut drops = Vec::new();
+    for &sleeper in sleepers {
+        let x = world.get::<Position>(sleeper).unwrap().0.x;
+        for side in [-4.0, 4.0] {
+            drops.push(spawn_body(
+                world,
+                Vec2::new(x + side, 270.0),
+                Vec2::new(0.0, 700.0),
+                RigidBody::dynamic().with_restitution(0.2),
+                Collider::circle(5.0),
+            ));
+        }
+    }
+    drops
+}
+
+#[test]
+fn a_rain_on_sleeping_balls_steps_alike_at_every_count() {
+    // A sleeper two drops reach in one substep is woken by the first pair and
+    // must read awake in the second, as the forked pair loop keeps it in a
+    // byte until the fork ends.
+    let forks = lockstep(
+        "rain",
+        90,
+        |world| sleepers(world, 36),
+        |world, step, bodies| {
+            if step == RAIN_AT {
+                let sleeping = world
+                    .get_resource::<PhysicsBuffers>()
+                    .map_or(0, PhysicsBuffers::sleeping_count);
+                assert!(sleeping >= 30, "{sleeping} balls sleep under the rain");
+                let sleepers: Vec<Entity> = bodies.clone();
+                bodies.extend(rain(world, &sleepers));
+            }
+        },
+    );
+    assert!(
+        forks
+            .iter()
+            .all(|f| f.forks > f.narrow && f.narrow > 0 && f.woken > 0),
+        "{forks:?}"
+    );
+}
+
+/// The step the rain starts at, once the row sleeps.
+const RAIN_AT: usize = 60;
+
+#[test]
+fn the_pair_loop_consumes_chunks_it_takes_and_chunks_it_waits_for_alike() {
+    // Workers slow to claim: the pair loop's own thread takes chunks itself.
+    // Its thread starting only once every chunk is claimed, the workers slow
+    // to fill them: it takes none and waits for chunks taken but not whole.
+    let regimes = [
+        (
+            "the loop takes chunks",
+            super::super::NarrowTest {
+                claim_delay: Duration::from_micros(300),
+                ..Default::default()
+            },
+        ),
+        (
+            "the loop waits for chunks",
+            super::super::NarrowTest {
+                publish_delay: Duration::from_micros(200),
+                caller_after: Some(usize::MAX),
+                ..Default::default()
+            },
+        ),
+    ];
+    for (name, test) in regimes {
+        let forks = lockstep(
+            name,
+            16,
+            |world| mixed_pile(world, 0x0C1A_1F00, 140),
+            |world, _, _| {
+                if let Some(buffers) = world.get_resource_mut::<PhysicsBuffers>() {
+                    buffers.extra.narrow_test = test;
+                }
+            },
+        );
+        for f in &forks {
+            assert!(f.narrow > 0, "{name}: {forks:?}");
+            if test.caller_after.is_some() {
+                assert!(f.claims == 0 && f.waits > 0, "{name}: {forks:?}");
+            } else {
+                assert!(f.claims > 0, "{name}: {forks:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_worker_that_panics_after_taking_a_narrow_chunk_fails_the_step() {
+    let mut world = seed_world(900.0);
+    world.insert_resource(PhysicsWorkers::forced(3));
+    mixed_pile(&mut world, 0x0FA1_1ED0, 140);
+    physics_step(&mut world);
+    // The pair loop's thread starts once chunk 1 is claimed, by a worker,
+    // which panics before its slot is marked whole.
+    world
+        .get_resource_mut::<PhysicsBuffers>()
+        .unwrap()
+        .extra
+        .narrow_test = super::super::NarrowTest {
+        fail: Some(1),
+        caller_after: Some(2),
+        ..Default::default()
+    };
+    // A hang is a failure too: a watchdog ends the run past twenty seconds.
+    let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let watched = std::sync::Arc::clone(&finished);
+    std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        while !watched.load(std::sync::atomic::Ordering::Acquire) {
+            if started.elapsed() > Duration::from_secs(20) {
+                eprintln!("a worker's panic hung the step");
+                std::process::abort();
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    });
+    let started = std::time::Instant::now();
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        physics_step(&mut world);
+    }));
+    let message = caught
+        .expect_err("a worker's panic returned")
+        .downcast_ref::<&str>()
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    finished.store(true, std::sync::atomic::Ordering::Release);
+    assert_eq!(message, "a physics worker's share of the step panicked");
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "the step waited {:?}",
+        started.elapsed()
+    );
 }
 
 /// The ids a walk visits for `query`, in order.
