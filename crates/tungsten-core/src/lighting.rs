@@ -1,8 +1,9 @@
 //! M29 lighting resources and constants, and the light at a point (redo
 //! 7.10b).
 //!
-//! `LIGHT_CAP` mirrors `tungsten_render::LIT_LIGHT_CAP` and is the hard upper
-//! bound on lights packed into a single `LightUbo`.
+//! `LIGHT_CAP` mirrors `tungsten_render::LIT_LIGHT_CAP`: the lights a
+//! `LightUbo` holds, and the default of `render.light_cap`, which a game
+//! raises as far as [`MAX_LIGHT_CAP`] (`D-310`).
 //!
 //! [`light_at`] reads, on the CPU, what the lit shader
 //! (`assets/shaders/lit_sprite.wgsl`) gives a flat white sprite at a point:
@@ -15,9 +16,15 @@ use glam::{Vec2, Vec3};
 use crate::components::{Light, LightKind, Transform};
 use crate::ecs::World;
 
-/// Maximum number of lights packed into the per-frame `LightUbo`. Raising this
-/// requires a UBO resize and a matching shader literal change.
+/// The lights the per-frame `LightUbo` holds, and the default of
+/// `render.light_cap`. Raising this requires a UBO resize and a matching
+/// shader literal change; a game that wants more lights raises the key.
 pub const LIGHT_CAP: usize = 16;
+
+/// The most `render.light_cap` allows (`D-310`): the lights past
+/// [`LIGHT_CAP`] ride a buffer beside the block, and each screen tile holds
+/// a bit a packed light.
+pub const MAX_LIGHT_CAP: usize = 256;
 
 /// The least radius a point light is taken at, as the lit shader clamps it.
 pub const MIN_LIGHT_RADIUS: f32 = 1e-4;

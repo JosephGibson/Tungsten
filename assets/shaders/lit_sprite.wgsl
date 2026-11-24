@@ -10,7 +10,9 @@
 //   group(1) @binding(1): normal  (Rgba8Unorm, tangent-space)
 //   group(1) @binding(2): emissive (Rgba8Unorm, premultiplied RGB)
 //   group(1) @binding(3): sampler (filtering)
-//   group(2) @binding(0): LightUbo (16 lights + count + ambient)
+//   group(2) @binding(0): LightUbo (16 lights + counts + ambient)
+//   group(2) @binding(1): the packed lights past 16 (`render.light_cap`)
+//   group(2) @binding(2): each screen tile's lights, a bit a packed light
 //   group(3) @binding(0): the batch's 256-byte uniform block; its flash
 //                         lanes, v0 and f.x, as the stock damage flash reads
 //                         them (redo 7.9), zero for a batch without one
@@ -35,6 +37,8 @@ struct GpuLight {
     color_intensity: vec4<f32>,
 };
 
+// `count_pad`: the lights in `lights` (16 at most), the screen tiles a row,
+// the words a tile, and the lights packed in all.
 struct LightUbo {
     lights: array<GpuLight, 16>,
     count_pad: vec4<u32>,
@@ -43,6 +47,22 @@ struct LightUbo {
 
 @group(2) @binding(0)
 var<uniform> lighting: LightUbo;
+
+// Tiled lights (`D-310`): in a frame that packs more lights than the block's
+// 16, a compute pass gives each screen tile, 32 pixels a side, a bit a packed
+// light that can reach it, `count_pad.z` words a tile, a row after a row, and
+// a fragment walks its tile's set bits, lowest first, which is packed order.
+// A light whose bit is clear adds exactly nothing at every fragment of the
+// tile. `tiled_lights` is the pipeline's constant: on for the pipeline such a
+// frame draws with, off for every other frame, whose fragments loop over the
+// block as they always did.
+const LIGHT_TILE_SHIFT: u32 = 5u;
+override tiled_lights: bool = false;
+
+@group(2) @binding(1)
+var<storage, read> more_lights: array<GpuLight>;
+@group(2) @binding(2)
+var<storage, read> light_tiles: array<u32>;
 
 // `UniformOverrideBlock`'s public lanes; the reserved tail is not read.
 struct Flash {
@@ -60,7 +80,8 @@ var<uniform> flash: Flash;
 // Whether a quad's vertices mark the lights that cannot reach it (redo
 // 7.15). The pipeline turns it off under MSAA, where a fragment's position
 // is its pixel's centre, which can lie outside the quad the pixel's samples
-// cover, so that a light just short of the quad could still reach it.
+// cover, so that a light just short of the quad could still reach it, and
+// for a frame that walks tiles, which reads no mark.
 override skip_lights: bool = true;
 
 struct VertexInput {
@@ -176,34 +197,77 @@ fn lit(in: VertexOutput, texel: vec4<f32>, normal: vec4<f32>, glow: vec4<f32>) -
     let n = normalize(vec3<f32>(n_sample.x * in.mirror, n_sample.yz));
 
     var rgb = albedo.rgb * lighting.ambient.rgb;
-    let count = lighting.count_pad.x;
-    for (var i: u32 = 0u; i < count; i = i + 1u) {
-        // A light the vertex stage found out of the quad's reach.
-        if (((in.skip >> i) & 1u) == 1u) {
-            continue;
+    if (tiled_lights) {
+        // The fragment's tile, and its lights: each light's term as the
+        // block's loop below computes it.
+        let tile = vec2<u32>(in.clip_position.xy) >> vec2<u32>(LIGHT_TILE_SHIFT);
+        let words = lighting.count_pad.z;
+        let first = (tile.y * lighting.count_pad.y + tile.x) * words;
+        // The words a set bit can be in: those of the lights packed, not of
+        // the cap, so a high cap costs a frame nothing it does not light.
+        let used = (lighting.count_pad.w + 31u) >> 5u;
+        for (var word: u32 = 0u; word < used; word = word + 1u) {
+            var bits = light_tiles[first + word];
+            while (bits != 0u) {
+                let i = word * 32u + countTrailingZeros(bits);
+                bits = bits & (bits - 1u);
+                var l: GpuLight;
+                if (i < 16u) {
+                    l = lighting.lights[i];
+                } else {
+                    l = more_lights[i - 16u];
+                }
+                if (l.color_intensity.w == 1.0) {
+                    // Directional: position_radius.xy = (cos, sin) of the angle.
+                    let l_dir = normalize(vec3<f32>(l.position_radius.xy, 1.0));
+                    let n_dot_l = max(0.0, dot(n, l_dir));
+                    rgb = rgb + albedo.rgb * l.color_intensity.rgb * n_dot_l;
+                } else {
+                    // Point light, as the block's loop below draws it.
+                    let radius = max(l.position_radius.z, 0.0001);
+                    let to_light_xy = l.position_radius.xy - in.world_pos;
+                    let dist_xy = length(to_light_xy);
+                    let attenuation = clamp(1.0 - dist_xy / radius, 0.0, 1.0);
+                    // A fragment out of the light's reach takes nothing from it.
+                    if (attenuation > 0.0) {
+                        let to_light_3d = vec3<f32>(to_light_xy, radius * 0.5);
+                        let l_dir = normalize(to_light_3d);
+                        let n_dot_l = max(0.0, dot(n, l_dir));
+                        rgb = rgb + albedo.rgb * l.color_intensity.rgb * n_dot_l * attenuation * attenuation;
+                    }
+                }
+            }
         }
-        let l = lighting.lights[i];
-        if (l.color_intensity.w == 1.0) {
-            // Directional: position_radius.xy = (cos, sin) of the angle.
-            let l_dir = normalize(vec3<f32>(l.position_radius.xy, 1.0));
-            let n_dot_l = max(0.0, dot(n, l_dir));
-            rgb = rgb + albedo.rgb * l.color_intensity.rgb * n_dot_l;
-        } else {
-            // Point light: model the source as floating above the sprite plane
-            // at z = radius * 0.5 so flat normals (0,0,1) still receive
-            // meaningful diffuse. Without the height term, world-space XY
-            // distances make `normalize((dx, dy, 1))` collapse to horizontal
-            // and N·L hits zero a few pixels away.
-            let radius = max(l.position_radius.z, 0.0001);
-            let to_light_xy = l.position_radius.xy - in.world_pos;
-            let dist_xy = length(to_light_xy);
-            let attenuation = clamp(1.0 - dist_xy / radius, 0.0, 1.0);
-            // A fragment out of the light's reach takes nothing from it.
-            if (attenuation > 0.0) {
-                let to_light_3d = vec3<f32>(to_light_xy, radius * 0.5);
-                let l_dir = normalize(to_light_3d);
+    } else {
+        let count = lighting.count_pad.x;
+        for (var i: u32 = 0u; i < count; i = i + 1u) {
+            // A light the vertex stage found out of the quad's reach.
+            if (((in.skip >> i) & 1u) == 1u) {
+                continue;
+            }
+            let l = lighting.lights[i];
+            if (l.color_intensity.w == 1.0) {
+                // Directional: position_radius.xy = (cos, sin) of the angle.
+                let l_dir = normalize(vec3<f32>(l.position_radius.xy, 1.0));
                 let n_dot_l = max(0.0, dot(n, l_dir));
-                rgb = rgb + albedo.rgb * l.color_intensity.rgb * n_dot_l * attenuation * attenuation;
+                rgb = rgb + albedo.rgb * l.color_intensity.rgb * n_dot_l;
+            } else {
+                // Point light: model the source as floating above the sprite
+                // plane at z = radius * 0.5 so flat normals (0,0,1) still
+                // receive meaningful diffuse. Without the height term,
+                // world-space XY distances make `normalize((dx, dy, 1))`
+                // collapse to horizontal and N·L hits zero a few pixels away.
+                let radius = max(l.position_radius.z, 0.0001);
+                let to_light_xy = l.position_radius.xy - in.world_pos;
+                let dist_xy = length(to_light_xy);
+                let attenuation = clamp(1.0 - dist_xy / radius, 0.0, 1.0);
+                // A fragment out of the light's reach takes nothing from it.
+                if (attenuation > 0.0) {
+                    let to_light_3d = vec3<f32>(to_light_xy, radius * 0.5);
+                    let l_dir = normalize(to_light_3d);
+                    let n_dot_l = max(0.0, dot(n, l_dir));
+                    rgb = rgb + albedo.rgb * l.color_intensity.rgb * n_dot_l * attenuation * attenuation;
+                }
             }
         }
     }

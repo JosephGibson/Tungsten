@@ -25,6 +25,8 @@ const RENDER_BLOOM_MAX_MIPS_ENV: &str = "TUNGSTEN_RENDER_BLOOM_MAX_MIPS";
 const RENDER_BLOOM_BASE_ENV: &str = "TUNGSTEN_RENDER_BLOOM_BASE";
 const RENDER_POST_FUSE_ENV: &str = "TUNGSTEN_RENDER_POST_FUSE";
 const RENDER_HDR_ENV: &str = "TUNGSTEN_RENDER_HDR";
+const RENDER_LIGHT_CAP_ENV: &str = "TUNGSTEN_RENDER_LIGHT_CAP";
+const RENDER_LIGHT_TILES_ENV: &str = "TUNGSTEN_RENDER_LIGHT_TILES";
 const PHYSICS_WORKERS_ENV: &str = "TUNGSTEN_PHYSICS_WORKERS";
 const DISPLAY_MODE_EXPECTED: &str = "one of: windowed, borderless_fullscreen, exclusive_fullscreen";
 const DISPLAY_RESOLUTION_EXPECTED: &str = "WIDTHxHEIGHT with integers >= 1";
@@ -37,6 +39,7 @@ const DEPTH_ENABLED_EXPECTED: &str = "one of: true, false, 1, 0";
 const DEPTH_SORT_EXPECTED: &str = "one of: cpu_stable, gpu_depth";
 const POST_AA_EXPECTED: &str = "one of: off, smaa_low, smaa_medium, smaa_high, smaa_ultra";
 const BLOOM_MAX_MIPS_EXPECTED: &str = "an integer in 1..=8";
+const LIGHT_CAP_EXPECTED: &str = "an integer in 1..=256";
 const BLOOM_BASE_EXPECTED: &str = "auto, half or quarter";
 const HDR_EXPECTED: &str = "off, rg11b10 or rgba16f";
 const GAME_ID_EXPECTED: &str = "1-64 ASCII letters, digits, '.', '_' or '-', starting with a letter or digit, not ending in '.', and not a Windows device name";
@@ -438,6 +441,7 @@ impl FromStr for HdrMode {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // Independent switches, each a key of the file.
 pub struct RenderConfig {
     /// The colour the scene clears to, RGBA from 0 to 1 in linear light,
     /// which the frame encodes to sRGB: the default,
@@ -474,10 +478,39 @@ pub struct RenderConfig {
     /// overrides the file.
     #[serde(default)]
     pub hdr: HdrMode,
+    /// The most lights a frame packs, from 1 to 256 (`D-310`): 16 by
+    /// default, the block every lit shader binds. Past the cap the lights
+    /// kept are chosen by `Light::priority`, then nearness to the view. A
+    /// compute pass bins the packed lights into screen tiles, so a light
+    /// costs a pixel only where it can light it. Startup-only;
+    /// `TUNGSTEN_RENDER_LIGHT_CAP` overrides the file.
+    #[serde(default = "default_light_cap")]
+    pub light_cap: u32,
+    /// Test each point light's reach against each screen tile (`D-310`). On
+    /// by default; `false` lists every packed light in every tile, so a
+    /// fragment's own range test is the only one, which draws the same
+    /// picture and is what the pixel tests compare the tiles with.
+    /// Startup-only; `TUNGSTEN_RENDER_LIGHT_TILES` overrides the file.
+    #[serde(default = "default_light_tiles")]
+    pub light_tiles: bool,
     /// Let text fall back to the system's fonts after the manifest's
     /// (`D-116`). Off by default: text draws only with packaged faces.
     #[serde(default)]
     pub system_fonts: bool,
+}
+
+impl RenderConfig {
+    /// The most lights a frame packs: `light_cap`, or the default of 16
+    /// where a config built in code holds a value outside 1 to 256, which a
+    /// loaded file cannot.
+    #[must_use]
+    pub fn lights(&self) -> usize {
+        if is_supported_light_cap(self.light_cap) {
+            self.light_cap as usize
+        } else {
+            crate::lighting::LIGHT_CAP
+        }
+    }
 }
 
 impl Default for RenderConfig {
@@ -494,6 +527,8 @@ impl Default for RenderConfig {
             bloom_base: BloomBase::default(),
             post_fuse: default_post_fuse(),
             hdr: HdrMode::default(),
+            light_cap: default_light_cap(),
+            light_tiles: default_light_tiles(),
             system_fonts: false,
         }
     }
@@ -527,6 +562,21 @@ pub const fn is_supported_msaa(sample_count: u32) -> bool {
 #[must_use]
 pub const fn is_supported_bloom_max_mips(n: u32) -> bool {
     n >= 1 && n <= 8
+}
+
+fn default_light_cap() -> u32 {
+    crate::lighting::LIGHT_CAP as u32
+}
+
+fn default_light_tiles() -> bool {
+    true
+}
+
+/// Whether `render.light_cap` may be `n`: from one light to
+/// [`MAX_LIGHT_CAP`](crate::lighting::MAX_LIGHT_CAP).
+#[must_use]
+pub const fn is_supported_light_cap(n: u32) -> bool {
+    n >= 1 && n <= crate::lighting::MAX_LIGHT_CAP as u32
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1056,6 +1106,14 @@ impl Config {
                         expected: BLOOM_MAX_MIPS_EXPECTED,
                     });
                 }
+                if !is_supported_light_cap(parsed.render.light_cap) {
+                    return Err(ConfigError::InvalidValue {
+                        path: path.display().to_string(),
+                        field: "render.light_cap",
+                        value: parsed.render.light_cap.to_string(),
+                        expected: LIGHT_CAP_EXPECTED,
+                    });
+                }
                 parsed.game.validate().map_err(|e| e.with_path(path))?;
                 parsed.time.validate().map_err(|e| e.with_path(path))?;
                 parsed.audio.validate().map_err(|e| e.with_path(path))?;
@@ -1191,6 +1249,12 @@ impl Config {
         if let Some(value) = env(RENDER_HDR_ENV) {
             self.apply_hdr_override(&value)?;
         }
+        if let Some(value) = env(RENDER_LIGHT_CAP_ENV) {
+            self.apply_light_cap_override(&value)?;
+        }
+        if let Some(value) = env(RENDER_LIGHT_TILES_ENV) {
+            self.apply_light_tiles_override(&value)?;
+        }
         if let Some(value) = env(PHYSICS_WORKERS_ENV) {
             self.apply_physics_workers_override(&value)?;
         }
@@ -1289,6 +1353,36 @@ impl Config {
             }
         };
         self.render.post_fuse = parsed;
+        Ok(())
+    }
+
+    fn apply_light_tiles_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = match value {
+            "true" | "1" => true,
+            "false" | "0" => false,
+            _ => {
+                return Err(ConfigError::InvalidEnvOverride {
+                    var: RENDER_LIGHT_TILES_ENV,
+                    value: value.to_string(),
+                    expected: DEPTH_ENABLED_EXPECTED,
+                });
+            }
+        };
+        self.render.light_tiles = parsed;
+        Ok(())
+    }
+
+    fn apply_light_cap_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = value
+            .parse::<u32>()
+            .ok()
+            .filter(|v| is_supported_light_cap(*v))
+            .ok_or_else(|| ConfigError::InvalidEnvOverride {
+                var: RENDER_LIGHT_CAP_ENV,
+                value: value.to_string(),
+                expected: LIGHT_CAP_EXPECTED,
+            })?;
+        self.render.light_cap = parsed;
         Ok(())
     }
 

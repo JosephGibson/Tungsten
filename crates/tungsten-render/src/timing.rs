@@ -21,7 +21,7 @@ pub struct GpuFrameSample {
     pub frame: u64,
     /// The scene pass's duration.
     pub scene_ms: Option<f32>,
-    /// First scene timestamp through the end of the frame's last pass.
+    /// The start of the frame's first pass through the end of its last.
     pub render_ms: f32,
     /// Render passes in execution order; post slot and bloom mip labels are unique.
     pub passes: Vec<(String, f32)>,
@@ -34,7 +34,7 @@ pub struct GpuFrameTimings {
     /// metric), not the whole frame. `None` when timing is disabled,
     /// unsupported or nothing has been read back yet.
     pub frame_gpu_ms: Option<f32>,
-    /// The newest read-back frame's first scene timestamp through the end of
+    /// The newest read-back frame's first pass's start through the end of
     /// its last pass, including gaps: the text overlay, or the present blit
     /// on a capture frame (`D-087`). Excludes queued uploads, query
     /// resolve/readback and presentation waits.
@@ -309,6 +309,16 @@ impl TimingResources {
             query_set: &self.query_set,
             beginning_of_pass_write_index: Some(begin),
             end_of_pass_write_index: Some(begin + 1),
+        }
+    }
+
+    /// [`Self::next`] for a compute pass.
+    pub(crate) fn next_compute(&mut self, label: String) -> wgpu::ComputePassTimestampWrites<'_> {
+        let writes = self.next(label);
+        wgpu::ComputePassTimestampWrites {
+            query_set: writes.query_set,
+            beginning_of_pass_write_index: writes.beginning_of_pass_write_index,
+            end_of_pass_write_index: writes.end_of_pass_write_index,
         }
     }
 

@@ -13,6 +13,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use example_03_fixtures::lighting::{LAMPS, lamp_at};
 use example_03_fixtures::seams::{
     BEAM_FROM, BEAM_TO, FLASH_AT, FLAT_AT, FLAT_SIZE, GLASS_AT, GLOW_AT, GLOW_SIDE, LIT_AT,
     OVER_STRIP_AT, PIECE, SEGMENT_FROM, SEGMENT_TO, SEGMENT_WIDTH, STRIP_AT, TWIN_AT,
@@ -694,5 +695,202 @@ fn a_shadowed_label_casts_down_right() {
             && cast_max[0] > text_max[0]
             && cast_max[1] > text_max[1],
         "the shadow lies down and right of the text: text {text_min:?}–{text_max:?}, shadow {cast_min:?}–{cast_max:?}"
+    );
+}
+
+/// The `lighting` scene's lamp grid, `fixture` of `TUNGSTEN_LIGHTING_FIXTURE`,
+/// frame 5 under a light cap of `cap` with the lights' tiles on or off, and
+/// the run's log.
+fn capture_lamps(fixture: &str, cap: &str, tiles: &str) -> (Rgba, String) {
+    capture_lamps_in(&workspace_root(), fixture, cap, tiles)
+}
+
+/// [`capture_lamps`] run in the tree at `root`.
+fn capture_lamps_in(root: &Path, fixture: &str, cap: &str, tiles: &str) -> (Rgba, String) {
+    let path = std::env::temp_dir().join(format!(
+        "tungsten-lamps-{}-{cap}-{tiles}.png",
+        fixture.replace([':', '+'], "-")
+    ));
+    if path.exists() {
+        let _ = std::fs::remove_file(&path);
+    }
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_example-03-fixtures"))
+        .current_dir(root)
+        .env("TUNGSTEN_FIXTURE", "lighting")
+        .env("TUNGSTEN_LIGHTING_FIXTURE", fixture)
+        .env("TUNGSTEN_RENDER_LIGHT_CAP", cap)
+        .env("TUNGSTEN_RENDER_LIGHT_TILES", tiles)
+        .env_remove("TUNGSTEN_CAPTURE_DIRECT")
+        .env_remove("TUNGSTEN_RENDER_HDR")
+        .env_remove("TUNGSTEN_RENDER_DEPTH_SORT")
+        .env("TUNGSTEN_SMOKE_FRAMES", "8")
+        .env("TUNGSTEN_CAPTURE_FRAME", "5")
+        .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")
+        .env("TUNGSTEN_CAPTURE_PATH", &path)
+        .env("RUST_LOG", "info")
+        .output()
+        .expect("run example-03-fixtures");
+    let log = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        output.status.success(),
+        "example-03-fixtures exited with {:?}:\n{log}",
+        output.status
+    );
+    let image = Rgba::read(&path);
+    assert_eq!((image.width, image.height), (1280, 720));
+    (image, log)
+}
+
+/// What the renderer logs at its first frame that walks the lights' tiles.
+const WALKS: &str = "its lit batches walk the lights' tiles";
+
+/// How many of the grid's lamps light the floor under them: the mean of an
+/// 8-pixel square at a lamp's centre is past 45 where it does, and about 25
+/// under the ambient and the fill alone.
+fn lamps_lit(image: &Rgba) -> usize {
+    (0..LAMPS)
+        .filter(|&i| {
+            let corner = lamp_at(i) - Vec2::splat(4.0);
+            let (sum, count) =
+                area(image, corner, 0..8, 0..8).fold((0u32, 0u32), |(sum, count), p| {
+                    (
+                        sum + u32::from(p[0]) + u32::from(p[1]) + u32::from(p[2]),
+                        count + 3,
+                    )
+                });
+            sum / count > 45
+        })
+        .count()
+}
+
+/// The pixels at which two captures differ.
+fn differing(one: &Rgba, other: &Rgba) -> usize {
+    (0..720)
+        .flat_map(|y| (0..1280).map(move |x| (x, y)))
+        .filter(|&(x, y)| one.at(x, y) != other.at(x, y))
+        .count()
+}
+
+/// Lights past 16 light (`render.light_cap`, `D-310`): under a cap of 64
+/// each of the grid's 40 lamps lights the floor under it, in a frame that
+/// walks the lights' tiles, and under 16 the fill and the 15 lamps nearest
+/// the view's centre do, by the block's loop. The tiles leave out no light
+/// a pixel takes: the frame is, byte for byte, the frame with every lamp
+/// listed in every tile (`render.light_tiles` off), under a camera that
+/// stands square and under one turned and zoomed.
+#[test]
+fn lights_past_sixteen_light_and_the_tiles_leave_none_out() {
+    if !gated() {
+        return;
+    }
+    let (square, log) = capture_lamps("lamps", "64", "true");
+    assert!(log.contains(WALKS), "41 lights walk tiles:\n{log}");
+    assert_eq!(lamps_lit(&square), LAMPS, "under a cap of 64");
+    let (capped, log) = capture_lamps("lamps", "16", "true");
+    assert!(
+        !log.contains(WALKS),
+        "the default cap walks no tiles:\n{log}"
+    );
+    assert_eq!(
+        lamps_lit(&capped),
+        15,
+        "under a cap of 16, the fill taking a slot"
+    );
+    // A cap of 256 gives a tile eight words where 64 gives it two: the
+    // same 41 lights, the same frame.
+    let (wide, log) = capture_lamps("lamps", "256", "true");
+    assert!(log.contains(WALKS), "a cap of 256 walks tiles:\n{log}");
+    assert_eq!(
+        differing(&square, &wide),
+        0,
+        "pixels a cap of 256 draws apart from a cap of 64"
+    );
+    let (turned, _) = capture_lamps("lamps:turned", "64", "true");
+    for (fixture, tiled) in [("lamps", &square), ("lamps:turned", &turned)] {
+        let (every, _) = capture_lamps(fixture, "64", "false");
+        assert_eq!(
+            differing(tiled, &every),
+            0,
+            "{fixture}: pixels the tiles change against every lamp in every tile"
+        );
+    }
+    // The turned camera draws another frame, so its tiles hold other boxes.
+    assert!(
+        differing(&turned, &square) > 0,
+        "the turned camera drew the square camera's frame"
+    );
+}
+
+/// The tiles' walk draws what the block's loop draws (`D-310`). Sixteen
+/// lights are a frame of the loop, under any cap; a seventeenth that reaches
+/// no floor tile makes it, under a cap of 64, a frame of the walk, whose
+/// pixels are the same bytes. Under the default cap the same seventeen
+/// lights pack sixteen and walk nothing.
+#[test]
+fn the_tiles_walk_draws_the_blocks_loop() {
+    if !gated() {
+        return;
+    }
+    let (looped, log) = capture_lamps("lamps:few", "64", "true");
+    assert!(!log.contains(WALKS), "sixteen lights walk no tiles:\n{log}");
+    let (walked, log) = capture_lamps("lamps:few+1", "64", "true");
+    assert!(log.contains(WALKS), "seventeen lights walk tiles:\n{log}");
+    assert_eq!(
+        differing(&looped, &walked),
+        0,
+        "pixels the walk draws apart from the loop"
+    );
+    // The lamps light their floor, so the frames compared are no blank.
+    let (dark, _) = capture_lamps("lamps:few", "1", "true");
+    assert!(differing(&looped, &dark) > 10_000, "the lamps drew nothing");
+    let (_, log) = capture_lamps("lamps:few+1", "16", "true");
+    assert!(
+        !log.contains(WALKS),
+        "the default cap walks no tiles:\n{log}"
+    );
+}
+
+/// A lit file written before the tiles, with no `tiled_lights`, still draws
+/// (`D-310`): the pipelines of a frame that walks tiles do not build for it,
+/// which the log says, and the renderer then packs 16 lights at most, so
+/// the frame under a cap of 64 is the frame under a cap of 16, the fill and
+/// the 15 lamps `D-296`'s rank keeps.
+#[cfg(unix)]
+#[test]
+fn a_lit_file_without_the_tiles_draws_the_blocks_sixteen() {
+    if !gated() {
+        return;
+    }
+    let stage = super::post_regression::stage_with_edited_file(
+        "assets/shaders/lit_sprite.wgsl",
+        |source| {
+            for needle in [
+                "override tiled_lights: bool = false;\n",
+                "if (tiled_lights) {",
+            ] {
+                assert_eq!(
+                    source.matches(needle).count(),
+                    1,
+                    "lit_sprite.wgsl no longer holds {needle:?} once; pick another edit"
+                );
+            }
+            source
+                .replace("override tiled_lights: bool = false;\n", "")
+                .replace("if (tiled_lights) {", "if (false) {")
+        },
+    );
+    let (frame, log) = capture_lamps_in(&stage, "lamps", "64", "true");
+    let _ = std::fs::remove_dir_all(&stage);
+    assert!(
+        log.contains("no pipeline that walks the lights' tiles"),
+        "the log does not say the file draws the block alone:\n{log}"
+    );
+    assert!(!log.contains(WALKS), "it walked tiles:\n{log}");
+    assert_eq!(lamps_lit(&frame), 15, "the fill and fifteen lamps");
+    let (capped, _) = capture_lamps("lamps", "16", "true");
+    assert_eq!(
+        differing(&frame, &capped),
+        0,
+        "pixels apart from the frame a cap of 16 draws"
     );
 }

@@ -79,7 +79,7 @@ pub use input::{
     STICK_PRESS, STICK_RELEASE, ScrollDirection, StickResponse, WheelDelta,
 };
 pub use inspect::{InspectRegistry, Inspectable};
-pub use lighting::{AmbientLight, LIGHT_CAP, light_at, light_level};
+pub use lighting::{AmbientLight, LIGHT_CAP, MAX_LIGHT_CAP, light_at, light_level};
 pub use physics::{
     Aabb, BodyKind, Collider, CollisionEvent, Contact, ContactBegan, ContactEnded, PhysicsBuffers,
     PhysicsConfig, PhysicsLayers, PhysicsMaterial, PhysicsMaterials, PhysicsPlugin, PhysicsWorkers,

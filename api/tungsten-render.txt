@@ -82,6 +82,25 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::image_diff::Di
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::image_diff::DiffReport
 pub fn tungsten_render::image_diff::compare_png(&std::path::Path, &std::path::Path, u8) -> core::result::Result<tungsten_render::image_diff::DiffReport, tungsten_render::image_diff::ImageDiffError>
 pub mod tungsten_render::lighting
+pub struct tungsten_render::lighting::FrameLights
+pub tungsten_render::lighting::FrameLights::more: alloc::vec::Vec<tungsten_render::lighting::GpuLight>
+pub tungsten_render::lighting::FrameLights::ubo: tungsten_render::lighting::LightUbo
+impl tungsten_render::lighting::FrameLights
+pub fn tungsten_render::lighting::FrameLights::count(&self) -> u32
+pub fn tungsten_render::lighting::FrameLights::pack(&[tungsten_render::lighting::GpuLight], glam::f32::vec3::Vec3) -> Self
+impl core::clone::Clone for tungsten_render::lighting::FrameLights
+pub fn tungsten_render::lighting::FrameLights::clone(&self) -> tungsten_render::lighting::FrameLights
+impl core::default::Default for tungsten_render::lighting::FrameLights
+pub fn tungsten_render::lighting::FrameLights::default() -> tungsten_render::lighting::FrameLights
+impl core::fmt::Debug for tungsten_render::lighting::FrameLights
+pub fn tungsten_render::lighting::FrameLights::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::lighting::FrameLights
+impl core::marker::Send for tungsten_render::lighting::FrameLights
+impl core::marker::Sync for tungsten_render::lighting::FrameLights
+impl core::marker::Unpin for tungsten_render::lighting::FrameLights
+impl core::marker::UnsafeUnpin for tungsten_render::lighting::FrameLights
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::FrameLights
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::FrameLights
 #[repr(C)] pub struct tungsten_render::lighting::GpuLight
 pub tungsten_render::lighting::GpuLight::color_intensity: [f32; 4]
 pub tungsten_render::lighting::GpuLight::position_radius: [f32; 4]
@@ -126,7 +145,10 @@ pub tungsten_render::lighting::LightingResources::bind_group: wgpu::api::bind_gr
 pub tungsten_render::lighting::LightingResources::bind_group_layout: wgpu::api::bind_group_layout::BindGroupLayout
 pub tungsten_render::lighting::LightingResources::buffer: wgpu::api::buffer::Buffer
 impl tungsten_render::lighting::LightingResources
-pub fn tungsten_render::lighting::LightingResources::new(&wgpu::api::device::Device) -> Self
+pub fn tungsten_render::lighting::LightingResources::cap(&self) -> u32
+pub fn tungsten_render::lighting::LightingResources::new(&wgpu::api::device::Device, u32, (u32, u32), bool) -> Self
+pub fn tungsten_render::lighting::LightingResources::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &tungsten_render::lighting::FrameLights, &glam::f32::sse2::mat4::Mat4, (u32, u32), bool)
+pub fn tungsten_render::lighting::LightingResources::walks_tiles(&self, bool, u32) -> bool
 pub fn tungsten_render::lighting::LightingResources::write(&self, &wgpu::api::queue::Queue, &tungsten_render::lighting::LightUbo)
 impl core::marker::Freeze for tungsten_render::lighting::LightingResources
 impl core::marker::Send for tungsten_render::lighting::LightingResources
@@ -135,20 +157,54 @@ impl core::marker::Unpin for tungsten_render::lighting::LightingResources
 impl core::marker::UnsafeUnpin for tungsten_render::lighting::LightingResources
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::LightingResources
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::LightingResources
+#[repr(C)] pub struct tungsten_render::lighting::TileGrid
+pub tungsten_render::lighting::TileGrid::counts: [u32; 4]
+pub tungsten_render::lighting::TileGrid::extent: [f32; 4]
+pub tungsten_render::lighting::TileGrid::inverse: [[f32; 4]; 4]
+impl tungsten_render::lighting::TileGrid
+pub fn tungsten_render::lighting::TileGrid::bins(&self) -> bool
+pub fn tungsten_render::lighting::TileGrid::new(&glam::f32::sse2::mat4::Mat4, (u32, u32), u32, u32, bool) -> Self
+pub fn tungsten_render::lighting::TileGrid::tile_box(&self, (u32, u32)) -> (glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)
+pub fn tungsten_render::lighting::TileGrid::world_of(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
+impl bytemuck::pod::Pod for tungsten_render::lighting::TileGrid
+impl bytemuck::zeroable::Zeroable for tungsten_render::lighting::TileGrid
+impl core::clone::Clone for tungsten_render::lighting::TileGrid
+pub fn tungsten_render::lighting::TileGrid::clone(&self) -> tungsten_render::lighting::TileGrid
+impl core::cmp::PartialEq for tungsten_render::lighting::TileGrid
+pub fn tungsten_render::lighting::TileGrid::eq(&self, &tungsten_render::lighting::TileGrid) -> bool
+impl core::fmt::Debug for tungsten_render::lighting::TileGrid
+pub fn tungsten_render::lighting::TileGrid::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::lighting::TileGrid
+impl core::marker::StructuralPartialEq for tungsten_render::lighting::TileGrid
+impl core::marker::Freeze for tungsten_render::lighting::TileGrid
+impl core::marker::Send for tungsten_render::lighting::TileGrid
+impl core::marker::Sync for tungsten_render::lighting::TileGrid
+impl core::marker::Unpin for tungsten_render::lighting::TileGrid
+impl core::marker::UnsafeUnpin for tungsten_render::lighting::TileGrid
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::TileGrid
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::TileGrid
+pub const tungsten_render::lighting::LIGHT_TILE: u32
 pub const tungsten_render::lighting::LIT_LIGHT_CAP: usize
-pub fn tungsten_render::lighting::cull_to_cap((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), &[(glam::f32::vec2::Vec2, tungsten_core::components::Light)]) -> alloc::vec::Vec<tungsten_render::lighting::GpuLight>
+pub fn tungsten_render::lighting::cull_to_cap((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), &[(glam::f32::vec2::Vec2, tungsten_core::components::Light)], usize) -> alloc::vec::Vec<tungsten_render::lighting::GpuLight>
 pub fn tungsten_render::lighting::distance_to_aabb_sq(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> f32
 pub fn tungsten_render::lighting::lights_view((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> bool
 pub fn tungsten_render::lighting::pack_lights(&[tungsten_render::lighting::GpuLight], glam::f32::vec3::Vec3) -> tungsten_render::lighting::LightUbo
 pub fn tungsten_render::lighting::pack_one_light(glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> tungsten_render::lighting::GpuLight
+pub const fn tungsten_render::lighting::tile_grid((u32, u32)) -> (u32, u32)
+pub fn tungsten_render::lighting::tile_reaches(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, &tungsten_render::lighting::GpuLight) -> bool
+pub const fn tungsten_render::lighting::tile_words(u32) -> u32
+pub fn tungsten_render::lighting::walks_tiles(u32, bool, u32) -> bool
 pub mod tungsten_render::lit_sprite
 pub struct tungsten_render::lit_sprite::LitSpritePipeline
 pub tungsten_render::lit_sprite::LitSpritePipeline::flash_bind_group_layout: wgpu::api::bind_group_layout::BindGroupLayout
 pub tungsten_render::lit_sprite::LitSpritePipeline::pipeline: wgpu::api::render_pipeline::RenderPipeline
 pub tungsten_render::lit_sprite::LitSpritePipeline::pipeline_layout: wgpu::api::pipeline_layout::PipelineLayout
 impl tungsten_render::lit_sprite::LitSpritePipeline
+pub fn tungsten_render::lit_sprite::LitSpritePipeline::build_tiled(&mut self, &wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat, u32, bool)
+pub fn tungsten_render::lit_sprite::LitSpritePipeline::has_tiled(&self) -> bool
 pub fn tungsten_render::lit_sprite::LitSpritePipeline::new(&wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, &wgpu::api::bind_group_layout::BindGroupLayout, &wgpu::api::bind_group_layout::BindGroupLayout, &wgpu::api::bind_group_layout::BindGroupLayout, wgpu_types::texture::format::TextureFormat, u32, bool) -> Self
 pub fn tungsten_render::lit_sprite::LitSpritePipeline::rebuild_with_shader(&mut self, &wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat, u32, bool) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_render::lit_sprite::LitSpritePipeline::set_frame_tiled(&mut self, bool)
 impl core::marker::Freeze for tungsten_render::lit_sprite::LitSpritePipeline
 impl core::marker::Send for tungsten_render::lit_sprite::LitSpritePipeline
 impl core::marker::Sync for tungsten_render::lit_sprite::LitSpritePipeline
@@ -539,6 +595,7 @@ pub fn tungsten_render::renderer::Renderer::allocate_texture_handle(&mut self) -
 pub fn tungsten_render::renderer::Renderer::depth_sort(&self) -> tungsten_core::config::DepthSortMode
 pub fn tungsten_render::renderer::Renderer::drop_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
 pub fn tungsten_render::renderer::Renderer::frame_counters(&self) -> tungsten_render::FrameCounters
+pub fn tungsten_render::renderer::Renderer::light_cap(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::load_font(&mut self, &str, alloc::vec::Vec<u8>)
 pub fn tungsten_render::renderer::Renderer::max_2d_texture_dimension(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::new(alloc::sync::Arc<winit::window::Window>, &tungsten_core::config::RenderConfig, bool) -> core::result::Result<Self, tungsten_render::renderer::RenderError>
@@ -562,7 +619,7 @@ pub fn tungsten_render::renderer::Renderer::surface_format(&self) -> wgpu_types:
 pub fn tungsten_render::renderer::Renderer::text_engine(&self) -> &tungsten_render::TextEngine
 pub fn tungsten_render::renderer::Renderer::text_nodes(&mut self) -> tungsten_render::text::TextNodes<'_>
 pub fn tungsten_render::renderer::Renderer::text_stats(&self) -> tungsten_render::TextStats
-pub fn tungsten_render::renderer::Renderer::update_lights(&mut self, &tungsten_render::lighting::LightUbo)
+pub fn tungsten_render::renderer::Renderer::update_lights(&mut self, &tungsten_render::lighting::FrameLights)
 pub fn tungsten_render::renderer::Renderer::update_mesh_particles(&mut self, &[tungsten_render::mesh_particle::MeshParticleBatch])
 pub fn tungsten_render::renderer::Renderer::update_world_labels(&mut self, &[tungsten_render::text::WorldLabelRun])
 pub fn tungsten_render::renderer::Renderer::upload_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
@@ -1275,6 +1332,25 @@ impl core::marker::Unpin for tungsten_render::FrameCounters
 impl core::marker::UnsafeUnpin for tungsten_render::FrameCounters
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::FrameCounters
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::FrameCounters
+pub struct tungsten_render::FrameLights
+pub tungsten_render::FrameLights::more: alloc::vec::Vec<tungsten_render::lighting::GpuLight>
+pub tungsten_render::FrameLights::ubo: tungsten_render::lighting::LightUbo
+impl tungsten_render::lighting::FrameLights
+pub fn tungsten_render::lighting::FrameLights::count(&self) -> u32
+pub fn tungsten_render::lighting::FrameLights::pack(&[tungsten_render::lighting::GpuLight], glam::f32::vec3::Vec3) -> Self
+impl core::clone::Clone for tungsten_render::lighting::FrameLights
+pub fn tungsten_render::lighting::FrameLights::clone(&self) -> tungsten_render::lighting::FrameLights
+impl core::default::Default for tungsten_render::lighting::FrameLights
+pub fn tungsten_render::lighting::FrameLights::default() -> tungsten_render::lighting::FrameLights
+impl core::fmt::Debug for tungsten_render::lighting::FrameLights
+pub fn tungsten_render::lighting::FrameLights::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::lighting::FrameLights
+impl core::marker::Send for tungsten_render::lighting::FrameLights
+impl core::marker::Sync for tungsten_render::lighting::FrameLights
+impl core::marker::Unpin for tungsten_render::lighting::FrameLights
+impl core::marker::UnsafeUnpin for tungsten_render::lighting::FrameLights
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::FrameLights
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::FrameLights
 pub struct tungsten_render::GpuFrameTimings
 pub tungsten_render::GpuFrameTimings::adapter_name: core::option::Option<alloc::string::String>
 pub tungsten_render::GpuFrameTimings::backend: core::option::Option<alloc::string::String>
@@ -1342,7 +1418,10 @@ pub tungsten_render::LightingResources::bind_group: wgpu::api::bind_group::BindG
 pub tungsten_render::LightingResources::bind_group_layout: wgpu::api::bind_group_layout::BindGroupLayout
 pub tungsten_render::LightingResources::buffer: wgpu::api::buffer::Buffer
 impl tungsten_render::lighting::LightingResources
-pub fn tungsten_render::lighting::LightingResources::new(&wgpu::api::device::Device) -> Self
+pub fn tungsten_render::lighting::LightingResources::cap(&self) -> u32
+pub fn tungsten_render::lighting::LightingResources::new(&wgpu::api::device::Device, u32, (u32, u32), bool) -> Self
+pub fn tungsten_render::lighting::LightingResources::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &tungsten_render::lighting::FrameLights, &glam::f32::sse2::mat4::Mat4, (u32, u32), bool)
+pub fn tungsten_render::lighting::LightingResources::walks_tiles(&self, bool, u32) -> bool
 pub fn tungsten_render::lighting::LightingResources::write(&self, &wgpu::api::queue::Queue, &tungsten_render::lighting::LightUbo)
 impl core::marker::Freeze for tungsten_render::lighting::LightingResources
 impl core::marker::Send for tungsten_render::lighting::LightingResources
@@ -1356,8 +1435,11 @@ pub tungsten_render::LitSpritePipeline::flash_bind_group_layout: wgpu::api::bind
 pub tungsten_render::LitSpritePipeline::pipeline: wgpu::api::render_pipeline::RenderPipeline
 pub tungsten_render::LitSpritePipeline::pipeline_layout: wgpu::api::pipeline_layout::PipelineLayout
 impl tungsten_render::lit_sprite::LitSpritePipeline
+pub fn tungsten_render::lit_sprite::LitSpritePipeline::build_tiled(&mut self, &wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat, u32, bool)
+pub fn tungsten_render::lit_sprite::LitSpritePipeline::has_tiled(&self) -> bool
 pub fn tungsten_render::lit_sprite::LitSpritePipeline::new(&wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, &wgpu::api::bind_group_layout::BindGroupLayout, &wgpu::api::bind_group_layout::BindGroupLayout, &wgpu::api::bind_group_layout::BindGroupLayout, wgpu_types::texture::format::TextureFormat, u32, bool) -> Self
 pub fn tungsten_render::lit_sprite::LitSpritePipeline::rebuild_with_shader(&mut self, &wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat, u32, bool) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_render::lit_sprite::LitSpritePipeline::set_frame_tiled(&mut self, bool)
 impl core::marker::Freeze for tungsten_render::lit_sprite::LitSpritePipeline
 impl core::marker::Send for tungsten_render::lit_sprite::LitSpritePipeline
 impl core::marker::Sync for tungsten_render::lit_sprite::LitSpritePipeline
@@ -1476,6 +1558,7 @@ pub fn tungsten_render::renderer::Renderer::allocate_texture_handle(&mut self) -
 pub fn tungsten_render::renderer::Renderer::depth_sort(&self) -> tungsten_core::config::DepthSortMode
 pub fn tungsten_render::renderer::Renderer::drop_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
 pub fn tungsten_render::renderer::Renderer::frame_counters(&self) -> tungsten_render::FrameCounters
+pub fn tungsten_render::renderer::Renderer::light_cap(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::load_font(&mut self, &str, alloc::vec::Vec<u8>)
 pub fn tungsten_render::renderer::Renderer::max_2d_texture_dimension(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::new(alloc::sync::Arc<winit::window::Window>, &tungsten_core::config::RenderConfig, bool) -> core::result::Result<Self, tungsten_render::renderer::RenderError>
@@ -1499,7 +1582,7 @@ pub fn tungsten_render::renderer::Renderer::surface_format(&self) -> wgpu_types:
 pub fn tungsten_render::renderer::Renderer::text_engine(&self) -> &tungsten_render::TextEngine
 pub fn tungsten_render::renderer::Renderer::text_nodes(&mut self) -> tungsten_render::text::TextNodes<'_>
 pub fn tungsten_render::renderer::Renderer::text_stats(&self) -> tungsten_render::TextStats
-pub fn tungsten_render::renderer::Renderer::update_lights(&mut self, &tungsten_render::lighting::LightUbo)
+pub fn tungsten_render::renderer::Renderer::update_lights(&mut self, &tungsten_render::lighting::FrameLights)
 pub fn tungsten_render::renderer::Renderer::update_mesh_particles(&mut self, &[tungsten_render::mesh_particle::MeshParticleBatch])
 pub fn tungsten_render::renderer::Renderer::update_world_labels(&mut self, &[tungsten_render::text::WorldLabelRun])
 pub fn tungsten_render::renderer::Renderer::upload_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
@@ -1807,6 +1890,32 @@ impl core::marker::Unpin for tungsten_render::TextStats
 impl core::marker::UnsafeUnpin for tungsten_render::TextStats
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::TextStats
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::TextStats
+#[repr(C)] pub struct tungsten_render::TileGrid
+pub tungsten_render::TileGrid::counts: [u32; 4]
+pub tungsten_render::TileGrid::extent: [f32; 4]
+pub tungsten_render::TileGrid::inverse: [[f32; 4]; 4]
+impl tungsten_render::lighting::TileGrid
+pub fn tungsten_render::lighting::TileGrid::bins(&self) -> bool
+pub fn tungsten_render::lighting::TileGrid::new(&glam::f32::sse2::mat4::Mat4, (u32, u32), u32, u32, bool) -> Self
+pub fn tungsten_render::lighting::TileGrid::tile_box(&self, (u32, u32)) -> (glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)
+pub fn tungsten_render::lighting::TileGrid::world_of(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
+impl bytemuck::pod::Pod for tungsten_render::lighting::TileGrid
+impl bytemuck::zeroable::Zeroable for tungsten_render::lighting::TileGrid
+impl core::clone::Clone for tungsten_render::lighting::TileGrid
+pub fn tungsten_render::lighting::TileGrid::clone(&self) -> tungsten_render::lighting::TileGrid
+impl core::cmp::PartialEq for tungsten_render::lighting::TileGrid
+pub fn tungsten_render::lighting::TileGrid::eq(&self, &tungsten_render::lighting::TileGrid) -> bool
+impl core::fmt::Debug for tungsten_render::lighting::TileGrid
+pub fn tungsten_render::lighting::TileGrid::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::lighting::TileGrid
+impl core::marker::StructuralPartialEq for tungsten_render::lighting::TileGrid
+impl core::marker::Freeze for tungsten_render::lighting::TileGrid
+impl core::marker::Send for tungsten_render::lighting::TileGrid
+impl core::marker::Sync for tungsten_render::lighting::TileGrid
+impl core::marker::Unpin for tungsten_render::lighting::TileGrid
+impl core::marker::UnsafeUnpin for tungsten_render::lighting::TileGrid
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::TileGrid
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::TileGrid
 #[repr(C)] pub struct tungsten_render::UiInstance
 pub tungsten_render::UiInstance::border: [u8; 4]
 pub tungsten_render::UiInstance::border_width: f32
@@ -1882,6 +1991,7 @@ impl core::marker::UnsafeUnpin for tungsten_render::text::WorldLabelRun
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::WorldLabelRun
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::text::WorldLabelRun
 pub const tungsten_render::EMISSIVE_MASK_SHADER_NAME: &str
+pub const tungsten_render::LIGHT_TILE: u32
 pub const tungsten_render::LIT_LIGHT_CAP: usize
 pub const tungsten_render::LIT_SPRITE_SHADER_NAME: &str
 pub const tungsten_render::LIT_SPRITE_SHADER_SOURCE: &str
@@ -1890,9 +2000,12 @@ pub const tungsten_render::SMAA_BLEND_WEIGHTS_SHADER_NAME: &str
 pub const tungsten_render::SMAA_EDGE_SHADER_NAME: &str
 pub const tungsten_render::SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME: &str
 pub fn tungsten_render::compare_png(&std::path::Path, &std::path::Path, u8) -> core::result::Result<tungsten_render::image_diff::DiffReport, tungsten_render::image_diff::ImageDiffError>
-pub fn tungsten_render::cull_to_cap((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), &[(glam::f32::vec2::Vec2, tungsten_core::components::Light)]) -> alloc::vec::Vec<tungsten_render::lighting::GpuLight>
+pub fn tungsten_render::cull_to_cap((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), &[(glam::f32::vec2::Vec2, tungsten_core::components::Light)], usize) -> alloc::vec::Vec<tungsten_render::lighting::GpuLight>
 pub fn tungsten_render::distance_to_aabb_sq(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> f32
 pub fn tungsten_render::lights_view((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> bool
 pub fn tungsten_render::pack_lights(&[tungsten_render::lighting::GpuLight], glam::f32::vec3::Vec3) -> tungsten_render::lighting::LightUbo
 pub fn tungsten_render::pack_one_light(glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> tungsten_render::lighting::GpuLight
+pub const fn tungsten_render::tile_grid((u32, u32)) -> (u32, u32)
+pub fn tungsten_render::tile_reaches(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, &tungsten_render::lighting::GpuLight) -> bool
+pub const fn tungsten_render::tile_words(u32) -> u32
 pub fn tungsten_render::validate_wgsl_source(&str, &str) -> core::result::Result<(), tungsten_render::shader_hot_reload::ShaderError>

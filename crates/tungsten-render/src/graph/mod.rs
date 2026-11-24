@@ -37,6 +37,12 @@ impl Tex {
     }
 }
 
+/// A buffer a declaration names: a compute pass writes it and a pass that
+/// draws reads it (`D-310`). The declaration owns no buffer; the name is
+/// what liveness follows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct Buf(u16);
+
 /// What a pooled texture is for, which fixes its usage flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Class {
@@ -95,6 +101,21 @@ pub(crate) struct Pass<K> {
     pub depth: Option<(Tex, f32)>,
     /// The levels the pass samples.
     pub reads: Vec<Level>,
+    /// The buffers the pass reads.
+    pub buffers: Vec<Buf>,
+}
+
+/// A declared compute pass. It draws into no texture: it writes buffers,
+/// and it runs only while a pass that draws reads one of them.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Compute<K> {
+    pub kind: K,
+    /// The wgpu pass label.
+    pub label: &'static str,
+    /// The GPU timing label.
+    pub timing: String,
+    /// The buffers the pass writes.
+    pub writes: Vec<Buf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -125,6 +146,11 @@ struct Present<K> {
 pub(crate) struct Graph<K> {
     textures: Vec<Decl>,
     passes: Vec<Pass<K>>,
+    /// How many buffers the declaration names.
+    buffers: u16,
+    /// The compute passes, each with how many passes were declared before
+    /// it: its place among them.
+    computes: Vec<(usize, Compute<K>)>,
     copied: Option<Tex>,
     present: Option<Present<K>>,
 }
@@ -196,10 +222,23 @@ pub(crate) struct CompiledPass<K> {
     pub reads: Vec<At>,
 }
 
+/// A compute pass as the renderer records it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CompiledCompute<K> {
+    pub kind: K,
+    pub label: &'static str,
+    pub timing: String,
+    /// The index in [`Compiled::passes`] of the pass it records ahead of.
+    pub before: usize,
+}
+
 /// A compiled frame: the passes that draw, in declared order.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Compiled<K> {
     pub passes: Vec<CompiledPass<K>>,
+    /// The compute passes that run: those whose buffers a pass that draws
+    /// reads, in declared order.
+    pub computes: Vec<CompiledCompute<K>>,
     /// The first pass that writes or samples an imported texture: the
     /// passes before it need no surface, and record before the acquire
     /// (`D-145`).
@@ -215,6 +254,8 @@ impl<K: Copy> Default for Graph<K> {
         Self {
             textures: Vec::new(),
             passes: Vec::new(),
+            buffers: 0,
+            computes: Vec::new(),
             copied: None,
             present: None,
         }
@@ -258,6 +299,18 @@ impl<K: Copy> Graph<K> {
         self.passes.push(pass);
     }
 
+    /// A buffer a compute pass writes for a pass that draws.
+    pub(crate) fn buffer(&mut self) -> Buf {
+        self.buffers += 1;
+        Buf(self.buffers - 1)
+    }
+
+    /// Declares a compute pass at this place among the frame's passes: it
+    /// records ahead of the next pass declared.
+    pub(crate) fn compute(&mut self, compute: Compute<K>) {
+        self.computes.push((self.passes.len(), compute));
+    }
+
     /// A capture copies `tex` out after the frame: its last writer is kept,
     /// and it cannot become the output.
     pub(crate) fn copy_from(&mut self, tex: Tex) {
@@ -290,6 +343,36 @@ impl<K: Copy> Graph<K> {
             }
         }
         let live = self.live(&passes);
+        // A compute pass runs while a pass that draws, declared after it,
+        // reads a buffer it writes. Its place is among the declared passes;
+        // a blit put in ahead of it moves it one on.
+        let blit_at = match &self.present {
+            Some(present) if !self.last_is_output() => Some(present.at.min(self.passes.len())),
+            _ => None,
+        };
+        let computes: Vec<CompiledCompute<K>> = self
+            .computes
+            .iter()
+            .filter_map(|(declared, compute)| {
+                let place = declared + usize::from(blit_at.is_some_and(|blit| blit < *declared));
+                let read = passes.iter().zip(&live).skip(place).any(|(pass, live)| {
+                    *live
+                        && pass
+                            .buffers
+                            .iter()
+                            .any(|read| compute.writes.contains(read))
+                });
+                read.then(|| CompiledCompute {
+                    kind: compute.kind,
+                    label: compute.label,
+                    timing: compute.timing.clone(),
+                    before: live[..place.min(live.len())]
+                        .iter()
+                        .filter(|live| **live)
+                        .count(),
+                })
+            })
+            .collect();
         let passes: Vec<&Pass<K>> = passes
             .iter()
             .zip(&live)
@@ -416,6 +499,7 @@ impl<K: Copy> Graph<K> {
             .unwrap_or(passes.len());
         Ok(Compiled {
             passes: compiled,
+            computes,
             split,
             slots,
             copied: self.copied.map(|tex| self.substituted(tex)).map(target),

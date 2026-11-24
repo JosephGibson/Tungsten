@@ -2115,7 +2115,7 @@ pub(crate) struct FrameExtract {
     pub(crate) debug_lines: Vec<DebugLineInstance>,
     /// M29 per-frame lighting payload; uploaded to the GPU once per render
     /// stage. With no lights this carries `count = 0` + ambient default.
-    pub(crate) light_ubo: tungsten_render::LightUbo,
+    pub(crate) lights: tungsten_render::FrameLights,
     /// M31 mesh particles, one batch per mesh. Engine-owned extract: there is
     /// no setter.
     pub(crate) mesh_particles: Vec<MeshParticleBatch>,
@@ -2603,8 +2603,21 @@ impl App {
             .get_resource::<CameraState>()
             .copied()
             .unwrap_or_default();
-        let light_ubo =
-            crate::light_extract::extract_lights(&self.world, &camera, viewport.0, viewport.1);
+        // The most lights the frame packs: the renderer's, which is the
+        // block's 16 while its lit file builds no pipeline that walks tiles.
+        let light_cap = self
+            .renderer
+            .as_ref()
+            .map_or(self.config.render.lights(), |renderer| {
+                renderer.light_cap() as usize
+            });
+        let lights = crate::light_extract::extract_lights(
+            &self.world,
+            &camera,
+            viewport.0,
+            viewport.1,
+            light_cap,
+        );
 
         let mesh_particles = crate::particles::extract_mesh_particles(&self.world);
 
@@ -2615,7 +2628,7 @@ impl App {
             text,
             debug_quads,
             debug_lines,
-            light_ubo,
+            lights,
             mesh_particles,
             ui: self.ui_paint.clone(),
             ui_prewarm,
@@ -2667,7 +2680,7 @@ impl App {
                 frame_post_stack(&self.world, &empty_stack, &mut self.transition_post_stack);
 
             // M29: upload the per-frame light UBO before any draw records it.
-            renderer.update_lights(&extract.light_ubo);
+            renderer.update_lights(&extract.lights);
             // M31: this frame's mesh particle instances; an empty list clears
             // the previous frame's draws.
             renderer.update_mesh_particles(&extract.mesh_particles);

@@ -40,7 +40,7 @@ case "$1" in
       */templates/basic) where=" dir=templates/basic" ;;
       */examples/01_platformer) where=" dir=examples/01_platformer" ;;
     esac
-    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_FIXTURE:+ scene=$TUNGSTEN_FIXTURE}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_UI_LAB_FIXTURE:+ ui=$TUNGSTEN_UI_LAB_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}${TUNGSTEN_RENDER_HDR:+ hdr=$TUNGSTEN_RENDER_HDR}$where" >>"$STUB_RUNS"
+    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_FIXTURE:+ scene=$TUNGSTEN_FIXTURE}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_UI_LAB_FIXTURE:+ ui=$TUNGSTEN_UI_LAB_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}${TUNGSTEN_RENDER_HDR:+ hdr=$TUNGSTEN_RENDER_HDR}${TUNGSTEN_LIGHTING_FIXTURE:+ lighting=$TUNGSTEN_LIGHTING_FIXTURE}${TUNGSTEN_RENDER_LIGHT_CAP:+ light_cap=$TUNGSTEN_RENDER_LIGHT_CAP}$where" >>"$STUB_RUNS"
     if [ "$where" = " dir=templates/basic" ] && [ -n "${STUB_UNKNOWN_FONT:-}" ]; then echo "WARN Unknown font ID 'mono', falling back"; fi
     if [ "${TUNGSTEN_POST_STACK_FIXTURE:-}" = "game_tint" ] && [ -n "${STUB_POST_LOG:-}" ]; then echo "$STUB_POST_LOG"; fi
     if [ -n "${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:-}" ] && [ -z "${STUB_UNCAPPED:-}" ]; then sleep 1; fi
@@ -99,7 +99,7 @@ expect_output() {
 
 if run_case "all pass" 0; then
   for line in "Passed: 3/3" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 4/4" \
-    "Post-AA passed: 1/1" "Bloom passed: 1/1" "HDR passed: 5/5" "Lighting passed: 1/1" "Seams passed: 1/1" \
+    "Post-AA passed: 1/1" "Bloom passed: 1/1" "HDR passed: 5/5" "Lighting passed: 2/2" "Seams passed: 1/1" \
     "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "UI screens passed: 1/1" \
     "Debug views passed: 1/1" "Benchmarks passed: 25/25" \
     "Frame cap passed: 1/1"; do
@@ -127,6 +127,7 @@ example-03-fixtures msaa= sort= post=all aa= bloom= feel= frames=3 timing= bench
 example-03-fixtures msaa=4 sort= post=empty aa=smaa_high bloom= feel= frames=3 timing= bench= preset= scene=post hdr=rgba16f
 example-03-fixtures msaa= sort=gpu_depth post= aa= bloom= feel= frames=3 timing= bench= preset= scene=seams hdr=rg11b10
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= scene=lighting
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= scene=lighting lighting=lamps light_cap=64
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= scene=seams
 example-03-fixtures msaa= sort= post= aa= bloom= feel=on frames=3 timing= bench= preset= scene=post
 example-03-fixtures msaa=4 sort=gpu_depth post= aa= bloom= feel= frames=3 timing= bench= preset= scene=post

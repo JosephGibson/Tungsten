@@ -253,7 +253,11 @@ end_section "HDR passed" "HDR failures" 5
 begin_section "M29 lighting fixture matrix (pkg: $fixtures_pkg, scene=lighting)"
 row "lighting" "$log_dir/${fixtures_pkg}-lighting.log" "$fixtures_pkg" \
   TUNGSTEN_FIXTURE=lighting
-end_section "Lighting passed" "Lighting failures" 1
+# The lights' tiles (`D-310`): the lamp grid under a cap of 64, 41 lights
+# through the binning pass and the buffer of the lights past the block's 16.
+row "lighting=lamps light_cap=64" "$log_dir/${fixtures_pkg}-lighting-lamps.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=lighting TUNGSTEN_LIGHTING_FIXTURE=lamps TUNGSTEN_RENDER_LIGHT_CAP=64
+end_section "Lighting passed" "Lighting failures" 2
 
 # Redo 7.9: seams row over the `seams` scene. A lit sprite and its flipped
 # twin, a flashing lit sprite and an unlit one take the lit pipeline's flash

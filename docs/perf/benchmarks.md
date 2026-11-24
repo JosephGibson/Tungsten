@@ -438,7 +438,7 @@ Each bench guard runs its row's warm-up and a 60-frame window at the configurati
 - **String sprite IDs:** closed (`D-113`); animation IDs stay strings (below).
 - **G1 kinematic bodies in a row:** open. The engine side landed (`D-154`); a row that uses them is a workload change.
 - **G2 sensor bins in `physics`:** open. Sensors landed (`D-154`); a workload change.
-- **G3 more than 16 lights:** open. `LIGHT_CAP` is 16.
+- **G3 more than 16 lights:** closed for the engine (`D-310`), open as a row. `render.light_cap` packs up to 256, and a frame that packs more than 16 bins its lights into 32-pixel screen tiles its lit fragments walk: on the fixtures' lamp grid at 2160p, 41 lights on a lit floor that fills the view, the scene pass reads 5.40 ms with a `light_tiles` pass of 0.01, against 5.71 for 16 lights by the block's loop and 47.60 with every lamp in every tile (by hand, 2026-11-24). No row packs more than 16, so none times the walk: a row that does is a workload change (ROADMAP.md, Later). With tiles in every lit frame the walk read 0.32 to 0.90 ms over the loop on example 01's six areas, which pack 2 to 5 lights, and 0.29 on `gpu`, so a frame of 16 or fewer keeps the loop.
 - **G4 GPU particle simulation:** open.
 - **T1 particle and tween timings:** closed (`D-133`).
 - **T2 a `startup:` line:** closed (redo 7.9): the line, its `startup.<field>` metrics and the `boot` row that owns them.

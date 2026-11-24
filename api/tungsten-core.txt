@@ -8397,12 +8397,16 @@ pub tungsten_core::config::RenderConfig::clear_color: [f64; 4]
 pub tungsten_core::config::RenderConfig::depth_enabled: bool
 pub tungsten_core::config::RenderConfig::depth_sort: tungsten_core::config::DepthSortMode
 pub tungsten_core::config::RenderConfig::hdr: tungsten_core::config::HdrMode
+pub tungsten_core::config::RenderConfig::light_cap: u32
+pub tungsten_core::config::RenderConfig::light_tiles: bool
 pub tungsten_core::config::RenderConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::config::RenderConfig::msaa: u32
 pub tungsten_core::config::RenderConfig::post_aa: tungsten_core::config::PostAaMode
 pub tungsten_core::config::RenderConfig::post_fuse: bool
 pub tungsten_core::config::RenderConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::config::RenderConfig::system_fonts: bool
+impl tungsten_core::config::RenderConfig
+pub fn tungsten_core::config::RenderConfig::lights(&self) -> usize
 impl core::clone::Clone for tungsten_core::config::RenderConfig
 pub fn tungsten_core::config::RenderConfig::clone(&self) -> tungsten_core::config::RenderConfig
 impl core::default::Default for tungsten_core::config::RenderConfig
@@ -8505,6 +8509,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::config::WindowConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::WindowConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::WindowConfig
 pub const fn tungsten_core::config::is_supported_bloom_max_mips(u32) -> bool
+pub const fn tungsten_core::config::is_supported_light_cap(u32) -> bool
 pub const fn tungsten_core::config::is_supported_msaa(u32) -> bool
 pub mod tungsten_core::debug_draw
 pub enum tungsten_core::debug_draw::DebugShape
@@ -10450,6 +10455,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::lighting::AmbientLight
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::lighting::AmbientLight
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::lighting::AmbientLight
 pub const tungsten_core::lighting::LIGHT_CAP: usize
+pub const tungsten_core::lighting::MAX_LIGHT_CAP: usize
 pub const tungsten_core::lighting::MIN_LIGHT_RADIUS: f32
 pub fn tungsten_core::lighting::light_at(&tungsten_core::World, glam::f32::vec2::Vec2) -> glam::f32::vec3::Vec3
 pub fn tungsten_core::lighting::light_from(&tungsten_core::components::Light, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> glam::f32::vec3::Vec3
@@ -23622,12 +23628,16 @@ pub tungsten_core::RenderConfig::clear_color: [f64; 4]
 pub tungsten_core::RenderConfig::depth_enabled: bool
 pub tungsten_core::RenderConfig::depth_sort: tungsten_core::config::DepthSortMode
 pub tungsten_core::RenderConfig::hdr: tungsten_core::config::HdrMode
+pub tungsten_core::RenderConfig::light_cap: u32
+pub tungsten_core::RenderConfig::light_tiles: bool
 pub tungsten_core::RenderConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::RenderConfig::msaa: u32
 pub tungsten_core::RenderConfig::post_aa: tungsten_core::config::PostAaMode
 pub tungsten_core::RenderConfig::post_fuse: bool
 pub tungsten_core::RenderConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::RenderConfig::system_fonts: bool
+impl tungsten_core::config::RenderConfig
+pub fn tungsten_core::config::RenderConfig::lights(&self) -> usize
 impl core::clone::Clone for tungsten_core::config::RenderConfig
 pub fn tungsten_core::config::RenderConfig::clone(&self) -> tungsten_core::config::RenderConfig
 impl core::default::Default for tungsten_core::config::RenderConfig
@@ -26218,6 +26228,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::W
 pub const tungsten_core::DEFAULT_CIRCLE_SEGMENTS: u16
 pub const tungsten_core::EMPTY_TILE: tungsten_core::assets::tilemap::TileIndex
 pub const tungsten_core::LIGHT_CAP: usize
+pub const tungsten_core::MAX_LIGHT_CAP: usize
 pub const tungsten_core::MAX_VOICES: u32
 pub const tungsten_core::STICK_PRESS: f32
 pub const tungsten_core::STICK_RELEASE: f32

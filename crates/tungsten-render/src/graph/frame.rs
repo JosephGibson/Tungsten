@@ -9,7 +9,7 @@
 use tungsten_core::post::{PostPass, PostStack};
 use wgpu::TextureFormat;
 
-use super::{Class, Graph, Pass, Spec, Tex, Write};
+use super::{Class, Compute, Graph, Pass, Spec, Tex, Write};
 use crate::post::bloom::BLOOM_COMPOSITE_SECTION;
 use crate::post::bloom::{
     BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_SHADERS,
@@ -29,6 +29,9 @@ use crate::targets::{
 /// What records a pass of the frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PassKind {
+    /// The lights binned into screen tiles (`D-310`): a compute pass ahead
+    /// of the scene, which reads its tiles where it draws a lit batch.
+    LightTiles,
     /// Quads, sprites, mesh particles and debug primitives.
     Scene,
     /// The stock effect in post-stack slot `slot`, and with it the
@@ -231,6 +234,7 @@ pub(crate) fn fullscreen_source(name: &str) -> Option<(&'static str, &'static st
 /// Everything the frame's declaration depends on. Two frames of one shape
 /// compile to the same passes over the same textures.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::struct_excessive_bools)] // Independent facts of a frame; no two are a state machine.
 pub(crate) struct Shape {
     /// The surface's size.
     pub output: (u32, u32),
@@ -257,6 +261,9 @@ pub(crate) struct Shape {
     /// empty, or its last pass cannot end in the tail (a replaced file's
     /// stage, a game's module without a section, fusing off).
     pub tail_alone: bool,
+    /// Whether the scene walks the lights' tiles (`D-310`): it draws a lit
+    /// batch in a frame that packs more lights than the block's 16.
+    pub light_tiles: bool,
 }
 
 impl Shape {
@@ -398,6 +405,7 @@ fn pass(
         resolve: None,
         depth: None,
         reads: Vec::new(),
+        buffers: Vec::new(),
     }
 }
 
@@ -472,6 +480,19 @@ pub(crate) fn declare(shape: &Shape) -> Graph<PassKind> {
             ..color
         });
         scene.depth = Some((depth, 1.0));
+    }
+    // The lights' tiles (`D-310`): a compute pass bins the packed lights
+    // ahead of the scene, which reads the tiles in a frame that walks them.
+    // Any other frame reads none, and the pass is dropped.
+    let tiles = graph.buffer();
+    graph.compute(Compute {
+        kind: PassKind::LightTiles,
+        label: "tungsten_light_tiles_pass",
+        timing: "light_tiles".to_string(),
+        writes: vec![tiles],
+    });
+    if shape.light_tiles {
+        scene.buffers = vec![tiles];
     }
     graph.pass(scene);
 
@@ -662,6 +683,7 @@ fn declare_bloom(
         resolve: None,
         depth: None,
         reads: vec![read],
+        buffers: Vec::new(),
     };
     graph.pass(level(
         PassKind::BloomThreshold { slot },

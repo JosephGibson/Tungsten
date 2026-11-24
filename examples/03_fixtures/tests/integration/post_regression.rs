@@ -87,7 +87,7 @@ fn mirror(from: &Path, to: &Path, skip: &str) {
 /// the workspace, except `file`, a path from the workspace root under one of
 /// the scene's two asset trees, whose text went through `edit`.
 #[cfg(unix)]
-fn stage_with_edited_file(file: &str, edit: impl Fn(&str) -> String) -> PathBuf {
+pub(crate) fn stage_with_edited_file(file: &str, edit: impl Fn(&str) -> String) -> PathBuf {
     use std::os::unix::fs::symlink;
 
     let root = workspace_root()

@@ -25,8 +25,9 @@ pub use counters::FrameCounters;
 pub use debug_line::{DebugLineInstance, DebugLinePipeline};
 pub use image_diff::{DiffReport, ImageDiffError, compare_png};
 pub use lighting::{
-    GpuLight, LIT_LIGHT_CAP, LightUbo, LightingResources, cull_to_cap, distance_to_aabb_sq,
-    lights_view, pack_lights, pack_one_light,
+    FrameLights, GpuLight, LIGHT_TILE, LIT_LIGHT_CAP, LightUbo, LightingResources, TileGrid,
+    cull_to_cap, distance_to_aabb_sq, lights_view, pack_lights, pack_one_light, tile_grid,
+    tile_reaches, tile_words,
 };
 pub use lit_sprite::{
     EMISSIVE_MASK_SHADER_NAME, LIT_SPRITE_SHADER_NAME, LIT_SPRITE_SHADER_SOURCE, LitSpritePipeline,

@@ -1300,11 +1300,10 @@ impl SpritePipeline {
                     PipelineKey::Material(_) => {
                         render_pass.set_pipeline(&material_pipeline.unwrap().pipeline);
                     }
-                    PipelineKey::Lit { solid: false } => {
-                        render_pass.set_pipeline(&lit_resources.unwrap().1.pipeline);
-                    }
-                    PipelineKey::Lit { solid: true } => {
-                        if let Some(pipeline) = &lit_resources.unwrap().1.pipeline_solid {
+                    // The frame's lit pipeline: the block's loop, or the
+                    // tiles' walk in a frame of more than 16 lights.
+                    PipelineKey::Lit { solid } => {
+                        if let Some(pipeline) = lit_resources.unwrap().1.frame_pipeline(solid) {
                             render_pass.set_pipeline(pipeline);
                         }
                     }

@@ -422,6 +422,97 @@ fn system_fonts_default_off_and_parse_on() {
 }
 
 #[test]
+fn light_cap_defaults_to_sixteen_and_takes_one_to_256() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert_eq!(parsed.light_cap, 16);
+    assert_eq!(Config::default().render.light_cap, 16);
+    assert_eq!(crate::lighting::LIGHT_CAP, 16);
+    assert_eq!(crate::lighting::MAX_LIGHT_CAP, 256);
+    let parsed: RenderConfig = serde_json::from_str(r#"{ "light_cap": 64 }"#).unwrap();
+    assert_eq!(parsed.light_cap, 64);
+    for (cap, supported) in [
+        (0, false),
+        (1, true),
+        (16, true),
+        (64, true),
+        (256, true),
+        (257, false),
+    ] {
+        assert_eq!(is_supported_light_cap(cap), supported, "{cap}");
+    }
+
+    let mut config = Config::default();
+    config.apply_light_cap_override("64").unwrap();
+    assert_eq!(config.render.light_cap, 64);
+    config.apply_light_cap_override("1").unwrap();
+    assert_eq!(config.render.light_cap, 1);
+    for bad in ["", "0", "257", "-1", "sixteen", "16.0"] {
+        let err = config.apply_light_cap_override(bad).unwrap_err();
+        match err {
+            ConfigError::InvalidEnvOverride {
+                var,
+                value,
+                expected,
+            } => {
+                assert_eq!(var, RENDER_LIGHT_CAP_ENV);
+                assert_eq!(value, bad);
+                assert_eq!(expected, LIGHT_CAP_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+    assert_eq!(
+        config.render.light_cap, 1,
+        "a refused value changes nothing"
+    );
+}
+
+#[test]
+fn a_light_cap_outside_its_bounds_is_refused_in_a_file_and_defaulted_in_code() {
+    // A file's value outside 1 to 256 fails the load, naming the file and
+    // the field.
+    for bad in ["0", "257", "4096"] {
+        let json = format!(r#"{{"render": {{"light_cap": {bad}}}}}"#);
+        let (path, loaded) = load_json(&format!("light-cap-{bad}"), &json);
+        match loaded.unwrap_err() {
+            ConfigError::InvalidValue {
+                path: file,
+                field,
+                value,
+                expected,
+            } => {
+                assert_eq!(file, path.display().to_string());
+                assert_eq!(field, "render.light_cap");
+                assert_eq!(value, bad);
+                assert_eq!(expected, LIGHT_CAP_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+    for good in [1u32, 16, 17, 256] {
+        let json = format!(r#"{{"render": {{"light_cap": {good}}}}}"#);
+        let (_, loaded) = load_json(&format!("light-cap-{good}"), &json);
+        let config = loaded.unwrap();
+        assert_eq!(config.render.light_cap, good);
+        assert_eq!(config.render.lights(), good as usize);
+    }
+    // A config built in code cannot be refused: `lights` gives the default
+    // for a value no file could hold.
+    let mut render = Config::default().render;
+    for (cap, lights) in [
+        (0, 16),
+        (1, 1),
+        (64, 64),
+        (256, 256),
+        (257, 16),
+        (u32::MAX, 16),
+    ] {
+        render.light_cap = cap;
+        assert_eq!(render.lights(), lights, "light_cap {cap}");
+    }
+}
+
+#[test]
 fn bloom_max_mips_default_is_six() {
     let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
     assert_eq!(parsed.bloom_max_mips, 6);
@@ -480,6 +571,31 @@ fn bloom_base_defaults_to_auto_and_parses_its_three_names() {
         assert_eq!(name.parse(), Ok(base));
     }
     assert!(serde_json::from_str::<RenderConfig>(r#"{ "bloom_base": "eighth" }"#).is_err());
+}
+
+#[test]
+fn light_tiles_are_on_by_default_and_take_their_override() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert!(parsed.light_tiles);
+    assert!(Config::default().render.light_tiles);
+    let off: RenderConfig = serde_json::from_str(r#"{ "light_tiles": false }"#).unwrap();
+    assert!(!off.light_tiles);
+
+    let mut config = Config::default();
+    config.apply_light_tiles_override("false").unwrap();
+    assert!(!config.render.light_tiles);
+    config.apply_light_tiles_override("1").unwrap();
+    assert!(config.render.light_tiles);
+    config.apply_light_tiles_override("0").unwrap();
+    assert!(!config.render.light_tiles);
+    config.apply_light_tiles_override("true").unwrap();
+    assert!(config.render.light_tiles);
+    let err = config.apply_light_tiles_override("yes").unwrap_err();
+    assert!(
+        err.to_string().contains("TUNGSTEN_RENDER_LIGHT_TILES"),
+        "{err}"
+    );
+    assert!(config.render.light_tiles, "a refused value changes nothing");
 }
 
 #[test]

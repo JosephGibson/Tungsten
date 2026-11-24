@@ -1,6 +1,6 @@
 use super::*;
 use glam::{Vec2, Vec3};
-use tungsten_core::{AmbientLight, CameraState, Light, Transform, World};
+use tungsten_core::{AmbientLight, CameraState, LIGHT_CAP, Light, Transform, World};
 
 fn world_with_camera() -> (World, CameraState) {
     let world = World::new();
@@ -11,7 +11,7 @@ fn world_with_camera() -> (World, CameraState) {
 #[test]
 fn extract_lights_returns_ambient_when_no_lights() {
     let (world, camera) = world_with_camera();
-    let ubo = extract_lights(&world, &camera, 800.0, 600.0);
+    let ubo = extract_lights(&world, &camera, 800.0, 600.0, LIGHT_CAP).ubo;
     assert_eq!(ubo.count_pad, [0, 0, 0, 0]);
     assert_eq!(ubo.ambient, [1.0, 1.0, 1.0, 1.0]);
 }
@@ -20,7 +20,7 @@ fn extract_lights_returns_ambient_when_no_lights() {
 fn extract_lights_uses_ambient_resource() {
     let (mut world, camera) = world_with_camera();
     world.insert_resource(AmbientLight(Vec3::splat(0.25)));
-    let ubo = extract_lights(&world, &camera, 800.0, 600.0);
+    let ubo = extract_lights(&world, &camera, 800.0, 600.0, LIGHT_CAP).ubo;
     assert_eq!(ubo.ambient, [0.25, 0.25, 0.25, 1.0]);
 }
 
@@ -32,8 +32,34 @@ fn extract_lights_caps_at_sixteen() {
         world.insert(e, Transform::from_position(Vec2::ZERO));
         world.insert(e, Light::point(Vec3::ONE, 4.0));
     }
-    let ubo = extract_lights(&world, &camera, 800.0, 600.0);
+    let ubo = extract_lights(&world, &camera, 800.0, 600.0, LIGHT_CAP).ubo;
     assert_eq!(ubo.count_pad[0], 16);
+}
+
+#[test]
+fn extract_lights_packs_past_sixteen_under_a_higher_cap() {
+    // Forty lamps in view, in a row from the view's corner (`D-310`).
+    let (mut world, camera) = world_with_camera();
+    for i in 0..40 {
+        world.spawn_with((
+            Transform::from_position(Vec2::splat(i as f32)),
+            Light::point(Vec3::ONE, 4.0),
+        ));
+    }
+    // A cap that holds them all: the block's sixteen, then the rest, in
+    // one packed order.
+    let lights = extract_lights(&world, &camera, 800.0, 600.0, 64);
+    assert_eq!(lights.ubo.count_pad[0], 16);
+    assert_eq!((lights.more.len(), lights.count()), (24, 40));
+    assert_eq!(lights.ubo.lights[15].position_radius[0], 15.0);
+    assert_eq!(lights.more[0].position_radius[0], 16.0);
+    assert_eq!(lights.more[23].position_radius[0], 39.0);
+    // A cap between: twenty are kept, four of them past the block.
+    let lights = extract_lights(&world, &camera, 800.0, 600.0, 20);
+    assert_eq!((lights.ubo.count_pad[0], lights.more.len()), (16, 4));
+    // The default cap packs the block alone.
+    let lights = extract_lights(&world, &camera, 800.0, 600.0, LIGHT_CAP);
+    assert_eq!((lights.ubo.count_pad[0], lights.more.len()), (16, 0));
 }
 
 #[test]
@@ -47,7 +73,7 @@ fn extract_lights_keeps_directional_under_pressure() {
         world.insert(e, Transform::from_position(Vec2::splat(i as f32)));
         world.insert(e, Light::point(Vec3::ONE, 4.0));
     }
-    let ubo = extract_lights(&world, &camera, 800.0, 600.0);
+    let ubo = extract_lights(&world, &camera, 800.0, 600.0, LIGHT_CAP).ubo;
     assert_eq!(ubo.count_pad[0], 16);
     // Directional sorted first; first packed slot has kind_tag = 1.
     assert_eq!(
@@ -75,7 +101,7 @@ fn extract_lights_packs_no_light_out_of_reach() {
         lamp(Vec2::new(x, 300.0), 50.0);
     }
     lamp(Vec2::new(-50.0, 300.0), 80.0);
-    let ubo = extract_lights(&world, &camera, 800.0, 600.0);
+    let ubo = extract_lights(&world, &camera, 800.0, 600.0, LIGHT_CAP).ubo;
     assert_eq!(ubo.count_pad[0], 4, "the forty take no slot");
     let mut xs: Vec<f32> = ubo.lights[..4]
         .iter()
@@ -105,7 +131,7 @@ fn extract_lights_leads_with_the_directional_among_lights_out_of_reach() {
         Transform::from_position(Vec2::splat(99999.0)),
         Light::directional(Vec3::splat(0.5), 0.0),
     ));
-    let ubo = extract_lights(&world, &camera, 800.0, 600.0);
+    let ubo = extract_lights(&world, &camera, 800.0, 600.0, LIGHT_CAP).ubo;
     assert_eq!(ubo.count_pad[0], 2);
     assert_eq!(ubo.lights[0].color_intensity[3], 1.0, "directional first");
     assert_eq!(ubo.lights[1].position_radius[..2], [400.0, 300.0]);
@@ -126,7 +152,7 @@ fn extract_lights_keeps_a_priority_light_past_the_cap() {
         Light::point(Vec3::new(1.0, 0.0, 0.0), 50.0).with_priority(1),
     ));
     let packed = |world: &World| {
-        let ubo = extract_lights(world, &camera, 800.0, 600.0);
+        let ubo = extract_lights(world, &camera, 800.0, 600.0, LIGHT_CAP).ubo;
         assert_eq!(ubo.count_pad[0], 16);
         ubo.lights
             .iter()
@@ -148,7 +174,7 @@ fn extract_lights_gives_a_dark_light_no_slot() {
         Transform::from_position(Vec2::new(100.0, 100.0)),
         Light::point(Vec3::ONE, 50.0),
     ));
-    let ubo = extract_lights(&world, &camera, 800.0, 600.0);
+    let ubo = extract_lights(&world, &camera, 800.0, 600.0, LIGHT_CAP).ubo;
     assert_eq!(ubo.count_pad[0], 1, "under the cap too");
     assert_eq!(ubo.lights[0].position_radius[..2], [100.0, 100.0]);
 }

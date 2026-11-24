@@ -10,7 +10,7 @@ use crate::graph::frame::{
 };
 use crate::graph::pool::{Pool, PoolTexture};
 use crate::graph::{At, Compiled, CompiledPass, Load, Target};
-use crate::lighting::{LightUbo, LightingResources};
+use crate::lighting::{FrameLights, LightingResources};
 use crate::lit_sprite::{
     EMISSIVE_MASK_SHADER_NAME, LIT_SPRITE_SHADER_NAME, LIT_SPRITE_SHADER_SOURCE, LitSpritePipeline,
     RIM_LIGHT_SHADER_NAME,
@@ -134,6 +134,7 @@ const STOCK_SHADER_ID_BASE: u32 = 11;
 const STOCK_MATERIAL_SHADER_ID_BASE: u32 = STOCK_SHADER_ID_BASE + STOCK_SHADERS.len() as u32;
 
 /// WGPU renderer state.
+#[allow(clippy::struct_excessive_bools)] // Independent facts: the depth target, the composer's switch, timestamp support, a frame's lit batch.
 pub struct Renderer {
     pub instance: wgpu::Instance,
     pub adapter: wgpu::Adapter,
@@ -236,8 +237,14 @@ pub struct Renderer {
     /// View-projection bytes last written to the quad and sprite camera
     /// buffers.
     camera_written: Option<[u8; 64]>,
-    /// Payload last written to the lighting UBO.
-    lights_written: Option<LightUbo>,
+    /// The lights of the frame being drawn (`D-310`): uploaded, with the
+    /// tile grid, as the frame records. `None` until the first
+    /// `update_lights`, so a boot frame, which has none, uploads no block.
+    frame_lights: Option<FrameLights>,
+    /// Whether the frame being drawn walks the lights' tiles: it draws a
+    /// lit batch and packs more lights than the block's 16, so the binning
+    /// pass runs and its lit batches draw with the tiled pipelines.
+    frame_tiles: bool,
     /// The 1 × 1 white texel's handle, once made (redo 7.9).
     white_texture: Option<TextureHandle>,
 }
@@ -475,6 +482,7 @@ impl Renderer {
             replaced: ReplacedStages::NONE,
             float,
             tail_alone: false,
+            light_tiles: false,
         };
         let present_blit = PresentBlitPipeline::new(&device, format);
 
@@ -638,11 +646,23 @@ impl Renderer {
             )
             .expect("compile-time rim_light shader must validate");
 
-        let lighting = LightingResources::new(&device);
+        let light_cap = config.lights() as u32;
+        if light_cap != config.light_cap {
+            log::warn!(
+                "unsupported light_cap {} in RenderConfig; falling back to {light_cap}",
+                config.light_cap
+            );
+        }
+        let lighting = LightingResources::new(
+            &device,
+            light_cap,
+            (surface_config.width, surface_config.height),
+            config.light_tiles,
+        );
         let lit_module = shader_cache
             .get(lit_sprite_shader_id)
             .expect("lit_sprite module pre-seeded above");
-        let lit_sprite_pipeline = LitSpritePipeline::new(
+        let mut lit_sprite_pipeline = LitSpritePipeline::new(
             &device,
             lit_module,
             sprite_pipeline.camera_bind_group_layout(),
@@ -652,6 +672,16 @@ impl Renderer {
             sample_count,
             depth_attached,
         );
+        // A cap past the block's 16 can pack a frame that walks tiles.
+        if light_cap > crate::lighting::LIT_LIGHT_CAP as u32 {
+            lit_sprite_pipeline.build_tiled(
+                &device,
+                lit_module,
+                scene_format,
+                sample_count,
+                depth_attached,
+            );
+        }
 
         let smaa =
             if post_aa.is_smaa() {
@@ -765,7 +795,8 @@ impl Renderer {
             frame_counters: FrameCounters::default(),
             pending_capture: None,
             camera_written: None,
-            lights_written: None,
+            frame_lights: None,
+            frame_tiles: false,
             white_texture: None,
         })
     }
@@ -890,18 +921,41 @@ impl Renderer {
         );
     }
 
-    /// M29 upload one frame of the lighting UBO, unless it already holds
-    /// these bytes. The bind group built at startup stays valid; resize does
-    /// not invalidate it.
-    pub fn update_lights(&mut self, ubo: &LightUbo) {
-        let unchanged = self
-            .lights_written
-            .as_ref()
-            .is_some_and(|written| bytemuck::bytes_of(written) == bytemuck::bytes_of(ubo));
-        if !unchanged {
-            self.lighting.write(&self.queue, ubo);
-            self.lights_written = Some(*ubo);
+    /// The lights of the next frame (`D-061`, `D-310`): the block every lit
+    /// shader binds and the lights packed past its 16. The frame uploads
+    /// them as it records, with the grid of its screen tiles, each only
+    /// where a buffer does not hold it already.
+    pub fn update_lights(&mut self, lights: &FrameLights) {
+        let frame = self.frame_lights.get_or_insert_with(FrameLights::default);
+        frame.ubo = lights.ubo;
+        frame.more.clone_from(&lights.more);
+    }
+
+    /// The most lights a frame should pack: `render.light_cap` as the
+    /// renderer took it, and the block's 16 while the lit shader builds no
+    /// pipeline that walks tiles (a game's lit file written before them), so
+    /// that the sixteen it draws are chosen as a cap of 16 chooses them
+    /// (`D-296`'s rank), not the first of a longer list.
+    #[must_use]
+    pub fn light_cap(&self) -> u32 {
+        if self.lit_sprite_pipeline.has_tiled() {
+            self.lighting.cap()
+        } else {
+            self.lighting
+                .cap()
+                .min(crate::lighting::LIT_LIGHT_CAP as u32)
         }
+    }
+
+    /// Decides whether the frame of `sprite_batches` walks the lights'
+    /// tiles (`LightingResources::walks_tiles`, where the lit shader builds
+    /// with them), and points the lit pipeline at the pair it draws with.
+    fn set_frame_tiles(&mut self, sprite_batches: &[SpriteBatch]) {
+        let lit = sprite_batches.iter().any(|batch| batch.lit);
+        let packed = self.frame_lights.as_ref().map_or(0, FrameLights::count);
+        self.frame_tiles =
+            self.lit_sprite_pipeline.has_tiled() && self.lighting.walks_tiles(lit, packed);
+        self.lit_sprite_pipeline.set_frame_tiled(self.frame_tiles);
     }
 
     /// M31 upload or replace the geometry of one particle mesh (`D-093`).
@@ -1416,6 +1470,7 @@ impl Renderer {
         shape.depth = self.depth_enabled && self.depth_sort == DepthSortMode::GpuDepth;
         shape.smaa = self.post_aa.is_smaa() && self.smaa.is_some();
         shape.present = present;
+        shape.light_tiles = self.frame_tiles;
         let replaced = &self.replaced;
         shape.set_stages(post_stack, |pass| replaced.own(pass));
         shape.replaced = replaced.stages();
@@ -1866,15 +1921,22 @@ impl Renderer {
                 slot.read(frame, period, out);
             });
         // The ring is sized for the frame's passes and one more, a capture's
-        // blit, so a capture frame rebuilds nothing.
+        // blit, so a capture frame rebuilds nothing; and for the lights'
+        // binning pass wherever a frame may walk tiles, so a frame whose
+        // lights cross the block's 16 rebuilds nothing either.
         let present = self.present_path();
+        // Whether the frame walks tiles decides its passes, so the plan the
+        // ring is sized from knows it as the frame's own plan will.
+        self.set_frame_tiles(sprite_batches);
         self.plan_frame(present, post_stack);
         let passes = self
             .frame
             .as_ref()
             .map_or(0, |frame| frame.compiled.passes.len());
         let layout = TimingLayout::new(
-            passes + usize::from(present == PresentPath::Direct),
+            passes
+                + usize::from(present == PresentPath::Direct)
+                + usize::from(self.lit_sprite_pipeline.has_tiled()),
             (self.surface_config.width, self.surface_config.height),
         );
         let device = &self.device;
@@ -1928,6 +1990,7 @@ impl Renderer {
         mut timing: Option<&mut TimingResources>,
     ) -> Result<RenderOutcome, RenderError> {
         self.cpu_timings = CpuFrameTimings::default();
+        self.set_frame_tiles(sprite_batches);
 
         // The armed capture picks the frame's path here; the acquire takes
         // it.
@@ -2143,6 +2206,18 @@ impl Renderer {
             self.sprite_pipeline.update_camera(&self.queue, view_proj);
             self.camera_written = Some(camera);
         }
+        // The frame's lights and the grid of its screen tiles, at the
+        // output's size: an acquire that resized it records this again.
+        if let Some(lights) = &self.frame_lights {
+            self.lighting.prepare(
+                &self.device,
+                &self.queue,
+                lights,
+                view_proj,
+                (self.surface_config.width, self.surface_config.height),
+                self.frame_tiles,
+            );
+        }
         self.text_pipeline.prepare(
             &self.device,
             &self.queue,
@@ -2206,7 +2281,31 @@ impl Renderer {
         };
         let attachment = (self.surface_config.width, self.surface_config.height);
 
-        for pass in &frame.compiled.passes[passes] {
+        let (first, count) = (passes.start, passes.len());
+        for (index, pass) in frame
+            .compiled
+            .passes
+            .iter()
+            .enumerate()
+            .skip(first)
+            .take(count)
+        {
+            // The compute passes that record ahead of this pass.
+            for compute in &frame.compiled.computes {
+                if compute.before != index {
+                    continue;
+                }
+                let timestamp_writes = timing
+                    .as_deref_mut()
+                    .map(|t| t.next_compute(compute.timing.clone()));
+                let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some(compute.label),
+                    timestamp_writes,
+                });
+                if compute.kind == PassKind::LightTiles {
+                    self.lighting.bin(&mut compute_pass);
+                }
+            }
             // A bloom slot's blocks and bind groups are readied before its
             // first pass opens; its later passes draw with them, the
             // composite on the far side of the acquire where it writes the
@@ -2256,6 +2355,9 @@ impl Renderer {
             };
             let tail_finish = self.post_stack.tail();
             let drew = match pass.kind {
+                // A compute pass's kind: it attaches no texture and is
+                // recorded above.
+                PassKind::LightTiles => false,
                 PassKind::Scene => {
                     record_main_draws(
                         &mut render_pass,

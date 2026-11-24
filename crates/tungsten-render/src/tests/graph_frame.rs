@@ -324,6 +324,7 @@ fn shape(stages: &[Stage]) -> Shape {
         replaced: ReplacedStages::NONE,
         float: None,
         tail_alone: false,
+        light_tiles: false,
     }
 }
 
@@ -1054,6 +1055,7 @@ fn a_float_scene_reaches_the_8_bit_frame_through_the_tail() {
                 let target = format(pass.color.at);
                 let float_reads = pass.reads.iter().filter(|read| format(**read) == FLOAT);
                 match pass.kind {
+                    PassKind::LightTiles => unreachable!("a compute pass attaches no texture"),
                     // The scene draws in the float format, resolve and all.
                     PassKind::Scene => {
                         assert_eq!(target, FLOAT, "{at}");
@@ -1370,4 +1372,33 @@ fn bloom_labels_name_the_quarter_base_and_the_joined_stages() {
         composite_label(1, &["fog", "fade"]),
         "post1_bloom_composite_fog_fade"
     );
+}
+
+/// The lights' tiles are binned only in a frame that walks them (`D-310`):
+/// the compute pass runs ahead of the scene, under the timing label
+/// `light_tiles`, and any other frame drops it and compiles the passes it
+/// compiled before the tiles.
+#[test]
+fn a_frame_that_walks_tiles_keeps_the_tile_pass_and_another_drops_it() {
+    for mut frame in matrix() {
+        frame.light_tiles = false;
+        let unlit = declare(&frame).compile().expect("compiles");
+        assert!(
+            unlit.computes.is_empty(),
+            "{frame:?}: a frame that walks no tiles bins no lights"
+        );
+        frame.light_tiles = true;
+        let lit = declare(&frame).compile().expect("compiles");
+        assert_eq!(lit.computes.len(), 1, "{frame:?}");
+        let bins = &lit.computes[0];
+        assert_eq!(bins.kind, PassKind::LightTiles, "{frame:?}");
+        assert_eq!(bins.timing, "light_tiles", "{frame:?}");
+        assert_eq!(bins.before, 0, "{frame:?}: ahead of the scene");
+        assert_eq!(lit.passes[0].kind, PassKind::Scene, "{frame:?}");
+        // The tiles are a buffer: no pass's target, op or place moves, and
+        // the acquire splits where it did.
+        assert_eq!(lit.passes, unlit.passes, "{frame:?}");
+        assert_eq!(lit.slots, unlit.slots, "{frame:?}");
+        assert_eq!(lit.split, unlit.split, "{frame:?}");
+    }
 }

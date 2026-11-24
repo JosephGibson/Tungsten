@@ -22,6 +22,7 @@ fn pass(kind: u8, color: Level, write: Write, reads: &[Level]) -> Pass<u8> {
         resolve: None,
         depth: None,
         reads: reads.to_vec(),
+        buffers: Vec::new(),
     }
 }
 
@@ -549,4 +550,181 @@ fn a_second_import_is_addressed_in_order() {
     );
     assert_eq!(compiled.copied, Some(Target::Imported(0)));
     assert_eq!(compiled.split, 1);
+}
+
+fn compute(kind: u8, writes: &[Buf]) -> Compute<u8> {
+    Compute {
+        kind,
+        label: "compute",
+        timing: format!("c{kind}"),
+        writes: writes.to_vec(),
+    }
+}
+
+/// `pass` reading `buffers` as well.
+fn reading(mut pass: Pass<u8>, buffers: &[Buf]) -> Pass<u8> {
+    pass.buffers = buffers.to_vec();
+    pass
+}
+
+/// A compute pass runs while a pass that draws reads a buffer it writes
+/// (`D-310`), and records ahead of the pass declared after it.
+#[test]
+fn a_compute_pass_a_live_pass_reads_is_kept() {
+    let mut graph = Graph::default();
+    let output = graph.import_surface();
+    let a = graph.transient(COLOR);
+    let (tiles, spare) = (graph.buffer(), graph.buffer());
+    graph.compute(compute(50, &[tiles, spare]));
+    graph.pass(reading(pass(0, a.base(), CLEAR, &[]), &[tiles]));
+    graph.pass(pass(1, a.base(), Write::Over, &[]));
+    graph.present(a, output, blit());
+    let compiled = graph.compile().expect("compiles");
+
+    assert_eq!(kinds(&compiled), [0, 1]);
+    assert_eq!(compiled.computes.len(), 1);
+    let bins = &compiled.computes[0];
+    assert_eq!((bins.kind, bins.before), (50, 0), "ahead of the scene");
+    assert_eq!(bins.timing, "c50");
+    // It holds no texture and moves no pass's ops or the split.
+    let mut plain = Graph::default();
+    let output = plain.import_surface();
+    let a = plain.transient(COLOR);
+    plain.pass(pass(0, a.base(), CLEAR, &[]));
+    plain.pass(pass(1, a.base(), Write::Over, &[]));
+    plain.present(a, output, blit());
+    let plain = plain.compile().expect("compiles");
+    assert_eq!(compiled.passes, plain.passes);
+    assert_eq!(compiled.slots, plain.slots);
+    assert_eq!(compiled.split, plain.split);
+}
+
+/// A compute pass whose buffers no pass that draws reads does not run:
+/// nothing reads them, a pass declared before it reads them, or the one
+/// pass that reads them is itself dropped.
+#[test]
+fn a_compute_pass_nothing_reads_is_dropped() {
+    // Nothing reads the buffer.
+    let mut graph = Graph::default();
+    let output = graph.import_surface();
+    let a = graph.transient(COLOR);
+    let tiles = graph.buffer();
+    graph.compute(compute(50, &[tiles]));
+    graph.pass(pass(0, a.base(), CLEAR, &[]));
+    graph.present(a, output, blit());
+    let compiled = graph.compile().expect("compiles");
+    assert_eq!(kinds(&compiled), [0]);
+    assert!(compiled.computes.is_empty(), "nothing reads its buffer");
+
+    // The reader was declared ahead of it: it read last frame's buffer.
+    let mut graph = Graph::default();
+    let output = graph.import_surface();
+    let a = graph.transient(COLOR);
+    let tiles = graph.buffer();
+    graph.pass(reading(pass(0, a.base(), CLEAR, &[]), &[tiles]));
+    graph.compute(compute(50, &[tiles]));
+    graph.pass(pass(1, a.base(), Write::Over, &[]));
+    graph.present(a, output, blit());
+    let compiled = graph.compile().expect("compiles");
+    assert!(compiled.computes.is_empty(), "its reader drew before it");
+
+    // The reader draws into a texture nothing shows, so it is dropped, and
+    // the compute pass with it.
+    let mut graph = Graph::default();
+    let output = graph.import_surface();
+    let a = graph.transient(COLOR);
+    let unseen = graph.transient(COLOR);
+    let tiles = graph.buffer();
+    graph.compute(compute(50, &[tiles]));
+    graph.pass(pass(0, a.base(), CLEAR, &[]));
+    graph.pass(reading(pass(1, unseen.base(), CLEAR, &[]), &[tiles]));
+    graph.present(a, output, blit());
+    let compiled = graph.compile().expect("compiles");
+    assert_eq!(kinds(&compiled), [0], "the reader is dropped");
+    assert!(compiled.computes.is_empty(), "its one reader is dropped");
+}
+
+/// A compute pass's place counts the passes that draw: a dropped pass ahead
+/// of it does not, and the passes ahead of it that do, do.
+#[test]
+fn a_compute_pass_records_ahead_of_the_next_pass_that_draws() {
+    let mut graph = Graph::default();
+    let output = graph.import_surface();
+    let a = graph.transient(COLOR);
+    let unseen = graph.transient(COLOR);
+    let (first, second) = (graph.buffer(), graph.buffer());
+    graph.pass(pass(0, unseen.base(), CLEAR, &[]));
+    graph.pass(pass(1, a.base(), CLEAR, &[]));
+    graph.compute(compute(50, &[first]));
+    graph.pass(reading(pass(2, a.base(), Write::Over, &[]), &[first]));
+    graph.compute(compute(51, &[second]));
+    graph.pass(reading(
+        pass(3, a.base(), Write::Over, &[]),
+        &[second, first],
+    ));
+    graph.present(a, output, blit());
+    let compiled = graph.compile().expect("compiles");
+
+    assert_eq!(kinds(&compiled), [1, 2, 3], "the unseen pass is dropped");
+    let places: Vec<(u8, usize)> = compiled
+        .computes
+        .iter()
+        .map(|compute| (compute.kind, compute.before))
+        .collect();
+    assert_eq!(places, [(50, 1), (51, 2)]);
+}
+
+/// A blit put in where the frame's end was declared moves the passes
+/// declared after it one place on, and a compute pass declared among them
+/// with them: it still records ahead of the pass declared after it, and a
+/// pass declared before it, the blit's neighbour, does not keep it.
+#[test]
+fn a_compute_pass_declared_after_a_blit_keeps_its_place() {
+    let build = |reader_before: bool| {
+        let mut graph = Graph::default();
+        let output = graph.import_surface();
+        let a = graph.transient(COLOR);
+        let tiles = graph.buffer();
+        graph.pass(pass(0, a.base(), CLEAR, &[]));
+        // A capture copies the last version, so a blit shows it.
+        graph.copy_from(a);
+        graph.present(a, output, blit());
+        let over = pass(1, output.base(), Write::Over, &[]);
+        graph.pass(if reader_before {
+            reading(over, &[tiles])
+        } else {
+            over
+        });
+        graph.compute(compute(50, &[tiles]));
+        graph.pass(reading(pass(2, output.base(), Write::Over, &[]), &[tiles]));
+        graph.compile().expect("compiles")
+    };
+    let compiled = build(false);
+    assert_eq!(kinds(&compiled), [0, 99, 1, 2], "the blit after the scene");
+    let places: Vec<(u8, usize)> = compiled
+        .computes
+        .iter()
+        .map(|compute| (compute.kind, compute.before))
+        .collect();
+    assert_eq!(places, [(50, 3)], "ahead of the pass declared after it");
+
+    // With its one reader gone, a pass declared before it that reads the
+    // buffer does not keep it.
+    let mut graph = Graph::default();
+    let output = graph.import_surface();
+    let a = graph.transient(COLOR);
+    let tiles = graph.buffer();
+    graph.pass(pass(0, a.base(), CLEAR, &[]));
+    graph.copy_from(a);
+    graph.present(a, output, blit());
+    graph.pass(reading(pass(1, output.base(), Write::Over, &[]), &[tiles]));
+    graph.compute(compute(50, &[tiles]));
+    graph.pass(pass(2, output.base(), Write::Over, &[]));
+    let compiled = graph.compile().expect("compiles");
+    assert_eq!(kinds(&compiled), [0, 99, 1, 2]);
+    assert!(
+        compiled.computes.is_empty(),
+        "its reader was declared before it"
+    );
+    let _ = build(true);
 }
