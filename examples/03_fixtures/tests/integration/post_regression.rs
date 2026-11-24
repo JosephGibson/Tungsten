@@ -40,6 +40,8 @@ fn capture_logged(
         .env_remove("TUNGSTEN_POST_BACKDROP_FIXTURE")
         .env_remove("TUNGSTEN_POST_TEXT_FIXTURE")
         .env_remove("TUNGSTEN_RENDER_POST_FUSE")
+        .env_remove("TUNGSTEN_RENDER_HDR")
+        .env_remove("TUNGSTEN_POST_BRIGHT_FIXTURE")
         .env("TUNGSTEN_SMOKE_FRAMES", "8")
         .env("TUNGSTEN_CAPTURE_FRAME", "5")
         .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")
@@ -555,4 +557,197 @@ fn a_games_effect_that_cannot_draw_is_left_out() {
             report.pixels_above_tolerance
         );
     }
+}
+
+/// Under a float scene (`render.hdr`, `D-309`) the float rule fuses whole
+/// runs, and the frame's last pass ends in the tail. With fusing off every
+/// stage draws alone and the tail is a pass of its own: under `rgba16f`,
+/// over the ramp with no text, the two frames stay within one 8-bit step,
+/// a stack with a quantising stage in its middle among them. Under
+/// `rg11b10` a stage drawn alone rounds to 6- and 5-bit mantissas a pass,
+/// which a fused run does not: its counts are printed, a measurement and no
+/// bound.
+#[test]
+fn hdr_fuses_within_one_step_under_rgba16f() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let root = workspace_root();
+    let draw = |stack: &str, hdr: &str, fuse: &str| {
+        capture_logged(
+            &format!("hdr-{hdr}-{fuse}-{stack}"),
+            stack,
+            &root,
+            &[
+                ("TUNGSTEN_POST_BACKDROP_FIXTURE", "gradient"),
+                ("TUNGSTEN_POST_TEXT_FIXTURE", "off"),
+                ("TUNGSTEN_RENDER_HDR", hdr),
+                ("TUNGSTEN_RENDER_POST_FUSE", fuse),
+            ],
+        )
+    };
+    // The passes a run's log says were generated, the tail's own left out.
+    let generated = |log: &str| -> usize {
+        log.lines()
+            .filter(|line| line.contains(FUSED_LINE) && !line.contains("the fused pass tail built"))
+            .count()
+    };
+    for stack in [
+        "bloom_vignette_fade",
+        "dreamy",
+        "retro_arcade",
+        "all",
+        "vignette_dither_fade",
+    ] {
+        let (fused, fused_log) = draw(stack, "rgba16f", "true");
+        let (alone, alone_log) = draw(stack, "rgba16f", "false");
+        // Fused, the stack's last pass at least is a generated one, with
+        // the tail; alone, only the tail's own pass is.
+        assert!(generated(&fused_log) > 0, "{stack}:\n{fused_log}");
+        assert_eq!(generated(&alone_log), 0, "{stack}:\n{alone_log}");
+        assert!(
+            alone_log.contains("the fused pass tail built"),
+            "{stack}:\n{alone_log}"
+        );
+        let report = compare_png(&fused, &alone, 1).expect("compare the two captures");
+        assert_eq!(
+            report.pixels_above_tolerance, 0,
+            "{stack} under rgba16f: {} pixels more than one step from the stages drawn alone, the furthest {}",
+            report.pixels_above_tolerance, report.max_delta
+        );
+
+        let (fused, _) = draw(stack, "rg11b10", "true");
+        let (alone, _) = draw(stack, "rg11b10", "false");
+        let report = compare_png(&fused, &alone, 1).expect("compare the two captures");
+        println!(
+            "hdr rg11b10 {stack}: {} of {} pixels more than one step between fused and alone, the furthest {}, mean {:.4}",
+            report.pixels_above_tolerance,
+            report.width * report.height,
+            report.max_delta,
+            report.mean_delta
+        );
+    }
+}
+
+/// A float scene keeps today's picture where nothing passes 1, and gives
+/// bloom what does (`D-309`). With the mesh trail off, which adds light, the
+/// scene under `rgba16f` stays within 3 steps of `off`, with no stack and
+/// under bloom, and so do quads four times white without bloom: the tail
+/// clamps them to the white `off` draws. Under bloom those quads glow far
+/// past `off`'s, whose scene held them at 1.
+#[test]
+fn hdr_keeps_a_dim_scene_and_blooms_a_bright_one() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let root = workspace_root();
+    let draw = |stack: &str, hdr: &str, bright: &str| {
+        capture(
+            &format!("hdr-scene-{hdr}-{bright}-{stack}"),
+            stack,
+            &root,
+            &[
+                ("TUNGSTEN_POST_TEXT_FIXTURE", "off"),
+                ("TUNGSTEN_MESH_TRAIL_FIXTURE", "off"),
+                ("TUNGSTEN_POST_BRIGHT_FIXTURE", bright),
+                ("TUNGSTEN_RENDER_HDR", hdr),
+            ],
+        )
+    };
+    for (stack, bright) in [("empty", "off"), ("bloom_only", "off"), ("empty", "on")] {
+        let report = compare_png(
+            &draw(stack, "off", bright),
+            &draw(stack, "rgba16f", bright),
+            3,
+        )
+        .expect("compare the two captures");
+        assert_eq!(
+            report.pixels_above_tolerance, 0,
+            "{stack}, bright quads {bright}: {} pixels more than 3 steps from the 8-bit scene, the furthest {}",
+            report.pixels_above_tolerance, report.max_delta
+        );
+    }
+    // The quads under bloom: brighter around each by far more than a dim
+    // scene moves.
+    let report = compare_png(
+        &draw("bloom_only", "off", "on"),
+        &draw("bloom_only", "rgba16f", "on"),
+        8,
+    )
+    .expect("compare the two captures");
+    let total = report.width * report.height;
+    assert!(
+        report.pixels_above_tolerance * 5 > total && report.max_delta > 64,
+        "values above 1 did not reach bloom: {} of {total} pixels more than 8 steps apart, the furthest {}",
+        report.pixels_above_tolerance,
+        report.max_delta
+    );
+}
+
+/// A colour 8 bits hold comes through a float scene's tail as it is
+/// (`D-309`): over quads of every 8-bit value in each channel, with no
+/// stack, the frame under `rgba16f` is `off`'s byte for byte, the tail's
+/// noise staying short of what the float store and the conversions round
+/// by. `rg11b10` holds 6 and 5 bits of mantissa a channel, so there a
+/// colour lands within 4 steps, and its counts are printed.
+#[test]
+fn hdr_keeps_the_colours_8_bits_hold() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let root = workspace_root();
+    let draw_on = |hdr: &str, direct: &str| {
+        capture(
+            &format!("hdr-codes-{hdr}-{direct}"),
+            "empty",
+            &root,
+            &[
+                ("TUNGSTEN_POST_TEXT_FIXTURE", "off"),
+                ("TUNGSTEN_POST_BRIGHT_FIXTURE", "codes"),
+                ("TUNGSTEN_RENDER_HDR", hdr),
+                ("TUNGSTEN_CAPTURE_DIRECT", direct),
+            ],
+        )
+    };
+    let draw = |hdr: &str| draw_on(hdr, "0");
+    let off = draw("off");
+    // The scene is the 256 quads: sixteen columns of 80 pixels, each its
+    // own colour, and no pixel of anything else.
+    let plain = compare_png(&off, &capture("hdr-codes-none", "empty", &root, &[]), 0)
+        .expect("compare the two captures");
+    assert!(
+        plain.pixels_above_tolerance * 10 > plain.width * plain.height * 9,
+        "the code quads do not cover the view"
+    );
+
+    let report = compare_png(&off, &draw("rgba16f"), 0).expect("compare the two captures");
+    assert_eq!(
+        report.pixels_above_tolerance, 0,
+        "rgba16f moved {} pixels of colours 8 bits hold, the furthest {} steps",
+        report.pixels_above_tolerance, report.max_delta
+    );
+    // The direct path's frame, the tail drawn onto a stand-in for the
+    // surface, is the capture path's.
+    let report = compare_png(&draw("rgba16f"), &draw_on("rgba16f", "1"), 0)
+        .expect("compare the two captures");
+    assert_eq!(
+        report.pixels_above_tolerance, 0,
+        "the direct path's tail draws another frame"
+    );
+    let report = compare_png(&off, &draw("rg11b10"), 4).expect("compare the two captures");
+    let moved = compare_png(&off, &draw("rg11b10"), 0).expect("compare the two captures");
+    println!(
+        "hdr rg11b10 codes: {} of {} pixels differ from off, the furthest {} steps",
+        moved.pixels_above_tolerance,
+        moved.width * moved.height,
+        moved.max_delta
+    );
+    assert_eq!(
+        report.pixels_above_tolerance, 0,
+        "rg11b10 moved {} pixels more than 4 steps, the furthest {}",
+        report.pixels_above_tolerance, report.max_delta
+    );
 }

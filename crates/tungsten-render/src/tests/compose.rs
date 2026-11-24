@@ -324,7 +324,7 @@ fn a_fused_pass_holds_256_bytes_a_stage_without_a_size_attribute() {
         .iter()
         .find(|section| section.name == "vignette")
         .expect("vignette");
-    let text = generate(&[&sections[17], vignette], Between::Clamp);
+    let text = generate(&[&sections[17], vignette], Between::Clamp, Finish::Plain);
     assert!(!text.contains("@size"));
     let module = naga::front::wgsl::parse_str(&text).expect("the fused module");
     let (_, stage) = module
@@ -413,7 +413,7 @@ fn every_section_fuses_with_every_mix_into_a_valid_module() {
     for first in &sections {
         for second in &mixes {
             for between in [Between::Clamp, Between::Nothing] {
-                let module = generate(&[first, second], between);
+                let module = generate(&[first, second], between, Finish::Plain);
                 crate::shader_hot_reload::validate_wgsl_source("fused", &module).unwrap_or_else(
                     |error| panic!("{} then {}: {error}\n{module}", first.name, second.name),
                 );
@@ -430,7 +430,7 @@ fn every_section_fuses_with_every_mix_into_a_valid_module() {
         .iter()
         .find(|section| section.name == "vignette")
         .expect("vignette");
-    let module = generate(&[composite, vignette], Between::Clamp);
+    let module = generate(&[composite, vignette], Between::Clamp, Finish::Plain);
     assert!(module.contains("var<uniform> stages: array<Stage, 2>;"));
     assert!(!module.contains(PARAMS_BINDING));
     let body = &module[module.find("fn fs_main").expect("an entry")..];
@@ -447,7 +447,7 @@ fn every_section_fuses_with_every_mix_into_a_valid_module() {
         .iter()
         .find(|section| section.name == "fade")
         .expect("fade");
-    let module = generate(&[vignette, fade], Between::Nothing);
+    let module = generate(&[vignette, fade], Between::Nothing, Finish::Plain);
     let body = &module[module.find("fn fs_main").expect("an entry")..];
     assert_eq!(
         body,
@@ -457,14 +457,14 @@ fn every_section_fuses_with_every_mix_into_a_valid_module() {
          return color;\n}\n"
     );
     // The same effect twice holds its section once and two blocks.
-    let module = generate(&[fade, fade], Between::Clamp);
+    let module = generate(&[fade, fade], Between::Clamp, Finish::Plain);
     assert_eq!(module.matches("fn fade_fx(").count(), 1);
     crate::shader_hot_reload::validate_wgsl_source("fade twice", &module).expect("valid");
     // Eight stages, the float rule's longest pass.
     let eight: Vec<&Section> = std::iter::once(composite)
         .chain(mixes.iter().copied().cycle().take(7))
         .collect();
-    let module = generate(&eight, Between::Nothing);
+    let module = generate(&eight, Between::Nothing, Finish::Plain);
     assert!(module.contains("array<Stage, 8>"));
     crate::shader_hot_reload::validate_wgsl_source("eight", &module).expect("valid");
 }
@@ -592,6 +592,116 @@ fn a_section_is_refused_for_its_markers_its_names_or_its_signature() {
     assert!(section_text(&twice).is_err());
     let unended = fade.replace(END, "// fx end");
     assert!(section_text(&unended).is_err());
+}
+
+#[test]
+fn a_pass_ends_in_the_tail_and_the_tail_stands_alone() {
+    let sections = engine_sections();
+    let vignette = sections
+        .iter()
+        .find(|section| section.name == "vignette")
+        .expect("vignette");
+    let valid = |module: &str| {
+        crate::shader_hot_reload::validate_wgsl_source("tail", module)
+            .unwrap_or_else(|error| panic!("{error}\n{module}"));
+    };
+    for srgb in [true, false] {
+        let tail = Finish::Tail { srgb };
+        // Every engine section alone with the tail: a stack of one stage
+        // under a float scene.
+        for section in &sections {
+            valid(&generate(&[section], Between::Nothing, tail));
+        }
+        // The composite, a vignette and the tail: example 01's last pass.
+        let module = generate(&[&sections[17], vignette], Between::Nothing, tail);
+        valid(&module);
+        let body = &module[module.find("fn fs_main").expect("an entry")..];
+        assert_eq!(
+            body,
+            "fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {\n    \
+             var color = bloom_composite_head(in.uv, stages[0].p);\n    \
+             color = vignette_fx(color, in.uv, stages[1].p);\n    \
+             color = tungsten_tail(color, in.position.xy);\n    \
+             return color;\n}\n"
+        );
+        // An sRGB output dithers the value it stores.
+        assert_eq!(module.contains("fn tungsten_tail_encode("), srgb);
+        assert_eq!(module.contains("fn tungsten_tail_decode("), srgb);
+
+        // The tail alone: the source's own pixel, clamped and dithered.
+        let alone = generate(&[], Between::Nothing, tail);
+        valid(&alone);
+        let body = &alone[alone.find("fn fs_main").expect("an entry")..];
+        assert_eq!(
+            body,
+            "fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {\n    \
+             var color = textureSample(src, src_sampler, in.uv);\n    \
+             color = tungsten_tail(color, in.position.xy);\n    \
+             return color;\n}\n"
+        );
+        assert!(alone.contains("var<uniform> stages: array<Stage, 1>;"));
+    }
+    // A pass that writes a version of the frame's colour holds no tail.
+    let plain = generate(&[vignette], Between::Nothing, Finish::Plain);
+    assert!(!plain.contains("tungsten_tail"));
+
+    // The noise is the sixteen Bayer levels about zero, scaled by the span:
+    // each within 0.3 of an 8-bit step either way, so a colour within a
+    // fifth of a step of a value 8 bits hold is stored as that value. The
+    // shader's own lines are read, not a copy of their arithmetic.
+    let module = generate(&[], Between::Nothing, Finish::Tail { srgb: true });
+    let lines: Vec<&str> = module.lines().map(str::trim).collect();
+    assert!(
+        lines.contains(
+            &"let level = (TUNGSTEN_TAIL_BAYER[cell.y * 4u + cell.x] + 0.5) / 16.0 - 0.5;"
+        ),
+        "the level's line moved: update this test's arithmetic with it"
+    );
+    let scale = format!("return level * {TAIL_NOISE_SPAN:?} / 255.0;");
+    assert!(
+        lines.contains(&scale.as_str()),
+        "the tail no longer reads `{scale}`"
+    );
+    let start = module.find("array<f32, 16>(").expect("the matrix") + "array<f32, 16>(".len();
+    let end = start + module[start..].find(");").expect("its end");
+    let mut levels: Vec<f32> = module[start..end]
+        .split(',')
+        .filter_map(|level| level.trim().parse().ok())
+        .collect();
+    assert_eq!(levels.len(), 16);
+    for level in &levels {
+        let noise = ((level + 0.5) / 16.0 - 0.5) * TAIL_NOISE_SPAN;
+        assert!(noise.abs() < 0.3, "{noise}");
+    }
+    levels.sort_by(f32::total_cmp);
+    assert_eq!(levels, (0..16u8).map(f32::from).collect::<Vec<_>>());
+}
+
+#[test]
+fn the_tail_rides_only_a_last_run_of_sectioned_stages() {
+    let mix = stage(Some(Class::Mix));
+    let steps = stage(Some(Class::Steps));
+    let none = stage(None);
+    let rides = |stages: &[StageInfo]| -> Vec<bool> {
+        let runs = runs(stages, true);
+        (0..runs.len())
+            .map(|index| tail_rides(stages, &runs, index))
+            .collect()
+    };
+    // One run of two sections: the tail ends it.
+    assert_eq!(rides(&[mix, mix]), [true]);
+    assert_eq!(rides(&[steps]), [true]);
+    // A quantiser starts the last run, which the tail still ends; the run
+    // before it never takes the tail.
+    assert_eq!(rides(&[mix, steps, mix]), [false, true]);
+    // A stage without a section, a replaced file's or a game's module that
+    // marks none, draws with its own pipeline: the tail draws alone, last
+    // in the stack or not.
+    assert_eq!(rides(&[mix, none]), [false, false]);
+    assert_eq!(rides(&[none]), [false]);
+    assert_eq!(rides(&[none, mix]), [false, true]);
+    // An empty stack has no run to ride.
+    assert!(rides(&[]).is_empty());
 }
 
 #[test]

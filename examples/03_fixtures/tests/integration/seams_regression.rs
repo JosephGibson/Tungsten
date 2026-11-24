@@ -46,6 +46,7 @@ fn capture_sorted(sort: &str, file: &str) -> Rgba {
         .current_dir(workspace_root())
         .env("TUNGSTEN_FIXTURE", "seams")
         .env_remove("TUNGSTEN_CAPTURE_DIRECT")
+        .env_remove("TUNGSTEN_RENDER_HDR")
         .env("TUNGSTEN_RENDER_DEPTH_SORT", sort)
         .env("TUNGSTEN_SMOKE_FRAMES", "8")
         .env("TUNGSTEN_CAPTURE_FRAME", "5")

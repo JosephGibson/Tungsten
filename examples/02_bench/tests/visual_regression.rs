@@ -41,6 +41,7 @@ fn visual_command(frame: u32, path: &Path, sets: Option<&str>, direct: bool) -> 
         .env_remove("TUNGSTEN_RENDER_DEPTH_SORT")
         .env_remove("TUNGSTEN_RENDER_BLOOM_BASE")
         .env_remove("TUNGSTEN_RENDER_POST_FUSE")
+        .env_remove("TUNGSTEN_RENDER_HDR")
         .env("TUNGSTEN_SMOKE_FRAMES", "8")
         .env("TUNGSTEN_CAPTURE_FRAME", frame.to_string())
         .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")

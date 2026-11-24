@@ -508,6 +508,58 @@ fn post_fuse_is_on_by_default_and_takes_its_override() {
 }
 
 #[test]
+fn hdr_is_off_by_default_and_parses_its_three_names() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert_eq!(parsed.hdr, HdrMode::Off);
+    assert_eq!(Config::default().render.hdr, HdrMode::Off);
+    for (name, mode) in [
+        ("off", HdrMode::Off),
+        ("rg11b10", HdrMode::Rg11b10),
+        ("rgba16f", HdrMode::Rgba16f),
+    ] {
+        let json = format!(r#"{{ "hdr": "{name}" }}"#);
+        let parsed: RenderConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.hdr, mode);
+        assert_eq!(mode.as_str(), name);
+        assert_eq!(name.parse(), Ok(mode));
+        assert_eq!(mode.is_float(), mode != HdrMode::Off);
+    }
+    assert!(serde_json::from_str::<RenderConfig>(r#"{ "hdr": "rgba32f" }"#).is_err());
+    assert!(serde_json::from_str::<RenderConfig>(r#"{ "hdr": true }"#).is_err());
+}
+
+#[test]
+fn hdr_env_override() {
+    let mut config = Config::default();
+    config.apply_hdr_override("rg11b10").unwrap();
+    assert_eq!(config.render.hdr, HdrMode::Rg11b10);
+    config.apply_hdr_override("rgba16f").unwrap();
+    assert_eq!(config.render.hdr, HdrMode::Rgba16f);
+    for bad in ["", "on", "Rgba16f", "rgba16"] {
+        let err = config.apply_hdr_override(bad).unwrap_err();
+        match err {
+            ConfigError::InvalidEnvOverride {
+                var,
+                value,
+                expected,
+            } => {
+                assert_eq!(var, RENDER_HDR_ENV);
+                assert_eq!(value, bad);
+                assert_eq!(expected, HDR_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+    assert_eq!(
+        config.render.hdr,
+        HdrMode::Rgba16f,
+        "a refused value changes nothing"
+    );
+    config.apply_hdr_override("off").unwrap();
+    assert_eq!(config.render.hdr, HdrMode::Off);
+}
+
+#[test]
 fn bloom_base_env_override() {
     let mut config = Config::default();
     config.apply_bloom_base_override("half").unwrap();

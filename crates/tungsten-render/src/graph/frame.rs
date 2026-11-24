@@ -32,10 +32,13 @@ pub(crate) enum PassKind {
     /// Quads, sprites, mesh particles and debug primitives.
     Scene,
     /// The stock effect in post-stack slot `slot`, and with it the
-    /// `stages - 1` stages after it that draw in its pass (`D-307`).
+    /// `stages - 1` stages after it that draw in its pass (`D-307`). With
+    /// `tail` the pass ends in the frame's tail and writes its 8-bit output
+    /// (`D-309`).
     Post {
         slot: usize,
         stages: usize,
+        tail: bool,
     },
     /// Bloom's bright pass into the pyramid's first level.
     BloomThreshold {
@@ -50,10 +53,18 @@ pub(crate) enum PassKind {
         level: u32,
     },
     /// Bloom's composite, and with it the `stages - 1` stages after the
-    /// bloom that draw in its pass (`D-307`).
+    /// bloom that draw in its pass (`D-307`), ending in the frame's tail
+    /// with `tail` (`D-309`).
     BloomComposite {
         slot: usize,
         stages: usize,
+        tail: bool,
+    },
+    /// The frame's tail in a pass of its own (`D-309`): a float colour to
+    /// the 8-bit output. `slot` is one past the stack's last, for the pass's
+    /// own block.
+    Tail {
+        slot: usize,
     },
     SmaaEdges,
     SmaaWeights,
@@ -237,6 +248,15 @@ pub(crate) struct Shape {
     pub bloom_halvings: u32,
     /// The stages of bloom and SMAA a file replaced.
     pub replaced: ReplacedStages,
+    /// The scene's float format under `render.hdr` (`D-309`): the scene and
+    /// every version of the frame's colour before the last are drawn in it,
+    /// and the stack's last pass writes the 8-bit output through the tail.
+    /// `None` draws every version in `format`.
+    pub float: Option<TextureFormat>,
+    /// Under `float`, whether the tail is a pass of its own: the stack is
+    /// empty, or its last pass cannot end in the tail (a replaced file's
+    /// stage, a game's module without a section, fusing off).
+    pub tail_alone: bool,
 }
 
 impl Shape {
@@ -408,14 +428,22 @@ pub(crate) fn declare(shape: &Shape) -> Graph<PassKind> {
         },
     };
 
+    // Under `render.hdr` the scene and every version before the stack's
+    // last are float, and carry no twin: SMAA reads the 8-bit frame.
+    let version = shape.float.map_or(color, |format| Spec {
+        format,
+        twin: None,
+        ..color
+    });
+
     // The scene writes the first version, through its resolve under MSAA.
-    let mut current = graph.transient(color);
+    let mut current = graph.transient(version);
     let mut scene = if shape.samples > 1 {
         let multisampled = graph.transient(Spec {
             samples: shape.samples,
             class: Class::Multisampled,
             twin: None,
-            ..color
+            ..version
         });
         let mut scene = pass(
             PassKind::Scene,
@@ -460,13 +488,17 @@ pub(crate) fn declare(shape: &Shape) -> Graph<PassKind> {
                 joined_own &= *own;
             }
         }
-        let next = graph.transient(color);
+        // The stack's last pass writes the 8-bit output through the tail,
+        // unless the tail is a pass of its own.
+        let tail =
+            shape.float.is_some() && !shape.tail_alone && slot + stages == shape.stages.len();
+        let next = graph.transient(if tail { color } else { version });
         match shape.stages[slot] {
             Stage::Stock { name, own, .. } => {
                 let mut names = vec![name];
                 names.extend_from_slice(&joined);
                 let mut post = pass(
-                    PassKind::Post { slot, stages },
+                    PassKind::Post { slot, stages, tail },
                     post_pass_label(slot),
                     compose::label(slot, &names),
                     next,
@@ -476,11 +508,34 @@ pub(crate) fn declare(shape: &Shape) -> Graph<PassKind> {
                 graph.pass(post);
             }
             Stage::Bloom => {
-                declare_bloom(&mut graph, shape, slot, current, next, &joined, joined_own);
+                let joined = Joined {
+                    names: &joined,
+                    own: joined_own,
+                    tail,
+                };
+                declare_bloom(&mut graph, shape, slot, current, next, &joined);
             }
         }
         current = next;
         slot += stages;
+    }
+
+    // The tail in a pass of its own: after an empty stack, or a last pass
+    // that cannot end in it.
+    if shape.float.is_some() && shape.tail_alone {
+        let next = graph.transient(color);
+        let mut tail = pass(
+            PassKind::Tail {
+                slot: shape.stages.len(),
+            },
+            "tungsten_tail_pass",
+            "tail",
+            next,
+            Write::Whole,
+        );
+        tail.reads = vec![current.base()];
+        graph.pass(tail);
+        current = next;
     }
 
     if shape.smaa {
@@ -568,18 +623,27 @@ pub(crate) fn declare(shape: &Shape) -> Graph<PassKind> {
     graph
 }
 
+/// What draws in the composite's pass beside the composite.
+struct Joined<'a> {
+    /// The names of the stages after the bloom that draw in its pass.
+    names: &'a [&'a str],
+    /// Whether each of those stages draws with the engine's own text.
+    own: bool,
+    /// Whether the pass ends in the frame's tail.
+    tail: bool,
+}
+
 /// Bloom's passes in slot `slot`: the threshold into the pyramid's first
 /// level, the downsamples, the additive upsamples, and the composite of
-/// `source` and the pyramid into `target`, which also draws the stages
-/// named `joined`.
+/// `source` and the pyramid into `target`, which also draws what `joined`
+/// names.
 fn declare_bloom(
     graph: &mut Graph<PassKind>,
     shape: &Shape,
     slot: usize,
     source: Tex,
     target: Tex,
-    joined: &[&str],
-    joined_own: bool,
+    joined: &Joined<'_>,
 ) {
     let mips = shape.bloom_mips.max(1);
     let pyramid = graph.transient(Spec {
@@ -631,12 +695,13 @@ fn declare_bloom(
     let mut composite = pass(
         PassKind::BloomComposite {
             slot,
-            stages: 1 + joined.len(),
+            stages: 1 + joined.names.len(),
+            tail: joined.tail,
         },
         "tungsten_bloom_composite",
-        composite_label(slot, joined),
+        composite_label(slot, joined.names),
         target,
-        full_screen(!shape.replaced.holds(EngineStage::BloomComposite) && joined_own),
+        full_screen(!shape.replaced.holds(EngineStage::BloomComposite) && joined.own),
     );
     composite.reads = vec![source.base(), pyramid.base()];
     graph.pass(composite);

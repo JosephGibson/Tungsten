@@ -126,6 +126,92 @@ fn msaa_falls_back_to_a_count_the_device_takes() {
 }
 
 #[test]
+fn the_scene_format_follows_render_hdr_and_what_the_device_draws() {
+    use tungsten_core::config::HdrMode;
+    use wgpu::TextureFormat::{Rg11b10Ufloat, Rgba16Float};
+    use wgpu::TextureFormatFeatureFlags as F;
+    use wgpu::TextureUsages as U;
+    let drawn = U::RENDER_ATTACHMENT | U::TEXTURE_BINDING | U::COPY_SRC;
+    let blended = F::BLENDABLE | F::FILTERABLE;
+    let resolved = blended | F::MULTISAMPLE_X4 | F::MULTISAMPLE_RESOLVE;
+
+    // Off draws the scene in the frame's own format, whatever the device.
+    assert_eq!(hdr_scene_format(HdrMode::Off, drawn, resolved, 4), None);
+    assert_eq!(
+        hdr_scene_format(HdrMode::Off, U::empty(), F::empty(), 1),
+        None
+    );
+    // `rgba16f` is drawn, blended, filtered and resolved everywhere.
+    for msaa in [1, 4] {
+        assert_eq!(
+            hdr_scene_format(HdrMode::Rgba16f, U::empty(), F::empty(), msaa),
+            Some((Rgba16Float, false))
+        );
+    }
+    // `rg11b10` where the device draws into it, samples it and blends it.
+    assert_eq!(
+        hdr_scene_format(HdrMode::Rg11b10, drawn, blended, 1),
+        Some((Rg11b10Ufloat, false))
+    );
+    assert_eq!(
+        hdr_scene_format(HdrMode::Rg11b10, drawn, resolved, 4),
+        Some((Rg11b10Ufloat, false))
+    );
+    // Elsewhere `rgba16f` stands in, and says so: no attachment, no
+    // sampling, no blend, no filter, or no resolve of the scene's samples.
+    let fallback = Some((Rgba16Float, true));
+    assert_eq!(
+        hdr_scene_format(HdrMode::Rg11b10, U::TEXTURE_BINDING, blended, 1),
+        fallback
+    );
+    assert_eq!(
+        hdr_scene_format(HdrMode::Rg11b10, U::RENDER_ATTACHMENT, blended, 1),
+        fallback
+    );
+    assert_eq!(
+        hdr_scene_format(HdrMode::Rg11b10, drawn, F::FILTERABLE, 1),
+        fallback
+    );
+    assert_eq!(
+        hdr_scene_format(HdrMode::Rg11b10, drawn, F::BLENDABLE, 1),
+        fallback
+    );
+    assert_eq!(
+        hdr_scene_format(HdrMode::Rg11b10, drawn, blended, 4),
+        fallback
+    );
+    assert_eq!(
+        hdr_scene_format(HdrMode::Rg11b10, drawn, blended | F::MULTISAMPLE_X4, 4),
+        fallback
+    );
+
+    // The usages are the device's, decided as its flags are.
+    let webgpu = wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT;
+    let specific = wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
+    assert_eq!(
+        device_format_usages(specific, webgpu, drawn, Rg11b10Ufloat),
+        drawn
+    );
+    assert_eq!(
+        device_format_usages(
+            wgpu::Features::empty(),
+            wgpu::DownlevelFlags::empty(),
+            drawn,
+            Rg11b10Ufloat
+        ),
+        drawn
+    );
+    // A WebGPU-compliant adapter without the feature: the guarantee only,
+    // under which the format is no render attachment.
+    let guaranteed = device_format_usages(wgpu::Features::empty(), webgpu, drawn, Rg11b10Ufloat);
+    assert!(!guaranteed.contains(U::RENDER_ATTACHMENT));
+    assert_eq!(
+        hdr_scene_format(HdrMode::Rg11b10, guaranteed, blended, 1),
+        fallback
+    );
+}
+
+#[test]
 fn device_format_flags_follow_wgpu_core() {
     use wgpu::TextureFormatFeatureFlags as F;
     let format = wgpu::TextureFormat::Bgra8UnormSrgb;

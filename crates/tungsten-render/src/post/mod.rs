@@ -323,8 +323,12 @@ pub struct PostStackRenderer {
     params: ParamSlots<StockParams>,
     /// The [`InertParam`]s already warned about, one bit each.
     inert_warned: u8,
-    /// The format every post pipeline draws into.
+    /// The format a post pass draws a version of the frame's colour in:
+    /// the output's, or the scene's float format under `render.hdr`.
     format: wgpu::TextureFormat,
+    /// The frame's 8-bit output format, which a pass with the tail draws
+    /// in; the same as `format` while the scene is no float.
+    output_format: wgpu::TextureFormat,
     /// The pipelines of fused passes, by what each was generated from
     /// (`D-307`).
     fused: compose::Fused<Signature, wgpu::RenderPipeline>,
@@ -378,13 +382,20 @@ pub(crate) struct Signature {
     effects: [Effect; compose::MAX_STAGES],
     len: u8,
     between: compose::Between,
+    finish: compose::Finish,
 }
 
 impl Signature {
-    /// The signature of the pass that draws `stages`; `None` for more
-    /// stages than a pass holds or a bloom that does not lead.
-    pub(crate) fn of(stages: &[PostPass], between: compose::Between) -> Option<Self> {
-        if stages.is_empty() || stages.len() > compose::MAX_STAGES {
+    /// The signature of the pass that draws `stages` and ends as `finish`
+    /// says; `None` for more stages than a pass holds, a bloom that does
+    /// not lead, and no stage at all unless the pass is the tail alone.
+    pub(crate) fn of(
+        stages: &[PostPass],
+        between: compose::Between,
+        finish: compose::Finish,
+    ) -> Option<Self> {
+        let empty = stages.is_empty() && finish == compose::Finish::Plain;
+        if empty || stages.len() > compose::MAX_STAGES {
             return None;
         }
         let mut effects = [Effect::Composite; compose::MAX_STAGES];
@@ -399,7 +410,13 @@ impl Signature {
             effects,
             len: stages.len() as u8,
             between,
+            finish,
         })
+    }
+
+    /// Whether the pass writes the frame's 8-bit output through the tail.
+    fn tailed(&self) -> bool {
+        matches!(self.finish, compose::Finish::Tail { .. })
     }
 
     fn effects(&self) -> &[Effect] {
@@ -409,7 +426,7 @@ impl Signature {
     /// Whether bloom's composite leads the pass, which then binds the
     /// pyramid beside the source.
     fn led_by_composite(&self) -> bool {
-        self.effects[0] == Effect::Composite
+        self.len > 0 && self.effects[0] == Effect::Composite
     }
 
     /// The names of the pass's stages, as its label holds them.
@@ -586,6 +603,9 @@ pub(crate) enum InertParam {
     /// `PixelOutline` outlines where the scene's alpha crosses its threshold;
     /// a clear alpha at or above it leaves no such edge.
     OutlineClearAlpha,
+    /// `PixelOutline` under a scene format that holds no alpha
+    /// (`render.hdr = rg11b10`): every pixel reads an alpha of 1.
+    OutlineNoAlpha,
 }
 
 impl InertParam {
@@ -593,6 +613,9 @@ impl InertParam {
         match self {
             Self::DitherMode => "dither: `bayer8` and `blue_noise` draw as `bayer4`",
             Self::CrtBleed => "crt: `bleed` does nothing yet",
+            Self::OutlineNoAlpha => {
+                "pixel_outline: the scene's format holds no alpha under `render.hdr = rg11b10`, so nothing is outlined; use `rgba16f`"
+            }
             Self::OutlineClearAlpha => {
                 "pixel_outline: the clear colour's alpha is at or above `alpha_threshold`, so nothing is outlined; clear with a lower alpha"
             }
@@ -601,12 +624,14 @@ impl InertParam {
 }
 
 /// The setting of `pass` that draws nothing or not as named, if any, with the
-/// scene cleared at `clear_alpha`.
-pub(crate) fn inert_param(pass: &PostPass, clear_alpha: f32) -> Option<InertParam> {
+/// scene cleared at `clear_alpha` in a format that holds an alpha channel or,
+/// without `alpha`, none.
+pub(crate) fn inert_param(pass: &PostPass, clear_alpha: f32, alpha: bool) -> Option<InertParam> {
     use tungsten_core::post::DitherMode;
     match pass {
         PostPass::Dither(p) if p.mode != DitherMode::Bayer4 => Some(InertParam::DitherMode),
         PostPass::Crt(p) if p.bleed != 0.0 => Some(InertParam::CrtBleed),
+        PostPass::PixelOutline(_) if !alpha => Some(InertParam::OutlineNoAlpha),
         PostPass::PixelOutline(p) if clear_alpha >= p.alpha_threshold => {
             Some(InertParam::OutlineClearAlpha)
         }
@@ -628,6 +653,7 @@ impl PostStackRenderer {
     pub fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
+        output_format: wgpu::TextureFormat,
         shader_cache: &ShaderModuleCache,
         bloom_shader_ids: BloomShaderIds,
         stock_shader_ids: &[ShaderAssetId; 17],
@@ -647,6 +673,7 @@ impl PostStackRenderer {
             params: ParamSlots::default(),
             inert_warned: 0,
             format,
+            output_format,
             fused: compose::Fused::default(),
             fused_params: Vec::new(),
             fused_payload: Vec::new(),
@@ -665,17 +692,31 @@ impl PostStackRenderer {
         device: &wgpu::Device,
         stages: &[PostPass],
         between: compose::Between,
+        finish: compose::Finish,
     ) -> bool {
-        let Some(signature) = Signature::of(stages, between) else {
+        let Some(signature) = Signature::of(stages, between, finish) else {
             return false;
         };
-        let (resources, bloom, format) = (&self.resources, &self.bloom, self.format);
+        let (resources, bloom) = (&self.resources, &self.bloom);
+        let format = if signature.tailed() {
+            self.output_format
+        } else {
+            self.format
+        };
         let custom = &self.custom;
         self.fused
             .get_or_build(signature, || {
                 build_fused(device, resources, bloom, custom, format, signature)
             })
             .is_some()
+    }
+
+    /// The tail under `render.hdr` for this renderer's output: what a pass
+    /// that writes the frame's 8-bit output ends with.
+    pub(crate) fn tail(&self) -> compose::Finish {
+        compose::Finish::Tail {
+            srgb: self.output_format.is_srgb(),
+        }
     }
 
     /// What the composer's rule reads of `pass`: an engine effect's class
@@ -826,8 +867,9 @@ impl PostStackRenderer {
         stages: &[PostPass],
         slot: usize,
         between: compose::Between,
+        finish: compose::Finish,
     ) -> bool {
-        let Some(signature) = Signature::of(stages, between) else {
+        let Some(signature) = Signature::of(stages, between, finish) else {
             return false;
         };
         let composite = signature.led_by_composite();
@@ -926,7 +968,8 @@ impl PostStackRenderer {
     /// Warns once per kind when `pass` uses a setting that draws nothing
     /// or not as named ([`inert_param`]).
     pub(crate) fn warn_inert(&mut self, pass: &PostPass, clear_alpha: f32) {
-        if let Some(param) = inert_param(pass, clear_alpha) {
+        let alpha = self.format != wgpu::TextureFormat::Rg11b10Ufloat;
+        if let Some(param) = inert_param(pass, clear_alpha, alpha) {
             let bit = 1 << param as u8;
             if self.inert_warned & bit == 0 {
                 self.inert_warned |= bit;
@@ -1153,7 +1196,12 @@ fn build_fused(
     signature: Signature,
 ) -> Option<wgpu::RenderPipeline> {
     let started = std::time::Instant::now();
-    let names = signature.names().join(" + ");
+    // The pass's stages by name, and the tail where it ends in one.
+    let mut parts = signature.names();
+    if signature.tailed() {
+        parts.push("tail");
+    }
+    let names = parts.join(" + ");
     let sections: Result<Vec<compose::Section>, String> = signature
         .effects()
         .iter()
@@ -1169,14 +1217,15 @@ fn build_fused(
         }
     };
     let stages: Vec<&compose::Section> = sections.iter().collect();
-    // A game's effect by its manifest name, where the label says `custom`.
-    let names = stages
-        .iter()
-        .map(|section| section.name.as_str())
-        .collect::<Vec<_>>()
-        .join(" + ");
-    let wgsl = compose::generate(&stages, signature.between);
-    let label = format!("post_fused_{}", signature.names().join("_"));
+    // A game's effect by its manifest name, where the label says `custom`,
+    // and the tail where the pass ends in one.
+    let mut named: Vec<&str> = stages.iter().map(|section| section.name.as_str()).collect();
+    if signature.tailed() {
+        named.push("tail");
+    }
+    let names = named.join(" + ");
+    let wgsl = compose::generate(&stages, signature.between, signature.finish);
+    let label = format!("post_fused_{}", parts.join("_"));
     let composite_layouts = bloom.composite_layouts();
     let layouts: Vec<Option<&wgpu::BindGroupLayout>> = if signature.led_by_composite() {
         composite_layouts

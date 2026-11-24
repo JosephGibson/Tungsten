@@ -373,7 +373,7 @@ pub fn tungsten_render::post::smaa_luts::area_bytes() -> &'static [u8]
 pub fn tungsten_render::post::smaa_luts::search_bytes() -> &'static [u8]
 pub struct tungsten_render::post::PostStackRenderer
 impl tungsten_render::post::PostStackRenderer
-pub fn tungsten_render::post::PostStackRenderer::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, &tungsten_render::shader_hot_reload::ShaderModuleCache, tungsten_render::post::bloom::BloomShaderIds, &[tungsten_core::assets::shader::ShaderAssetId; 17]) -> Self
+pub fn tungsten_render::post::PostStackRenderer::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, wgpu_types::texture::format::TextureFormat, &tungsten_render::shader_hot_reload::ShaderModuleCache, tungsten_render::post::bloom::BloomShaderIds, &[tungsten_core::assets::shader::ShaderAssetId; 17]) -> Self
 impl core::marker::Freeze for tungsten_render::post::PostStackRenderer
 impl core::marker::Send for tungsten_render::post::PostStackRenderer
 impl core::marker::Sync for tungsten_render::post::PostStackRenderer
@@ -1432,7 +1432,7 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::mesh_particle
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::mesh_particle::MeshParticlePipeline
 pub struct tungsten_render::PostStackRenderer
 impl tungsten_render::post::PostStackRenderer
-pub fn tungsten_render::post::PostStackRenderer::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, &tungsten_render::shader_hot_reload::ShaderModuleCache, tungsten_render::post::bloom::BloomShaderIds, &[tungsten_core::assets::shader::ShaderAssetId; 17]) -> Self
+pub fn tungsten_render::post::PostStackRenderer::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, wgpu_types::texture::format::TextureFormat, &tungsten_render::shader_hot_reload::ShaderModuleCache, tungsten_render::post::bloom::BloomShaderIds, &[tungsten_core::assets::shader::ShaderAssetId; 17]) -> Self
 impl core::marker::Freeze for tungsten_render::post::PostStackRenderer
 impl core::marker::Send for tungsten_render::post::PostStackRenderer
 impl core::marker::Sync for tungsten_render::post::PostStackRenderer

@@ -518,23 +518,30 @@ pub(crate) fn fused_pair(stages: &[StageInfo], fuse: bool, smaa: bool) -> Option
 /// a stage that leads a pass starts one, and a pass holds [`MAX_STAGES`] at
 /// most. The stages before that `steps` stage draw alone, so a quantising
 /// stage reads what it reads unfused; a stage without a class may quantise
-/// (a replaced file's is anything), so it counts as one. No frame draws
-/// under a float target yet.
+/// (a replaced file's is anything), so it counts as one.
 #[cfg(test)]
 pub(crate) fn runs(stages: &[StageInfo], float: bool) -> Vec<Range<usize>> {
+    let mut runs = Vec::new();
+    runs_into(stages, float, &mut runs);
+    runs
+}
+
+/// [`runs`] into `runs`, which a frame keeps for its allocation.
+pub(crate) fn runs_into(stages: &[StageInfo], float: bool, runs: &mut Vec<Range<usize>>) {
+    runs.clear();
     let count = stages.len();
     if !float {
         let pair = fused_pair(stages, true, false);
         let alone = pair.as_ref().map_or(count, |pair| pair.start);
-        let mut runs: Vec<Range<usize>> = (0..alone).map(|index| index..index + 1).collect();
+        runs.extend((0..alone).map(|index| index..index + 1));
         runs.extend(pair);
-        return runs;
+        return;
     }
     let from = stages
         .iter()
         .rposition(|stage| matches!(stage.class, Some(Class::Steps) | None))
         .unwrap_or(0);
-    let mut runs: Vec<Range<usize>> = (0..from).map(|index| index..index + 1).collect();
+    runs.extend((0..from).map(|index| index..index + 1));
     let mut start = from;
     while start < count {
         let mut end = start + 1;
@@ -549,7 +556,18 @@ pub(crate) fn runs(stages: &[StageInfo], float: bool) -> Vec<Range<usize>> {
         runs.push(start..end);
         start = end;
     }
-    runs
+}
+
+/// Whether the frame's tail rides the pass that draws run `index` of
+/// `runs`, the float rule's over `stages` (`D-309`): the stack's last run,
+/// every stage of it with a section. A stage without one, a replaced file's
+/// or a game's module that marks none, draws with its own pipeline, which
+/// ends in no tail: the tail then draws in a pass of its own.
+pub(crate) fn tail_rides(stages: &[StageInfo], runs: &[Range<usize>], index: usize) -> bool {
+    index + 1 == runs.len()
+        && stages[runs[index].clone()]
+            .iter()
+            .all(|stage| stage.class.is_some())
 }
 
 /// What a fused pass does to the colour between two of its stages.
@@ -565,11 +583,77 @@ pub(crate) enum Between {
     /// of a 2160p frame than the pass `D-302` wrote by hand, which clamped
     /// the colour alone.
     Clamp,
-    /// Nothing: a float target holds what a stage wrote. No frame draws
-    /// under one yet.
-    #[cfg(test)]
+    /// Nothing: a float target holds what a stage wrote (`render.hdr`).
     Nothing,
 }
+
+/// What a pass does last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum Finish {
+    /// Nothing: the pass writes a version of the frame's colour.
+    Plain,
+    /// The frame's tail (`D-309`): the pass reads or computes a float colour
+    /// and writes the frame's 8-bit output, so it clamps the colour to 0..1,
+    /// which is the 8-bit scene's look, and dithers it in the values the
+    /// output stores, against the banding a float gradient shows in 8 bits.
+    /// `srgb` when the output's format encodes what a pass writes, so the
+    /// tail dithers the encoded value.
+    Tail { srgb: bool },
+}
+
+/// How much of an 8-bit step the tail's noise spans, end to end. Under one:
+/// the noise reaches 0.28 of a step either way, so a colour within 0.22 of
+/// a value 8 bits hold is stored as that value, whatever a half-float scene,
+/// the tail's own encode and decode and the output's conversion round by,
+/// which is under a fifth of a step together. A full step would dither a
+/// gradient with no error left, and would move a tenth of such colours a
+/// step on some pixels (`D-309`).
+pub(crate) const TAIL_NOISE_SPAN: f32 = 0.6;
+
+/// The tail's functions; `NOISE_SPAN` stands for [`TAIL_NOISE_SPAN`], which
+/// [`generate`] writes in.
+const TAIL: &str = "const TUNGSTEN_TAIL_BAYER: array<f32, 16> = array<f32, 16>(
+    0.0, 8.0, 2.0, 10.0,
+    12.0, 4.0, 14.0, 6.0,
+    3.0, 11.0, 1.0, 9.0,
+    15.0, 7.0, 13.0, 5.0,
+);
+
+fn tungsten_tail_noise(position: vec2<f32>) -> f32 {
+    let cell = vec2<u32>(position) % vec2<u32>(4u);
+    let level = (TUNGSTEN_TAIL_BAYER[cell.y * 4u + cell.x] + 0.5) / 16.0 - 0.5;
+    return level * NOISE_SPAN / 255.0;
+}
+";
+
+/// The tail over an output that stores what a pass writes.
+const TAIL_PLAIN: &str = "fn tungsten_tail(color: vec4<f32>, position: vec2<f32>) -> vec4<f32> {
+    let rgb = clamp(color.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    let stored = rgb + vec3<f32>(tungsten_tail_noise(position));
+    return vec4<f32>(clamp(stored, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+}
+";
+
+/// The tail over an sRGB output: the noise is added to the value the output
+/// stores, and the sum decoded for the output to encode again.
+const TAIL_SRGB: &str = "fn tungsten_tail_encode(linear: vec3<f32>) -> vec3<f32> {
+    let low = linear * 12.92;
+    let high = 1.055 * pow(linear, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055);
+    return select(high, low, linear <= vec3<f32>(0.0031308));
+}
+
+fn tungsten_tail_decode(stored: vec3<f32>) -> vec3<f32> {
+    let low = stored / 12.92;
+    let high = pow((stored + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
+    return select(high, low, stored <= vec3<f32>(0.04045));
+}
+
+fn tungsten_tail(color: vec4<f32>, position: vec2<f32>) -> vec4<f32> {
+    let rgb = clamp(color.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    let stored = tungsten_tail_encode(rgb) + vec3<f32>(tungsten_tail_noise(position));
+    return vec4<f32>(tungsten_tail_decode(clamp(stored, vec3<f32>(0.0), vec3<f32>(1.0))), color.a);
+}
+";
 
 /// The module of a pass that draws `stages` in order: the shared prefix with
 /// its parameter block replaced by one block a stage (256 bytes each, the
@@ -578,13 +662,14 @@ pub(crate) enum Between {
 /// the second stage would read the first block's tail), each distinct
 /// section once, and an
 /// `fs_main` that calls the first stage on the source and each later stage
-/// on the colour before it.
+/// on the colour before it, then the tail where `finish` asks it. With no
+/// stage the pass is the tail alone, over the source's own pixel.
 ///
 /// # Panics
 ///
 /// When a stage after the first does not follow another stage: the rule
 /// ([`runs`]) never places one there.
-pub(crate) fn generate(stages: &[&Section], between: Between) -> String {
+pub(crate) fn generate(stages: &[&Section], between: Between, finish: Finish) -> String {
     let blocks = format!(
         "struct Stage {{\n    p: Params,\n    pad: array<vec4<f32>, 10>,\n}};\n\n@group(1) @binding(0) var<uniform> stages: array<Stage, {}>;",
         stages.len().max(1)
@@ -598,7 +683,16 @@ pub(crate) fn generate(stages: &[&Section], between: Between) -> String {
             module.push('\n');
         }
     }
+    if let Finish::Tail { srgb } = finish {
+        module.push_str(&TAIL.replace("NOISE_SPAN", &format!("{TAIL_NOISE_SPAN:?}")));
+        module.push('\n');
+        module.push_str(if srgb { TAIL_SRGB } else { TAIL_PLAIN });
+        module.push('\n');
+    }
     module.push_str("@fragment\nfn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {\n");
+    if stages.is_empty() {
+        module.push_str("    var color = textureSample(src, src_sampler, in.uv);\n");
+    }
     for (index, section) in stages.iter().enumerate() {
         let name = &section.name;
         if index == 0 {
@@ -626,6 +720,9 @@ pub(crate) fn generate(stages: &[&Section], between: Between) -> String {
             module,
             "    color = {name}_fx(color, in.uv, stages[{index}].p);"
         );
+    }
+    if matches!(finish, Finish::Tail { .. }) {
+        module.push_str("    color = tungsten_tail(color, in.position.xy);\n");
     }
     module.push_str("    return color;\n}\n");
     module

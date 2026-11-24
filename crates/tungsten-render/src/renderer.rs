@@ -23,7 +23,7 @@ use crate::post::bloom::{
     BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_SHADERS,
     BLOOM_THRESHOLD_SHADER_NAME, BLOOM_UPSAMPLE_SHADER_NAME, BloomShaderIds, BloomStageKind,
 };
-use crate::post::compose::{self, Between, StageInfo};
+use crate::post::compose::{self, Between, Finish, StageInfo};
 use crate::post::smaa::{
     SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
     SMAA_SHADERS, SmaaPipeline, SmaaShaderIds,
@@ -40,8 +40,8 @@ use crate::shader_hot_reload::{
 };
 use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::surface::{
-    device_format_flags, msaa_sample_count, present_mode_label, resolve_max_frame_latency,
-    resolve_present_mode, surface_extent,
+    device_format_flags, device_format_usages, hdr_scene_format, msaa_sample_count,
+    present_mode_label, resolve_max_frame_latency, resolve_present_mode, surface_extent,
 };
 use crate::targets::{DEPTH_FORMAT, TargetCache, bloom_mip_count_for_halvings};
 use crate::text::{
@@ -185,9 +185,16 @@ pub struct Renderer {
     /// `render.post_fuse`: whether the stages the composer's rule allows
     /// draw in one pass (`D-307`).
     post_fuse: bool,
+    /// The scene's float format under `render.hdr` (`D-309`): the scene's
+    /// pipelines and every post pass but the frame's last draw in it. `None`
+    /// draws them in the surface's format.
+    float: Option<wgpu::TextureFormat>,
     /// The stages of the stack being planned, as the composer's rule reads
     /// them. Kept for its allocation.
     stage_infos: Vec<StageInfo>,
+    /// The runs of the stack being planned under a float scene. Kept for
+    /// its allocation.
+    run_scratch: Vec<std::ops::Range<usize>>,
     /// The stack a frame draws when a game's effect has no pipeline: the
     /// frame's own without that effect's passes. Kept for its allocation.
     stack_scratch: PostStack,
@@ -353,9 +360,34 @@ impl Renderer {
             let adapter_flags = adapter.get_texture_format_features(format).flags;
             device_format_flags(device.features(), downlevel, adapter_flags, format)
         };
+        // The scene's format under `render.hdr`: a float one, `rg11b10`
+        // only where the device draws, blends, filters and resolves it.
+        let rg11b10 = wgpu::TextureFormat::Rg11b10Ufloat;
+        let rg11b10_usages = device_format_usages(
+            device.features(),
+            downlevel,
+            adapter.get_texture_format_features(rg11b10).allowed_usages,
+            rg11b10,
+        );
+        let float = hdr_scene_format(
+            config.hdr,
+            rg11b10_usages,
+            flags_of(rg11b10),
+            requested_msaa,
+        );
+        if let Some((chosen, true)) = float {
+            log::warn!(
+                "render.hdr = {}: this adapter does not draw {rg11b10:?} with blending, filtering and msaa {requested_msaa}; using {chosen:?}",
+                config.hdr.as_str()
+            );
+        }
+        let float = float.map(|(chosen, _)| chosen);
+        // What the scene's pipelines draw in; the overlay, SMAA and the
+        // frame's last pass draw in the surface's `format`.
+        let scene_format = float.unwrap_or(format);
         let sample_count = msaa_sample_count(
             requested_msaa,
-            flags_of(format),
+            flags_of(scene_format),
             depth_enabled.then(|| flags_of(DEPTH_FORMAT)),
         );
         if sample_count != requested_msaa {
@@ -365,7 +397,7 @@ impl Renderer {
                 String::new()
             };
             log::warn!(
-                "msaa {requested_msaa} is not supported for {format:?}{depth} on this adapter; using {sample_count}"
+                "msaa {requested_msaa} is not supported for {scene_format:?}{depth} on this adapter; using {sample_count}"
             );
         }
         // `GpuDepth` without a depth target is a nonsense combo; normalize
@@ -386,18 +418,19 @@ impl Renderer {
         // batch's variant alone (redo 7.15).
         let depth_attached = matches!(depth_sort, DepthSortMode::GpuDepth);
 
-        let quad_pipeline = QuadPipeline::new(&device, format, sample_count, depth_attached);
-        let sprite_pipeline = SpritePipeline::new(&device, format, sample_count, depth_attached);
+        let quad_pipeline = QuadPipeline::new(&device, scene_format, sample_count, depth_attached);
+        let sprite_pipeline =
+            SpritePipeline::new(&device, scene_format, sample_count, depth_attached);
         let debug_line_pipeline = DebugLinePipeline::new(
             &device,
-            format,
+            scene_format,
             quad_pipeline.camera_bind_group_layout(),
             sample_count,
             depth_attached,
         );
         let mesh_particle_pipeline = MeshParticlePipeline::new(
             &device,
-            format,
+            scene_format,
             quad_pipeline.camera_bind_group_layout(),
             sample_count,
             depth_attached,
@@ -440,6 +473,8 @@ impl Renderer {
             bloom_mips: 0,
             bloom_halvings: 0,
             replaced: ReplacedStages::NONE,
+            float,
+            tail_alone: false,
         };
         let present_blit = PresentBlitPipeline::new(&device, format);
 
@@ -555,13 +590,24 @@ impl Renderer {
                 .expect("compile-time stock material shader must validate");
         }
 
-        let post_stack = PostStackRenderer::new(
+        let mut post_stack = PostStackRenderer::new(
             &device,
+            scene_format,
             format,
             &shader_cache,
             bloom_shader_ids,
             &stock_shader_ids,
         );
+        // Under a float scene every frame ends in the tail, in its last
+        // post pass or in a pass of its own: that pass is the engine's own
+        // module, built here as the stock pipelines are.
+        if float.is_some() {
+            let tail = post_stack.tail();
+            assert!(
+                post_stack.fused_ready(&device, &[], Between::Nothing, tail),
+                "the frame's tail must build"
+            );
+        }
 
         // M29: pre-seed lit_sprite (8) + emissive_mask (9) + rim_light (10).
         let lit_sprite_shader_id = ShaderAssetId(8);
@@ -602,7 +648,7 @@ impl Renderer {
             sprite_pipeline.camera_bind_group_layout(),
             sprite_pipeline.lit_texture_bind_group_layout(),
             &lighting.bind_group_layout,
-            format,
+            scene_format,
             sample_count,
             depth_attached,
         );
@@ -700,7 +746,9 @@ impl Renderer {
             bloom_max_mips,
             bloom_base,
             post_fuse: config.post_fuse,
+            float,
             stage_infos: Vec::new(),
+            run_scratch: Vec::new(),
             stack_scratch: PostStack::default(),
             lit_sprite_pipeline,
             lighting,
@@ -724,6 +772,12 @@ impl Renderer {
 
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.surface_config.format
+    }
+
+    /// The format the scene's pipelines and the stack's passes draw in: the
+    /// surface's, or the float one `render.hdr` chose (`D-309`).
+    fn scene_format(&self) -> wgpu::TextureFormat {
+        self.float.unwrap_or(self.surface_config.format)
     }
 
     /// Current MSAA sample count.
@@ -1055,7 +1109,7 @@ impl Renderer {
             self.sprite_pipeline.rebuild_with_shader(
                 &self.device,
                 module,
-                self.surface_config.format,
+                self.scene_format(),
                 self.sample_count,
                 depth_write,
             )?;
@@ -1078,7 +1132,7 @@ impl Renderer {
         ) {
             self.post_stack.bloom.rebuild_stage_with_module(
                 &self.device,
-                self.surface_config.format,
+                self.scene_format(),
                 id,
                 module,
             )?;
@@ -1087,18 +1141,14 @@ impl Renderer {
             self.lit_sprite_pipeline.rebuild_with_shader(
                 &self.device,
                 module,
-                self.surface_config.format,
+                self.scene_format(),
                 self.sample_count,
                 depth_write,
             )?;
         }
         // A stock post effect's pipeline; a no-op for any other name.
-        self.post_stack.rebuild_stock_with_module(
-            &self.device,
-            self.surface_config.format,
-            name,
-            module,
-        )
+        self.post_stack
+            .rebuild_stock_with_module(&self.device, self.scene_format(), name, module)
     }
 
     /// The ID of shader `name`, minted on first use. The renderer is the one
@@ -1220,7 +1270,7 @@ impl Renderer {
                 module,
                 self.sprite_pipeline.camera_bind_group_layout(),
                 self.sprite_pipeline.texture_bind_group_layout(),
-                self.surface_config.format,
+                self.scene_format(),
                 self.sample_count,
                 matches!(self.depth_sort, DepthSortMode::GpuDepth),
                 name,
@@ -1369,10 +1419,17 @@ impl Renderer {
         let replaced = &self.replaced;
         shape.set_stages(post_stack, |pass| replaced.own(pass));
         shape.replaced = replaced.stages();
-        // The composer's rule: the two stages that draw in one pass
-        // (`compose::fused_pair`). The pair joins only once its pass is
-        // built, so a failed build leaves its stages drawn alone.
-        if self.post_fuse && post_stack.len() >= 2 && !shape.smaa {
+        // The composer's rule: the stages that draw in one pass. A run
+        // joins only once its pass is built, so a failed build leaves its
+        // stages drawn alone.
+        shape.float = self.float;
+        shape.tail_alone = self.float.is_some();
+        let fuses = if self.float.is_some() {
+            self.post_fuse && !post_stack.is_empty()
+        } else {
+            self.post_fuse && post_stack.len() >= 2 && !shape.smaa
+        };
+        if fuses {
             let composite = !shape.replaced.holds(EngineStage::BloomComposite);
             self.stage_infos.clear();
             self.stage_infos
@@ -1383,15 +1440,44 @@ impl Renderer {
                     };
                     self.post_stack.stage_info(pass, own)
                 }));
-            if let Some(pair) = compose::fused_pair(&self.stage_infos, self.post_fuse, shape.smaa)
-                && self.post_stack.fused_ready(
-                    &self.device,
-                    &post_stack.0[pair.clone()],
-                    Between::Clamp,
-                )
-            {
-                shape.join(pair);
+        }
+        if fuses && self.float.is_some() {
+            // Under a float scene (`D-309`) the float rule's runs fuse, and
+            // the stack's last pass ends in the frame's tail where every
+            // stage of it has a section; else the tail is a pass of its own.
+            let tail = self.post_stack.tail();
+            compose::runs_into(&self.stage_infos, true, &mut self.run_scratch);
+            for (index, run) in self.run_scratch.iter().enumerate() {
+                let stages = &post_stack.0[run.clone()];
+                if compose::tail_rides(&self.stage_infos, &self.run_scratch, index)
+                    && self
+                        .post_stack
+                        .fused_ready(&self.device, stages, Between::Nothing, tail)
+                {
+                    shape.tail_alone = false;
+                    shape.join(run.clone());
+                } else if run.len() > 1
+                    && self.post_stack.fused_ready(
+                        &self.device,
+                        stages,
+                        Between::Nothing,
+                        Finish::Plain,
+                    )
+                {
+                    shape.join(run.clone());
+                }
             }
+        } else if fuses
+            && let Some(pair) = compose::fused_pair(&self.stage_infos, self.post_fuse, shape.smaa)
+            && self.post_stack.fused_ready(
+                &self.device,
+                &post_stack.0[pair.clone()],
+                Between::Clamp,
+                Finish::Plain,
+            )
+        {
+            // The two stages that draw in one pass (`compose::fused_pair`).
+            shape.join(pair);
         }
         shape.bloom_halvings = halvings;
         shape.bloom_mips =
@@ -2161,6 +2247,14 @@ impl Renderer {
                 timestamp_writes,
             );
 
+            // What a generated pass does between its stages, and last where
+            // it writes the frame's 8-bit output from a float scene.
+            let between = if self.float.is_some() {
+                Between::Nothing
+            } else {
+                Between::Clamp
+            };
+            let tail_finish = self.post_stack.tail();
             let drew = match pass.kind {
                 PassKind::Scene => {
                     record_main_draws(
@@ -2185,32 +2279,32 @@ impl Renderer {
                 // A stock effect alone draws with its own pipeline; with
                 // the stages joined to it, with the pass the composer
                 // generated for them (`D-307`).
-                PassKind::Post { slot, stages } => {
+                PassKind::Post { slot, stages, tail } => {
                     if let Some(run) = post_stack.0.get(slot..slot + stages)
                         && let Some(source) = views.sampled(pass.reads.first())
                     {
                         for stage in run {
                             self.post_stack.warn_inert(stage, self.clear_color.a as f32);
                         }
-                        if let [post_pass] = run {
-                            self.post_stack.record_pass(
+                        match run {
+                            [post_pass] if !tail => self.post_stack.record_pass(
                                 &self.device,
                                 &self.queue,
                                 &mut render_pass,
                                 source,
                                 post_pass,
                                 slot,
-                            )
-                        } else {
-                            self.post_stack.record_fused(
+                            ),
+                            _ => self.post_stack.record_fused(
                                 &self.device,
                                 &self.queue,
                                 &mut render_pass,
                                 Some(source),
                                 run,
                                 slot,
-                                Between::Clamp,
-                            )
+                                between,
+                                if tail { tail_finish } else { Finish::Plain },
+                            ),
                         }
                     } else {
                         false
@@ -2231,14 +2325,19 @@ impl Renderer {
                     slot,
                     BloomStageKind::Up(level),
                 ),
-                PassKind::BloomComposite { slot, stages: 1 } => self.post_stack.bloom.draw_stage(
+                PassKind::BloomComposite {
+                    slot,
+                    stages: 1,
+                    tail: false,
+                } => self.post_stack.bloom.draw_stage(
                     &mut render_pass,
                     slot,
                     BloomStageKind::Composite,
                 ),
-                // The composite with the stages joined to it, in the pass
-                // the composer generated: it binds the slot's own groups.
-                PassKind::BloomComposite { slot, stages } => {
+                // The composite with the stages joined to it, or with the
+                // frame's tail, in the pass the composer generated: it binds
+                // the slot's own groups.
+                PassKind::BloomComposite { slot, stages, tail } => {
                     if let Some(run) = post_stack.0.get(slot..slot + stages) {
                         for stage in &run[1..] {
                             self.post_stack.warn_inert(stage, self.clear_color.a as f32);
@@ -2250,12 +2349,28 @@ impl Renderer {
                             None,
                             run,
                             slot,
-                            Between::Clamp,
+                            between,
+                            if tail { tail_finish } else { Finish::Plain },
                         )
                     } else {
                         false
                     }
                 }
+                // The frame's tail alone (`D-309`): the float colour before
+                // it, clamped and dithered into the 8-bit output.
+                PassKind::Tail { slot } => match views.sampled(pass.reads.first()) {
+                    Some(source) => self.post_stack.record_fused(
+                        &self.device,
+                        &self.queue,
+                        &mut render_pass,
+                        Some(source),
+                        &[],
+                        slot,
+                        Between::Nothing,
+                        tail_finish,
+                    ),
+                    None => false,
+                },
                 // The edge test reads the stack's last version through its
                 // non-sRGB twin where it has one, so it sees encoded values.
                 PassKind::SmaaEdges => {

@@ -8012,6 +8012,36 @@ impl core::marker::Unpin for tungsten_core::config::DepthSortMode
 impl core::marker::UnsafeUnpin for tungsten_core::config::DepthSortMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::DepthSortMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::DepthSortMode
+#[non_exhaustive] pub enum tungsten_core::config::HdrMode
+pub tungsten_core::config::HdrMode::Off
+pub tungsten_core::config::HdrMode::Rg11b10
+pub tungsten_core::config::HdrMode::Rgba16f
+impl tungsten_core::config::HdrMode
+pub const fn tungsten_core::config::HdrMode::as_str(self) -> &'static str
+pub const fn tungsten_core::config::HdrMode::is_float(self) -> bool
+impl core::clone::Clone for tungsten_core::config::HdrMode
+pub fn tungsten_core::config::HdrMode::clone(&self) -> tungsten_core::config::HdrMode
+impl core::cmp::Eq for tungsten_core::config::HdrMode
+impl core::cmp::PartialEq for tungsten_core::config::HdrMode
+pub fn tungsten_core::config::HdrMode::eq(&self, &tungsten_core::config::HdrMode) -> bool
+impl core::default::Default for tungsten_core::config::HdrMode
+pub fn tungsten_core::config::HdrMode::default() -> tungsten_core::config::HdrMode
+impl core::fmt::Debug for tungsten_core::config::HdrMode
+pub fn tungsten_core::config::HdrMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::config::HdrMode
+impl core::marker::StructuralPartialEq for tungsten_core::config::HdrMode
+impl core::str::traits::FromStr for tungsten_core::config::HdrMode
+pub type tungsten_core::config::HdrMode::Err = tungsten_core::config::ParseHdrModeError
+pub fn tungsten_core::config::HdrMode::from_str(&str) -> core::result::Result<Self, Self::Err>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::HdrMode
+pub fn tungsten_core::config::HdrMode::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::HdrMode
+impl core::marker::Send for tungsten_core::config::HdrMode
+impl core::marker::Sync for tungsten_core::config::HdrMode
+impl core::marker::Unpin for tungsten_core::config::HdrMode
+impl core::marker::UnsafeUnpin for tungsten_core::config::HdrMode
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::HdrMode
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::HdrMode
 #[non_exhaustive] pub enum tungsten_core::config::PostAaMode
 pub tungsten_core::config::PostAaMode::Off
 pub tungsten_core::config::PostAaMode::SmaaHigh
@@ -8254,6 +8284,26 @@ impl core::marker::Unpin for tungsten_core::config::ParseDepthSortModeError
 impl core::marker::UnsafeUnpin for tungsten_core::config::ParseDepthSortModeError
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::ParseDepthSortModeError
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::ParseDepthSortModeError
+pub struct tungsten_core::config::ParseHdrModeError
+impl core::clone::Clone for tungsten_core::config::ParseHdrModeError
+pub fn tungsten_core::config::ParseHdrModeError::clone(&self) -> tungsten_core::config::ParseHdrModeError
+impl core::cmp::Eq for tungsten_core::config::ParseHdrModeError
+impl core::cmp::PartialEq for tungsten_core::config::ParseHdrModeError
+pub fn tungsten_core::config::ParseHdrModeError::eq(&self, &tungsten_core::config::ParseHdrModeError) -> bool
+impl core::error::Error for tungsten_core::config::ParseHdrModeError
+impl core::fmt::Debug for tungsten_core::config::ParseHdrModeError
+pub fn tungsten_core::config::ParseHdrModeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::config::ParseHdrModeError
+pub fn tungsten_core::config::ParseHdrModeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::config::ParseHdrModeError
+impl core::marker::StructuralPartialEq for tungsten_core::config::ParseHdrModeError
+impl core::marker::Freeze for tungsten_core::config::ParseHdrModeError
+impl core::marker::Send for tungsten_core::config::ParseHdrModeError
+impl core::marker::Sync for tungsten_core::config::ParseHdrModeError
+impl core::marker::Unpin for tungsten_core::config::ParseHdrModeError
+impl core::marker::UnsafeUnpin for tungsten_core::config::ParseHdrModeError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::ParseHdrModeError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::ParseHdrModeError
 pub struct tungsten_core::config::ParsePostAaModeError
 impl core::clone::Clone for tungsten_core::config::ParsePostAaModeError
 pub fn tungsten_core::config::ParsePostAaModeError::clone(&self) -> tungsten_core::config::ParsePostAaModeError
@@ -8346,6 +8396,7 @@ pub tungsten_core::config::RenderConfig::bloom_max_mips: u32
 pub tungsten_core::config::RenderConfig::clear_color: [f64; 4]
 pub tungsten_core::config::RenderConfig::depth_enabled: bool
 pub tungsten_core::config::RenderConfig::depth_sort: tungsten_core::config::DepthSortMode
+pub tungsten_core::config::RenderConfig::hdr: tungsten_core::config::HdrMode
 pub tungsten_core::config::RenderConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::config::RenderConfig::msaa: u32
 pub tungsten_core::config::RenderConfig::post_aa: tungsten_core::config::PostAaMode
@@ -23570,6 +23621,7 @@ pub tungsten_core::RenderConfig::bloom_max_mips: u32
 pub tungsten_core::RenderConfig::clear_color: [f64; 4]
 pub tungsten_core::RenderConfig::depth_enabled: bool
 pub tungsten_core::RenderConfig::depth_sort: tungsten_core::config::DepthSortMode
+pub tungsten_core::RenderConfig::hdr: tungsten_core::config::HdrMode
 pub tungsten_core::RenderConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::RenderConfig::msaa: u32
 pub tungsten_core::RenderConfig::post_aa: tungsten_core::config::PostAaMode

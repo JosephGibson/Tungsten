@@ -10,7 +10,7 @@
 //!   - `B` / `[`  → previous effect
 //!   - `C` / `Backspace` → clear stack (M25-byte-identical output)
 //!
-//! Env `TUNGSTEN_POST_STACK_FIXTURE={all|retro_arcade|dreamy|glitch_boss|bloom_only|fade_pair|fade_twice|bloom_vignette|bloom_vignette_fade|fog_fade|fog_bloom_vignette|game_tint|game_none|game_wave|game_wave_fade|pair:<kind>:<kind>|empty}`
+//! Env `TUNGSTEN_POST_STACK_FIXTURE={all|retro_arcade|dreamy|glitch_boss|bloom_only|fade_pair|fade_twice|bloom_vignette|bloom_vignette_fade|fog_fade|fog_bloom_vignette|vignette_dither_fade|game_tint|game_none|game_wave|game_wave_fade|pair:<kind>:<kind>|empty}`
 //! preloads a fixed stack and **disables** the cycle. `game_tint` and
 //! `game_wave` draw the fixtures' own post effects, manifest entries `tint`
 //! (a `mix` section, behind a vignette) and `wave` (no section) (`D-308`);
@@ -60,7 +60,11 @@ use tungsten::core::{
     SpriteSquashStretch, SquashEvent, SquashTrigger, Time, Transform, Visibility, With, World,
 };
 use tungsten::particles::spawn_particle_via;
-use tungsten::{App, PostAaState, render::TextSection, request_post_aa};
+use tungsten::{
+    App, PostAaState,
+    render::{QuadInstance, TextSection},
+    request_post_aa,
+};
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/03_fixtures/assets/manifest.json";
@@ -178,11 +182,18 @@ pub fn run() -> anyhow::Result<()> {
         world.insert_resource(SparkRng(Pcg32::seeded(0xEF04_5A9C_A2D1_7B03)));
     }
 
-    app.on_startup(|world, _renderer| {
+    // `TUNGSTEN_POST_BRIGHT_FIXTURE=codes` draws the code quads alone.
+    let codes = std::env::var("TUNGSTEN_POST_BRIGHT_FIXTURE").unwrap_or_default() == "codes";
+    app.on_startup(move |world, _renderer| {
         // M30: backdrop first so the layers sit behind everything by z_order.
-        spawn_parallax_layers(world);
-        let bouncers = spawn_bouncers(world);
-        spawn_emissive_quad(world);
+        let bouncers = if codes {
+            Vec::new()
+        } else {
+            spawn_parallax_layers(world);
+            let bouncers = spawn_bouncers(world);
+            spawn_emissive_quad(world);
+            bouncers
+        };
         if let Some(&target) = bouncers.first() {
             configure_playground_camera(world, target);
             if std::env::var("TUNGSTEN_MESH_TRAIL_FIXTURE").unwrap_or_default() != "off" {
@@ -254,6 +265,12 @@ pub fn run() -> anyhow::Result<()> {
                         stack.push(PostPass::Fog(FogParams::default()));
                         push_bloom_vignette(stack);
                     }
+                    // A quantising stage in the stack's middle.
+                    "vignette_dither_fade" => {
+                        stack.push(PostPass::Vignette(VignetteParams::default()));
+                        stack.push(PostPass::Dither(DitherParams::default()));
+                        stack.push(half_fade());
+                    }
                     other => push_pair(stack, other),
                 }
             }
@@ -270,9 +287,75 @@ pub fn run() -> anyhow::Result<()> {
         }
     });
 
+    // `TUNGSTEN_POST_BRIGHT_FIXTURE=on`: quads four times white over the
+    // arena, a value only a float scene holds (`render.hdr`, `D-309`).
+    // `codes`: nothing but a quad for each 8-bit value, over the whole view.
+    match std::env::var("TUNGSTEN_POST_BRIGHT_FIXTURE").as_deref() {
+        Ok("on") => {
+            let quads = bright_quads();
+            app.set_extract_quads(move |_| quads.clone());
+        }
+        Ok("codes") => {
+            let quads = code_quads();
+            app.set_extract_quads(move |_| quads.clone());
+        }
+        _ => {}
+    }
+
     configure(&mut app);
 
     app.run()
+}
+
+/// A quad for each of the 256 values a channel of an 8-bit frame holds,
+/// sixteen a row with no gap over the 1280 by 720 view, each channel's value
+/// the linear one that sRGB code decodes to: red runs up the codes, green
+/// through them out of step, blue down. An 8-bit scene stores each exactly,
+/// and so must a float scene's tail (`D-309`).
+fn code_quads() -> Vec<QuadInstance> {
+    let size = [WINDOW_W / 16.0, WINDOW_H / 16.0];
+    let linear = |code: u32| {
+        let stored = code as f32 / 255.0;
+        if stored <= 0.04045 {
+            stored / 12.92
+        } else {
+            ((stored + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    (0..256u32)
+        .map(|code| QuadInstance {
+            position: [(code % 16) as f32 * size[0], (code / 16) as f32 * size[1]],
+            size,
+            color: [
+                linear(code),
+                linear((code * 7 + 3) % 256),
+                linear(255 - code),
+                1.0,
+            ],
+        })
+        .collect()
+}
+
+/// A grid of quads of colour 4 over the arena, so some are in view wherever
+/// the camera follows its bouncer.
+fn bright_quads() -> Vec<QuadInstance> {
+    const STEP: f32 = 320.0;
+    const SIDE: f32 = 48.0;
+    let mut quads = Vec::new();
+    let mut y = STEP * 0.5;
+    while y < ARENA_H {
+        let mut x = STEP * 0.5;
+        while x < ARENA_W {
+            quads.push(QuadInstance {
+                position: [x, y],
+                size: [SIDE, SIDE],
+                color: [4.0, 4.0, 4.0, 1.0],
+            });
+            x += STEP;
+        }
+        y += STEP;
+    }
+    quads
 }
 
 /// The playground's systems, in `update` in this order, and its text. Game

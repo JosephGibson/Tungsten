@@ -230,6 +230,23 @@ row "post_stack=bloom_only bloom_fixture=on" "$log_dir/${fixtures_pkg}-bloom.log
   TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE=bloom_only TUNGSTEN_BLOOM_FIXTURE=on
 end_section "Bloom passed" "Bloom failures" 1
 
+# `render.hdr` (`D-309`): the scene in each float format, under the stack's
+# every effect, and with MSAA's resolve ahead of the frame's tail and SMAA
+# behind it.
+begin_section "HDR scene matrix (pkg: $fixtures_pkg, scenes post and seams)"
+for hdr in rg11b10 rgba16f; do
+  row "hdr=${hdr} post_stack=all" "$log_dir/${fixtures_pkg}-hdr-${hdr}-all.log" "$fixtures_pkg" \
+    TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE=all TUNGSTEN_RENDER_HDR="$hdr"
+  row "hdr=${hdr} post_stack=empty msaa=4 post_aa=smaa_high" "$log_dir/${fixtures_pkg}-hdr-${hdr}-msaa-smaa.log" "$fixtures_pkg" \
+    TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE=empty TUNGSTEN_RENDER_HDR="$hdr" \
+    TUNGSTEN_RENDER_MSAA=4 TUNGSTEN_POST_AA_FIXTURE=smaa_high
+done
+# The seams scene under a float scene and the depth sort: lit sprites, the
+# flash block, a material, tile layers and UI labels over the tail.
+row "hdr=rg11b10 scene=seams depth_sort=gpu_depth" "$log_dir/${fixtures_pkg}-hdr-seams.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=seams TUNGSTEN_RENDER_HDR=rg11b10 TUNGSTEN_RENDER_DEPTH_SORT=gpu_depth
+end_section "HDR passed" "HDR failures" 5
+
 # M29: lighting row over the `lighting` scene. Five lit sprites beside an
 # unlit quad, under warm and cool point lights and a directional fill, take
 # the lit pipeline, the LightUbo upload and the lit/unlit batch keying.

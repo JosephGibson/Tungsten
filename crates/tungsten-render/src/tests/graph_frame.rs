@@ -322,6 +322,8 @@ fn shape(stages: &[Stage]) -> Shape {
         bloom_mips: 6,
         bloom_halvings: 1,
         replaced: ReplacedStages::NONE,
+        float: None,
+        tail_alone: false,
     }
 }
 
@@ -978,6 +980,172 @@ fn no_frame_of_the_matrix_drops_a_pass() {
     }
 }
 
+/// The format of the texture `at` names: a pooled texture's, or the
+/// output's for an imported one.
+fn format_at(shape: &Shape, compiled: &Compiled<PassKind>, at: At) -> TextureFormat {
+    match at.target {
+        Target::Slot(slot) => compiled.slots[usize::from(slot)].format,
+        Target::Imported(_) => shape.format,
+    }
+}
+
+#[test]
+fn a_float_scene_reaches_the_8_bit_frame_through_the_tail() {
+    // `render.hdr` (`D-309`). A format the pyramid never has, so a float
+    // version is told from a bloom level.
+    const FLOAT: TextureFormat = TextureFormat::Rg11b10Ufloat;
+    let mut frames = 0;
+    for base in matrix() {
+        // Off: the flag for the tail's own pass means nothing.
+        let off = Shape {
+            tail_alone: true,
+            ..base.clone()
+        };
+        assert_eq!(
+            declare(&off).compile().expect("compiles"),
+            declare(&base).compile().expect("compiles"),
+            "{base:?}"
+        );
+        for tail_alone in [true, false] {
+            // The stack's last pass ends in the tail only where there is one.
+            if !tail_alone && base.stages.is_empty() {
+                continue;
+            }
+            let shape = Shape {
+                float: Some(FLOAT),
+                tail_alone,
+                ..base.clone()
+            };
+            let compiled = declare(&shape)
+                .compile()
+                .unwrap_or_else(|error| panic!("{shape:?}: {error:?}"));
+            frames += 1;
+            let format = |at: At| format_at(&shape, &compiled, at);
+
+            // One pass ends in the tail: its own, or the stack's last.
+            let tails: Vec<usize> = compiled
+                .passes
+                .iter()
+                .enumerate()
+                .filter(|(_, pass)| {
+                    matches!(
+                        pass.kind,
+                        PassKind::Tail { .. }
+                            | PassKind::Post { tail: true, .. }
+                            | PassKind::BloomComposite { tail: true, .. }
+                    )
+                })
+                .map(|(index, _)| index)
+                .collect();
+            assert_eq!(tails.len(), 1, "{shape:?}");
+            let tail = tails[0];
+            assert_eq!(
+                matches!(compiled.passes[tail].kind, PassKind::Tail { .. }),
+                tail_alone,
+                "{shape:?}"
+            );
+            if let PassKind::Tail { slot } = compiled.passes[tail].kind {
+                assert_eq!(slot, shape.stages.len());
+                assert_eq!(compiled.passes[tail].timing, "tail");
+            }
+
+            for (index, pass) in compiled.passes.iter().enumerate() {
+                let at = format!("pass {index} ({}) of {shape:?}", pass.timing);
+                let target = format(pass.color.at);
+                let float_reads = pass.reads.iter().filter(|read| format(**read) == FLOAT);
+                match pass.kind {
+                    // The scene draws in the float format, resolve and all.
+                    PassKind::Scene => {
+                        assert_eq!(target, FLOAT, "{at}");
+                        assert!(pass.resolve.is_none_or(|to| format(to) == FLOAT), "{at}");
+                        assert_eq!(index, 0, "{at}");
+                    }
+                    // The stack's passes draw float versions, up to the
+                    // one that ends in the tail, which writes the 8-bit
+                    // frame from a float colour.
+                    PassKind::Post { .. }
+                    | PassKind::BloomComposite { .. }
+                    | PassKind::Tail { .. } => {
+                        assert!(index <= tail, "nothing of the stack follows the tail: {at}");
+                        assert_eq!(target, if index == tail { FORMAT } else { FLOAT }, "{at}");
+                        assert_eq!(float_reads.count(), 1, "{at}");
+                    }
+                    // The pyramid is its own; its threshold reads a float
+                    // version.
+                    PassKind::BloomThreshold { .. } => {
+                        assert_eq!(target, BLOOM_PYRAMID_FORMAT, "{at}");
+                        assert_eq!(float_reads.count(), 1, "{at}");
+                    }
+                    PassKind::BloomDown { .. } | PassKind::BloomUp { .. } => {
+                        assert_eq!(target, BLOOM_PYRAMID_FORMAT, "{at}");
+                    }
+                    // SMAA, the overlay and a capture's blit never touch a
+                    // float target: they follow the tail and read and draw
+                    // 8-bit textures.
+                    PassKind::SmaaEdges
+                    | PassKind::SmaaWeights
+                    | PassKind::SmaaNeighborhood
+                    | PassKind::Overlay
+                    | PassKind::Blit => {
+                        assert!(index > tail, "{at}");
+                        assert_ne!(target, FLOAT, "{at}");
+                        assert_eq!(float_reads.count(), 0, "{at}");
+                    }
+                }
+            }
+            // The tail's own pass writes every pixel, so it loads nothing
+            // on the surface; where it is the frame's only full-screen
+            // pass the scene alone comes before it.
+            if tail_alone && shape.stages.is_empty() {
+                assert_eq!(tail, 1, "{shape:?}");
+            }
+            // What follows the tail is declared as `off` declares it: the
+            // 8-bit texture SMAA reads, with its view in the other
+            // encoding, and the one a capture copies.
+            let base_compiled = declare(&base).compile().expect("compiles");
+            let spec = |frame: &Compiled<PassKind>, at: Target| match at {
+                Target::Slot(slot) => Some(frame.slots[slot as usize]),
+                Target::Imported(_) => None,
+            };
+            let edges = |frame: &Compiled<PassKind>| {
+                frame
+                    .passes
+                    .iter()
+                    .find(|pass| pass.kind == PassKind::SmaaEdges)
+                    .map(|pass| spec(frame, pass.reads[0].target))
+            };
+            assert_eq!(edges(&compiled), edges(&base_compiled), "{shape:?}");
+            let copied =
+                |frame: &Compiled<PassKind>| frame.copied.map(|target| spec(frame, target));
+            assert_eq!(copied(&compiled), copied(&base_compiled), "{shape:?}");
+        }
+    }
+    // Every shape with its tail alone, and every shape with a stack with
+    // the tail in its last pass.
+    assert_eq!(frames, 17 * 72 + 16 * 72);
+
+    // The frame of an empty stack on the direct path: the scene in a float
+    // texture, then the tail onto the surface, which it need not load.
+    let direct = Shape {
+        float: Some(FLOAT),
+        tail_alone: true,
+        ..shape(&[])
+    };
+    let compiled = declare(&direct).compile().expect("compiles");
+    let kinds: Vec<PassKind> = compiled.passes.iter().map(|pass| pass.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            PassKind::Scene,
+            PassKind::Tail { slot: 0 },
+            PassKind::Overlay
+        ]
+    );
+    assert_eq!(compiled.passes[1].color.load, Load::Nothing);
+    assert_eq!(compiled.passes[1].color.at.target, Target::Imported(0));
+    assert_eq!(compiled.slots.len(), 1, "the float scene alone");
+}
+
 #[test]
 fn a_games_effect_is_a_pass_that_clears_under_the_label_custom() {
     // The record never takes a game's effect for the engine's own text
@@ -1055,11 +1223,19 @@ fn a_run_of_joined_stages_is_one_pass_under_its_stages_names() {
         apart[12..],
         [
             (
-                PassKind::BloomComposite { slot: 0, stages: 1 },
+                PassKind::BloomComposite {
+                    slot: 0,
+                    stages: 1,
+                    tail: false
+                },
                 "post0_bloom_composite".to_string()
             ),
             (
-                PassKind::Post { slot: 1, stages: 1 },
+                PassKind::Post {
+                    slot: 1,
+                    stages: 1,
+                    tail: false
+                },
                 "post1_vignette".to_string()
             ),
             (PassKind::Overlay, "text".to_string()),
@@ -1071,7 +1247,11 @@ fn a_run_of_joined_stages_is_one_pass_under_its_stages_names() {
         fused[12..],
         [
             (
-                PassKind::BloomComposite { slot: 0, stages: 2 },
+                PassKind::BloomComposite {
+                    slot: 0,
+                    stages: 2,
+                    tail: false
+                },
                 "post0_bloom_composite_vignette".to_string()
             ),
             (PassKind::Overlay, "text".to_string()),
@@ -1085,11 +1265,19 @@ fn a_run_of_joined_stages_is_one_pass_under_its_stages_names() {
         transition[12..14],
         [
             (
-                PassKind::BloomComposite { slot: 0, stages: 1 },
+                PassKind::BloomComposite {
+                    slot: 0,
+                    stages: 1,
+                    tail: false
+                },
                 "post0_bloom_composite".to_string()
             ),
             (
-                PassKind::Post { slot: 1, stages: 2 },
+                PassKind::Post {
+                    slot: 1,
+                    stages: 2,
+                    tail: false
+                },
                 "post1_vignette_fade".to_string()
             ),
         ]
@@ -1099,7 +1287,11 @@ fn a_run_of_joined_stages_is_one_pass_under_its_stages_names() {
     assert_eq!(
         after[1],
         (
-            PassKind::Post { slot: 0, stages: 3 },
+            PassKind::Post {
+                slot: 0,
+                stages: 3,
+                tail: false
+            },
             "post0_dither_fade_vignette".to_string()
         )
     );
@@ -1107,7 +1299,11 @@ fn a_run_of_joined_stages_is_one_pass_under_its_stages_names() {
     assert_eq!(
         after[after.len() - 2],
         (
-            PassKind::BloomComposite { slot: 3, stages: 2 },
+            PassKind::BloomComposite {
+                slot: 3,
+                stages: 2,
+                tail: false
+            },
             "post3_bloom_composite_fade".to_string()
         )
     );

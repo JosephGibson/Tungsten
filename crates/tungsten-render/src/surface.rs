@@ -1,6 +1,6 @@
 //! Present-mode resolution + surface pacing; device-free helpers live here.
 
-use tungsten_core::config::PresentModeConfig;
+use tungsten_core::config::{HdrMode, PresentModeConfig};
 
 use crate::renderer::RenderError;
 
@@ -133,6 +133,61 @@ pub(crate) fn device_format_flags(
         adapter_flags
     } else {
         format.guaranteed_format_features(device_features).flags
+    }
+}
+
+/// What the device lets `format` be used for, decided as
+/// [`device_format_flags`] decides its flags.
+pub(crate) fn device_format_usages(
+    device_features: wgpu::Features,
+    downlevel: wgpu::DownlevelFlags,
+    adapter_usages: wgpu::TextureUsages,
+    format: wgpu::TextureFormat,
+) -> wgpu::TextureUsages {
+    if device_features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+        || !downlevel.contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT)
+    {
+        adapter_usages
+    } else {
+        format
+            .guaranteed_format_features(device_features)
+            .allowed_usages
+    }
+}
+
+/// The scene's float format under `render.hdr` (`D-309`), and whether it is
+/// a fallback; `None` for `off`, where the scene draws in the frame's own
+/// format.
+///
+/// `rg11b10` takes `Rg11b10Ufloat` where the device draws into it, samples
+/// it with filtering and blends it, which `usages` and `flags` say of that
+/// format, and where it takes the scene's requested `msaa` and resolves
+/// it. Elsewhere it takes `Rgba16Float`, which every device draws, blends,
+/// filters and resolves: the picture there is `rgba16f`'s, with its alpha
+/// and its finer values.
+pub(crate) fn hdr_scene_format(
+    mode: HdrMode,
+    usages: wgpu::TextureUsages,
+    flags: wgpu::TextureFormatFeatureFlags,
+    msaa: u32,
+) -> Option<(wgpu::TextureFormat, bool)> {
+    use wgpu::TextureFormatFeatureFlags as F;
+    match mode {
+        HdrMode::Rgba16f => Some((wgpu::TextureFormat::Rgba16Float, false)),
+        HdrMode::Rg11b10 => {
+            let drawn = usages.contains(
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            ) && flags.contains(F::BLENDABLE | F::FILTERABLE);
+            let sampled = msaa == 1
+                || (flags.sample_count_supported(msaa) && flags.contains(F::MULTISAMPLE_RESOLVE));
+            Some(if drawn && sampled {
+                (wgpu::TextureFormat::Rg11b10Ufloat, false)
+            } else {
+                (wgpu::TextureFormat::Rgba16Float, true)
+            })
+        }
+        // `off`, and any mode a later version adds.
+        _ => None,
     }
 }
 

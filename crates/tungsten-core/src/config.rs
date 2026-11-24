@@ -24,6 +24,7 @@ const RENDER_POST_AA_ENV: &str = "TUNGSTEN_RENDER_POST_AA";
 const RENDER_BLOOM_MAX_MIPS_ENV: &str = "TUNGSTEN_RENDER_BLOOM_MAX_MIPS";
 const RENDER_BLOOM_BASE_ENV: &str = "TUNGSTEN_RENDER_BLOOM_BASE";
 const RENDER_POST_FUSE_ENV: &str = "TUNGSTEN_RENDER_POST_FUSE";
+const RENDER_HDR_ENV: &str = "TUNGSTEN_RENDER_HDR";
 const PHYSICS_WORKERS_ENV: &str = "TUNGSTEN_PHYSICS_WORKERS";
 const DISPLAY_MODE_EXPECTED: &str = "one of: windowed, borderless_fullscreen, exclusive_fullscreen";
 const DISPLAY_RESOLUTION_EXPECTED: &str = "WIDTHxHEIGHT with integers >= 1";
@@ -37,6 +38,7 @@ const DEPTH_SORT_EXPECTED: &str = "one of: cpu_stable, gpu_depth";
 const POST_AA_EXPECTED: &str = "one of: off, smaa_low, smaa_medium, smaa_high, smaa_ultra";
 const BLOOM_MAX_MIPS_EXPECTED: &str = "an integer in 1..=8";
 const BLOOM_BASE_EXPECTED: &str = "auto, half or quarter";
+const HDR_EXPECTED: &str = "off, rg11b10 or rgba16f";
 const GAME_ID_EXPECTED: &str = "1-64 ASCII letters, digits, '.', '_' or '-', starting with a letter or digit, not ending in '.', and not a Windows device name";
 const LOGGING_LEVEL_EXPECTED: &str = "one of: off, error, warn, info, debug, trace";
 const FIXED_STEP_HZ_EXPECTED: &str = "an integer >= 30";
@@ -366,6 +368,75 @@ impl FromStr for BloomBase {
     }
 }
 
+/// `render.hdr`: the format the scene is drawn in (`D-309`). `off`, the
+/// default, draws it in the frame's own 8-bit format, as before. A float
+/// format keeps what the scene holds above 1, a lit sprite's sum, a
+/// material's output or a quad's colour, for bloom to read, and the frame's
+/// last full-screen pass brings it back to 8 bits: a clamp, which is `off`'s
+/// look, and a dither against banding short enough to leave a colour 8 bits
+/// hold as it is. `rg11b10` costs the 8-bit scene's bytes and holds 6 and 5
+/// bits of mantissa a channel; `rgba16f` twice the bytes, with alpha. A
+/// tonemap is the game's own, a `Tonemap` pass.
+///
+/// ```
+/// use tungsten_core::config::HdrMode;
+///
+/// assert_eq!(HdrMode::default(), HdrMode::Off);
+/// assert!(!HdrMode::Off.is_float());
+/// assert!(HdrMode::Rg11b10.is_float() && HdrMode::Rgba16f.is_float());
+/// assert_eq!("rg11b10".parse(), Ok(HdrMode::Rg11b10));
+/// assert_eq!(HdrMode::Rgba16f.as_str(), "rgba16f");
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum HdrMode {
+    /// The scene in the frame's 8-bit format.
+    #[default]
+    Off,
+    /// A 32-bit float format, 11, 11 and 10 bits a channel with no alpha:
+    /// about the cost of `off`. The scene holds no alpha, so a
+    /// `PixelOutline` pass finds no edge. Where the device does not draw
+    /// and blend the format, the renderer uses `rgba16f` and says so.
+    Rg11b10,
+    /// 16-bit floats a channel with alpha: twice the scene's bytes.
+    Rgba16f,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("expected {HDR_EXPECTED}")]
+pub struct ParseHdrModeError;
+
+impl HdrMode {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Rg11b10 => "rg11b10",
+            Self::Rgba16f => "rgba16f",
+        }
+    }
+
+    /// Whether the scene draws in a float format.
+    #[must_use]
+    pub const fn is_float(self) -> bool {
+        !matches!(self, Self::Off)
+    }
+}
+
+impl FromStr for HdrMode {
+    type Err = ParseHdrModeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "off" => Ok(Self::Off),
+            "rg11b10" => Ok(Self::Rg11b10),
+            "rgba16f" => Ok(Self::Rgba16f),
+            _ => Err(ParseHdrModeError),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RenderConfig {
     /// The colour the scene clears to, RGBA from 0 to 1 in linear light,
@@ -398,6 +469,11 @@ pub struct RenderConfig {
     /// `TUNGSTEN_RENDER_POST_FUSE` overrides the file.
     #[serde(default = "default_post_fuse")]
     pub post_fuse: bool,
+    /// The scene's format: `off` (the default), `rg11b10` or `rgba16f`
+    /// (`D-309`). Startup-only, as `msaa` is; `TUNGSTEN_RENDER_HDR`
+    /// overrides the file.
+    #[serde(default)]
+    pub hdr: HdrMode,
     /// Let text fall back to the system's fonts after the manifest's
     /// (`D-116`). Off by default: text draws only with packaged faces.
     #[serde(default)]
@@ -417,6 +493,7 @@ impl Default for RenderConfig {
             bloom_max_mips: default_bloom_max_mips(),
             bloom_base: BloomBase::default(),
             post_fuse: default_post_fuse(),
+            hdr: HdrMode::default(),
             system_fonts: false,
         }
     }
@@ -1111,6 +1188,9 @@ impl Config {
         if let Some(value) = env(RENDER_POST_FUSE_ENV) {
             self.apply_post_fuse_override(&value)?;
         }
+        if let Some(value) = env(RENDER_HDR_ENV) {
+            self.apply_hdr_override(&value)?;
+        }
         if let Some(value) = env(PHYSICS_WORKERS_ENV) {
             self.apply_physics_workers_override(&value)?;
         }
@@ -1209,6 +1289,16 @@ impl Config {
             }
         };
         self.render.post_fuse = parsed;
+        Ok(())
+    }
+
+    fn apply_hdr_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = HdrMode::from_str(value).map_err(|_| ConfigError::InvalidEnvOverride {
+            var: RENDER_HDR_ENV,
+            value: value.to_string(),
+            expected: HDR_EXPECTED,
+        })?;
+        self.render.hdr = parsed;
         Ok(())
     }
 

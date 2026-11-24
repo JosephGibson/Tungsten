@@ -1,4 +1,4 @@
-use super::compose::{self, Between, Class};
+use super::compose::{self, Between, Class, Finish};
 use super::{
     CustomEffect, Effect, InertParam, ParamSlots, STOCK_CLASSES, STOCK_SHADERS, Signature,
     SourceGroups, block_fault, custom_section, drawn_stack, effect_section, inert_param,
@@ -174,33 +174,46 @@ fn settings_that_draw_nothing_or_not_as_named_are_found() {
             ..DitherParams::default()
         })
     };
-    assert_eq!(inert_param(&dither(DitherMode::Bayer4), 1.0), None);
+    assert_eq!(inert_param(&dither(DitherMode::Bayer4), 1.0, true), None);
     assert_eq!(
-        inert_param(&dither(DitherMode::Bayer8), 1.0),
+        inert_param(&dither(DitherMode::Bayer8), 1.0, true),
         Some(InertParam::DitherMode)
     );
     assert_eq!(
-        inert_param(&dither(DitherMode::BlueNoise), 1.0),
+        inert_param(&dither(DitherMode::BlueNoise), 1.0, true),
         Some(InertParam::DitherMode)
     );
 
-    assert_eq!(inert_param(&PostPass::Crt(CrtParams::default()), 1.0), None);
+    assert_eq!(
+        inert_param(&PostPass::Crt(CrtParams::default()), 1.0, true),
+        None
+    );
     let bleeding = CrtParams {
         bleed: 0.1,
         ..CrtParams::default()
     };
     assert_eq!(
-        inert_param(&PostPass::Crt(bleeding), 1.0),
+        inert_param(&PostPass::Crt(bleeding), 1.0, true),
         Some(InertParam::CrtBleed)
     );
 
     let outline = PostPass::PixelOutline(PixelOutlineParams::default());
     assert_eq!(
-        inert_param(&outline, 1.0),
+        inert_param(&outline, 1.0, true),
         Some(InertParam::OutlineClearAlpha),
         "the default clear's alpha"
     );
-    assert_eq!(inert_param(&outline, 0.0), None);
+    assert_eq!(inert_param(&outline, 0.0, true), None);
+    // A scene format without alpha (`render.hdr = rg11b10`) outlines nothing,
+    // whatever the clear.
+    assert_eq!(
+        inert_param(&outline, 0.0, false),
+        Some(InertParam::OutlineNoAlpha)
+    );
+    assert_eq!(
+        inert_param(&PostPass::Crt(CrtParams::default()), 0.0, false),
+        None
+    );
 }
 
 #[test]
@@ -281,7 +294,7 @@ fn a_fused_pass_is_known_by_its_stages_and_not_their_values() {
     let bloom = PostPass::Bloom(BloomParams::default());
     let vignette = PostPass::Vignette(VignetteParams::default());
     let fade = PostPass::Fade(FadeParams::default());
-    let pair = Signature::of(&[bloom, vignette], Between::Clamp).expect("a pair");
+    let pair = Signature::of(&[bloom, vignette], Between::Clamp, Finish::Plain).expect("a pair");
     // Other values, the same pass.
     let louder = PostPass::Bloom(BloomParams {
         intensity: 1.5,
@@ -291,12 +304,15 @@ fn a_fused_pass_is_known_by_its_stages_and_not_their_values() {
         strength: 0.9,
         ..VignetteParams::default()
     });
-    assert_eq!(Signature::of(&[louder, darker], Between::Clamp), Some(pair));
+    assert_eq!(
+        Signature::of(&[louder, darker], Between::Clamp, Finish::Plain),
+        Some(pair)
+    );
     // Other stages, another pass.
-    let other = Signature::of(&[vignette, fade], Between::Clamp).expect("a pair");
+    let other = Signature::of(&[vignette, fade], Between::Clamp, Finish::Plain).expect("a pair");
     assert_ne!(pair, other);
     assert_ne!(
-        Signature::of(&[fade, vignette], Between::Clamp),
+        Signature::of(&[fade, vignette], Between::Clamp, Finish::Plain),
         Some(other),
         "the order is the pass's"
     );
@@ -305,10 +321,43 @@ fn a_fused_pass_is_known_by_its_stages_and_not_their_values() {
     assert!(!pair.holds("fade") && !pair.holds("bloom_threshold"));
     assert!(other.holds("fade") && !other.holds("bloom_composite"));
     // A bloom only leads, and a pass holds eight stages at most.
-    assert_eq!(Signature::of(&[vignette, bloom], Between::Clamp), None);
-    assert_eq!(Signature::of(&[], Between::Clamp), None);
-    assert!(Signature::of(&[fade; 8], Between::Clamp).is_some());
-    assert_eq!(Signature::of(&[fade; 9], Between::Clamp), None);
+    assert_eq!(
+        Signature::of(&[vignette, bloom], Between::Clamp, Finish::Plain),
+        None
+    );
+    assert_eq!(Signature::of(&[], Between::Clamp, Finish::Plain), None);
+    assert!(Signature::of(&[fade; 8], Between::Clamp, Finish::Plain).is_some());
+    assert_eq!(
+        Signature::of(&[fade; 9], Between::Clamp, Finish::Plain),
+        None
+    );
+}
+
+#[test]
+fn a_pass_with_the_tail_is_another_pass_and_the_tail_alone_is_one() {
+    let bloom = PostPass::Bloom(BloomParams::default());
+    let fade = PostPass::Fade(FadeParams::default());
+    let tail = Finish::Tail { srgb: true };
+    // The same stages with and without the tail, and over another output.
+    let plain = Signature::of(&[fade], Between::Nothing, Finish::Plain).expect("a stage");
+    let tailed = Signature::of(&[fade], Between::Nothing, tail).expect("a stage and the tail");
+    assert_ne!(plain, tailed);
+    assert!(tailed.tailed() && !plain.tailed());
+    assert_ne!(
+        Signature::of(&[fade], Between::Nothing, Finish::Tail { srgb: false }),
+        Some(tailed)
+    );
+    assert_eq!(compose::label(1, &tailed.names()), "post1_fade");
+    // No stage at all is a pass only as the tail alone, which no composite
+    // leads.
+    assert_eq!(Signature::of(&[], Between::Nothing, Finish::Plain), None);
+    let alone = Signature::of(&[], Between::Nothing, tail).expect("the tail");
+    assert!(alone.tailed() && !alone.led_by_composite());
+    assert!(alone.names().is_empty());
+    assert!(!alone.holds("fade") && !alone.holds("bloom_composite"));
+    // Bloom's composite with the tail leads its pass as it does without.
+    let composite = Signature::of(&[bloom], Between::Nothing, tail).expect("the composite");
+    assert!(composite.led_by_composite() && composite.holds("bloom_composite"));
 }
 
 #[test]
@@ -478,7 +527,8 @@ fn a_games_section_fuses_by_its_class() {
 
     // The pass is known by the effect, not by its lanes; its label says
     // `custom`.
-    let one = Signature::of(&[custom_pass(1), fade], Between::Clamp).expect("a pair");
+    let one =
+        Signature::of(&[custom_pass(1), fade], Between::Clamp, Finish::Plain).expect("a pair");
     let mut louder = CustomPost::new(PostEffectId(1), MaterialUniformDefaults::default());
     louder.set_f32(0, 0.5).set_vec4(1, [1.0; 4]).set_i32(3, 7);
     assert_eq!(
@@ -487,11 +537,15 @@ fn a_games_section_fuses_by_its_class() {
     );
     louder.set_f32(9, 1.0).set_vec4(4, [2.0; 4]).set_i32(4, 1);
     assert_eq!(
-        Signature::of(&[PostPass::Custom(louder), fade], Between::Clamp),
+        Signature::of(
+            &[PostPass::Custom(louder), fade],
+            Between::Clamp,
+            Finish::Plain
+        ),
         Some(one)
     );
     assert_ne!(
-        Signature::of(&[custom_pass(2), fade], Between::Clamp),
+        Signature::of(&[custom_pass(2), fade], Between::Clamp, Finish::Plain),
         Some(one)
     );
     assert!(one.holds_custom(PostEffectId(1)) && !one.holds_custom(PostEffectId(2)));
@@ -518,7 +572,7 @@ fn a_games_section_fuses_by_its_class() {
         [&tint, &fade_section],
         [&tint, &tint],
     ] {
-        let fused = compose::generate(&stages, Between::Clamp);
+        let fused = compose::generate(&stages, Between::Clamp, Finish::Plain);
         crate::shader_hot_reload::validate_wgsl_source("fused", &fused)
             .unwrap_or_else(|error| panic!("{error}\n{fused}"));
     }
