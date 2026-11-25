@@ -1,6 +1,6 @@
-# Agent guidance (7.16) — draft
+# Agent guidance (7.16) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Research how engines and repositories guide agents (instruction files, task guides, shipped skills) against 7.13g's evaluation, its 26 runs and its 94 seam rows and entries; decide what the template ships; land it in `templates/basic/`, so `tungsten new` writes it into every game and 8.5's evaluation meets it; show fresh agents in a new copy reaching it; and record the decision with that evidence (the [roadmap redo](roadmap-redo.md)'s 7.16 row, §2's "Guides" answer and §8; [phase 7](phase-7.md)'s Step 16, with its rows EV-40 and EV-63).
 - **non-goals:**
   - Code: the engine, the kit, the CLI and `D-291`'s harness. A tool the verdicts name (a `tungsten` verb, an MCP server, §8's `new` scaffolds) is recorded with its home, 8.5's scaffolds or Later, and not built here.
@@ -303,5 +303,6 @@ Round 2: the same critic at xhigh, 2026-11-25, on this plan without §7 and the 
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-25 | done | `mine.py hash` → exit 0 first (663 files: 621 under `perf-runs/713g-eval/`, 42 in the archive); `reads` → exit 0, 26 runs (13 a pass), 2,163 tool calls, 0 Skill, web or subagent calls, 11 previews (the plan's 13 counted two twice, from a request blob replaying e01.sound's pair), 0 followed; first edit: copy after 4–50 calls (median 27), minute 0.5–7.0 (median 3.5), 01 after 21–85 (median 46), minute 2.5–12.3; no run called `cargo doc`; every engine line a copy run read (5–1,475) came by the frame's local path. Classes by four fresh judges, then a fresh verifier blind to them on 33 picked items: 30 confirmed, 3 changed (EV-31 and EV-59 `task` → `tool`, 2/22 `task` → `none`), taken. `check` → exit 0: 94 items (66 rows, 28 entries), `none` 58, `item` 14, `rule` 7, `tool` 6, `task` 5, `read` 4; guidance items 36 (copy runs 20, 01's 16); reach in copy runs: `index` 12, `today` 9, `guide` 8, `tool` 4, `skills` 2, `copy` 2. EV-40 `none`, EV-63 `task` (01's path). The survey's Q-g (tool-result limits) added from the previews. `hash --check` → exit 0. Functional only (`D-226`) | `perf-runs/716-guidance/` (`mine.py`, `eval-hash.json`, `reads.{json,md}`, `seams.md` from `seams-{A..D}.md`, `verify-raw.md`, `verify-reading.md`, `reading.md`) |
 
 ## Follow-ups
