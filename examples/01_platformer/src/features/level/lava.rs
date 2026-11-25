@@ -24,10 +24,13 @@ use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AssetRegistry, BodyKind, Collider, DataRef, Entity, RigidBody, Shape, Sprite, Time, Transform,
-    Visibility, World,
+    AssetRegistry, BodyKind, Collider, DataRef, Entity, EventCursor, EventQueue, RigidBody, Shape,
+    Sprite, Time, Transform, Visibility, World,
 };
-use tungsten::kit::{ContactDamage, EffectRequest, Effects, Health, Reaction, end_effect};
+use tungsten::kit::{
+    ContactDamage, Damaged, EffectRequest, Effects, Health, Knockback, PlatformerController,
+    Reaction, end_effect,
+};
 use tungsten::physics::{SpatialFilter, overlap};
 
 use super::components::{Glow, Hazard};
@@ -307,6 +310,35 @@ pub fn take(world: &mut World) {
                 Sound::LavaTook,
                 Vec2::new((left + right) * 0.5, skin),
             );
+        }
+    }
+}
+
+/// `lava_throw`, after the step's damage: a walker lava bit this step,
+/// whose knockback resists part of a push (the beetle's half), takes the
+/// bite's whole throw instead, so it is thrown up and out as a goblin is
+/// rather than bobbing against the bank under its skin. A whole resist (the
+/// trolls') takes no push to restore.
+pub fn throw(world: &mut World, cursor: &mut EventCursor<Damaged>) {
+    let Some(events) = world.get_resource::<EventQueue<Damaged>>() else {
+        return;
+    };
+    let bitten: Vec<Entity> = cursor
+        .read(events)
+        .filter(|hit| !hit.killed && hit.source.is_some_and(|basin| world.has::<Lava>(basin)))
+        .map(|hit| hit.entity)
+        .collect();
+    for walker in bitten {
+        let Some(knockback) = world.get::<Knockback>(walker) else {
+            continue;
+        };
+        let resist = knockback.resist();
+        if !knockback.is_active() || resist <= 0.0 || resist >= 1.0 {
+            continue;
+        }
+        let push = knockback.push() / (1.0 - resist);
+        if let Some(controller) = world.get_mut::<PlatformerController>(walker) {
+            controller.launch(push);
         }
     }
 }

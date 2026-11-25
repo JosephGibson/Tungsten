@@ -27,8 +27,8 @@ use tungsten::core::{
     SoundRegistry, Sprite, Transform, Visibility, World,
 };
 use tungsten::kit::{
-    ContactDamage, ContactTouch, DamageRequest, Damaged, Health, HitFlash, StateMachine, Tags,
-    damage, heal,
+    ContactDamage, ContactTouch, DamageRequest, Damaged, Health, HitFlash, PlatformerController,
+    StateMachine, Tags, damage, heal,
 };
 use tungsten::testing::UiHarness;
 
@@ -308,6 +308,77 @@ fn lava_bites_an_enemy_that_falls_in_and_throws_it_up_and_out() {
         );
         despawn_tree(harness.world_mut(), goblin);
         harness.step(1);
+    }
+}
+
+#[test]
+fn lava_throws_a_beetle_as_high_as_a_goblin_and_out_over_a_low_bank() {
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    harness.step(10);
+    let mut basins = lava(&harness);
+    let corner = |harness: &UiHarness, basin: Entity| {
+        harness.world().get::<Transform>(basin).unwrap().position.x
+    };
+    basins.sort_by(|a, b| corner(&harness, *a).total_cmp(&corner(&harness, *b)));
+    // Each kind dropped over each end of each pool: the lake's two, 4
+    // columns each, between walls taller than any throw, and the shelf's,
+    // 3, with low banks. The beetle's knockback resists half a push; lava's
+    // throw is whole for it too.
+    let ends: Vec<(f32, f32, bool)> = basins
+        .into_iter()
+        .zip([4.0, 4.0, 3.0])
+        .flat_map(|(basin, columns)| {
+            let left = corner(&harness, basin);
+            let top = skin(&harness, basin);
+            let low = columns == 3.0;
+            [
+                (left + 40.0, top, low),
+                (left + columns * 64.0 - 40.0, top, low),
+            ]
+        })
+        .collect();
+    for (kind, bitten) in [(EnemyKind::Goblin, 16.0), (EnemyKind::Beetle, 8.0)] {
+        for &(x, top, low) in &ends {
+            let at = Vec2::new(x, top - 96.0);
+            let foe = enemies::summon(harness.world_mut(), kind, at).unwrap();
+            let mut bite = Vec::new();
+            for _ in 0..60 {
+                harness.step(1);
+                bite = blows(&harness, foe);
+                if !bite.is_empty() {
+                    break;
+                }
+            }
+            assert_eq!(bite, [bitten], "{kind:?} at {x}: the bite");
+            let half = harness
+                .world()
+                .get::<Collider>(foe)
+                .unwrap()
+                .shape
+                .half_extents();
+            // Its feet's highest over the skin in the next second, and
+            // whether it lands there, on a bank, since the skin holds no
+            // enemy.
+            let (mut peak, mut landed) = (f32::MIN, false);
+            for _ in 0..60 {
+                harness.step(1);
+                let feet = enemies::centre(harness.world(), foe).unwrap().y + half.y;
+                peak = peak.max(top - feet);
+                landed |= feet <= top
+                    && harness
+                        .world()
+                        .get::<PlatformerController>(foe)
+                        .is_some_and(PlatformerController::grounded);
+            }
+            assert!(
+                peak > 96.0,
+                "{kind:?} at {x}: thrown {peak} px over the skin"
+            );
+            assert!(!low || landed, "{kind:?} at {x}: out on the bank");
+            despawn_tree(harness.world_mut(), foe);
+            harness.step(1);
+        }
     }
 }
 
