@@ -1316,6 +1316,182 @@
       "workload_version": 1
     },
     {
+      "name": "e01-shock",
+      "package": "example-01-platformer",
+      "folder": "examples/01_platformer",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            },
+            {
+              "frame": 30,
+              "action": "fill_pit",
+              "args": {
+                "count": 12000
+              }
+            },
+            {
+              "frame": 600,
+              "action": "place_player",
+              "args": {
+                "at": [
+                  4330,
+                  3400
+                ]
+              },
+              "until": 690
+            },
+            {
+              "frame": 600,
+              "action": "cast_at",
+              "args": {
+                "spell": "ice_spray",
+                "at": [
+                  4330,
+                  3600
+                ]
+              },
+              "until": 690
+            },
+            {
+              "frame": 640,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  3300,
+                  3600
+                ]
+              }
+            },
+            {
+              "frame": 690,
+              "assert": {
+                "probe": "pit_shock",
+                "path": "/frozen",
+                "op": ">=",
+                "value": 3
+              }
+            },
+            {
+              "frame": 690,
+              "assert": {
+                "probe": "pit_fire",
+                "path": "/burning",
+                "op": ">=",
+                "value": 5000
+              }
+            },
+            {
+              "frame": 696,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  4325,
+                  3590
+                ]
+              }
+            },
+            {
+              "frame": 700,
+              "action": "cast_at",
+              "args": {
+                "spell": "fire_missile",
+                "at": [
+                  3840,
+                  3560
+                ]
+              }
+            },
+            {
+              "frame": 712,
+              "action": "place_player",
+              "args": {
+                "at": [
+                  3840,
+                  3400
+                ]
+              },
+              "until": "end"
+            },
+            {
+              "frame": 712,
+              "action": "cast_at",
+              "args": {
+                "spell": "ice_spray",
+                "at": [
+                  3840,
+                  3600
+                ]
+              },
+              "until": "end"
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "pit_shock",
+              "path": "/shocks",
+              "op": ">=",
+              "value": 3
+            },
+            {
+              "probe": "pit_shock",
+              "path": "/steams",
+              "op": ">=",
+              "value": 11000
+            },
+            {
+              "probe": "player",
+              "path": "/health/0",
+              "op": ">",
+              "value": 0
+            }
+          ]
+        }
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 690,
+      "frames": 480,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.chemistry",
+          "stats": [
+            "p50",
+            "p95",
+            "p99"
+          ]
+        },
+        {
+          "metric": "system.chemistry_tick",
+          "stats": [
+            "p50",
+            "p95",
+            "p99"
+          ]
+        },
+        {
+          "metric": "stage.total",
+          "stats": [
+            "p95",
+            "p99"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
       "name": "e01-play",
       "package": "example-01-platformer",
       "folder": "examples/01_platformer",

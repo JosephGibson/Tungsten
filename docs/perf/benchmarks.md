@@ -347,6 +347,23 @@ The window holds the pile asleep for 20 frames, its one island's wake at the fir
 - **Owned:** `total` p50/p95/p99; `update` p50/p95; `extract` p50; `physics_step` p50/p95; `fire_spread`, `fire_exposure`, `body_impacts`, `iron_friction` and `animation_tick` p50; `iron_crush` p95.
 - **Guard:** the script's report. It has no counter guard: `pit`'s pins the full pit's frame and `blast`'s the engine's pile under blasts.
 
+## `e01-shock`
+
+Example 01's full pit while a chain reaction runs through it (the chemistry shock pass): the frames where chemistry's queue drains a chain of 01's handlers, 48 reactions a step (01's cap), each with a blast. The script:
+
+- `start_run` at frame 2, `fill_pit` to 12,000 at 30.
+- From 600 to 690 the wizard, held at (4,330, 3,400), sprays cold at (4,330, 3,600) through `cast_at`'s `ice_spray`, freezing a patch of the pile's east face. A fire missile at (3,300, 3,600) at 640 lights the pile from the west, and the fire runs east.
+- At 690 it asserts `pit_shock`'s `frozen` ≥ 3 and `pit_fire`'s `burning` ≥ 5,000: frozen balls among burning ones.
+- Then the 480 measured frames (warm-up 690), the chain's frames. A missile on the frozen patch at 696, whose heat sets off its thermal shocks (heat on `status.frozen`, 01's `thermal_shock` handler); one at (3,840, 3,560) at 700. From 712 the wizard at (3,840, 3,400) sprays cold at (3,840, 3,600) to the end.
+- Cold on a burning small ball is 01's `steam` rule, whose burst sends `cold` to every burning small ball within 96 px. So the steam chain runs through the pile: about 12,000 bursts in about 455 frames.
+- It ends asserting `pit_shock`'s `shocks` ≥ 3 and `steams` ≥ 11,000, and the `player` probe's health above 0.
+
+1920×1080, CPU, five repeats.
+
+- **Owned:** `system.chemistry` and `system.chemistry_tick` p50/p95/p99; `stage.total` p95/p99.
+- **Guard:** the script's report. It has no counter guard: like `e01-stress`'s, its chain is 480 frames of up to 100 ms. The kit's chemistry tests and `pit`'s pins cover its code.
+- **Frozen script.** A quick sitting, cut at 150 frames, reads the row `invalid`, as it reads `e01-stress`.
+
 ## `e01-play`
 
 Example 01 in ordinary play (the engine performance pass ahead of 7.16): a tour of its six areas with no pit fill, the frame a run pays between the stress rows' storms. The script: `start_run` at frame 2 and 90 warm-up frames in the clearing, then 1,200 measured frames, 200 an area in the map's order, at the area rows' standing points. In each the wizard is set down by `place_player`, walks out and back with a jump each way on held presses, fires the missile and calls lightning by their keys at the cursor and the gun for half a second, and `cast_at` lands a blast, a strike, a push and a second blast on the area's own foes or props: the clearing's crates, keg and dummy, the aqueduct's crawler, the ravine's bats, the hollow's wisps, the mine's beetle and goblin, who fight him hand to hand, and the bridge's troll, fought from a walk away. It ends asserting the `area` probe names the troll bridge, the `player` probe's health above 0 and gameplay alone on the state stack. 1920×1080, CPU, five repeats.

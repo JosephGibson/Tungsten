@@ -87,6 +87,15 @@ pub struct Cascades {
     /// A load's heat points, in order, waiting for their bodies.
     #[serde(skip)]
     pub heat_loaded: Vec<Vec2>,
+    /// The thermal shocks the run's chains have set off
+    /// ([`thermal_shock_handler`]), which the `pit_shock` probe reads: the
+    /// run's, never saved.
+    #[serde(skip)]
+    pub shocks: u64,
+    /// The steam bursts the run's chains have set off ([`steam_at`]): the
+    /// run's, never saved.
+    #[serde(skip)]
+    pub steams: u64,
 }
 
 /// [`Cascades`]' saved form: its counters and each heated body's point, in
@@ -287,6 +296,9 @@ pub fn thermal_shock_handler(world: &mut World, reaction: &Reaction) {
         .map(|(_, from)| from)
         .filter(|from| from.distance(at) > 1e-3);
     react_on(world, thing);
+    if let Some(cascades) = world.get_resource_mut::<Cascades>() {
+        cascades.shocks += 1;
+    }
     end_frozen(world, thing, from);
     with_bin(world, |world, bin| {
         blast(world, bin, at, credit, reach, Some(thing));
@@ -329,6 +341,9 @@ pub fn steam_at(world: &mut World, thing: Entity, reach: f32, credit: Option<Ent
         return;
     };
     react_on(world, thing);
+    if let Some(cascades) = world.get_resource_mut::<Cascades>() {
+        cascades.steams += 1;
+    }
     with_bin(world, |world, bin| {
         steam(world, bin, Some(thing), at, credit, reach)
     });
