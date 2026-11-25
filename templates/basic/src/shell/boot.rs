@@ -12,8 +12,11 @@
 //! The atom builds over [`BUILD_SHARE`] of the hold at least, so a fast
 //! load still shows it; the text fades in over [`FADE_SECS`], and
 //! everything fades out over the hold's last once the load is done, while
-//! a load longer than the hold ends at full opacity. The splash is laid
-//! out on [`FRAME`] scaled to fit the window. Everything but the text is
+//! a load longer than the hold ends at full opacity. It sits on true
+//! black, `#000000` over the whole window whatever the game's clear
+//! colour, kept through the fade, so an OLED panel's pixels round the atom
+//! stay off. The splash is laid out on [`FRAME`] scaled to fit the
+//! window. Everything but the text is
 //! drawn from the group's logo, the white disc `tools/boot.py` draws: a
 //! glow or an electron from the whole disc, a rect from its solid middle.
 //! Sprite tints are linear and blend in linear light, so the colours here,
@@ -122,6 +125,10 @@ pub fn splash(window: [u32; 2], fraction: f32, total: usize, secs: f32, hold: f3
         since: [f32::NEG_INFINITY, secs - build][usize::from(electrons == 74)],
         grid: grid(centre, k),
     };
+    // True black under it all, whatever the game's clear colour, and kept
+    // through the fade, so the splash fades out to black.
+    let black = solid([0.0; 2], [width, height], tint(BLACK, 1.0));
+    scene.out.sprites.push(black);
     scene.rings();
     scene.electrons(build);
     scene.tile();
@@ -386,10 +393,7 @@ impl Scene {
     /// A rect from the disc's solid middle.
     fn rect(&mut self, position: [f32; 2], size: [f32; 2], color: [u8; 3], alpha: f32) {
         let color = tint(color, alpha * self.out.alpha);
-        let mut sprite = SpriteInstance::whole(position, size, 0.0, color);
-        sprite.uv_min = [0.5; 2];
-        sprite.uv_size = [0.0; 2];
-        self.out.sprites.push(sprite);
+        self.out.sprites.push(solid(position, size, color));
     }
 
     fn square(&mut self, [x, y]: [f32; 2], side: f32, color: [u8; 3]) {
@@ -449,6 +453,14 @@ fn rgba([r, g, b]: [u8; 3], alpha: f32) -> [u8; 4] {
 /// A sprite's tint: the sprite shader multiplies its linear texels by the
 /// tint as it is, so an sRGB colour is decoded first; its alpha rounds up,
 /// so a glow's faint outer layers still draw.
+/// A rect of the linear `color` from the disc's solid middle.
+fn solid(position: [f32; 2], size: [f32; 2], color: [u8; 4]) -> SpriteInstance {
+    let mut sprite = SpriteInstance::whole(position, size, 0.0, color);
+    sprite.uv_min = [0.5; 2];
+    sprite.uv_size = [0.0; 2];
+    sprite
+}
+
 fn tint(color: [u8; 3], alpha: f32) -> [u8; 4] {
     let decode = |c: u8| {
         let c = f32::from(c) / 255.0;
