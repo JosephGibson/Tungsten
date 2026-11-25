@@ -153,7 +153,7 @@ These change the chain's outcome, so none lands; each goes to ROADMAP's Later wi
   - `WGPU_BACKEND=vulkan just perf sitting --base <the last kept commit, §2.5> --rows e01-shock,spread --cpu-only` → both rows `ok`, digests equal. `e01-shock` `system.chemistry` p95 is lower by at least 0.2 ms in both pairs: the probe put the sort's lookups at about 15 % of the chain's chemistry after Step 3.
   - `chem_counts.py <the sitting>` → every judged pair's count hashes equal.
 - **Commit:** `perf(kit): sort chemistry's grid by save order over keys read once`
-- **Moves:** none.
+- **Moves:** forced in the run, pins rewritten and run twice. `examples/02_bench/src/tests/guards/spread.json` fell by 4 allocations and 25,600 B: the stable sort's scratch buffers are gone. `examples/01_platformer/tests/game/guards/play.json` rose by 1 allocation and 2,872 B: the kept sort list's first fill, by the tour's first blast inside its window, and 24 B more in each `BlastReach` the public `blast()` boxes anew. That box per call is a follow-up.
 
 ### Step 5: A game's stimulus checked over its kinds' entries in place
 
@@ -216,7 +216,7 @@ These change the chain's outcome, so none lands; each goes to ROADMAP's Later wi
 - **May move:** the new row's existence (Step 1); every chemistry row's log gains `chemistry:` (Step 2); `counter.chemistry.gathered` (Step 3); `api/tungsten-kit.txt` (Step 2) and `api/tungsten-core.txt` (Step 5); a guard's cost counters downward with the step that lowers them, its pin rewritten and the fall in the evidence (Step 3's `play`).
 - **Must not move:**
   - Every row's digest across Steps 2 to 6 against `B`.
-  - The counter guards' pins upward.
+  - The counter guards' pins upward, but for Step 4's `play` rise and its cause (Step 4's Moves).
   - 01's and 02's tests.
   - The stills at the close.
   - The chain's counts per frame, as `chem_counts.py` hashes them (§2.5), from Step 2's capture on.

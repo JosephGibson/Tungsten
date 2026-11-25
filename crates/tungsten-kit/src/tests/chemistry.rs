@@ -3783,6 +3783,56 @@ fn grid_queries(world: &World, points: &[Vec2], seed: u64) -> (bool, usize, usiz
 }
 
 #[test]
+fn the_grid_sorts_by_save_order_as_its_stable_sort_did() {
+    for seed in [5_u64, 41, 977] {
+        let (mut world, _) = grid_world(seed, 400, Vec2::ZERO, 900.0);
+        // Saves on, then about half the candidates saved under IDs taken in
+        // a shuffled order, and two pairs sharing an ID, whose tie the
+        // stable sort left in query order.
+        let anchor = world.spawn();
+        tungsten_core::save::name(&mut world, anchor, None, "anchor").unwrap();
+        let entities: Vec<Entity> = world
+            .query::<(Entity, &Tags)>()
+            .map(|(entity, _)| entity)
+            .chain(world.query::<(Entity, &Health)>().map(|(entity, _)| entity))
+            .collect();
+        let mut stream = seed;
+        let mut ids: Vec<_> = (0..entities.len())
+            .map(|_| tungsten_core::save::take_id(&mut world).unwrap())
+            .collect();
+        for at in (1..ids.len()).rev() {
+            ids.swap(at, (grid_draw(&mut stream) % (at as u64 + 1)) as usize);
+        }
+        for (at, &entity) in entities.iter().enumerate() {
+            let paired = at % 97 < 2;
+            if paired || grid_draw(&mut stream).is_multiple_of(2) {
+                let id = if at % 97 == 1 { ids[at - 1] } else { ids[at] };
+                world.insert(entity, tungsten_core::save::Saved::kept(id));
+            }
+        }
+        let mut grid = grid::Grid::default();
+        grid.build(&world);
+        let (_, len) = grid.directory_and_len();
+        let built: Vec<Entity> = (0..len as u32).map(|at| grid.get(at).entity).collect();
+        // As the build gathered them, then the stable sort it ran before.
+        let order = crate::foundation::saved::order_of(&world);
+        let mut reference: Vec<Entity> = world
+            .query::<(Entity, &Tags)>()
+            .map(|(entity, _)| entity)
+            .chain(
+                world
+                    .query::<(Entity, &Health)>()
+                    .map(|(entity, _)| entity)
+                    .filter(|&entity| !world.has::<Tags>(entity)),
+            )
+            .collect();
+        reference.sort_by_key(|&entity| order.key(entity));
+        assert_eq!(built.len(), 400, "seed {seed}");
+        assert_eq!(built, reference, "seed {seed}");
+    }
+}
+
+#[test]
 fn the_grids_directory_finds_what_its_searches_do() {
     let far = 64.0 * 2_147_483_648.0;
     // Clustered fields, which get a directory, at the origin, far from it

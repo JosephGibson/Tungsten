@@ -55,6 +55,9 @@ impl Candidate {
 #[derive(Default)]
 pub(crate) struct Grid {
     candidates: Vec<Candidate>,
+    /// The candidates under their save-order keys and places while a build
+    /// sorts them, kept so a warm build allocates nothing.
+    keyed: Vec<((bool, u64), usize, Candidate)>,
     /// `(cell key, candidate)`, sorted.
     cells: Vec<(u64, u32)>,
     /// Each candidate's cell key, by candidate: while a build finds them
@@ -270,9 +273,20 @@ impl Grid {
                 });
             }
         }
+        // In save order, each key read once: a saved entity's is a lookup,
+        // and the sort compares often. The place breaks a tie, so the
+        // unstable sort gives the stable sort's order with no buffer.
         let order = order_of(world);
+        self.keyed.clear();
+        self.keyed.extend(
+            self.candidates
+                .drain(..)
+                .enumerate()
+                .map(|(at, candidate)| (order.key(candidate.entity), at, candidate)),
+        );
+        self.keyed.sort_unstable_by_key(|&(key, at, _)| (key, at));
         self.candidates
-            .sort_by_key(|candidate| order.key(candidate.entity));
+            .extend(self.keyed.drain(..).map(|(_, _, candidate)| candidate));
         // The candidates' keys, and whether each is the last build's: the
         // cells are `(key, candidate)` sorted, so they stand while every
         // candidate keeps its key.
