@@ -604,6 +604,14 @@ pub fn blast(
     let mut scratch = world.remove_resource::<BlastReach>().unwrap_or_default();
     // A call between runs measures the World as it is now.
     scratch.0.clear();
+    // One that sends no stimulus hurts and pushes only what has health and
+    // finds its impulse's bodies by its own overlap, so it gathers the
+    // health holders alone: the full gather's, in its order (save order).
+    scratch.0.grid.health_only = !(blast.sends_stimulus() && world.has_resource::<Chemistry>());
+    #[cfg(test)]
+    if world.has_resource::<GathersAll>() {
+        scratch.0.grid.health_only = false;
+    }
     let settings = Settings::of(world);
     let from = receiver.map(Receiver::Entity);
     go_off(
@@ -623,6 +631,25 @@ pub fn blast(
 /// it inserts, which no save holds.
 #[derive(Default)]
 struct BlastReach(Reach);
+
+/// Tests: a World resource that makes every [`blast`] gather as each did
+/// before a stimulus-free one gathered the health holders alone.
+#[cfg(test)]
+pub(crate) struct GathersAll;
+
+/// Tests: the candidates [`blast`]'s last build held, and whether it held
+/// the health holders alone.
+#[cfg(test)]
+pub(crate) fn last_build(world: &World) -> (usize, bool) {
+    world
+        .get_resource::<BlastReach>()
+        .map_or((0, false), |scratch| {
+            (
+                scratch.0.grid.directory_and_len().1,
+                scratch.0.grid.health_only,
+            )
+        })
+}
 
 /// The blasts a run's reactions set off, which the run detonates once its
 /// reactions are done: a World resource

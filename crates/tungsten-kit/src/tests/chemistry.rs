@@ -3286,6 +3286,170 @@ fn a_blast_lands_now_in_save_id_order() {
     );
 }
 
+/// A seeded World for the stimulus-free gather's comparison: 150
+/// candidates within 220 px of the origin, by turns a dynamic circle, a
+/// dynamic box or a bodiless point, each with tags alone, health alone,
+/// both, both and dead, or both and despawning; every third saved under a
+/// save ID drawn against its index order; physics on, its index built by a
+/// step, so a blast's impulse finds its bodies. With `gathers_all`, every
+/// blast gathers as it did before the health holders' gather.
+fn gather_world(seed: u64, gathers_all: bool) -> (World, Schedule, Vec<Entity>) {
+    let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());
+    if gathers_all {
+        world.insert_resource(blast::GathersAll);
+    }
+    let mut stream = seed;
+    let mut entities = Vec::new();
+    // A named anchor turns the World's saves on, so its save IDs exist.
+    let anchor = world.spawn();
+    tungsten_core::save::name(&mut world, anchor, None, "anchor").unwrap();
+    let mut ids = Vec::new();
+    for _ in 0..50 {
+        ids.push(tungsten_core::save::take_id(&mut world).unwrap());
+    }
+    for at in 0..150_usize {
+        let point = Vec2::new(
+            220.0 * (2.0 * grid_unit(&mut stream) - 1.0),
+            220.0 * (2.0 * grid_unit(&mut stream) - 1.0),
+        );
+        let entity = match at % 3 {
+            0 => world.spawn_with(RigidBodyBundle::dynamic(
+                Position(point),
+                Collider::circle(1.0 + 30.0 * grid_unit(&mut stream)),
+            )),
+            1 => world.spawn_with(RigidBodyBundle::dynamic(
+                Position(point),
+                Collider::aabb(Vec2::new(
+                    1.0 + 40.0 * grid_unit(&mut stream),
+                    1.0 + 12.0 * grid_unit(&mut stream),
+                )),
+            )),
+            _ => {
+                let entity = world.spawn();
+                world.insert(entity, Transform::from_position(point));
+                entity
+            }
+        };
+        match at % 5 {
+            0 => world.insert(entity, Tags::new(["flammable"])),
+            1 => world.insert(entity, Health::new(1000.0)),
+            _ => {
+                world.insert(entity, Health::new(1000.0));
+                world.insert(entity, Tags::new(["team.enemy"]));
+            }
+        }
+        world.insert(entity, crate::Knockback::new(1.0));
+        if at % 3 == 1 {
+            // IDs taken from the back, so save order runs against index order.
+            let id = ids.pop().unwrap();
+            world.insert(entity, tungsten_core::save::Saved::kept(id));
+        }
+        entities.push(entity);
+    }
+    step(&mut world, &mut schedule);
+    for (at, &entity) in entities.iter().enumerate() {
+        match at % 5 {
+            3 => {
+                crate::kill(&mut world, entity);
+            }
+            4 => world.insert(entity, crate::lifecycle::ended::Despawning),
+            _ => {}
+        }
+    }
+    world.insert_resource(crate::KitRng::seeded(seed));
+    (world, schedule, entities)
+}
+
+/// Everything the comparison reads of `world` after its blasts: each
+/// entity's health and velocity, the landed hits in order with their
+/// amounts and crits, and the crit stream's draws.
+fn gather_outcome(world: &World, entities: &[Entity]) -> Vec<String> {
+    let mut out: Vec<String> = entities
+        .iter()
+        .map(|&entity| {
+            let health = world.get::<Health>(entity).map(|h| h.current().to_bits());
+            let velocity = world
+                .get::<Velocity>(entity)
+                .map(|v| (v.0.x.to_bits(), v.0.y.to_bits()));
+            format!("{entity:?} {health:?} {velocity:?}")
+        })
+        .collect();
+    out.extend(
+        world
+            .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+            .iter()
+            .map(|hit| format!("hit {:?} {} {}", hit.entity, hit.amount.to_bits(), hit.crit)),
+    );
+    out.push(format!(
+        "draws {}",
+        world.resource::<crate::KitRng>().draws()
+    ));
+    out
+}
+
+#[test]
+fn a_stimulus_free_blast_hits_from_the_health_holders_as_from_all() {
+    for seed in [3_u64, 17, 2026] {
+        let mut outcomes = Vec::new();
+        for gathers_all in [false, true] {
+            let (mut world, mut schedule, entities) = gather_world(seed, gathers_all);
+            let mut stream = seed ^ 0xA5A5;
+            for at in 0..24_usize {
+                let centre = Vec2::new(
+                    200.0 * (2.0 * grid_unit(&mut stream) - 1.0),
+                    200.0 * (2.0 * grid_unit(&mut stream) - 1.0),
+                );
+                let radius = 20.0 + 140.0 * grid_unit(&mut stream);
+                let mut def = Blast::new(radius)
+                    .with_damage(5.0)
+                    .with_far(0.25)
+                    .with_push(300.0)
+                    .with_stimulus(false);
+                if at % 2 == 0 {
+                    def = def.landing_now();
+                }
+                if at % 3 == 0 {
+                    def = def.with_impulse(200.0);
+                }
+                if at % 4 == 1 {
+                    def = def.with_receiver(true);
+                }
+                if at % 5 == 2 {
+                    def = def.sparing_source();
+                }
+                if at % 7 == 3 {
+                    def = def.with_filter(crate::TagFilter::new().any(["team.enemy"]));
+                }
+                let receiver = entities[(grid_draw(&mut stream) % 150) as usize];
+                let credit = entities[(grid_draw(&mut stream) % 150) as usize];
+                blast(&mut world, centre, &def, Some(credit), Some(receiver));
+                let (held, health_only) = blast::last_build(&world);
+                assert_eq!(
+                    health_only, !gathers_all,
+                    "seed {seed}: the build the path took"
+                );
+                if !gathers_all {
+                    assert_eq!(held, 120, "seed {seed}: the health holders alone");
+                }
+            }
+            step(&mut world, &mut schedule);
+            outcomes.push(gather_outcome(&world, &entities));
+        }
+        assert!(
+            outcomes[0]
+                .iter()
+                .filter(|line| line.starts_with("hit "))
+                .count()
+                > 50,
+            "seed {seed}: the blasts landed hits"
+        );
+        assert_eq!(
+            outcomes[0], outcomes[1],
+            "seed {seed}: the health holders' gather is the full one's"
+        );
+    }
+}
+
 #[test]
 fn a_hurt_body_takes_a_blasts_push_once() {
     let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());

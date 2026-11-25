@@ -69,6 +69,10 @@ pub(crate) struct Grid {
     /// widens its cells by it.
     reach: f32,
     built: bool,
+    /// The build holds the `Health` holders alone, each `tagged` as it
+    /// carries `Tags`: what a blast that sends no stimulus reads
+    /// ([`blast`](crate::blast)).
+    pub(crate) health_only: bool,
     /// Tests: the builds that sorted the cells, and a switch that makes
     /// every build sort them, as each did.
     #[cfg(test)]
@@ -231,7 +235,8 @@ impl Grid {
     }
 
     /// Builds the grid when this run has not: every entity with `Tags` or
-    /// `Health` and a point.
+    /// `Health` and a point, or with `Health` and a point while it holds
+    /// the health holders alone.
     pub(crate) fn build(&mut self, world: &World) {
         if self.built {
             return;
@@ -239,18 +244,21 @@ impl Grid {
         self.built = true;
         self.candidates.clear();
         self.reach = 0.0;
-        for (entity, _) in world.query::<(Entity, &Tags)>() {
-            if let Some((centre, shape)) = locate(world, entity) {
-                self.candidates.push(Candidate {
-                    entity,
-                    centre,
-                    shape,
-                    tagged: true,
-                });
+        if !self.health_only {
+            for (entity, _) in world.query::<(Entity, &Tags)>() {
+                if let Some((centre, shape)) = locate(world, entity) {
+                    self.candidates.push(Candidate {
+                        entity,
+                        centre,
+                        shape,
+                        tagged: true,
+                    });
+                }
             }
         }
         for (entity, _) in world.query::<(Entity, &Health)>() {
-            if world.has::<Tags>(entity) {
+            let tagged = world.has::<Tags>(entity);
+            if tagged && !self.health_only {
                 continue;
             }
             if let Some((centre, shape)) = locate(world, entity) {
@@ -258,7 +266,7 @@ impl Grid {
                     entity,
                     centre,
                     shape,
-                    tagged: false,
+                    tagged,
                 });
             }
         }

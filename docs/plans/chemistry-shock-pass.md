@@ -140,7 +140,7 @@ These change the chain's outcome, so none lands; each goes to ROADMAP's Later wi
   - `WGPU_BACKEND=vulkan just perf sitting --base B --rows e01-shock,spread --cpu-only` → `spread` `ok`. `e01-shock` reads `system.chemistry` p95 and p99 `improved` in both pairs, p95 at least 50 % below the base's, and `stage.total` p95 `improved`. Each judged pair's digests are equal.
   - `python3 -B perf-runs/20261125-chemistry-shock/tools/chem_counts.py <the sitting>` → every judged pair's count hashes equal, `gathered` left out (§2.5).
 - **Commit:** `perf(kit): gather a stimulus-free blast from the bodies with health`
-- **Moves:** `counter.chemistry.gathered` (the health holders alone).
+- **Moves:** `counter.chemistry.gathered` (the health holders alone). Forced in the run: `examples/01_platformer/tests/game/guards/play.json` fell by 70 allocations and 36,192 B, the smaller candidate lists the tour's blasts grow (pin rewritten, run twice).
 
 ### Step 4: The grid's sort over keys read once
 
@@ -213,10 +213,10 @@ These change the chain's outcome, so none lands; each goes to ROADMAP's Later wi
 
 ## 5. Invariants
 
-- **May move:** the new row's existence (Step 1); every chemistry row's log gains `chemistry:` (Step 2); `counter.chemistry.gathered` (Step 3); `api/tungsten-kit.txt` (Step 2) and `api/tungsten-core.txt` (Step 5).
+- **May move:** the new row's existence (Step 1); every chemistry row's log gains `chemistry:` (Step 2); `counter.chemistry.gathered` (Step 3); `api/tungsten-kit.txt` (Step 2) and `api/tungsten-core.txt` (Step 5); a guard's cost counters downward with the step that lowers them, its pin rewritten and the fall in the evidence (Step 3's `play`).
 - **Must not move:**
   - Every row's digest across Steps 2 to 6 against `B`.
-  - The counter guards' pins.
+  - The counter guards' pins upward.
   - 01's and 02's tests.
   - The stills at the close.
   - The chain's counts per frame, as `chem_counts.py` hashes them (§2.5), from Step 2's capture on.
