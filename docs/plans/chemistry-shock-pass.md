@@ -169,7 +169,7 @@ These change the chain's outcome, so none lands; each goes to ROADMAP's Later wi
   - `chem_counts.py <the sitting>` → every judged pair's count hashes equal.
   - The step's profile (as in Step 2) gives `Bin::build`'s share of `chemistry`, which decides Step 6.
 - **Commit:** `perf(kit): check a game's stimulus over its kinds' entries in place`
-- **Moves:** none.
+- **Moves:** forced in the run: `examples/01_platformer/tests/game/guards/play.json` fell by 8 allocations and 48 B, the errors the tour's tag stimuli no longer build (pin rewritten, run twice).
 
 ### Step 6: 01's bin by sorted cells (conditional)
 

@@ -104,10 +104,7 @@ fn entries(world: &World) -> impl Iterator<Item = (&str, &DamageTypes)> {
     world
         .get_resource::<DataRegistry>()
         .into_iter()
-        .flat_map(|data| {
-            data.ids(DAMAGE_TYPES)
-                .filter_map(move |id| data.get::<DamageTypes>(id).map(|types| (id, types)))
-        })
+        .flat_map(DataRegistry::entries::<DamageTypes>)
 }
 
 /// The `damage_types` kind's check at a load's commit, every staged entry
@@ -145,20 +142,24 @@ fn check_types(types: &DamageTypes, world: &World) -> Result<(), MissingAsset> {
 }
 
 /// Whether `name` is a declared damage type, a key of a `damage_types`
-/// entry, or with `ancestor` a dotted ancestor of one; else the
-/// [`MissingAsset`] a load reports, of kind `damage type`, at `field`.
+/// entry, or with `ancestor` a dotted ancestor of one.
+pub(crate) fn is_type(world: &World, name: &str, ancestor: bool) -> bool {
+    entries(world).any(|(_, types)| {
+        types
+            .names()
+            .any(|declared| declared == name || (ancestor && under(declared, name)))
+    })
+}
+
+/// [`is_type`], else the [`MissingAsset`] a load reports, of kind
+/// `damage type`, at `field`.
 pub(crate) fn check_type(
     world: &World,
     field: &str,
     name: &str,
     ancestor: bool,
 ) -> Result<(), MissingAsset> {
-    let found = entries(world).any(|(_, types)| {
-        types
-            .names()
-            .any(|declared| declared == name || (ancestor && under(declared, name)))
-    });
-    if found {
+    if is_type(world, name, ancestor) {
         Ok(())
     } else {
         Err(MissingAsset::new(field, "damage type", name))

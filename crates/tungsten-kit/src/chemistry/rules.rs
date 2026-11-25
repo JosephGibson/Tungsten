@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tungsten_core::{DataRegistry, MissingAsset, World};
 
 use crate::chemistry::outputs::{Output, check_outputs};
-use crate::damage::kinds::check_type;
+use crate::damage::kinds::is_type;
 use crate::foundation::tags::{TagFilter, Tags, check_declared, covers, valid_tag};
 
 /// The data kind of chemistry's rules.
@@ -105,7 +105,8 @@ impl Interaction {
 /// The load's check of a stimulus name at `field`: a damage type, else a
 /// declared tag.
 pub(crate) fn check_stimulus(world: &World, field: &str, name: &str) -> Result<(), MissingAsset> {
-    if check_type(world, field, name, true).is_ok() {
+    // The types' test alone, so a tag that passes builds no error.
+    if is_type(world, name, true) {
         return Ok(());
     }
     check_declared(world, field, name)
@@ -167,10 +168,8 @@ pub(crate) fn snapshot(world: &World, into: &mut Vec<(String, Interaction)>) {
     let Some(data) = world.get_resource::<DataRegistry>() else {
         return;
     };
-    for id in data.ids(INTERACTIONS) {
-        if let Some(rule) = data.get::<Interaction>(id) {
-            into.push((id.to_owned(), rule.clone()));
-        }
+    for (id, rule) in data.entries::<Interaction>() {
+        into.push((id.to_owned(), rule.clone()));
     }
 }
 
@@ -192,10 +191,7 @@ pub(crate) fn rules_of(world: &World) -> impl Iterator<Item = &Interaction> + '_
     world
         .get_resource::<DataRegistry>()
         .into_iter()
-        .flat_map(|data| {
-            data.ids(INTERACTIONS)
-                .filter_map(move |id| data.get::<Interaction>(id))
-        })
+        .flat_map(|data| data.entries::<Interaction>().map(|(_, rule)| rule))
 }
 
 /// Whether some rule of `rules` answers `stimulus`: it names it or an

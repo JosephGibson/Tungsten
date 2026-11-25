@@ -406,6 +406,7 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::Da
 pub struct tungsten_core::assets::data::DataRegistry
 impl tungsten_core::assets::data::DataRegistry
 pub fn tungsten_core::assets::data::DataRegistry::contains_kind(&self, &str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::entries<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &T)>
 pub fn tungsten_core::assets::data::DataRegistry::entry_for_path(&self, &std::path::Path) -> core::option::Option<(&'static str, &str)>
 pub fn tungsten_core::assets::data::DataRegistry::get<T: 'static>(&self, &str) -> core::option::Option<&T>
 pub fn tungsten_core::assets::data::DataRegistry::ids(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
@@ -5096,6 +5097,7 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::Da
 pub struct tungsten_core::assets::DataRegistry
 impl tungsten_core::assets::data::DataRegistry
 pub fn tungsten_core::assets::data::DataRegistry::contains_kind(&self, &str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::entries<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &T)>
 pub fn tungsten_core::assets::data::DataRegistry::entry_for_path(&self, &std::path::Path) -> core::option::Option<(&'static str, &str)>
 pub fn tungsten_core::assets::data::DataRegistry::get<T: 'static>(&self, &str) -> core::option::Option<&T>
 pub fn tungsten_core::assets::data::DataRegistry::ids(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
@@ -21828,6 +21830,7 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::Da
 pub struct tungsten_core::DataRegistry
 impl tungsten_core::assets::data::DataRegistry
 pub fn tungsten_core::assets::data::DataRegistry::contains_kind(&self, &str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::entries<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &T)>
 pub fn tungsten_core::assets::data::DataRegistry::entry_for_path(&self, &std::path::Path) -> core::option::Option<(&'static str, &str)>
 pub fn tungsten_core::assets::data::DataRegistry::get<T: 'static>(&self, &str) -> core::option::Option<&T>
 pub fn tungsten_core::assets::data::DataRegistry::ids(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
