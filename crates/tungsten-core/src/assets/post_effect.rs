@@ -29,6 +29,7 @@ pub struct PostEffectRegistry {
 }
 
 impl PostEffectRegistry {
+    /// An empty registry.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -61,31 +62,37 @@ impl PostEffectRegistry {
         effect
     }
 
+    /// The ID of manifest effect `id`, if one is allocated.
     #[must_use]
     pub fn get(&self, id: &str) -> Option<PostEffectId> {
         self.ids.get(id).copied()
     }
 
+    /// The manifest name `id` was allocated for.
     #[must_use]
     pub fn name_for_id(&self, id: PostEffectId) -> Option<&str> {
         self.names.get(&id).map(String::as_str)
     }
 
+    /// The manifest the effect was last allocated from.
     #[must_use]
     pub fn path_for_id(&self, id: PostEffectId) -> Option<&Path> {
         self.paths.get(&id).map(PathBuf::as_path)
     }
 
+    /// The `shaders` entry the effect draws with.
     #[must_use]
     pub fn shader_name_for_id(&self, id: PostEffectId) -> Option<&str> {
         self.shader_names.get(&id).map(String::as_str)
     }
 
+    /// The effect's authored block defaults.
     #[must_use]
     pub fn defaults_for_id(&self, id: PostEffectId) -> Option<MaterialUniformDefaults> {
         self.defaults.get(&id).copied()
     }
 
+    /// Every allocated effect as `(manifest name, ID)`, in no set order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, PostEffectId)> {
         self.ids.iter().map(|(name, id)| (name.as_str(), *id))
     }

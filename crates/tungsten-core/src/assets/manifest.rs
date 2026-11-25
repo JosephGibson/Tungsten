@@ -103,8 +103,14 @@ pub enum ManifestError {
     },
     #[error("material '{id}' references unknown shader '{shader}'")]
     MaterialShaderMissing { id: String, shader: String },
+    /// A `post_effects` entry names a shader no `shaders` entry declares.
     #[error("post effect '{id}' references unknown shader '{shader}'")]
-    PostEffectShaderMissing { id: String, shader: String },
+    PostEffectShaderMissing {
+        /// The effect's manifest ID.
+        id: String,
+        /// The shader ID it names.
+        shader: String,
+    },
     #[error("particle mesh '{id}' is invalid: {reason}")]
     InvalidParticleMesh { id: String, reason: String },
     #[error("duplicate asset ID '{id}' across manifests")]
@@ -978,6 +984,8 @@ pub struct MaterialEntry {
 pub struct PostEffectEntry {
     /// Stable shader id (must exist under `shaders`).
     pub shader: String,
+    /// The defaults of the block the shader reads, as a material's are;
+    /// absent, the type's default.
     #[serde(default)]
     pub uniform_defaults: MaterialUniformDefaults,
 }
@@ -1193,6 +1201,7 @@ pub struct ResolvedPostEffect {
     pub source_manifest: PathBuf,
     /// Name of the shader entry the effect draws with.
     pub shader: String,
+    /// The entry's block defaults, which the effect's pass starts from.
     pub uniform_defaults: MaterialUniformDefaults,
 }
 

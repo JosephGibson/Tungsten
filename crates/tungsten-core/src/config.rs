@@ -323,6 +323,7 @@ pub enum BloomBase {
     Quarter,
 }
 
+/// A `render.bloom_base` value that names no [`BloomBase`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("expected {BLOOM_BASE_EXPECTED}")]
 pub struct ParseBloomBaseError;
@@ -331,6 +332,7 @@ impl BloomBase {
     /// The most rows a target has for [`Self::Auto`] to start at a half.
     pub const AUTO_HALF_ROWS: u32 = 1440;
 
+    /// The value's name in `tungsten.json` and its environment override.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -406,11 +408,13 @@ pub enum HdrMode {
     Rgba16f,
 }
 
+/// A `render.hdr` value that names no [`HdrMode`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("expected {HDR_EXPECTED}")]
 pub struct ParseHdrModeError;
 
 impl HdrMode {
+    /// The value's name in `tungsten.json` and its environment override.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
