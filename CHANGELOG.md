@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.119.0] - 2026-11-25
+
 Summary: Phase 7's steps 7.14 and 7.15, the CPU and GPU performance passes, each closed by two plans (`D-294`–`D-297`), then four passes the owner set ahead of 7.16: the engine and kit performance pass and its proposals (`D-298`–`D-304`), the GPU foundation pass (`D-305`–`D-310`), the CPU threads and PGO pass (`D-311`) and the chemistry shock pass. The physics step's pure stages and a system's map fork on worker threads, bit for bit at every count; the frame is a declared graph over pooled targets, with fused post passes, a game's own post effects, an opt-in float scene and lights past 16 binned by screen tiles; saves write behind on a thread. Against 0.118.0 the release sitting reads `e01-pit`'s `total` p50 24.1 → 15.2 ms, `e01-stress`'s 37.9 → 23.9 and example 01's scene pass at 2160p 8.0–27.8 → 2.1–3.8 ms over its six areas; 25 rows read `ok`, `e01-shock` `new`, and `gpu`'s `stage.render_encode` p50 `regressed` beside a shorter scene pass and frame, the known issue 7.15 accepted. 01's save schema stays at 41; a World save writes format 2, which 0.118 cannot read, and 0.118's saves load. A profile-guided build missed the owner's 5 % gate and does not ship. 7.16, agent guidance, is next.
 
 ### Added
