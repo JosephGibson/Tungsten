@@ -248,8 +248,8 @@ mod transform;
 
 pub use chemistry::blast::{Blast, blast};
 pub use chemistry::{
-    CHEMISTRY, CHEMISTRY_TICK, Chemistry, ChemistryPlugin, Interaction, Output, Reaction, TileCell,
-    TileStatuses, stimulate,
+    CHEMISTRY, CHEMISTRY_TICK, Chemistry, ChemistryPlugin, ChemistryStats, Interaction, Output,
+    Reaction, TileCell, TileStatuses, stimulate,
 };
 pub use damage::defense::{Resist, SHIELD_TICK, Shield};
 pub use damage::effects::{

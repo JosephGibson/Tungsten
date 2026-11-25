@@ -13,6 +13,7 @@ pub(crate) mod grid;
 pub(crate) mod outputs;
 pub(crate) mod queue;
 pub(crate) mod rules;
+pub(crate) mod stats;
 pub(crate) mod stimuli;
 pub(crate) mod tiles;
 
@@ -36,6 +37,7 @@ use crate::lifecycle::ended::Despawning;
 pub use outputs::{Output, Reaction, TileCell};
 pub use queue::Chemistry;
 pub use rules::Interaction;
+pub use stats::ChemistryStats;
 pub use tiles::TileStatuses;
 
 use becoming::{BECAME, Became};
@@ -45,6 +47,7 @@ use rules::{
     INTERACTIONS, answered, answers, any_rule, check_stimulus, register_interactions, snapshot,
     winner,
 };
+use stats::{RunCounts, RunWork, frame_of};
 use stimuli::{Emission, LightSampler, Reach, impacts, spread};
 use tiles::{TILE_STATUSES, tile_saved};
 
@@ -343,6 +346,9 @@ impl Plugin for ChemistryPlugin {
         if !world.has_resource::<Chemistry>() {
             world.insert_resource(Chemistry::default());
         }
+        if !world.has_resource::<ChemistryStats>() {
+            world.insert_resource(ChemistryStats::default());
+        }
         // Apart from the saved queue, so a load keeps them.
         world.insert_resource(Settings {
             cap: self.cap,
@@ -372,6 +378,8 @@ impl Plugin for ChemistryPlugin {
                 .after_if_present(EFFECT_TICK),
         );
         let mut runner = Runner::default();
+        // Every handler named before its first reaction, so no run allocates.
+        runner.work.know(self.handlers.iter().map(|(name, _)| name));
         schedule.add(
             Phase::Resolve.stage(),
             Phase::Resolve
@@ -452,6 +460,11 @@ struct Runner {
     taken: Vec<Entry>,
     /// A part's deepest types that some rule answers.
     leaves: Vec<String>,
+    /// The run's own tallies, added to the frame's [`ChemistryStats`].
+    work: RunWork,
+    /// The queue's waiting entries and its dropped and cut counts at the
+    /// last run's end: what the next run's counts start from.
+    last: (usize, u64, u64),
 }
 
 impl Runner {
@@ -461,6 +474,7 @@ impl Runner {
         }
         snapshot(world, &mut self.rules);
         let settings = Settings::of(world);
+        let frame = frame_of(world);
         #[cfg(test)]
         let as_it_stood = world.has_resource::<AsItStood>();
         #[cfg(test)]
@@ -559,6 +573,7 @@ impl Runner {
         }
 
         // The run: at most the cap, oldest first.
+        let take_began = std::time::Instant::now();
         let mut taken = std::mem::take(&mut self.taken);
         {
             let mut chemistry = world.remove_resource::<Chemistry>().unwrap();
@@ -574,6 +589,13 @@ impl Runner {
             world.insert_resource(chemistry);
         }
         let count = taken.len();
+        let take = take_began.elapsed();
+        let depth = taken.iter().map(|entry| entry.depth).max().unwrap_or(0);
+        let behind = taken
+            .iter()
+            .map(|entry| run.saturating_sub(entry.age))
+            .max()
+            .unwrap_or(0);
         for entry in taken.drain(..) {
             self.react(world, entry);
         }
@@ -614,6 +636,24 @@ impl Runner {
             world
                 .resource_mut::<Chemistry>()
                 .release_held(|entity| !gone.contains(&entity));
+        }
+        // The run's counts, for the frame's line: entries made since the
+        // last run's end are the queue's growth plus this run's take.
+        let chemistry = world.resource::<Chemistry>();
+        let now = (chemistry.pending(), chemistry.dropped(), chemistry.cut());
+        let (pending, dropped, cut) = std::mem::replace(&mut self.last, now);
+        let counts = RunCounts {
+            queued: (now.0 + count).saturating_sub(pending) as u64,
+            taken: count as u64,
+            dropped: now.1.saturating_sub(dropped),
+            cut: now.2.saturating_sub(cut),
+            pending: now.0 as u64,
+            behind,
+            depth,
+            take,
+        };
+        if let Some(stats) = world.get_resource_mut::<ChemistryStats>() {
+            stats.add_run(frame, &counts, &mut self.work);
         }
     }
 
@@ -668,7 +708,9 @@ impl Runner {
             };
             reaction.rule.clone_from(&reaction.stimulus);
             let label = reaction.rule.clone();
-            run_outputs(world, &reaction, &outputs, &label, dead);
+            let ran = std::time::Instant::now();
+            run_outputs(world, &reaction, &outputs, &label, dead, &mut self.work);
+            self.work.outputs_ms += ran.elapsed().as_secs_f64() * 1e3;
             return;
         }
         let tags: Option<&Tags> = match (&cell_tags, &entry.receiver) {
@@ -676,7 +718,10 @@ impl Runner {
             (None, Receiver::Entity(receiver)) => world.get::<Tags>(*receiver),
             (None, Receiver::Cell(_)) => None,
         };
-        let Some((id, rule)) = winner(&self.rules, &reaction.stimulus, entry.raw, tags) else {
+        let matched = std::time::Instant::now();
+        let won = winner(&self.rules, &reaction.stimulus, entry.raw, tags);
+        self.work.match_ms += matched.elapsed().as_secs_f64() * 1e3;
+        let Some((id, rule)) = won else {
             if let Some(receiver) = entry.receiver.entity() {
                 trace(world, receiver, || TraceKind::Skipped {
                     event: "interaction",
@@ -687,7 +732,9 @@ impl Runner {
             return;
         };
         reaction.rule.clone_from(id);
-        run_outputs(world, &reaction, rule.outputs(), id, dead);
+        let ran = std::time::Instant::now();
+        run_outputs(world, &reaction, rule.outputs(), id, dead, &mut self.work);
+        self.work.outputs_ms += ran.elapsed().as_secs_f64() * 1e3;
     }
 }
 

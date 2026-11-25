@@ -251,5 +251,6 @@ Round 2: the same model at xhigh, the plan without §7 and the log (`--from "sed
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
 | Plan probes | 2026-11-25 | measured | the chain at `8570ebf1` plus timers: `chemistry` p50 21.4, p95 98.7, p99 105.6 ms; `total` p95 138.3, p99 151.5; 48 builds 87.7 of a run's 91.4 ms; Step 3's probe p95 3.96, `total` p95 48.6, digest equal | `perf-runs/20261125-chemistry-shock/` |
+| 1 | 2026-11-25 | done (`e53e2c2c`) | fmt, `cargo clippy -p example-01-platformer --all-targets -- -D warnings` → exit 0; `cargo test -p example-01-platformer` → 508 passed, exit 0, `guards::the_full_pit_holds_its_counts` and `guards::the_tour_holds_its_counts` ok; `just perf-test` → 46 tests OK. `just perf run e01-shock --repeat 3` → exit 0, valid, digest `b15a2305d99be552` in all three runs, reports passing; `chemistry` p50 21.15–21.53, p95 97.57–99.27, p99 104.74–106.24 ms; `chemistry_tick` 0.01/0.01/0.02; `total` p95 137.95–139.36, p99 151.18–151.68 | `perf-runs/20261125T035519Z-e01-shock/` |
 
 ## Follow-ups

@@ -3025,6 +3025,15 @@ impl App {
             {
                 log::debug!("{}", format_perf_physics_line(buffers));
             }
+            // The kit's chemistry this frame (the chemistry shock pass):
+            // `scripts/perf_stats.py` reads it as counters, outside the digest.
+            #[cfg(feature = "kit")]
+            if log::log_enabled!(log::Level::Debug)
+                && let Some(stats) = self.world.get_resource::<tungsten_kit::ChemistryStats>()
+            {
+                let frame = self.world.get_resource::<Time>().map_or(0, Time::frame);
+                log::debug!("{}", stats.line(frame));
+            }
         }
 
         self.settle_exit(end)

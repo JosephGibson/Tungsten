@@ -11,6 +11,7 @@ use tungsten_core::{Entity, MissingAsset, World};
 
 use crate::chemistry::grid::locate;
 use crate::chemistry::queue::{Chemistry, Receiver, Settings, Stimulus};
+use crate::chemistry::stats::{ChemistryStats, frame_of};
 use crate::chemistry::stimuli::Reach;
 use crate::damage::health::Health;
 use crate::damage::pipeline::{
@@ -736,7 +737,8 @@ pub(crate) fn detonate(
 type Target = (Entity, Vec2, f32);
 
 /// Sets `def` off at `centre`, from `from`, credited to `credit` while it
-/// lives, at `depth`: its hits, its impulse, then its stimuli.
+/// lives, at `depth` ([`set_off`]), counted in the frame's
+/// [`ChemistryStats`] with the receivers its gather found and its time.
 #[allow(clippy::too_many_arguments)]
 fn go_off(
     world: &mut World,
@@ -748,12 +750,36 @@ fn go_off(
     depth: u8,
     reach: &mut Reach,
 ) {
+    let began = std::time::Instant::now();
+    let Some(gathered) = set_off(world, settings, def, centre, from, credit, depth, reach) else {
+        return;
+    };
+    let frame = frame_of(world);
+    if let Some(stats) = world.get_resource_mut::<ChemistryStats>() {
+        stats.add_blast(frame, gathered, began.elapsed());
+    }
+}
+
+/// Sets `def` off at `centre`, from `from`, credited to `credit` while it
+/// lives, at `depth`: its hits, its impulse, then its stimuli. The
+/// receivers its gather found, or `None` when its preparation refused it.
+#[allow(clippy::too_many_arguments)]
+fn set_off(
+    world: &mut World,
+    settings: &Settings,
+    def: &Blast,
+    centre: Vec2,
+    from: Option<&Receiver>,
+    credit: Option<Entity>,
+    depth: u8,
+    reach: &mut Reach,
+) -> Option<usize> {
     let prep: Option<HitPrep> = match def.preparation() {
         None => None,
         Some(name) => {
             let Some(prep) = hit_prep(world, name) else {
                 refuse_hit_prep(world, "a blast", name);
-                return;
+                return None;
             };
             Some(prep)
         }
@@ -762,6 +788,7 @@ fn go_off(
     let spared = credit.filter(|_| def.spares_source());
     let radius = def.radius;
     reach.gather(world, centre, radius, from);
+    let gathered = reach.entities().count();
     let receiver = match from {
         Some(&Receiver::Entity(receiver)) => Some(receiver),
         _ => None,
@@ -836,7 +863,7 @@ fn go_off(
         });
     }
     if !def.sends_stimulus() || !world.has_resource::<Chemistry>() {
-        return;
+        return Some(gathered);
     }
     let mut stimuli: Vec<(Receiver, f32)> = Vec::new();
     for candidate in reach.entities() {
@@ -864,6 +891,7 @@ fn go_off(
         };
         chemistry.stimulate_id(settings, receiver, id, stimulus, run);
     }
+    Some(gathered)
 }
 
 /// [`apply_radial_impulse`](tungsten_core::physics::apply_radial_impulse)

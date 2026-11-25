@@ -102,6 +102,29 @@ class Parsing(unittest.TestCase):
         self.assertEqual(log.backend["present_mode"], "immediate")
         self.assertEqual(json.loads(log.bench_config)["row"], "physics")
 
+    def test_a_chemistry_line_reads_as_counters_outside_the_digest(self):
+        plain = physics_log(3)
+        lines = plain.splitlines()
+        chemistry = []
+        for line in lines:
+            chemistry.append(line)
+            if "physics: " in line:
+                count = len([seen for seen in chemistry if "physics: " in seen])
+                chemistry.append(APP + f"chemistry: runs=1 taken={count} take=0.25ms handler.steam=3 handler.steam.time=1.50ms")
+        text = "\n".join(chemistry) + "\n"
+        log = perf_stats.parse_log(text)
+        self.assertEqual(log.orphans, 0)
+        self.assertEqual(log.frames[1].chemistry["taken"], 2.0)
+        self.assertEqual(log.frames[0].chemistry["handler.steam.time"], 1.5)
+        stats = perf_stats.cpu_stats(log.frames)
+        self.assertIn("chemistry.take", stats["counters"])
+        self.assertIn("chemistry.handler.steam", stats["counters"])
+        self.assertEqual(
+            perf_stats.digest(log.frames),
+            perf_stats.digest(perf_stats.parse_log(plain).frames),
+            "the digest hashes physics: and bench: lines alone",
+        )
+
     def test_orphans_and_values(self):
         log = perf_stats.parse_log(APP + "systems: a=1.00ms\n" + frame_line(9.0) + "\n" + APP + "counters: draw_calls=12 upload_bytes=n/a")
         self.assertEqual(log.orphans, 1)

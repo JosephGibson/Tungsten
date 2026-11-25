@@ -13,6 +13,7 @@ use crate::chemistry::blast::Blast;
 use crate::chemistry::grid::locate;
 use crate::chemistry::queue::Receiver;
 use crate::chemistry::rules::check_stimulus;
+use crate::chemistry::stats::RunWork;
 use crate::chemistry::stimuli::{Named, emit_from};
 use crate::chemistry::tiles::{self, Cell, NOT_A_TILE};
 use crate::damage::effects::{Effect, EffectRequest, StatModifierDef, consume, end_effect_at};
@@ -469,13 +470,15 @@ pub(crate) fn point_of(world: &World, entity: Entity) -> Option<Vec2> {
 
 /// Runs `outputs` for `reaction` on its receiver, in order, each traced
 /// under `label.<index>` about the receiver (a cell's about its placement);
-/// on a `dead` receiver `build` and `apply` are refused.
+/// on a `dead` receiver `build` and `apply` are refused. Each handler's
+/// reaction counts in `work`, with its time.
 pub(crate) fn run_outputs(
     world: &mut World,
     reaction: &Reaction,
     outputs: &[Output],
     label: &str,
     dead: bool,
+    work: &mut RunWork,
 ) {
     // What the outputs set off runs one reaction deeper.
     let deeper = reaction.depth.saturating_add(1);
@@ -487,7 +490,9 @@ pub(crate) fn run_outputs(
                     .and_then(|handlers| handlers.get(name));
                 match handler {
                     Some(handler) => {
+                        let began = std::time::Instant::now();
                         handler(world, reaction);
+                        work.handler(name, began.elapsed());
                         Ok(())
                     }
                     None => Err(NO_HANDLER),

@@ -100,6 +100,7 @@ frame: total=10.75ms interval=10.81ms update=0.03ms flush=0.00ms extract=0.65ms 
 counters: draw_calls=76 upload_bytes=1664304 text_renders=1 sprite_batches=60
 systems: physics_debug_toggle=0.00ms … bench_counters=0.00ms gpu_camera=0.00ms gpu_lights=0.00ms gpu_text=0.02ms
 gpu_passes: from=57 scene=6.88ms post0_bloom_threshold=0.16ms … text=0.07ms render_span=10.39ms
+chemistry: runs=1 queued=149 taken=48 dropped=0 cut=0 pending=2693 behind=3 depth=0 blasts=48 gathered=1824 take=0.037ms match=0.009ms outputs=6.902ms blast=0.698ms handler.steam=48 handler.steam.time=6.840ms
 bench: sprites=2000 glow=20000 visible_tiles=12769 glyphs_changed=4000 lights=16
 ```
 
@@ -109,6 +110,7 @@ bench: sprites=2000 glow=20000 visible_tiles=12769 glyphs_changed=4000 lights=16
 - **`systems:`** every system's wall time in run order across the stages (`FrameTimings::system_timings`, `D-128`); a `fixed_update` system's runs are summed over the frame's steps (`D-137`). Whitespace and `=` in names become `_`.
 - **`gpu_passes: from=N`** only under `TUNGSTEN_GPU_TIMING=1`, or while the HUD (F4) shows, on an adapter with timestamp queries, one line per timed frame read back, naming frame N it measured. The renderer never waits for timestamps: a frame resolves them into one of a ring of four readbacks and a later frame's non-blocking poll reads them, so a line arrives up to four frames after its frame, two can arrive in one frame and a frame that reads none prints none. A frame that finds every slot in flight runs untimed. The line lists every render pass in execution order (scene; indexed post slots such as `post0_bloom_threshold`; each bloom mip and the composite; `smaa_edges`, `smaa_blend_weights`, `smaa_neighborhood`; `text`, the overlay pass) plus `render_span`, from the first scene timestamp to the end of the overlay, gaps included. Only a capture frame (`TUNGSTEN_CAPTURE_FRAME`) has a `present` blit. A stack past the adapter's query-set limit renders without timings.
 - **`physics:`** when physics runs: proxies and dynamic bodies gathered by the last step, sleeping bodies, and the final substep's pairs and contacts.
+- **`chemistry:`** when the kit's chemistry is in the World (`ChemistryStats`, the chemistry shock pass), after `physics:`: the frame's runs, the entries they made, took, dropped past the bound and cut past the depth limit, the queue after them, how many runs the oldest entry taken waited (`behind`) and the deepest one taken (`depth`), the blasts set off and the receivers their gathers found, the milliseconds in the takes, the rule matches, the outputs and the blasts, and each handler's reactions and time (`handler.<name>`, `handler.<name>.time`). A frame where nothing counted reads zeros. The runner reads it as `counter.chemistry.<name>`, outside the digest.
 - **`bench-config:`** once: the bench's resolved configuration as JSON, with derived values such as the expected batch count.
 - **`bench:`** the bench's counters. Frame N + 1's first system logs frame N's line, so it follows frame N's group; the last frame of a run without tail frames has none. A hex token such as `ecs`'s `digest=0x…` stays out of the statistics.
 

@@ -5568,6 +5568,20 @@ impl core::marker::Unpin for tungsten_kit::ChemistryPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::ChemistryPlugin
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ChemistryPlugin
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_kit::ChemistryPlugin
+pub struct tungsten_kit::ChemistryStats
+impl tungsten_kit::ChemistryStats
+pub fn tungsten_kit::ChemistryStats::line(&self, u64) -> alloc::string::String
+impl core::default::Default for tungsten_kit::ChemistryStats
+pub fn tungsten_kit::ChemistryStats::default() -> tungsten_kit::ChemistryStats
+impl core::fmt::Debug for tungsten_kit::ChemistryStats
+pub fn tungsten_kit::ChemistryStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::ChemistryStats
+impl core::marker::Send for tungsten_kit::ChemistryStats
+impl core::marker::Sync for tungsten_kit::ChemistryStats
+impl core::marker::Unpin for tungsten_kit::ChemistryStats
+impl core::marker::UnsafeUnpin for tungsten_kit::ChemistryStats
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ChemistryStats
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ChemistryStats
 pub struct tungsten_kit::Children(_)
 impl tungsten_kit::Children
 pub fn tungsten_kit::Children::is_empty(&self) -> bool

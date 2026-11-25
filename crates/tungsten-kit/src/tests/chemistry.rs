@@ -3150,6 +3150,98 @@ fn save_ordered(world: &mut World) -> ([Entity; 3], Entity) {
     ([x1, x2, x3], source)
 }
 
+/// A rule whose handler sets off a stimulus-free blast at its receiver.
+fn popping() -> ChemistryPlugin {
+    ChemistryPlugin::new().with_handler("pop", |world: &mut World, reaction: &Reaction| {
+        let receiver = reaction.receiver();
+        let at = receiver
+            .and_then(|entity| world.get::<Transform>(entity))
+            .map_or(Vec2::ZERO, |transform| transform.position);
+        let pop = Blast::new(30.0)
+            .with_damage(1.0)
+            .landing_now()
+            .with_stimulus(false);
+        blast(world, at, &pop, None, receiver);
+    })
+}
+
+#[test]
+fn chemistry_counts_a_frames_work_on_its_line() {
+    let (mut world, mut schedule) = rig_with(&popping());
+    rule(
+        &mut world,
+        "pops",
+        json!({ "stimulus": "heat", "outputs": [{ "handler": "pop" }] }),
+    );
+    let targets: Vec<Entity> = (0..3_u8)
+        .map(|at| {
+            let target = receiver(&mut world, &["flammable"]);
+            let point = Vec2::new(100.0 * f32::from(at), 0.0);
+            world.insert(target, Transform::from_position(point));
+            target
+        })
+        .collect();
+    for &target in &targets {
+        assert!(stimulate(&mut world, target, "heat", 1.0, None));
+    }
+    // A blast inside the frame before its fixed update, as a script's
+    // action sets one off: it counts in that frame, beside the run's.
+    world.resource_mut::<Time>().advance_frame(STEP);
+    let frame = world.resource::<Time>().frame();
+    let far = Blast::new(20.0)
+        .with_damage(1.0)
+        .landing_now()
+        .with_stimulus(false);
+    blast(&mut world, Vec2::new(-500.0, 0.0), &far, None, None);
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    let line = world.resource::<ChemistryStats>().line(frame);
+    assert!(line.starts_with("chemistry: "), "{line}");
+    for field in [
+        "runs=1 ",
+        "queued=3 ",
+        "taken=3 ",
+        "dropped=0 ",
+        "cut=0 ",
+        "pending=0 ",
+        "depth=0 ",
+        "blasts=4 ",
+        "handler.pop=3 ",
+    ] {
+        assert!(line.contains(field), "{field} in {line}");
+    }
+    // The next frame's run takes nothing; the frame gone reads zeros.
+    step(&mut world, &mut schedule);
+    let next = world.resource::<Time>().frame();
+    let quiet = world.resource::<ChemistryStats>().line(next);
+    for field in ["runs=1 ", "taken=0 ", "blasts=0 ", "handler.pop=0 "] {
+        assert!(quiet.contains(field), "{field} in {quiet}");
+    }
+    let gone = world.resource::<ChemistryStats>().line(frame);
+    assert!(
+        gone.contains("runs=0 ") && gone.contains("handler.pop=0 "),
+        "{gone}"
+    );
+}
+
+#[test]
+fn a_blast_in_a_frame_with_no_run_counts_in_it() {
+    // No rule and an empty queue: chemistry runs nothing.
+    let (mut world, _schedule) = rig();
+    world.resource_mut::<Time>().advance_frame(STEP);
+    let frame = world.resource::<Time>().frame();
+    let target = receiver(&mut world, &["flammable"]);
+    world.insert(target, Transform::from_position(Vec2::ZERO));
+    let pop = Blast::new(20.0)
+        .with_damage(1.0)
+        .landing_now()
+        .with_stimulus(false);
+    blast(&mut world, Vec2::ZERO, &pop, None, None);
+    let line = world.resource::<ChemistryStats>().line(frame);
+    for field in ["runs=0 ", "blasts=1 ", "gathered=1 "] {
+        assert!(line.contains(field), "{field} in {line}");
+    }
+}
+
 #[test]
 fn a_blast_lands_now_in_save_id_order() {
     let rolls = [true, false, true];
