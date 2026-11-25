@@ -11,20 +11,24 @@
 //! carry a [`SaveId`], and the components and resources a [`SaveRegistry`]
 //! holds are what a save writes.
 
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::de::{DeserializeOwned, IgnoredAny, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 
 use crate::config::GameConfig;
-use crate::persist::{WriteError, write_atomic};
+use crate::persist::{self, Ops, RealOps, Renamed, Staged, WriteError, write_atomic};
 
 pub(crate) mod area;
 pub(crate) mod id;
 pub(crate) mod patch;
 pub(crate) mod registry;
+pub(crate) mod table;
 pub(crate) mod world;
 
 pub use area::{AreaError, enter_area};
@@ -32,6 +36,7 @@ pub use id::{AUTHORED, NameError, SaveId, SaveState, Saved, name, order_key, sav
 pub use registry::{
     MigrationStep, RefCodec, RefReader, RefWriter, Refs, SaveOptions, SaveRegistry,
 };
+pub use table::expand_tables;
 pub use world::{
     CaptureError, FORMAT, RestoreError, RestoreReport, WorldSave, capture_world, check_world,
     regenerate, restore_world,
@@ -148,9 +153,309 @@ impl SaveStamp {
 /// The game's save slots in its user folder: a `World` resource `App`
 /// inserts. Without a folder (smoke mode, `UserFolder::Off`, or no
 /// `game.id`) every call returns [`SaveError::NoFolder`].
+///
+/// A window's run writes behind ([`Self::write_behind`], `D-303`): a save
+/// is serialized and written to its temp file before it returns, and synced
+/// and renamed over the slot on a writer thread, so the disk's wait leaves
+/// the frame. `App::new`, the test harness and the checks write each save
+/// whole before it returns.
 #[derive(Debug, Clone, Default)]
 pub struct SaveSlots {
     dir: Option<PathBuf>,
+    /// The saves staged and not yet in place, and their writer; `None`
+    /// while every save is written before it returns. Clones share it.
+    behind: Option<Arc<Behind>>,
+}
+
+/// The slots' saves that are staged and not yet in place, and the writer
+/// thread that commits them (`D-303`). The writer starts at the first save.
+struct Behind {
+    shared: Arc<Shared>,
+    writer: Mutex<Option<JoinHandle<()>>>,
+    /// Tests: the operations the writer commits with, in place of the file
+    /// system's own.
+    #[cfg(test)]
+    ops: Mutex<Option<Box<dyn Ops>>>,
+    /// Tests: the writer thread does not start.
+    #[cfg(test)]
+    no_thread: bool,
+}
+
+#[derive(Default)]
+struct Shared {
+    state: Mutex<Queue>,
+    /// The writer waits on it for a save, and a flush for the queue to
+    /// empty.
+    changed: Condvar,
+}
+
+#[derive(Default)]
+struct Queue {
+    /// The staged saves, in the order they were made.
+    staged: VecDeque<Job>,
+    /// Each slot's newest save not yet in place: its number and the temp
+    /// file that holds it, which `load` and `list` read.
+    pending: HashMap<String, Pending>,
+    /// The writer holds a save.
+    busy: bool,
+    /// The commits that failed since the last flush.
+    failed: Vec<SaveError>,
+    /// The slots are gone: the writer commits what is staged and ends.
+    closed: bool,
+    /// The writer thread ended on a panic: saves are committed where they
+    /// are made from then on.
+    dead: bool,
+    /// The last save's number.
+    last: u64,
+}
+
+struct Job {
+    slot: String,
+    number: u64,
+    staged: Staged,
+}
+
+struct Pending {
+    number: u64,
+    temp: PathBuf,
+}
+
+impl std::fmt::Debug for Behind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let queue = lock(&self.shared.state);
+        f.debug_struct("Behind")
+            .field("staged", &queue.staged.len())
+            .field("pending", &queue.pending.len())
+            .field("failed", &queue.failed.len())
+            .finish_non_exhaustive()
+    }
+}
+
+/// A poisoned lock's state is still whole: every write under it is one
+/// insert, removal or flag.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+impl Behind {
+    fn new() -> Self {
+        Self {
+            shared: Arc::new(Shared::default()),
+            writer: Mutex::new(None),
+            #[cfg(test)]
+            ops: Mutex::new(None),
+            #[cfg(test)]
+            no_thread: false,
+        }
+    }
+
+    /// Hands `staged`, slot `slot`'s new save, to the writer, starting it
+    /// at the first; where no writer runs, commits it here.
+    fn commit_behind(&self, slot: &str, staged: Staged) -> Result<(), SaveError> {
+        if !self.start_writer() {
+            return Ok(staged.commit(&mut RealOps)?);
+        }
+        let mut queue = lock(&self.shared.state);
+        if queue.dead {
+            drop(queue);
+            return Ok(staged.commit(&mut RealOps)?);
+        }
+        queue.last += 1;
+        let number = queue.last;
+        queue.pending.insert(
+            slot.to_string(),
+            Pending {
+                number,
+                temp: staged.temp().to_path_buf(),
+            },
+        );
+        queue.staged.push_back(Job {
+            slot: slot.to_string(),
+            number,
+            staged,
+        });
+        drop(queue);
+        self.shared.changed.notify_all();
+        Ok(())
+    }
+
+    /// Starts the writer thread unless it runs; `false` when the system
+    /// refuses one.
+    fn start_writer(&self) -> bool {
+        let mut writer = lock(&self.writer);
+        if writer.is_some() {
+            return true;
+        }
+        #[cfg(test)]
+        if self.no_thread {
+            return false;
+        }
+        #[cfg(test)]
+        let ops: Box<dyn Ops> = lock(&self.ops).take().unwrap_or_else(|| Box::new(RealOps));
+        #[cfg(not(test))]
+        let ops: Box<dyn Ops> = Box::new(RealOps);
+        let shared = Arc::clone(&self.shared);
+        let spawned = std::thread::Builder::new()
+            .name("tungsten-saves".into())
+            .spawn(move || writer_loop(&shared, ops));
+        match spawned {
+            Ok(handle) => {
+                *writer = Some(handle);
+                true
+            }
+            Err(error) => {
+                log::warn!(
+                    "the save slots' writer thread did not start ({error}); a save is written before it returns"
+                );
+                false
+            }
+        }
+    }
+
+    /// Waits until every staged save is in place or has failed, and takes
+    /// the failures.
+    fn flush(&self) -> Vec<SaveError> {
+        let mut queue = lock(&self.shared.state);
+        while (!queue.staged.is_empty() && !queue.dead) || queue.busy {
+            queue = self
+                .shared
+                .changed
+                .wait(queue)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+        // A writer that died left its queue: commit it here, in order.
+        while let Some(job) = queue.staged.pop_front() {
+            if queue
+                .pending
+                .get(&job.slot)
+                .is_some_and(|pending| pending.number == job.number)
+            {
+                queue.pending.remove(&job.slot);
+                if let Err(error) = job.staged.commit(&mut RealOps) {
+                    queue.failed.push(error.into());
+                }
+            }
+        }
+        std::mem::take(&mut queue.failed)
+    }
+}
+
+impl Drop for Behind {
+    fn drop(&mut self) {
+        lock(&self.shared.state).closed = true;
+        self.shared.changed.notify_all();
+        if let Some(writer) = lock(&self.writer).take() {
+            // A writer that panicked left its saves to the flush below.
+            let _ = writer.join();
+        }
+        for error in self.flush() {
+            log::error!("a save was not written: {error}");
+        }
+    }
+}
+
+/// Marks the writer dead if its thread unwinds, so that nothing waits for
+/// it again.
+struct Alive<'a>(&'a Shared);
+
+impl Drop for Alive<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            let mut queue = lock(&self.0.state);
+            queue.dead = true;
+            queue.busy = false;
+            // The save the writer held is lost with its temp file: its
+            // slot's old file stands.
+            let Queue {
+                staged, pending, ..
+            } = &mut *queue;
+            pending.retain(|_, pending| staged.iter().any(|job| job.number == pending.number));
+            drop(queue);
+            self.0.changed.notify_all();
+        }
+    }
+}
+
+/// The writer thread: commits the staged saves in order until the slots
+/// are gone and the queue is empty.
+fn writer_loop(shared: &Shared, mut ops: Box<dyn Ops>) {
+    let _alive = Alive(shared);
+    loop {
+        let job = {
+            let mut queue = lock(&shared.state);
+            loop {
+                if let Some(job) = queue.staged.pop_front() {
+                    queue.busy = true;
+                    break job;
+                }
+                if queue.closed {
+                    return;
+                }
+                queue = shared
+                    .changed
+                    .wait(queue)
+                    .unwrap_or_else(PoisonError::into_inner);
+            }
+        };
+        let slot = job.slot.clone();
+        let outcome = commit_staged(shared, job, &mut *ops);
+        let mut queue = lock(&shared.state);
+        queue.busy = false;
+        if let Err(error) = outcome {
+            log::error!("save slot '{slot}' was not written; its old file stands: {error}");
+            queue.failed.push(error.into());
+        }
+        drop(queue);
+        shared.changed.notify_all();
+    }
+}
+
+/// Syncs `job`'s temp file and renames it over its slot, unless a newer
+/// save of the slot or a delete took its place. The sync, the slow half,
+/// runs outside the lock a read takes; each rename attempt takes the lock,
+/// checks the save is still the slot's newest and tries once, and a retry's
+/// sleep is outside the lock again, so a read never waits on the disk.
+fn commit_staged(shared: &Shared, mut job: Job, ops: &mut dyn Ops) -> Result<(), WriteError> {
+    let newest = |queue: &Queue| {
+        queue
+            .pending
+            .get(&job.slot)
+            .is_some_and(|pending| pending.number == job.number)
+    };
+    if !newest(&lock(&shared.state)) {
+        return Ok(());
+    }
+    if let Err(error) = job.staged.sync(ops) {
+        let mut queue = lock(&shared.state);
+        if newest(&queue) {
+            queue.pending.remove(&job.slot);
+        }
+        return Err(error);
+    }
+    let mut attempt = 1;
+    loop {
+        let mut queue = lock(&shared.state);
+        if !newest(&queue) {
+            return Ok(());
+        }
+        match job.staged.rename(ops, attempt) {
+            Renamed::Done => {
+                queue.pending.remove(&job.slot);
+                drop(queue);
+                job.staged.sync_folder();
+                return Ok(());
+            }
+            Renamed::Retry(wait) => {
+                drop(queue);
+                ops.sleep(wait);
+                attempt += 1;
+            }
+            Renamed::Failed(error) => {
+                queue.pending.remove(&job.slot);
+                return Err(error);
+            }
+        }
+    }
 }
 
 /// One slot as [`SaveSlots::list`] reads it: the envelope's header.
@@ -288,7 +593,49 @@ impl SaveSlots {
     /// Slots in `dir`, the user folder's `saves`; `None` for none.
     #[must_use]
     pub fn new(dir: Option<PathBuf>) -> Self {
-        Self { dir }
+        Self { dir, behind: None }
+    }
+
+    /// From here on a save returns once its bytes are written to a temp
+    /// file beside its slot, and a writer thread syncs that file and
+    /// renames it over the slot (`D-303`): the wait for the disk leaves the
+    /// caller, and with it the frame. `App::run` calls this for a window's
+    /// run. Slots without a folder, or already writing behind, are left as
+    /// they are; clones made after the call share the writer.
+    ///
+    /// A save still fails at once on what fails before the sync: no folder,
+    /// a bad name, a type that does not serialize, a folder or a temp file
+    /// that cannot be made, a full disk. [`load`](Self::load),
+    /// [`list`](Self::list) and [`delete`](Self::delete) see a save the
+    /// moment it returns. A sync or a rename that fails later is logged,
+    /// leaves the slot's old file whole, and is [`flush`](Self::flush)'s
+    /// error.
+    pub fn write_behind(&mut self) {
+        if self.dir.is_some() && self.behind.is_none() {
+            self.behind = Some(Arc::new(Behind::new()));
+        }
+    }
+
+    /// Whether saves are committed on the writer thread
+    /// ([`write_behind`](Self::write_behind)).
+    #[must_use]
+    pub fn writes_behind(&self) -> bool {
+        self.behind.is_some()
+    }
+
+    /// Waits until every save made so far is in its slot's file or has
+    /// failed. Slots that do not write behind have nothing to wait for.
+    /// `App::run` flushes as it exits, and dropping the last clone does.
+    ///
+    /// # Errors
+    ///
+    /// [`SaveError::Write`]: the first commit that failed since the last
+    /// flush; each was logged when it failed.
+    pub fn flush(&self) -> Result<(), SaveError> {
+        match &self.behind {
+            Some(behind) => behind.flush().into_iter().next().map_or(Ok(()), Err),
+            None => Ok(()),
+        }
     }
 
     /// The folder slots live in; created on the first save.
@@ -341,8 +688,10 @@ impl SaveSlots {
                 source,
             })?;
         json.push(b'\n');
-        write_atomic(&path, &json)?;
-        Ok(())
+        match &self.behind {
+            Some(behind) => behind.commit_behind(slot, persist::stage(&path, &json)?),
+            None => Ok(write_atomic(&path, &json)?),
+        }
     }
 
     /// Loads `slot` as `T`: data saved under `T::SCHEMA` directly, under an
@@ -358,7 +707,7 @@ impl SaveSlots {
     /// [`SaveError::Migration`].
     pub fn load<T: SaveData>(&self, slot: &str) -> Result<T, SaveError> {
         let path = self.slot_path(slot)?;
-        let bytes = std::fs::read(&path).map_err(|source| {
+        let bytes = self.read_slot(slot, &path).map_err(|source| {
             if source.kind() == std::io::ErrorKind::NotFound {
                 SaveError::NotFound {
                     slot: slot.to_string(),
@@ -408,40 +757,72 @@ impl SaveSlots {
     /// [`SlotList::warnings`], and [`load`](Self::load) reports it; the
     /// write's temp files are dotfiles and are not listed.
     ///
+    /// A slot this engine wrote is read up to its `data` key and no further,
+    /// whatever its size: the envelope writes its header first. So a slot
+    /// whose header reads lists though its data may not parse, which
+    /// [`load`](Self::load) then reports, and a header key repeated after
+    /// `data` is not seen. A file whose keys come in another order, or whose
+    /// header is not whole before `data`, is parsed whole.
+    ///
     /// # Errors
     ///
     /// [`SaveError::NoFolder`], or [`SaveError::Io`] when the folder cannot
     /// be read. A folder not yet created lists no slots.
     pub fn list(&self) -> Result<SlotList, SaveError> {
+        self.list_by(read_header)
+    }
+
+    /// [`list`](Self::list), each slot's header read by `read`.
+    /// `read` takes a slot's file, or the temp file a pending save of it
+    /// is staged in, and its name.
+    fn list_by(
+        &self,
+        read: fn(&Path, &str) -> Result<Header, String>,
+    ) -> Result<SlotList, SaveError> {
         let dir = self.dir.as_deref().ok_or(SaveError::NoFolder)?;
         let io_error = |source| SaveError::Io {
             path: dir.to_path_buf(),
             source,
         };
-        let entries = match std::fs::read_dir(dir) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(SlotList::default());
-            }
-            Err(error) => return Err(io_error(error)),
-        };
+        // Held through the listing, so that no save moves from its temp
+        // file to its slot between the names and the headers.
+        let queue = self
+            .behind
+            .as_ref()
+            .map(|behind| lock(&behind.shared.state));
+        let pending = |name: &str| queue.as_ref().and_then(|queue| queue.pending.get(name));
         let mut names = Vec::new();
-        for entry in entries {
-            let file_name = entry.map_err(io_error)?.file_name();
-            let Some(file_name) = file_name.to_str() else {
-                continue;
-            };
-            if let Some(stem) = file_name.strip_suffix(".json")
-                && !file_name.starts_with('.')
-            {
-                names.push(stem.to_string());
+        match std::fs::read_dir(dir) {
+            Ok(entries) => {
+                for entry in entries {
+                    let file_name = entry.map_err(io_error)?.file_name();
+                    let Some(file_name) = file_name.to_str() else {
+                        continue;
+                    };
+                    if let Some(stem) = file_name.strip_suffix(".json")
+                        && !file_name.starts_with('.')
+                    {
+                        names.push(stem.to_string());
+                    }
+                }
             }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_error(error)),
+        }
+        // A slot's first save is listed before its file is in place.
+        if let Some(queue) = &queue {
+            names.extend(queue.pending.keys().cloned());
         }
         names.sort_unstable();
+        names.dedup();
 
         let mut list = SlotList::default();
         for name in names {
-            match read_header(dir, &name) {
+            let path = match pending(&name) {
+                Some(pending) => pending.temp.clone(),
+                None => dir.join(format!("{name}.json")),
+            };
+            match read(&path, &name) {
                 Ok(header) => list.slots.push(SlotInfo {
                     name,
                     schema: header.schema,
@@ -464,15 +845,46 @@ impl SaveSlots {
     /// [`SaveError::NotFound`] or [`SaveError::Io`].
     pub fn delete(&self, slot: &str) -> Result<(), SaveError> {
         let path = self.slot_path(slot)?;
-        std::fs::remove_file(&path).map_err(|source| {
-            if source.kind() == std::io::ErrorKind::NotFound {
-                SaveError::NotFound {
-                    slot: slot.to_string(),
+        // A save of the slot not yet in place is cancelled: the writer
+        // finds it is no longer the slot's newest and drops it.
+        let mut queue = self
+            .behind
+            .as_ref()
+            .map(|behind| lock(&behind.shared.state));
+        let cancelled = queue
+            .as_mut()
+            .is_some_and(|queue| queue.pending.remove(slot).is_some());
+        match std::fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+                if cancelled {
+                    Ok(())
+                } else {
+                    Err(SaveError::NotFound {
+                        slot: slot.to_string(),
+                    })
                 }
-            } else {
-                SaveError::Io { path, source }
             }
-        })
+            Err(source) => Err(SaveError::Io { path, source }),
+        }
+    }
+
+    /// `slot`'s bytes: its newest save's, from the temp file while that
+    /// save is not yet in place, else the slot's file. Read under the
+    /// writer's lock, so the file is not renamed between the two.
+    fn read_slot(&self, slot: &str, path: &Path) -> std::io::Result<Vec<u8>> {
+        let Some(behind) = &self.behind else {
+            return std::fs::read(path);
+        };
+        let queue = lock(&behind.shared.state);
+        if let Some(pending) = queue.pending.get(slot) {
+            match std::fs::read(&pending.temp) {
+                // A sync that just failed removed it: the old file stands.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                read => return read,
+            }
+        }
+        std::fs::read(path)
     }
 
     fn slot_path(&self, slot: &str) -> Result<PathBuf, SaveError> {
@@ -499,8 +911,23 @@ fn is_valid_slot_name(name: &str) -> bool {
         && game.validate().is_ok()
 }
 
-fn read_header(dir: &Path, name: &str) -> Result<Header, String> {
-    let bytes = std::fs::read(dir.join(format!("{name}.json"))).map_err(|e| e.to_string())?;
+/// A slot's header: read up to the `data` key where the envelope writes its
+/// header first ([`header_before_data`]), else from the file parsed whole,
+/// whose answer and whose reason for a file it skips are what every file got
+/// before.
+fn read_header(path: &Path, name: &str) -> Result<Header, String> {
+    if is_valid_slot_name(name)
+        && let Ok(file) = std::fs::File::open(path)
+        && let Some(header) = header_before_data(file)
+    {
+        return Ok(header);
+    }
+    read_header_whole(path, name)
+}
+
+/// A slot's header from its file read and parsed whole.
+fn read_header_whole(path: &Path, name: &str) -> Result<Header, String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
     if !is_valid_slot_name(name) {
         return Err("not a valid slot name".into());
     }
@@ -510,6 +937,102 @@ fn read_header(dir: &Path, name: &str) -> Result<Header, String> {
         return Err(format!("envelope {}", version.envelope));
     }
     Header::deserialize(&value).map_err(|e| e.to_string())
+}
+
+/// The header of an envelope of this build's format whose `schema`,
+/// `engine_version` and `saved_at_ms` all come before its `data`, as
+/// [`SaveSlots::save`] writes them: read through a buffer up to the `data`
+/// key and no further, so a slot costs its header whatever its data weighs.
+/// `None` for anything else: another envelope, a key missing or of another
+/// type, no `data`, or no JSON object at all.
+fn header_before_data(file: impl std::io::Read) -> Option<Header> {
+    /// The envelope's keys this read tells apart.
+    enum Key {
+        Envelope,
+        Schema,
+        EngineVersion,
+        SavedAtMs,
+        Data,
+        Other,
+    }
+
+    impl<'de> Deserialize<'de> for Key {
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            struct Name;
+            impl Visitor<'_> for Name {
+                type Value = Key;
+
+                fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    f.write_str("an envelope key")
+                }
+
+                fn visit_str<E>(self, name: &str) -> Result<Key, E> {
+                    Ok(match name {
+                        "envelope" => Key::Envelope,
+                        "schema" => Key::Schema,
+                        "engine_version" => Key::EngineVersion,
+                        "saved_at_ms" => Key::SavedAtMs,
+                        "data" => Key::Data,
+                        _ => Key::Other,
+                    })
+                }
+            }
+            deserializer.deserialize_identifier(Name)
+        }
+    }
+
+    /// Fills its header at the `data` key, then stops the read with an
+    /// error: the only way out of a map that leaves its rest unread.
+    struct UpToData<'a>(&'a mut Option<Header>);
+
+    impl<'de> Visitor<'de> for UpToData<'_> {
+        type Value = ();
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a save envelope")
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+            let (mut envelope, mut schema, mut engine_version, mut saved_at_ms) =
+                (None, None, None, None);
+            // A key given twice keeps its last value, as the whole parse's
+            // map does.
+            while let Some(key) = map.next_key::<Key>()? {
+                match key {
+                    Key::Envelope => envelope = Some(map.next_value::<u32>()?),
+                    Key::Schema => schema = Some(map.next_value::<u32>()?),
+                    Key::EngineVersion => engine_version = Some(map.next_value::<String>()?),
+                    Key::SavedAtMs => saved_at_ms = Some(map.next_value::<u64>()?),
+                    Key::Other => {
+                        map.next_value::<IgnoredAny>()?;
+                    }
+                    Key::Data => {
+                        if let (
+                            Some(ENVELOPE),
+                            Some(schema),
+                            Some(engine_version),
+                            Some(saved_at_ms),
+                        ) = (envelope, schema, engine_version, saved_at_ms)
+                        {
+                            *self.0 = Some(Header {
+                                schema,
+                                engine_version,
+                                saved_at_ms,
+                            });
+                        }
+                        return Err(serde::de::Error::custom("the header ends at the data"));
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    let mut header = None;
+    let mut json = serde_json::Deserializer::from_reader(std::io::BufReader::new(file));
+    // The result is the stop itself or the reason there is no header.
+    let _ = json.deserialize_map(UpToData(&mut header));
+    header
 }
 
 /// Unix milliseconds; 0 for a clock before 1970.

@@ -6,16 +6,19 @@
 //! `wake_foes` ([`script`](super::script)). The `e01-stress` row then lands
 //! spells on it through `cast_at` ([`cast_at`]). Where the pit is and where
 //! its cast stands are the map's places (`tools/level.py`'s `places`
-//! layer), read by name.
+//! layer), read by name. The `e01-shock` row sprays cold on it through
+//! `cast_at` and reads its cold and its chains through [`shock`].
 
 use glam::Vec2;
 use tungsten::core::{Entity, Position, PrevPosition, Velocity, World};
 use tungsten::kit::{Health, StateMachine, Stats};
 
 use super::Run;
-use crate::features::combat::BURNING;
+use crate::features::combat::{BURNING, FROZEN};
+use crate::features::elements::cascade::Cascades;
 use crate::features::elements::components::Flame;
 use crate::features::enemies::components::{EnemyKind, EnemyState, Variant};
+use crate::features::toys::components::{Element, SmallBall};
 use crate::features::{enemies, level, lightning, player, toys};
 use crate::shell::Difficulty;
 use tungsten::kit::Tags;
@@ -174,7 +177,8 @@ pub fn counts(world: &World) -> PitCounts {
 
 /// Lands `spell`'s toy at `at` as a cast of the wizard's would, free of its
 /// ability's mana, cooldown and charges, so a script casts as often as its
-/// row asks: `fire_missile` blasts there, `lightning` strikes down onto it,
+/// row asks: `fire_missile` blasts there, `ice_spray` holds the wizard's
+/// cold spray toward it for the step, `lightning` strikes down onto it,
 /// `force_push` sends its wave from the wizard toward it, and a
 /// `black_hole` or an `iron_block` is placed there, the block refused where
 /// it would not fit.
@@ -183,6 +187,7 @@ pub fn cast_at(world: &mut World, spell: &str, at: Vec2) -> Result<(), String> {
     let centre = player::centre(world, player).ok_or("no player")?;
     match spell {
         "fire_missile" => toys::systems::explode(world, at),
+        "ice_spray" => toys::spray(world, player, at - centre, Element::Cold),
         "lightning" => {
             lightning::strike(world, player, at);
         }
@@ -199,6 +204,21 @@ pub fn cast_at(world: &mut World, spell: &str, at: Vec2) -> Result<(), String> {
         other => return Err(format!("no spell `{other}` to cast at a point")),
     }
     Ok(())
+}
+
+/// The pit's cold among its fire: the small balls frozen now, each
+/// carrying `status.frozen`, and the thermal shocks and steam bursts the
+/// run's chains have set off so far ([`Cascades`]' counts).
+#[must_use]
+pub fn shock(world: &World) -> (usize, u64, u64) {
+    let frozen = world
+        .query::<(&SmallBall, Option<&Tags>)>()
+        .filter(|(_, tags)| tags.is_some_and(|tags| tags.has(FROZEN)))
+        .count();
+    let (shocks, steams) = world
+        .get_resource::<Cascades>()
+        .map_or((0, 0), |cascades| (cascades.shocks, cascades.steams));
+    (frozen, shocks, steams)
 }
 
 /// The small balls burning now, and those that have burned out: each lit

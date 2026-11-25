@@ -21,7 +21,8 @@ cat >"$work/bin/cargo" <<'EOF'
 # A run with TUNGSTEN_DISPLAY_FRAME_RATE_CAP takes 1 s, as a capped run
 # would, unless STUB_UNCAPPED is set. A run from templates/basic or
 # examples/01_platformer is marked with its folder; STUB_UNKNOWN_FONT makes
-# the template's log an unknown font ID.
+# the template's log an unknown font ID, and STUB_POST_LOG is a line the
+# `game_tint` post row's log holds.
 case "$1" in
   metadata)
     case "${STUB_METADATA:-ok}" in
@@ -39,8 +40,9 @@ case "$1" in
       */templates/basic) where=" dir=templates/basic" ;;
       */examples/01_platformer) where=" dir=examples/01_platformer" ;;
     esac
-    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_FIXTURE:+ scene=$TUNGSTEN_FIXTURE}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_UI_LAB_FIXTURE:+ ui=$TUNGSTEN_UI_LAB_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}$where" >>"$STUB_RUNS"
+    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_FIXTURE:+ scene=$TUNGSTEN_FIXTURE}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_UI_LAB_FIXTURE:+ ui=$TUNGSTEN_UI_LAB_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}${TUNGSTEN_RENDER_HDR:+ hdr=$TUNGSTEN_RENDER_HDR}${TUNGSTEN_LIGHTING_FIXTURE:+ lighting=$TUNGSTEN_LIGHTING_FIXTURE}${TUNGSTEN_RENDER_LIGHT_CAP:+ light_cap=$TUNGSTEN_RENDER_LIGHT_CAP}$where" >>"$STUB_RUNS"
     if [ "$where" = " dir=templates/basic" ] && [ -n "${STUB_UNKNOWN_FONT:-}" ]; then echo "WARN Unknown font ID 'mono', falling back"; fi
+    if [ "${TUNGSTEN_POST_STACK_FIXTURE:-}" = "game_tint" ] && [ -n "${STUB_POST_LOG:-}" ]; then echo "$STUB_POST_LOG"; fi
     if [ -n "${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:-}" ] && [ -z "${STUB_UNCAPPED:-}" ]; then sleep 1; fi
     if [ "$pkg" = "${STUB_HANG_PKG:-}" ]; then exec sleep 30; fi
     if [ "$pkg" = "${STUB_FAIL_PKG:-}" ]; then echo "thread 'main' panicked at stub"; exit 101; fi
@@ -96,8 +98,8 @@ expect_output() {
 }
 
 if run_case "all pass" 0; then
-  for line in "Passed: 3/3" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
-    "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" "Seams passed: 1/1" \
+  for line in "Passed: 3/3" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 4/4" \
+    "Post-AA passed: 1/1" "Bloom passed: 1/1" "HDR passed: 5/5" "Lighting passed: 2/2" "Seams passed: 1/1" \
     "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "UI screens passed: 1/1" \
     "Debug views passed: 1/1" "Benchmarks passed: 25/25" \
     "Frame cap passed: 1/1"; do
@@ -115,9 +117,17 @@ example-02-bench msaa=4 sort=cpu_stable post= aa= bloom= feel= frames=3 timing= 
 example-02-bench msaa=4 sort=gpu_depth post= aa= bloom= feel= frames=3 timing= bench=gpu preset=min
 example-03-fixtures msaa= sort= post=empty aa= bloom= feel= frames=3 timing= bench= preset= scene=post
 example-03-fixtures msaa= sort= post=all aa= bloom= feel= frames=3 timing= bench= preset= scene=post
+example-03-fixtures msaa= sort= post=game_tint aa= bloom= feel= frames=3 timing= bench= preset= scene=post
+example-03-fixtures msaa= sort= post=game_wave aa= bloom= feel= frames=3 timing= bench= preset= scene=post
 example-03-fixtures msaa= sort= post=empty aa=smaa_high bloom= feel= frames=3 timing= bench= preset= scene=post
 example-03-fixtures msaa= sort= post=bloom_only aa= bloom=on feel= frames=3 timing= bench= preset= scene=post
+example-03-fixtures msaa= sort= post=all aa= bloom= feel= frames=3 timing= bench= preset= scene=post hdr=rg11b10
+example-03-fixtures msaa=4 sort= post=empty aa=smaa_high bloom= feel= frames=3 timing= bench= preset= scene=post hdr=rg11b10
+example-03-fixtures msaa= sort= post=all aa= bloom= feel= frames=3 timing= bench= preset= scene=post hdr=rgba16f
+example-03-fixtures msaa=4 sort= post=empty aa=smaa_high bloom= feel= frames=3 timing= bench= preset= scene=post hdr=rgba16f
+example-03-fixtures msaa= sort=gpu_depth post= aa= bloom= feel= frames=3 timing= bench= preset= scene=seams hdr=rg11b10
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= scene=lighting
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= scene=lighting lighting=lamps light_cap=64
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= scene=seams
 example-03-fixtures msaa= sort= post= aa= bloom= feel=on frames=3 timing= bench= preset= scene=post
 example-03-fixtures msaa=4 sort=gpu_depth post= aa= bloom= feel= frames=3 timing= bench= preset= scene=post
@@ -178,6 +188,18 @@ fi
 if run_case "template unknown font" nonzero STUB_UNKNOWN_FONT=1; then
   expect_output "template unknown font" "FAIL (log has 'Unknown font')"
   expect_output "template unknown font" "Template passed: 0/1"
+fi
+
+# A row may forbid several strings, one a line: the game-effect rows forbid
+# an effect left out and a fused pass that did not build.
+if run_case "game effect left out" nonzero STUB_POST_LOG="ERROR post effect 'tint' has no pipeline"; then
+  expect_output "game effect left out" "FAIL (log has 'post effect '')"
+  expect_output "game effect left out" "Post-stack passed: 3/4"
+fi
+
+if run_case "fused pass not built" nonzero STUB_POST_LOG="WARN post: the fused pass vignette_tint failed to build"; then
+  expect_output "fused pass not built" "FAIL (log has 'failed to build')"
+  expect_output "fused pass not built" "Post-stack passed: 3/4"
 fi
 
 if run_case "matrix failure" nonzero STUB_FAIL_MSAA=4; then

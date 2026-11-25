@@ -27,7 +27,8 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-fn aces_approx(c: vec3<f32>) -> vec3<f32> {
+// @fx begin pixel
+fn tonemap_aces_approx(c: vec3<f32>) -> vec3<f32> {
     let a = 2.51;
     let b = 0.03;
     let y = 2.43;
@@ -36,17 +37,15 @@ fn aces_approx(c: vec3<f32>) -> vec3<f32> {
     return clamp((c * (a * c + b)) / (c * (y * c + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
-    let mode = u32(params.f.x);
-    let exposure = max(params.f.y, 0.0);
-    let white = max(params.f.z, 0.1);
-    var rgb = sample.rgb * exposure;
+fn tonemap_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let mode = u32(p.f.x);
+    let exposure = max(p.f.y, 0.0);
+    let white = max(p.f.z, 0.1);
+    var rgb = color.rgb * exposure;
     if (mode == 1u) {
-        rgb = aces_approx(rgb);
+        rgb = tonemap_aces_approx(rgb);
     } else if (mode == 2u) {
-        rgb = aces_approx(rgb * 0.6);
+        rgb = tonemap_aces_approx(rgb * 0.6);
     } else {
         // Reinhard (extended): `rgb / (rgb + 1)` re-normalised so that a
         // source luminance of `white` maps to 1.0. At `white = 1` the default
@@ -55,5 +54,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         rgb = rgb / (rgb + vec3<f32>(1.0));
         rgb = rgb * ((white + 1.0) / white);
     }
-    return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), sample.a);
+    return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), color.a);
+}
+// @fx end
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return tonemap_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
 }

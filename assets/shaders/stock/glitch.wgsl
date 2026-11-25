@@ -28,20 +28,26 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-fn hash12(p: vec2<f32>) -> f32 {
-    var p3 = fract(vec3<f32>(p.xyx) * 0.1031);
+// @fx begin head
+fn glitch_hash12(at: vec2<f32>) -> f32 {
+    var p3 = fract(vec3<f32>(at.xyx) * 0.1031);
     p3 = p3 + dot(p3, p3.yzx + 33.33);
     return fract((p3.x + p3.y) * p3.z);
 }
 
+fn glitch_head(uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let dims = vec2<f32>(textureDimensions(src, 0));
+    let seed = p.f.z;
+    let block_y = floor(uv.y * 40.0);
+    let r = glitch_hash12(vec2<f32>(block_y, seed));
+    let is_active = step(1.0 - clamp(p.f.x, 0.0, 1.0), r);
+    let shift = p.f.y / max(dims.x, 1.0);
+    let shifted_uv = uv + vec2<f32>(shift * (r - 0.5) * 2.0 * is_active, 0.0);
+    return textureSample(src, src_sampler, shifted_uv);
+}
+// @fx end
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let dims = vec2<f32>(textureDimensions(src, 0));
-    let seed = params.f.z;
-    let block_y = floor(in.uv.y * 40.0);
-    let r = hash12(vec2<f32>(block_y, seed));
-    let is_active = step(1.0 - clamp(params.f.x, 0.0, 1.0), r);
-    let shift = params.f.y / max(dims.x, 1.0);
-    let shifted_uv = in.uv + vec2<f32>(shift * (r - 0.5) * 2.0 * is_active, 0.0);
-    return textureSample(src, src_sampler, shifted_uv);
+    return glitch_head(in.uv, params);
 }

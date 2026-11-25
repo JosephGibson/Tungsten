@@ -27,6 +27,7 @@ fn entries(dir: &Path) -> Vec<String> {
 struct FakeOps {
     windows: bool,
     fail_write: bool,
+    fail_sync: bool,
     rename_errors: Vec<i32>,
     renames: u32,
     sleeps: Vec<Duration>,
@@ -37,6 +38,7 @@ impl FakeOps {
         Self {
             windows,
             fail_write: false,
+            fail_sync: false,
             rename_errors: Vec::new(),
             renames: 0,
             sleeps: Vec::new(),
@@ -51,11 +53,18 @@ impl Ops for FakeOps {
 
     fn write(&mut self, file: &mut File, contents: &[u8]) -> std::io::Result<()> {
         if self.fail_write {
-            // Half the bytes reach the temp file, then the sync fails.
+            // Half the bytes reach the temp file, then the write fails.
             file.write_all(&contents[..contents.len() / 2])?;
-            return Err(std::io::Error::other("injected sync failure"));
+            return Err(std::io::Error::other("injected write failure"));
         }
         RealOps.write(file, contents)
+    }
+
+    fn sync(&mut self, file: &mut File) -> std::io::Result<()> {
+        if self.fail_sync {
+            return Err(std::io::Error::other("injected sync failure"));
+        }
+        RealOps.sync(file)
     }
 
     fn rename(&mut self, from: &Path, to: &Path) -> std::io::Result<()> {
@@ -85,6 +94,76 @@ fn a_failure_before_the_rename_leaves_the_old_file() {
     assert_eq!(ops.renames, 0);
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "old");
     assert_eq!(entries(&dir), ["settings.json"], "the temp file is removed");
+}
+
+#[test]
+fn a_failed_sync_leaves_the_old_file_and_no_temp() {
+    let dir = tempdir();
+    let path = dir.join("settings.json");
+    std::fs::write(&path, "old").unwrap();
+    let mut ops = FakeOps::new(false);
+    ops.fail_sync = true;
+    let error = write_atomic_with(&path, b"the new contents", &mut ops).unwrap_err();
+    assert!(matches!(error, WriteError::Io { .. }), "{error}");
+    assert_eq!(ops.renames, 0, "an unsynced file is never renamed in");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old");
+    assert_eq!(entries(&dir), ["settings.json"], "the temp file is removed");
+}
+
+#[test]
+fn a_staged_file_holds_the_new_bytes_beside_the_old_until_its_commit() {
+    let dir = tempdir();
+    let path = dir.join("settings.json");
+    std::fs::write(&path, "old").unwrap();
+    let mut ops = FakeOps::new(false);
+    let staged = stage_with(&path, b"new", &mut ops).unwrap();
+    // The write is whole in the temp file, and the destination untouched.
+    assert_eq!(std::fs::read(staged.temp()).unwrap(), b"new");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old");
+    assert_eq!(entries(&dir).len(), 2);
+    assert_eq!(ops.renames, 0);
+    staged.commit(&mut ops).unwrap();
+    assert_eq!(ops.renames, 1);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+    assert_eq!(entries(&dir), ["settings.json"]);
+
+    // What `write_atomic` leaves, byte for byte.
+    let other = dir.join("other.json");
+    write_atomic(&other, b"new").unwrap();
+    assert_eq!(
+        std::fs::read(&other).unwrap(),
+        std::fs::read(&path).unwrap()
+    );
+}
+
+#[test]
+fn a_staged_file_dropped_uncommitted_leaves_the_old_file_and_no_temp() {
+    let dir = tempdir();
+    let path = dir.join("settings.json");
+    std::fs::write(&path, "old").unwrap();
+    let staged = stage(&path, b"new").unwrap();
+    assert_eq!(entries(&dir).len(), 2);
+    drop(staged);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old");
+    assert_eq!(entries(&dir), ["settings.json"]);
+
+    // A rename that fails for good removes it too, and a retry keeps it.
+    let mut ops = FakeOps::new(true);
+    ops.rename_errors = vec![32, 13];
+    let mut staged = stage_with(&path, b"new", &mut ops).unwrap();
+    staged.sync(&mut ops).unwrap();
+    assert!(matches!(staged.rename(&mut ops, 1), Renamed::Retry(wait) if wait == backoff(1)));
+    assert_eq!(
+        entries(&dir).len(),
+        2,
+        "the temp file waits for the next attempt"
+    );
+    assert!(matches!(
+        staged.rename(&mut ops, 2),
+        Renamed::Failed(WriteError::Io { .. })
+    ));
+    assert_eq!(entries(&dir), ["settings.json"]);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old");
 }
 
 #[test]

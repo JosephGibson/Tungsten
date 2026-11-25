@@ -980,3 +980,34 @@ fn commit_for_check_keeps_out_a_kind_the_world_holds_for_another_type() {
             .is_none()
     );
 }
+
+#[test]
+fn entries_read_a_kind_in_place_as_its_ids_and_get_do() {
+    let mut data = DataRegistry::new();
+    data.register::<Effect>("effects");
+    data.register::<Tags>("tags");
+    for (id, duration) in [("sting", 1.0), ("burn", 2.0), ("zap", 3.0), ("ache", 4.0)] {
+        data.insert(
+            id,
+            Effect {
+                duration,
+                trail: None,
+            },
+        );
+    }
+    let by_get: Vec<(&str, *const Effect)> = data
+        .ids("effects")
+        .map(|id| (id, std::ptr::from_ref(data.get::<Effect>(id).unwrap())))
+        .collect();
+    let in_place: Vec<(&str, *const Effect)> = data
+        .entries::<Effect>()
+        .map(|(id, effect)| (id, std::ptr::from_ref(effect)))
+        .collect();
+    assert_eq!(in_place, by_get, "the same entries, in the same order");
+    assert_eq!(
+        in_place.iter().map(|&(id, _)| id).collect::<Vec<_>>(),
+        ["ache", "burn", "sting", "zap"]
+    );
+    assert_eq!(data.entries::<Tags>().count(), 0, "a kind with no entry");
+    assert_eq!(data.entries::<String>().count(), 0, "a type no kind holds");
+}

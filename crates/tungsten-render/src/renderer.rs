@@ -5,7 +5,12 @@ use std::time::Instant;
 
 use crate::counters::{self, Counts, FrameCounters};
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
-use crate::lighting::{LightUbo, LightingResources};
+use crate::graph::frame::{
+    EngineStage, PassKind, PresentPath, Replaced, ReplacedStages, Shape, Stage, declare,
+};
+use crate::graph::pool::{Pool, PoolTexture};
+use crate::graph::{At, Compiled, CompiledPass, Load, Target};
+use crate::lighting::{FrameLights, LightingResources};
 use crate::lit_sprite::{
     EMISSIVE_MASK_SHADER_NAME, LIT_SPRITE_SHADER_NAME, LIT_SPRITE_SHADER_SOURCE, LitSpritePipeline,
     RIM_LIGHT_SHADER_NAME,
@@ -14,20 +19,18 @@ use crate::material::{
     MaterialPipeline, PendingMaterial, PendingMaterials, build_material_pipeline,
 };
 use crate::mesh_particle::{MeshParticleBatch, MeshParticlePipeline};
-use crate::passes::order::acquire_split;
-use crate::passes::{
-    PassDesc, PassOrder, PassRecorder, PresentPath, TargetId, default_pass_order,
-    text_overlay_target,
-};
 use crate::post::bloom::{
-    BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_THRESHOLD_SHADER_NAME,
-    BLOOM_UPSAMPLE_SHADER_NAME, BloomShaderIds,
+    BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_SHADERS,
+    BLOOM_THRESHOLD_SHADER_NAME, BLOOM_UPSAMPLE_SHADER_NAME, BloomShaderIds, BloomStageKind,
 };
+use crate::post::compose::{self, Between, Finish, StageInfo};
 use crate::post::smaa::{
     SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
-    SmaaPipeline, SmaaShaderIds,
+    SMAA_SHADERS, SmaaPipeline, SmaaShaderIds,
 };
-use crate::post::{PostStackRenderer, STOCK_MATERIAL_SHADERS, STOCK_SHADERS};
+use crate::post::{
+    PostStackRenderer, STOCK_MATERIAL_SHADERS, STOCK_SHADERS, drawn_stack, whole_target,
+};
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{
     PendingCapture, ScreenshotError, aligned_bytes_per_row, capture_for_frame, strip_row_padding,
@@ -37,10 +40,10 @@ use crate::shader_hot_reload::{
 };
 use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::surface::{
-    device_format_flags, msaa_sample_count, present_mode_label, resolve_max_frame_latency,
-    resolve_present_mode, surface_extent,
+    device_format_flags, device_format_usages, hdr_scene_format, msaa_sample_count,
+    present_mode_label, resolve_max_frame_latency, resolve_present_mode, surface_extent,
 };
-use crate::targets::{DEPTH_FORMAT, RenderTargetPool, TargetCache};
+use crate::targets::{DEPTH_FORMAT, TargetCache, bloom_mip_count_for_halvings};
 use crate::text::{
     FontSource, TextEngine, TextNodes, TextPipeline, TextPrewarm, TextSection, TextStats,
     WorldLabelRun,
@@ -50,11 +53,11 @@ use crate::timing::{Ring, TimingLayout, TimingResources};
 use crate::ui::{DrawItem, UiPipeline, attachment_scissor};
 use thiserror::Error;
 use tungsten_core::assets::{
-    FilterMode, MaterialAssetId, MaterialUniformDefaults, ParticleMeshAssetId, ResolvedFontFamily,
-    ShaderAssetId, TextureHandle,
+    FilterMode, MaterialAssetId, MaterialUniformDefaults, ParticleMeshAssetId, PostEffectId,
+    ResolvedFontFamily, ShaderAssetId, TextureHandle,
 };
 use tungsten_core::config::{
-    DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
+    BloomBase, DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
 };
 use tungsten_core::post::{PostPass, PostStack};
 use tungsten_core::ui::PaintList;
@@ -85,6 +88,10 @@ pub enum RenderError {
     Surface(String),
     #[error("shader error: {0}")]
     Shader(#[from] ShaderError),
+    /// A game's post effect that cannot draw (`D-308`): its shader has no
+    /// module, or its module does not build as a post pass.
+    #[error("post effect '{name}': {reason}")]
+    PostEffect { name: String, reason: String },
 }
 
 /// What one `render_frame*` call did with its frame (`D-142`). A failed frame
@@ -127,6 +134,7 @@ const STOCK_SHADER_ID_BASE: u32 = 11;
 const STOCK_MATERIAL_SHADER_ID_BASE: u32 = STOCK_SHADER_ID_BASE + STOCK_SHADERS.len() as u32;
 
 /// WGPU renderer state.
+#[allow(clippy::struct_excessive_bools)] // Independent facts: the depth target, the composer's switch, timestamp support, a frame's lit batch.
 pub struct Renderer {
     pub instance: wgpu::Instance,
     pub adapter: wgpu::Adapter,
@@ -150,7 +158,21 @@ pub struct Renderer {
     ui_pipeline: UiPipeline,
     present_blit: PresentBlitPipeline,
     post_stack: PostStackRenderer,
-    target_pool: RenderTargetPool,
+    /// The pooled textures the frame's passes draw into and sample.
+    targets: Pool<PoolTexture>,
+    /// The compiled frame of the shape last planned, with the pooled
+    /// textures bound to its slots. It stands while the shape holds.
+    frame: Option<FramePlan>,
+    /// The shape of the frame being planned. Kept for its allocation.
+    shape_scratch: Shape,
+    /// How many times a resize changed the surface's size: with the size,
+    /// what an acquire can move under a frame's first part (`D-145`).
+    target_resizes: u64,
+    /// When the renderer was made: the clock the pool's keep rule reads.
+    started: Instant,
+    /// The engine's full-screen shaders a manifest's file or a reload
+    /// replaced. Their passes clear their targets (`D-306`).
+    replaced: Replaced,
     shader_cache: ShaderModuleCache,
     sample_count: u32,
     depth_enabled: bool,
@@ -160,6 +182,23 @@ pub struct Renderer {
     smaa: Option<SmaaPipeline>,
     smaa_shader_ids: SmaaShaderIds,
     bloom_max_mips: u32,
+    bloom_base: BloomBase,
+    /// `render.post_fuse`: whether the stages the composer's rule allows
+    /// draw in one pass (`D-307`).
+    post_fuse: bool,
+    /// The scene's float format under `render.hdr` (`D-309`): the scene's
+    /// pipelines and every post pass but the frame's last draw in it. `None`
+    /// draws them in the surface's format.
+    float: Option<wgpu::TextureFormat>,
+    /// The stages of the stack being planned, as the composer's rule reads
+    /// them. Kept for its allocation.
+    stage_infos: Vec<StageInfo>,
+    /// The runs of the stack being planned under a float scene. Kept for
+    /// its allocation.
+    run_scratch: Vec<std::ops::Range<usize>>,
+    /// The stack a frame draws when a game's effect has no pipeline: the
+    /// frame's own without that effect's passes. Kept for its allocation.
+    stack_scratch: PostStack,
     /// M29 lit sprite pipeline; rebuilt on `lit_sprite` shader hot-reload.
     lit_sprite_pipeline: LitSpritePipeline,
     /// M29 per-frame lighting UBO + bind group bound at group 2 of the lit
@@ -198,8 +237,14 @@ pub struct Renderer {
     /// View-projection bytes last written to the quad and sprite camera
     /// buffers.
     camera_written: Option<[u8; 64]>,
-    /// Payload last written to the lighting UBO.
-    lights_written: Option<LightUbo>,
+    /// The lights of the frame being drawn (`D-310`): uploaded, with the
+    /// tile grid, as the frame records. `None` until the first
+    /// `update_lights`, so a boot frame, which has none, uploads no block.
+    frame_lights: Option<FrameLights>,
+    /// Whether the frame being drawn walks the lights' tiles: it draws a
+    /// lit batch and packs more lights than the block's 16, so the binning
+    /// pass runs and its lit batches draw with the tiled pipelines.
+    frame_tiles: bool,
     /// The 1 × 1 white texel's handle, once made (redo 7.9).
     white_texture: Option<TextureHandle>,
 }
@@ -322,9 +367,34 @@ impl Renderer {
             let adapter_flags = adapter.get_texture_format_features(format).flags;
             device_format_flags(device.features(), downlevel, adapter_flags, format)
         };
+        // The scene's format under `render.hdr`: a float one, `rg11b10`
+        // only where the device draws, blends, filters and resolves it.
+        let rg11b10 = wgpu::TextureFormat::Rg11b10Ufloat;
+        let rg11b10_usages = device_format_usages(
+            device.features(),
+            downlevel,
+            adapter.get_texture_format_features(rg11b10).allowed_usages,
+            rg11b10,
+        );
+        let float = hdr_scene_format(
+            config.hdr,
+            rg11b10_usages,
+            flags_of(rg11b10),
+            requested_msaa,
+        );
+        if let Some((chosen, true)) = float {
+            log::warn!(
+                "render.hdr = {}: this adapter does not draw {rg11b10:?} with blending, filtering and msaa {requested_msaa}; using {chosen:?}",
+                config.hdr.as_str()
+            );
+        }
+        let float = float.map(|(chosen, _)| chosen);
+        // What the scene's pipelines draw in; the overlay, SMAA and the
+        // frame's last pass draw in the surface's `format`.
+        let scene_format = float.unwrap_or(format);
         let sample_count = msaa_sample_count(
             requested_msaa,
-            flags_of(format),
+            flags_of(scene_format),
             depth_enabled.then(|| flags_of(DEPTH_FORMAT)),
         );
         if sample_count != requested_msaa {
@@ -334,7 +404,7 @@ impl Renderer {
                 String::new()
             };
             log::warn!(
-                "msaa {requested_msaa} is not supported for {format:?}{depth} on this adapter; using {sample_count}"
+                "msaa {requested_msaa} is not supported for {scene_format:?}{depth} on this adapter; using {sample_count}"
             );
         }
         // `GpuDepth` without a depth target is a nonsense combo; normalize
@@ -351,21 +421,23 @@ impl Renderer {
         // Every pipeline that renders into the scene pass must agree with
         // the pass attachments. Under GpuDepth the pass has a depth buffer,
         // so quad/debug_line/text get a read-only `Always` depth state and
-        // sprite gets the writing `LessEqual` variant.
+        // the sprite pipelines the `LessEqual` test, written by a solid
+        // batch's variant alone (redo 7.15).
         let depth_attached = matches!(depth_sort, DepthSortMode::GpuDepth);
 
-        let quad_pipeline = QuadPipeline::new(&device, format, sample_count, depth_attached);
-        let sprite_pipeline = SpritePipeline::new(&device, format, sample_count, depth_attached);
+        let quad_pipeline = QuadPipeline::new(&device, scene_format, sample_count, depth_attached);
+        let sprite_pipeline =
+            SpritePipeline::new(&device, scene_format, sample_count, depth_attached);
         let debug_line_pipeline = DebugLinePipeline::new(
             &device,
-            format,
+            scene_format,
             quad_pipeline.camera_bind_group_layout(),
             sample_count,
             depth_attached,
         );
         let mesh_particle_pipeline = MeshParticlePipeline::new(
             &device,
-            format,
+            scene_format,
             quad_pipeline.camera_bind_group_layout(),
             sample_count,
             depth_attached,
@@ -394,15 +466,24 @@ impl Renderer {
                 );
                 6
             };
-        let target_pool = RenderTargetPool::new(
-            &device,
-            (surface_config.width, surface_config.height),
+        let bloom_base = config.bloom_base;
+        // The frame's targets are pooled: the first frame allocates the ones
+        // its shape uses, and no other.
+        let shape_scratch = Shape {
+            output: (surface_config.width, surface_config.height),
             format,
-            sample_count,
-            depth_enabled,
-            post_aa,
-            bloom_max_mips,
-        );
+            samples: sample_count,
+            depth: false,
+            smaa: false,
+            present: PresentPath::Direct,
+            stages: Vec::new(),
+            bloom_mips: 0,
+            bloom_halvings: 0,
+            replaced: ReplacedStages::NONE,
+            float,
+            tail_alone: false,
+            light_tiles: false,
+        };
         let present_blit = PresentBlitPipeline::new(&device, format);
 
         // Seed the shader cache with the compile-time sprite WGSL so the
@@ -424,9 +505,9 @@ impl Renderer {
             blend_weights: ShaderAssetId(2),
             neighborhood_blend: ShaderAssetId(3),
         };
-        let edge_src = include_str!("shaders/stock/smaa_edge.wgsl").to_string();
-        let blend_src = include_str!("shaders/stock/smaa_blend_weights.wgsl").to_string();
-        let nbh_src = include_str!("shaders/stock/smaa_neighborhood_blend.wgsl").to_string();
+        let edge_src = SMAA_SHADERS[0].1.to_string();
+        let blend_src = SMAA_SHADERS[1].1.to_string();
+        let nbh_src = SMAA_SHADERS[2].1.to_string();
         shader_cache
             .upload(
                 &device,
@@ -461,10 +542,10 @@ impl Renderer {
             upsample: ShaderAssetId(6),
             composite: ShaderAssetId(7),
         };
-        let bloom_threshold_src = include_str!("shaders/stock/bloom_threshold.wgsl").to_string();
-        let bloom_downsample_src = include_str!("shaders/stock/bloom_downsample.wgsl").to_string();
-        let bloom_upsample_src = include_str!("shaders/stock/bloom_upsample.wgsl").to_string();
-        let bloom_composite_src = include_str!("shaders/stock/bloom_composite.wgsl").to_string();
+        let bloom_threshold_src = BLOOM_SHADERS[0].1.to_string();
+        let bloom_downsample_src = BLOOM_SHADERS[1].1.to_string();
+        let bloom_upsample_src = BLOOM_SHADERS[2].1.to_string();
+        let bloom_composite_src = BLOOM_SHADERS[3].1.to_string();
         shader_cache
             .upload(
                 &device,
@@ -517,13 +598,24 @@ impl Renderer {
                 .expect("compile-time stock material shader must validate");
         }
 
-        let post_stack = PostStackRenderer::new(
+        let mut post_stack = PostStackRenderer::new(
             &device,
+            scene_format,
             format,
             &shader_cache,
             bloom_shader_ids,
             &stock_shader_ids,
         );
+        // Under a float scene every frame ends in the tail, in its last
+        // post pass or in a pass of its own: that pass is the engine's own
+        // module, built here as the stock pipelines are.
+        if float.is_some() {
+            let tail = post_stack.tail();
+            assert!(
+                post_stack.fused_ready(&device, &[], Between::Nothing, tail),
+                "the frame's tail must build"
+            );
+        }
 
         // M29: pre-seed lit_sprite (8) + emissive_mask (9) + rim_light (10).
         let lit_sprite_shader_id = ShaderAssetId(8);
@@ -554,20 +646,42 @@ impl Renderer {
             )
             .expect("compile-time rim_light shader must validate");
 
-        let lighting = LightingResources::new(&device);
+        let light_cap = config.lights() as u32;
+        if light_cap != config.light_cap {
+            log::warn!(
+                "unsupported light_cap {} in RenderConfig; falling back to {light_cap}",
+                config.light_cap
+            );
+        }
+        let lighting = LightingResources::new(
+            &device,
+            light_cap,
+            (surface_config.width, surface_config.height),
+            config.light_tiles,
+        );
         let lit_module = shader_cache
             .get(lit_sprite_shader_id)
             .expect("lit_sprite module pre-seeded above");
-        let lit_sprite_pipeline = LitSpritePipeline::new(
+        let mut lit_sprite_pipeline = LitSpritePipeline::new(
             &device,
             lit_module,
             sprite_pipeline.camera_bind_group_layout(),
             sprite_pipeline.lit_texture_bind_group_layout(),
             &lighting.bind_group_layout,
-            format,
+            scene_format,
             sample_count,
             depth_attached,
         );
+        // A cap past the block's 16 can pack a frame that walks tiles.
+        if light_cap > crate::lighting::LIT_LIGHT_CAP as u32 {
+            lit_sprite_pipeline.build_tiled(
+                &device,
+                lit_module,
+                scene_format,
+                sample_count,
+                depth_attached,
+            );
+        }
 
         let smaa =
             if post_aa.is_smaa() {
@@ -646,7 +760,12 @@ impl Renderer {
             ui_pipeline,
             present_blit,
             post_stack,
-            target_pool,
+            targets: Pool::default(),
+            frame: None,
+            shape_scratch,
+            target_resizes: 0,
+            started: Instant::now(),
+            replaced: Replaced::default(),
             shader_cache,
             sample_count,
             depth_enabled,
@@ -655,6 +774,12 @@ impl Renderer {
             smaa,
             smaa_shader_ids,
             bloom_max_mips,
+            bloom_base,
+            post_fuse: config.post_fuse,
+            float,
+            stage_infos: Vec::new(),
+            run_scratch: Vec::new(),
+            stack_scratch: PostStack::default(),
             lit_sprite_pipeline,
             lighting,
             materials: HashMap::new(),
@@ -670,13 +795,20 @@ impl Renderer {
             frame_counters: FrameCounters::default(),
             pending_capture: None,
             camera_written: None,
-            lights_written: None,
+            frame_lights: None,
+            frame_tiles: false,
             white_texture: None,
         })
     }
 
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.surface_config.format
+    }
+
+    /// The format the scene's pipelines and the stack's passes draw in: the
+    /// surface's, or the float one `render.hdr` chose (`D-309`).
+    fn scene_format(&self) -> wgpu::TextureFormat {
+        self.float.unwrap_or(self.surface_config.format)
     }
 
     /// Current MSAA sample count.
@@ -789,18 +921,41 @@ impl Renderer {
         );
     }
 
-    /// M29 upload one frame of the lighting UBO, unless it already holds
-    /// these bytes. The bind group built at startup stays valid; resize does
-    /// not invalidate it.
-    pub fn update_lights(&mut self, ubo: &LightUbo) {
-        let unchanged = self
-            .lights_written
-            .as_ref()
-            .is_some_and(|written| bytemuck::bytes_of(written) == bytemuck::bytes_of(ubo));
-        if !unchanged {
-            self.lighting.write(&self.queue, ubo);
-            self.lights_written = Some(*ubo);
+    /// The lights of the next frame (`D-061`, `D-310`): the block every lit
+    /// shader binds and the lights packed past its 16. The frame uploads
+    /// them as it records, with the grid of its screen tiles, each only
+    /// where a buffer does not hold it already.
+    pub fn update_lights(&mut self, lights: &FrameLights) {
+        let frame = self.frame_lights.get_or_insert_with(FrameLights::default);
+        frame.ubo = lights.ubo;
+        frame.more.clone_from(&lights.more);
+    }
+
+    /// The most lights a frame should pack: `render.light_cap` as the
+    /// renderer took it, and the block's 16 while the lit shader builds no
+    /// pipeline that walks tiles (a game's lit file written before them), so
+    /// that the sixteen it draws are chosen as a cap of 16 chooses them
+    /// (`D-296`'s rank), not the first of a longer list.
+    #[must_use]
+    pub fn light_cap(&self) -> u32 {
+        if self.lit_sprite_pipeline.has_tiled() {
+            self.lighting.cap()
+        } else {
+            self.lighting
+                .cap()
+                .min(crate::lighting::LIT_LIGHT_CAP as u32)
         }
+    }
+
+    /// Decides whether the frame of `sprite_batches` walks the lights'
+    /// tiles (`LightingResources::walks_tiles`, where the lit shader builds
+    /// with them), and points the lit pipeline at the pair it draws with.
+    fn set_frame_tiles(&mut self, sprite_batches: &[SpriteBatch]) {
+        let lit = sprite_batches.iter().any(|batch| batch.lit);
+        let packed = self.frame_lights.as_ref().map_or(0, FrameLights::count);
+        self.frame_tiles =
+            self.lit_sprite_pipeline.has_tiled() && self.lighting.walks_tiles(lit, packed);
+        self.lit_sprite_pipeline.set_frame_tiled(self.frame_tiles);
     }
 
     /// M31 upload or replace the geometry of one particle mesh (`D-093`).
@@ -963,6 +1118,14 @@ impl Renderer {
                 name: name.to_string(),
                 report,
             })?;
+        // A full-screen shader on a text that is not the engine's own may
+        // leave pixels unwritten, so its pass clears: the frame's shape is
+        // read from this record (`D-306`).
+        self.replaced.commit(name, &wgsl);
+        // A fused pass that draws this effect is built again at its next
+        // use, from the compiled-in sections: a replaced file's stage draws
+        // alone meanwhile.
+        self.post_stack.forget_fused(name);
         self.shader_cache.commit(id, wgsl, module);
         // Any material bound to this shader needs a rebuild against the new module.
         if name != SPRITE_SHADER_NAME
@@ -982,6 +1145,7 @@ impl Renderer {
         {
             self.rebuild_materials_for_shader(name);
         }
+        self.rebuild_post_effects_for_shader(name);
         Ok(())
     }
 
@@ -999,7 +1163,7 @@ impl Renderer {
             self.sprite_pipeline.rebuild_with_shader(
                 &self.device,
                 module,
-                self.surface_config.format,
+                self.scene_format(),
                 self.sample_count,
                 depth_write,
             )?;
@@ -1022,7 +1186,7 @@ impl Renderer {
         ) {
             self.post_stack.bloom.rebuild_stage_with_module(
                 &self.device,
-                self.surface_config.format,
+                self.scene_format(),
                 id,
                 module,
             )?;
@@ -1031,18 +1195,14 @@ impl Renderer {
             self.lit_sprite_pipeline.rebuild_with_shader(
                 &self.device,
                 module,
-                self.surface_config.format,
+                self.scene_format(),
                 self.sample_count,
                 depth_write,
             )?;
         }
         // A stock post effect's pipeline; a no-op for any other name.
-        self.post_stack.rebuild_stock_with_module(
-            &self.device,
-            self.surface_config.format,
-            name,
-            module,
-        )
+        self.post_stack
+            .rebuild_stock_with_module(&self.device, self.scene_format(), name, module)
     }
 
     /// The ID of shader `name`, minted on first use. The renderer is the one
@@ -1085,6 +1245,57 @@ impl Renderer {
         result
     }
 
+    /// Builds the game's post effect `id`, manifest entry `name`, on the
+    /// module of shader `shader_name`: a whole module on the stock post
+    /// prefix, drawn as `PostPass::Custom` (`D-308`). A shader that is not
+    /// loaded, or a module that does not build on the post layouts, is an
+    /// error; the effect is then built when its shader next loads, and a
+    /// frame leaves its pass out until it has a pipeline.
+    pub fn upload_post_effect(
+        &mut self,
+        id: PostEffectId,
+        name: &str,
+        shader_name: &str,
+    ) -> Result<(), RenderError> {
+        self.post_stack.register_custom(id, name, shader_name);
+        let loaded = self
+            .shader_ids
+            .get(shader_name)
+            .copied()
+            .and_then(|shader| {
+                Some((
+                    self.shader_cache.text(shader)?,
+                    self.shader_cache.get(shader)?,
+                ))
+            });
+        let Some((wgsl, module)) = loaded else {
+            return Err(RenderError::PostEffect {
+                name: name.to_string(),
+                reason: format!(
+                    "its shader '{shader_name}' has no module yet; it is built when the shader loads"
+                ),
+            });
+        };
+        self.post_stack
+            .upload_custom(&self.device, id, name, shader_name, wgsl, module)
+            .map_err(|reason| RenderError::PostEffect {
+                name: name.to_string(),
+                reason: format!(
+                    "its shader '{shader_name}' does not draw as a post pass: {reason}"
+                ),
+            })
+    }
+
+    /// Builds again every game post effect on shader `shader_name`, whose
+    /// module just changed.
+    fn rebuild_post_effects_for_shader(&mut self, shader_name: &str) {
+        for (id, name) in self.post_stack.custom_on_shader(shader_name) {
+            if let Err(e) = self.upload_post_effect(id, &name, shader_name) {
+                log::error!("post effect '{name}' rebuild after shader reload failed: {e}");
+            }
+        }
+    }
+
     fn build_material(
         &mut self,
         id: MaterialAssetId,
@@ -1113,7 +1324,7 @@ impl Renderer {
                 module,
                 self.sprite_pipeline.camera_bind_group_layout(),
                 self.sprite_pipeline.texture_bind_group_layout(),
-                self.surface_config.format,
+                self.scene_format(),
                 self.sample_count,
                 matches!(self.depth_sort, DepthSortMode::GpuDepth),
                 name,
@@ -1185,14 +1396,17 @@ impl Renderer {
     }
 
     /// Reconfigure surface after resize. A side larger than the device's
-    /// textures is clamped to them, with a warning.
+    /// textures is clamped to them, with a warning. The frame's targets
+    /// follow at the next frame's plan ([`Self::plan_frame`]).
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
             let (width, height) = self.clamp_to_device(width, height);
+            if (width, height) != (self.surface_config.width, self.surface_config.height) {
+                self.target_resizes += 1;
+            }
             self.surface_config.width = width;
             self.surface_config.height = height;
             self.surface.configure(&self.device, &self.surface_config);
-            self.resize_targets((width, height));
             if let Some(smaa) = self.smaa.as_ref() {
                 smaa.update_preset(&self.queue, self.post_aa, (width, height));
             }
@@ -1226,27 +1440,146 @@ impl Renderer {
         clamped
     }
 
-    /// Fits the scene targets to `size` and the current config. When that
-    /// reallocates them, every cached bind group over the old ones goes, so
-    /// the old textures are freed now. The caches key on the pool generation
-    /// as well, so none could be drawn with again either way.
-    fn resize_targets(&mut self, size: (u32, u32)) {
-        let generation = self.target_pool.generation();
-        self.target_pool.resize(
-            &self.device,
-            size,
-            self.surface_config.format,
-            self.sample_count,
-            self.depth_enabled,
-            self.post_aa,
-            self.bloom_max_mips,
-        );
-        if self.target_pool.generation() != generation {
-            self.post_stack.release_target_views();
-            self.present_blit.release_target_views();
-            if let Some(smaa) = self.smaa.as_mut() {
-                smaa.release_target_views();
+    /// How the next frame reaches the surface (`D-087`). A capture reads the
+    /// composed frame, so its frame draws offscreen and a blit shows it; a
+    /// direct capture draws the direct path into a stand-in for the surface,
+    /// which is read back and then blitted. The armed capture picks the
+    /// path; the acquire takes it.
+    fn present_path(&self) -> PresentPath {
+        match &self.pending_capture {
+            None => PresentPath::Direct,
+            Some(capture) if capture.direct => PresentPath::DirectCapture,
+            Some(_) => PresentPath::Capture,
+        }
+    }
+
+    /// Plans the frame the next record draws. Its shape is everything the
+    /// frame's declaration depends on: the surface's size and format, the
+    /// config, how the frame reaches the surface, and the stack it draws
+    /// with the stages the composer fuses (`D-307`). While the shape is the
+    /// last frame's, the compiled frame and its textures stand, and every
+    /// bind group over them with them. A new shape is declared and
+    /// compiled, and its slots take pooled textures.
+    fn plan_frame(&mut self, present: PresentPath, post_stack: &PostStack) {
+        let output = (self.surface_config.width, self.surface_config.height);
+        let halvings = self.bloom_base.halvings(output.1);
+        let shape = &mut self.shape_scratch;
+        shape.output = output;
+        shape.format = self.surface_config.format;
+        shape.samples = self.sample_count;
+        shape.depth = self.depth_enabled && self.depth_sort == DepthSortMode::GpuDepth;
+        shape.smaa = self.post_aa.is_smaa() && self.smaa.is_some();
+        shape.present = present;
+        shape.light_tiles = self.frame_tiles;
+        let replaced = &self.replaced;
+        shape.set_stages(post_stack, |pass| replaced.own(pass));
+        shape.replaced = replaced.stages();
+        // The composer's rule: the stages that draw in one pass. A run
+        // joins only once its pass is built, so a failed build leaves its
+        // stages drawn alone.
+        shape.float = self.float;
+        shape.tail_alone = self.float.is_some();
+        let fuses = if self.float.is_some() {
+            self.post_fuse && !post_stack.is_empty()
+        } else {
+            self.post_fuse && post_stack.len() >= 2 && !shape.smaa
+        };
+        if fuses {
+            let composite = !shape.replaced.holds(EngineStage::BloomComposite);
+            self.stage_infos.clear();
+            self.stage_infos
+                .extend(post_stack.0.iter().zip(&shape.stages).map(|(pass, stage)| {
+                    let own = match stage {
+                        Stage::Stock { own, .. } => *own,
+                        Stage::Bloom => composite,
+                    };
+                    self.post_stack.stage_info(pass, own)
+                }));
+        }
+        if fuses && self.float.is_some() {
+            // Under a float scene (`D-309`) the float rule's runs fuse, and
+            // the stack's last pass ends in the frame's tail where every
+            // stage of it has a section; else the tail is a pass of its own.
+            let tail = self.post_stack.tail();
+            compose::runs_into(&self.stage_infos, true, &mut self.run_scratch);
+            for (index, run) in self.run_scratch.iter().enumerate() {
+                let stages = &post_stack.0[run.clone()];
+                if compose::tail_rides(&self.stage_infos, &self.run_scratch, index)
+                    && self
+                        .post_stack
+                        .fused_ready(&self.device, stages, Between::Nothing, tail)
+                {
+                    shape.tail_alone = false;
+                    shape.join(run.clone());
+                } else if run.len() > 1
+                    && self.post_stack.fused_ready(
+                        &self.device,
+                        stages,
+                        Between::Nothing,
+                        Finish::Plain,
+                    )
+                {
+                    shape.join(run.clone());
+                }
             }
+        } else if fuses
+            && let Some(pair) = compose::fused_pair(&self.stage_infos, self.post_fuse, shape.smaa)
+            && self.post_stack.fused_ready(
+                &self.device,
+                &post_stack.0[pair.clone()],
+                Between::Clamp,
+                Finish::Plain,
+            )
+        {
+            // The two stages that draw in one pass (`compose::fused_pair`).
+            shape.join(pair);
+        }
+        shape.bloom_halvings = halvings;
+        shape.bloom_mips =
+            bloom_mip_count_for_halvings(output.0, output.1, self.bloom_max_mips, halvings);
+
+        if let Some(frame) = &self.frame
+            && frame.shape == *shape
+        {
+            self.targets.touch(&frame.bound);
+            return;
+        }
+        let compiled = declare(shape)
+            .compile()
+            .expect("the engine's frame draws over no target before a pass writes it");
+        let device = &self.device;
+        let bound = self
+            .targets
+            .bind(&compiled.slots, |spec, _| PoolTexture::new(device, spec));
+        // A resize or a presentation-AA switch leaves no use for the
+        // textures of the frames before it: they go now, not after the
+        // pool's keep frames.
+        let stale = self.frame.as_ref().is_some_and(|frame| {
+            frame.shape.output != shape.output || frame.shape.smaa != shape.smaa
+        });
+        let freed = if stale {
+            self.targets.keep_only(&bound)
+        } else {
+            Vec::new()
+        };
+        self.frame = Some(FramePlan {
+            shape: shape.clone(),
+            compiled,
+            bound,
+        });
+        self.forget_targets(&freed);
+    }
+
+    /// Drops every cached bind group that holds a view of one of the pooled
+    /// textures `freed`, so their memory goes with them.
+    fn forget_targets(&mut self, freed: &[u64]) {
+        if freed.is_empty() {
+            return;
+        }
+        self.post_stack.forget_targets(freed);
+        self.present_blit.forget_targets(freed);
+        if let Some(smaa) = self.smaa.as_mut() {
+            smaa.forget_targets(freed);
         }
     }
 
@@ -1256,8 +1589,8 @@ impl Renderer {
         self.post_aa
     }
 
-    /// Switch presentation AA at a frame boundary. Allocates / drops SMAA
-    /// intermediates as needed without relaunch. Must not be called from
+    /// Switch presentation AA at a frame boundary, without relaunch: the
+    /// next frame's plan takes SMAA's targets or frees them. Must not be called from
     /// within `render_frame_internal`. Turning SMAA on builds its pipelines
     /// first: a stage shader reloaded while SMAA was off was committed
     /// without one, so a build that fails validation logs and leaves the
@@ -1288,7 +1621,6 @@ impl Renderer {
             }
         }
         self.post_aa = mode;
-        self.resize_targets(size);
         if let Some(smaa) = self.smaa.as_ref()
             && self.post_aa.is_smaa()
         {
@@ -1445,17 +1777,43 @@ impl Renderer {
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
         self.gpu_timings.clear_durations();
-        self.render_frame_internal(
-            view_proj,
-            quads,
-            sprite_batches,
-            debug_quads,
-            debug_lines,
-            text_sections,
-            ui,
-            post_stack,
-            None,
-        )
+        self.with_drawn_stack(post_stack, |renderer, post_stack| {
+            renderer.render_frame_internal(
+                view_proj,
+                quads,
+                sprite_batches,
+                debug_quads,
+                debug_lines,
+                text_sections,
+                ui,
+                post_stack,
+                None,
+            )
+        })
+    }
+
+    /// Runs `frame` with the stack this frame draws: `post_stack`, less the
+    /// passes of a game's effect that has no pipeline (`D-308`). Its module
+    /// did not build, so the frame is declared, timed and drawn without it,
+    /// and the effect is named in the log once.
+    fn with_drawn_stack<R>(
+        &mut self,
+        post_stack: &PostStack,
+        frame: impl FnOnce(&mut Self, &PostStack) -> R,
+    ) -> R {
+        if post_stack.0.iter().all(|pass| self.post_stack.draws(pass)) {
+            return frame(self, post_stack);
+        }
+        self.post_stack.warn_left_out(&post_stack.0);
+        let mut drawn = std::mem::take(&mut self.stack_scratch);
+        drawn_stack(
+            &post_stack.0,
+            |pass| self.post_stack.draws(pass),
+            &mut drawn.0,
+        );
+        let outcome = frame(self, &drawn);
+        self.stack_scratch = drawn;
+        outcome
     }
 
     /// The app's number for the frame it renders next, which a timed
@@ -1512,6 +1870,33 @@ impl Renderer {
         ui: &PaintList,
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
+        self.with_drawn_stack(post_stack, |renderer, post_stack| {
+            renderer.render_frame_timed(
+                view_proj,
+                quads,
+                sprite_batches,
+                debug_quads,
+                debug_lines,
+                text_sections,
+                ui,
+                post_stack,
+            )
+        })
+    }
+
+    /// [`Self::render_frame_full_timed`] over the stack the frame draws.
+    #[allow(clippy::too_many_arguments)]
+    fn render_frame_timed(
+        &mut self,
+        view_proj: &glam::Mat4,
+        quads: &[QuadInstance],
+        sprite_batches: &[SpriteBatch],
+        debug_quads: &[QuadInstance],
+        debug_lines: &[DebugLineInstance],
+        text_sections: &[TextSection],
+        ui: &PaintList,
+        post_stack: &PostStack,
+    ) -> Result<RenderOutcome, RenderError> {
         self.gpu_timings.samples.clear();
         if !self.timestamp_support {
             self.gpu_timings.clear_durations();
@@ -1535,14 +1920,27 @@ impl Renderer {
             .complete(TimingResources::mapped, |frame, slot| {
                 slot.read(frame, period, out);
             });
+        // The ring is sized for the frame's passes and one more, a capture's
+        // blit, so a capture frame rebuilds nothing; and for the lights'
+        // binning pass wherever a frame may walk tiles, so a frame whose
+        // lights cross the block's 16 rebuilds nothing either.
+        let present = self.present_path();
+        // Whether the frame walks tiles decides its passes, so the plan the
+        // ring is sized from knows it as the frame's own plan will.
+        self.set_frame_tiles(sprite_batches);
+        self.plan_frame(present, post_stack);
+        let passes = self
+            .frame
+            .as_ref()
+            .map_or(0, |frame| frame.compiled.passes.len());
         let layout = TimingLayout::new(
-            post_stack,
-            self.target_pool.scene.bloom_mip_count(),
-            self.post_aa.is_smaa() && self.smaa.is_some(),
+            passes
+                + usize::from(present == PresentPath::Direct)
+                + usize::from(self.lit_sprite_pipeline.has_tiled()),
             (self.surface_config.width, self.surface_config.height),
         );
         let device = &self.device;
-        let count = layout.query_count(post_stack);
+        let count = layout.query_count();
         let rebuilt = self.timing_ring.ensure(layout, || {
             count.map(|count| TimingResources::new(device, count))
         });
@@ -1592,30 +1990,12 @@ impl Renderer {
         mut timing: Option<&mut TimingResources>,
     ) -> Result<RenderOutcome, RenderError> {
         self.cpu_timings = CpuFrameTimings::default();
+        self.set_frame_tiles(sprite_batches);
 
-        let post_stack_len = post_stack.len();
-        // A capture frame takes the blit path, whose source the screenshot
-        // reads. Every other frame renders its last full-screen stage into
-        // the swapchain (`D-087`). A direct capture keeps the direct path and
-        // renders it into a stand-in for the swapchain, which is read back
-        // and then blitted to the real one. The armed capture picks the path
-        // here; the acquire takes it.
-        let present_path = match &self.pending_capture {
-            Some(capture) if !capture.direct => PresentPath::Blit,
-            _ => PresentPath::Direct,
-        };
-        let plan = FramePlan {
-            order: default_pass_order(
-                self.sample_count,
-                self.depth_sort,
-                self.depth_enabled,
-                post_stack_len,
-                self.post_aa,
-                present_path,
-            ),
-            post_targets: PostStackRenderer::plan_targets(post_stack_len),
-            split: acquire_split(post_stack_len, self.post_aa),
-        };
+        // The armed capture picks the frame's path here; the acquire takes
+        // it.
+        let present_path = self.present_path();
+        self.plan_frame(present_path, post_stack);
         let draws = FrameDraws {
             quads,
             sprite_batches,
@@ -1625,16 +2005,12 @@ impl Renderer {
             post_stack,
         };
 
-        // Late acquire (`D-145`): the passes before the swapchain stage
-        // record, and submit, before the acquire waits for the swapchain.
+        // Late acquire (`D-145`): the passes that draw into no imported
+        // texture record, and submit, before the acquire waits for the
+        // swapchain.
         let encode_start = Instant::now();
-        let mut first = self.record_before_acquire(
-            view_proj,
-            text_sections,
-            &plan,
-            draws,
-            timing.as_deref_mut(),
-        );
+        let mut first =
+            self.record_before_acquire(view_proj, text_sections, draws, timing.as_deref_mut());
         let mut encode_ms = encode_start.elapsed().as_secs_f64() as f32 * 1000.0;
         let mut submit_ms = 0.0;
         if SUBMIT_BEFORE_ACQUIRE && let Some(buffer) = first.take() {
@@ -1661,13 +2037,13 @@ impl Renderer {
         };
         self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
-        // An acquire that resized the targets leaves the first part drawn at
-        // the old size: record it again at the new one, untimed, since the
-        // ring's slots are sized for the old layout; the next frame rebuilds
-        // them.
+        // An acquire that resized the surface leaves the first part drawn at
+        // the old size: plan the frame at the new one and record that part
+        // again, untimed, since the ring's slots are sized for the old
+        // layout; the next frame rebuilds them.
         if record_again_after_acquire(targets_before, self.targets_at()) {
             log::debug!(
-                "late acquire: the acquire resized the targets to {}x{}; recording the passes before the swapchain stage again",
+                "late acquire: the acquire resized the surface to {}x{}; recording the passes before the swapchain stage again",
                 self.surface_config.width,
                 self.surface_config.height
             );
@@ -1675,13 +2051,9 @@ impl Renderer {
             if let Some(slot) = timing.take() {
                 slot.begin();
             }
-            first = self.record_before_acquire(
-                view_proj,
-                text_sections,
-                &plan,
-                draws,
-                timing.as_deref_mut(),
-            );
+            self.plan_frame(present_path, post_stack);
+            first =
+                self.record_before_acquire(view_proj, text_sections, draws, timing.as_deref_mut());
             encode_ms += record_start.elapsed().as_secs_f64() as f32 * 1000.0;
         }
 
@@ -1698,95 +2070,46 @@ impl Renderer {
                 label: Some("frame_encoder"),
             });
 
-        let standin = capture
-            .as_ref()
-            .filter(|capture| capture.direct)
-            .map(|_| create_swapchain_standin(&self.device, self.surface_config.format, w, h));
+        // A direct capture's frame ends on a stand-in for the surface, which
+        // the capture reads and the frame's last pass blits.
+        let standin = (present_path == PresentPath::DirectCapture)
+            .then(|| create_swapchain_standin(&self.device, self.surface_config.format, w, h));
         let frame_view = standin.as_ref().map_or(&swap_view, |(_, view)| view);
-
-        // On a blit frame the present blit and the screenshot both read the
-        // text-overlay target, whichever of SceneColor/PostPing/PostPong/
-        // PresentSource holds the composited frame.
-        let final_source_target = text_overlay_target(post_stack_len, self.post_aa);
-        // Only a capture frame blits: from that target, with a bind group
-        // kept until the targets are reallocated or the target changes, or
-        // from the stand-in.
-        let blit_bind_group = match (&capture, &standin) {
-            (None, _) => None,
-            (Some(_), Some((_, standin_view))) => Some(
-                self.present_blit
-                    .bind_group_for_view(&self.device, standin_view),
-            ),
-            (Some(_), None) => {
-                let final_source_view = match final_source_target {
-                    TargetId::PostPing => self.target_pool.scene.post_ping_view(),
-                    TargetId::PostPong => self.target_pool.scene.post_pong_view(),
-                    TargetId::PresentSource => self
-                        .target_pool
-                        .scene
-                        .present_source_view()
-                        .expect("PresentSource view must exist while post_aa != Off"),
-                    _ => self.target_pool.scene.color_view(),
-                };
-                Some(self.present_blit.bind_group(
-                    &self.device,
-                    self.target_pool.generation(),
-                    final_source_target,
-                    final_source_view,
-                ))
-            }
-        };
+        // The frame's imported textures in their order of import: its
+        // output, then the surface beside a stand-in.
+        let imports = [frame_view, &swap_view];
 
         encoder.push_debug_group("tungsten_frame");
+        let (split, pass_count) = self.frame.as_ref().map_or((0, 0), |frame| {
+            (frame.compiled.split, frame.compiled.passes.len())
+        });
         self.record_passes(
             &mut encoder,
-            &plan,
-            plan.split..plan.order.as_slice().len(),
+            split..pass_count,
             draws,
-            Some(frame_view),
-            blit_bind_group.as_ref(),
+            &imports,
             timing.as_deref_mut(),
         );
 
-        // A direct capture's frame is in the stand-in: the same blit puts it
-        // on the real swapchain.
-        if let (Some(_), Some(bind_group)) = (&standin, &blit_bind_group) {
-            let desc = PassDesc::new("tungsten_present_pass", TargetId::Swapchain);
-            let timestamp_writes = timing.as_deref_mut().map(|t| t.next("present".into()));
-            let mut pass = PassRecorder::begin_timed(
-                &mut encoder,
-                &desc,
-                &self.target_pool,
-                Some(&swap_view),
-                None,
-                timestamp_writes,
-            );
-            pass.set_pipeline(&self.present_blit.pipeline);
-            pass.set_bind_group(0, bind_group, &[]);
-            counters::draw(&self.counts, &mut pass, 0..3, 0..1);
-        }
-
-        // Screenshot path: readback of the blit's source. That is the
-        // text-overlay target (post-target when the stack is non-empty, else
-        // SceneColor), or the stand-in of a direct capture.
+        // Screenshot path: readback of what the frame's declaration marks as
+        // copied from: the version the blit shows, or the stand-in of a
+        // direct capture.
         let capture_target = capture
             .as_ref()
             .map(|_| create_capture_target(&self.device, w, h));
         if let Some(target) = capture_target.as_ref() {
-            let capture_src_texture = match (&standin, final_source_target) {
-                (Some((texture, _)), _) => texture,
-                (None, TargetId::PostPing) => self.target_pool.scene.post_ping_texture(),
-                (None, TargetId::PostPong) => self.target_pool.scene.post_pong_texture(),
-                (None, TargetId::PresentSource) => self
-                    .target_pool
-                    .scene
-                    .present_source_texture()
-                    .expect("PresentSource texture must exist while post_aa != Off"),
-                (None, _) => self.target_pool.scene.color_texture(),
+            let frame = self.frame.as_ref();
+            let source = match frame.and_then(|frame| frame.compiled.copied) {
+                Some(Target::Slot(slot)) => {
+                    frame.map(|frame| &self.targets.get(frame.bound[usize::from(slot)]).texture)
+                }
+                Some(Target::Imported(_)) => standin.as_ref().map(|(texture, _)| texture),
+                None => None,
             };
+            let source = source.expect("a capture frame's declaration names what it copies");
             encoder.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
-                    texture: capture_src_texture,
+                    texture: source,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
@@ -1845,28 +2168,33 @@ impl Renderer {
         }
         self.frame_counters = self.take_counts();
 
+        // A pooled texture no frame has used for the keep frames and the
+        // keep time goes, and every bind group over it.
+        let freed = self.targets.end_frame(self.started.elapsed());
+        self.forget_targets(&freed);
+
         Ok(RenderOutcome::Presented { capture })
     }
 
-    /// The target pool's generation and the surface size, which an acquire
-    /// can change.
+    /// The surface's size and how many resizes have changed it, which an
+    /// acquire can move.
     fn targets_at(&self) -> TargetsAt {
         TargetsAt {
-            generation: self.target_pool.generation(),
+            resizes: self.target_resizes,
             size: (self.surface_config.width, self.surface_config.height),
         }
     }
 
     /// The frame's work before the surface acquire (`D-145`): uploads the
-    /// camera, prepares the text and records the passes before the split,
-    /// the swapchain stage, into a command buffer of their own; `None` when
-    /// the scene pass writes the swapchain. A frame whose acquire resized the
-    /// targets calls it again at the new size.
+    /// camera, prepares the text and records the planned frame's passes
+    /// before its split, the first that draws into an imported texture, into
+    /// a command buffer of their own; `None` when the scene pass is that
+    /// pass. A frame whose acquire resized the surface plans again and calls
+    /// it again at the new size.
     fn record_before_acquire(
         &mut self,
         view_proj: &glam::Mat4,
         text_sections: &[TextSection],
-        plan: &FramePlan,
         draws: FrameDraws<'_>,
         timing: Option<&mut TimingResources>,
     ) -> Option<wgpu::CommandBuffer> {
@@ -1877,6 +2205,18 @@ impl Renderer {
             self.quad_pipeline.update_camera(&self.queue, view_proj);
             self.sprite_pipeline.update_camera(&self.queue, view_proj);
             self.camera_written = Some(camera);
+        }
+        // The frame's lights and the grid of its screen tiles, at the
+        // output's size: an acquire that resized it records this again.
+        if let Some(lights) = &self.frame_lights {
+            self.lighting.prepare(
+                &self.device,
+                &self.queue,
+                lights,
+                view_proj,
+                (self.surface_config.width, self.surface_config.height),
+                self.frame_tiles,
+            );
         }
         self.text_pipeline.prepare(
             &self.device,
@@ -1893,7 +2233,8 @@ impl Renderer {
             self.surface_config.width,
             self.surface_config.height,
         );
-        if plan.split == 0 {
+        let split = self.frame.as_ref().map_or(0, |frame| frame.compiled.split);
+        if split == 0 {
             return None;
         }
 
@@ -1903,24 +2244,23 @@ impl Renderer {
                 label: Some("frame_encoder_before_acquire"),
             });
         encoder.push_debug_group("tungsten_frame_before_acquire");
-        self.record_passes(&mut encoder, plan, 0..plan.split, draws, None, None, timing);
+        self.record_passes(&mut encoder, 0..split, draws, &[], timing);
         encoder.pop_debug_group();
         Some(encoder.finish())
     }
 
-    /// Records the passes of `plan` at the indices `passes` into `encoder`.
-    /// `frame_view` is the swapchain's view or a direct capture's stand-in,
-    /// which the passes before the split record without (`D-145`);
-    /// `blit_bind_group` is the source of a capture frame's present blit.
-    #[allow(clippy::too_many_arguments)]
+    /// Records the planned frame's passes at the indices `passes` into
+    /// `encoder`, each by its kind. `imports` are the views of the frame's
+    /// imported textures in their order of import: its output (the
+    /// surface's texture, or a direct capture's stand-in), then the surface
+    /// beside a stand-in. The passes before the split draw into none, and
+    /// record without them (`D-145`).
     fn record_passes(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
-        plan: &FramePlan,
         passes: std::ops::Range<usize>,
         draws: FrameDraws<'_>,
-        frame_view: Option<&wgpu::TextureView>,
-        blit_bind_group: Option<&wgpu::BindGroup>,
+        imports: &[&wgpu::TextureView],
         mut timing: Option<&mut TimingResources>,
     ) {
         let FrameDraws {
@@ -1931,258 +2271,464 @@ impl Renderer {
             post_stack,
             ..
         } = draws;
-        let post_stack_len = post_stack.len();
-        let smaa_active = self.post_aa.is_smaa() && self.smaa.is_some();
-        // Text overlay follows the last post pass / SMAA tail.
-        // `post_stack_len + 1` accounts for the leading scene pass; SMAA
-        // inserts three more before the overlay. Only the blit order holds a
-        // present pass, after the overlay.
-        let smaa_edge_idx = post_stack_len + 1;
-        let smaa_blend_idx = smaa_edge_idx + 1;
-        let smaa_nbh_idx = smaa_blend_idx + 1;
-        let text_overlay_idx = if smaa_active {
-            smaa_nbh_idx + 1
-        } else {
-            post_stack_len + 1
+        let Some(frame) = self.frame.as_ref() else {
+            return;
         };
-        let present_idx = text_overlay_idx + 1;
-        // SMAA edge / neighborhood read whatever target the post stack ended
-        // on (or `SceneColor` when the stack is empty). When the swapchain
-        // format has a non-sRGB twin, sample through it so edge detection
-        // sees gamma-encoded values; otherwise fall back to the primary view.
-        let smaa_source_target = if post_stack_len == 0 {
-            TargetId::SceneColor
-        } else if (post_stack_len - 1).is_multiple_of(2) {
-            TargetId::PostPing
-        } else {
-            TargetId::PostPong
+        let views = FrameViews {
+            targets: &self.targets,
+            bound: &frame.bound,
+            imports,
         };
-        let smaa_source_view: &wgpu::TextureView = if smaa_active {
-            match smaa_source_target {
-                TargetId::SceneColor => self
-                    .target_pool
-                    .scene
-                    .scene_color_smaa_read_view()
-                    .unwrap_or_else(|| self.target_pool.scene.color_view()),
-                TargetId::PostPing => self
-                    .target_pool
-                    .scene
-                    .post_ping_smaa_read_view()
-                    .unwrap_or_else(|| self.target_pool.scene.post_ping_view()),
-                TargetId::PostPong => self
-                    .target_pool
-                    .scene
-                    .post_pong_smaa_read_view()
-                    .unwrap_or_else(|| self.target_pool.scene.post_pong_view()),
-                _ => self.target_pool.scene.color_view(),
+        let attachment = (self.surface_config.width, self.surface_config.height);
+
+        let (first, count) = (passes.start, passes.len());
+        for (index, pass) in frame
+            .compiled
+            .passes
+            .iter()
+            .enumerate()
+            .skip(first)
+            .take(count)
+        {
+            // The compute passes that record ahead of this pass.
+            for compute in &frame.compiled.computes {
+                if compute.before != index {
+                    continue;
+                }
+                let timestamp_writes = timing
+                    .as_deref_mut()
+                    .map(|t| t.next_compute(compute.timing.clone()));
+                let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some(compute.label),
+                    timestamp_writes,
+                });
+                if compute.kind == PassKind::LightTiles {
+                    self.lighting.bin(&mut compute_pass);
+                }
             }
-        } else {
-            self.target_pool.scene.color_view()
-        };
-        // The neighborhood pass writes the sRGB swapchain, which encodes on
-        // store. It must read the primary sRGB view (decoded to linear on
-        // sample); the non-sRGB twin above would encode the frame twice and
-        // wash it out.
-        let smaa_nbh_source_view: &wgpu::TextureView = match smaa_source_target {
-            TargetId::PostPing => self.target_pool.scene.post_ping_view(),
-            TargetId::PostPong => self.target_pool.scene.post_pong_view(),
-            _ => self.target_pool.scene.color_view(),
-        };
-
-        for (idx, pass_desc) in passes.clone().zip(&plan.order.as_slice()[passes]) {
-            let is_scene = idx == 0;
-            let is_present = idx == present_idx;
-            let is_text_overlay = idx == text_overlay_idx;
-            let is_smaa_edge = smaa_active && idx == smaa_edge_idx;
-            let is_smaa_blend = smaa_active && idx == smaa_blend_idx;
-            let is_smaa_nbh = smaa_active && idx == smaa_nbh_idx;
-            let post_index = if !is_scene
-                && !is_present
-                && !is_text_overlay
-                && !is_smaa_edge
-                && !is_smaa_blend
-                && !is_smaa_nbh
+            // A bloom slot's blocks and bind groups are readied before its
+            // first pass opens; its later passes draw with them, the
+            // composite on the far side of the acquire where it writes the
+            // output.
+            if let PassKind::BloomThreshold { slot } = pass.kind
+                && let Some(PostPass::Bloom(params)) = post_stack.0.get(slot)
+                && let Some(source) = views.sampled(pass.reads.first())
+                && let Some(pyramid) = views.pooled(pass.color.at)
             {
-                Some(idx - 1)
-            } else {
-                None
-            };
-
-            // Bloom is the only post variant that does not record a single
-            // fullscreen draw into the slot's auto-opened render pass; it
-            // opens its own per-subpass passes through the encoder. Detect it
-            // before `PassRecorder::begin` and skip the auto-open path.
-            if let Some(pi) = post_index
-                && let (Some(PostPass::Bloom(params)), Some(&(src, _))) =
-                    (post_stack.0.get(pi), plan.post_targets.get(pi))
-            {
-                // The slot's destination is the pass's target: the ladder's,
-                // or the swapchain when bloom ends a direct frame's stack.
-                self.post_stack.record_bloom_slot_timed(
+                self.post_stack.bloom.prepare_slot(
                     &self.device,
                     &self.queue,
-                    encoder,
-                    &self.target_pool,
-                    frame_view,
+                    slot,
                     params,
-                    src,
-                    pass_desc.color,
-                    timing.as_deref_mut(),
-                    pi,
+                    attachment,
+                    frame.shape.bloom_halvings,
+                    source,
+                    pyramid,
+                    frame.shape.bloom_mips.max(1),
                 );
-                continue;
             }
 
-            let clear_override = if is_scene {
-                Some(self.clear_color)
-            } else {
-                None
-            };
-            let timestamp_writes = timing.as_deref_mut().map(|t| {
-                let label = if let Some(pi) = post_index {
-                    format!("post{pi}_{}", post_stack.0[pi].kind_name())
-                } else if is_scene {
-                    "scene".into()
-                } else if is_present {
-                    "present".into()
-                } else if is_text_overlay {
-                    "text".into()
-                } else if is_smaa_edge {
-                    "smaa_edges".into()
-                } else if is_smaa_blend {
-                    "smaa_blend_weights".into()
-                } else {
-                    "smaa_neighborhood".into()
-                };
-                t.next(label)
-            });
-            let mut pass = PassRecorder::begin_timed(
+            let timestamp_writes = timing.as_deref_mut().map(|t| t.next(pass.timing.clone()));
+            let mut render_pass = begin_pass(
                 encoder,
-                pass_desc,
-                &self.target_pool,
-                frame_view,
-                clear_override,
+                pass,
+                views.view(pass.color.at),
+                pass.resolve.map(|at| views.view(at)),
+                pass.depth
+                    .and_then(|depth| {
+                        views.pooled(At {
+                            target: Target::Slot(depth.slot),
+                            mip: 0,
+                        })
+                    })
+                    .map(|(_, texture)| texture.view(0)),
+                self.clear_color,
                 timestamp_writes,
             );
 
-            if is_scene {
-                record_main_draws(
-                    &mut pass,
-                    &self.device,
-                    &self.queue,
-                    &self.quad_pipeline,
-                    &mut self.sprite_pipeline,
-                    &self.debug_line_pipeline,
-                    &self.mesh_particle_pipeline,
-                    quads,
-                    sprite_batches,
-                    debug_quads,
-                    debug_lines,
-                    &self.materials,
-                    &self.lit_sprite_pipeline,
-                    &self.lighting,
-                );
-            } else if is_smaa_edge {
-                if let Some(smaa) = self.smaa.as_mut() {
-                    smaa.record_edge_pass(
+            // What a generated pass does between its stages, and last where
+            // it writes the frame's 8-bit output from a float scene.
+            let between = if self.float.is_some() {
+                Between::Nothing
+            } else {
+                Between::Clamp
+            };
+            let tail_finish = self.post_stack.tail();
+            let drew = match pass.kind {
+                // A compute pass's kind: it attaches no texture and is
+                // recorded above.
+                PassKind::LightTiles => false,
+                PassKind::Scene => {
+                    record_main_draws(
+                        &mut render_pass,
                         &self.device,
-                        &mut pass,
-                        &self.target_pool,
-                        smaa_source_target,
-                        smaa_source_view,
+                        &self.queue,
+                        &self.quad_pipeline,
+                        &mut self.sprite_pipeline,
+                        &self.debug_line_pipeline,
+                        &self.mesh_particle_pipeline,
+                        quads,
+                        sprite_batches,
+                        debug_quads,
+                        debug_lines,
+                        &self.materials,
+                        &self.lit_sprite_pipeline,
+                        &self.lighting,
+                        attachment,
                     );
+                    true
                 }
-            } else if is_smaa_blend {
-                if let Some(smaa) = self.smaa.as_mut() {
-                    smaa.record_blend_weights_pass(&self.device, &mut pass, &self.target_pool);
-                }
-            } else if is_smaa_nbh {
-                if let Some(smaa) = self.smaa.as_mut() {
-                    smaa.record_neighborhood_pass(
-                        &self.device,
-                        &mut pass,
-                        &self.target_pool,
-                        smaa_source_target,
-                        smaa_nbh_source_view,
-                    );
-                }
-            } else if is_text_overlay {
-                // M54: the world labels first, under the paint list's game
-                // layers (`D-161`); a frame without labels records nothing
-                // here. M46: the UI's items in paint order, each setting its
-                // scissor, then the text sections under the whole attachment.
-                // An empty paint list records nothing here.
-                if self.text_pipeline.has_labels() {
-                    pass.push_debug_group("world labels");
-                    self.text_pipeline.render_labels(&mut pass);
-                    pass.pop_debug_group();
-                }
-                let attachment = (self.surface_config.width, self.surface_config.height);
-                let items = self.ui_pipeline.items();
-                if !items.is_empty() {
-                    pass.push_debug_group("ui");
-                    for item in items {
-                        match item {
-                            DrawItem::Primitives { .. } => self.ui_pipeline.draw_primitives(
-                                &mut pass,
-                                item,
-                                &self.sprite_pipeline,
-                                attachment,
+                // A stock effect alone draws with its own pipeline; with
+                // the stages joined to it, with the pass the composer
+                // generated for them (`D-307`).
+                PassKind::Post { slot, stages, tail } => {
+                    if let Some(run) = post_stack.0.get(slot..slot + stages)
+                        && let Some(source) = views.sampled(pass.reads.first())
+                    {
+                        for stage in run {
+                            self.post_stack.warn_inert(stage, self.clear_color.a as f32);
+                        }
+                        match run {
+                            [post_pass] if !tail => self.post_stack.record_pass(
+                                &self.device,
+                                &self.queue,
+                                &mut render_pass,
+                                source,
+                                post_pass,
+                                slot,
                             ),
-                            DrawItem::Mesh { .. } => {
-                                self.ui_pipeline.draw_mesh(&mut pass, item, attachment);
-                            }
-                            DrawItem::Text { batch, scissor } => {
-                                // glyphon clips through `TextBounds` and
-                                // leaves the scissor as it finds it, so the
-                                // batch draws under the viewport's.
-                                if let Some((x, y, width, height)) =
-                                    attachment_scissor(*scissor, attachment)
-                                {
-                                    pass.set_scissor_rect(x, y, width, height);
-                                    self.text_pipeline.render_batch(&mut pass, *batch);
+                            _ => self.post_stack.record_fused(
+                                &self.device,
+                                &self.queue,
+                                &mut render_pass,
+                                Some(source),
+                                run,
+                                slot,
+                                between,
+                                if tail { tail_finish } else { Finish::Plain },
+                            ),
+                        }
+                    } else {
+                        false
+                    }
+                }
+                PassKind::BloomThreshold { slot } => self.post_stack.bloom.draw_stage(
+                    &mut render_pass,
+                    slot,
+                    BloomStageKind::Threshold,
+                ),
+                PassKind::BloomDown { slot, level } => self.post_stack.bloom.draw_stage(
+                    &mut render_pass,
+                    slot,
+                    BloomStageKind::Down(level),
+                ),
+                PassKind::BloomUp { slot, level } => self.post_stack.bloom.draw_stage(
+                    &mut render_pass,
+                    slot,
+                    BloomStageKind::Up(level),
+                ),
+                PassKind::BloomComposite {
+                    slot,
+                    stages: 1,
+                    tail: false,
+                } => self.post_stack.bloom.draw_stage(
+                    &mut render_pass,
+                    slot,
+                    BloomStageKind::Composite,
+                ),
+                // The composite with the stages joined to it, or with the
+                // frame's tail, in the pass the composer generated: it binds
+                // the slot's own groups.
+                PassKind::BloomComposite { slot, stages, tail } => {
+                    if let Some(run) = post_stack.0.get(slot..slot + stages) {
+                        for stage in &run[1..] {
+                            self.post_stack.warn_inert(stage, self.clear_color.a as f32);
+                        }
+                        self.post_stack.record_fused(
+                            &self.device,
+                            &self.queue,
+                            &mut render_pass,
+                            None,
+                            run,
+                            slot,
+                            between,
+                            if tail { tail_finish } else { Finish::Plain },
+                        )
+                    } else {
+                        false
+                    }
+                }
+                // The frame's tail alone (`D-309`): the float colour before
+                // it, clamped and dithered into the 8-bit output.
+                PassKind::Tail { slot } => match views.sampled(pass.reads.first()) {
+                    Some(source) => self.post_stack.record_fused(
+                        &self.device,
+                        &self.queue,
+                        &mut render_pass,
+                        Some(source),
+                        &[],
+                        slot,
+                        Between::Nothing,
+                        tail_finish,
+                    ),
+                    None => false,
+                },
+                // The edge test reads the stack's last version through its
+                // non-sRGB twin where it has one, so it sees encoded values.
+                PassKind::SmaaEdges => {
+                    if let Some(smaa) = self.smaa.as_mut()
+                        && let Some((id, texture)) =
+                            pass.reads.first().and_then(|read| views.pooled(*read))
+                    {
+                        smaa.record_edge_pass(
+                            &self.device,
+                            &mut render_pass,
+                            (id, texture.edge_view()),
+                        );
+                        true
+                    } else {
+                        false
+                    }
+                }
+                PassKind::SmaaWeights => {
+                    if let Some(smaa) = self.smaa.as_mut()
+                        && let Some(edges) = views.sampled(pass.reads.first())
+                    {
+                        smaa.record_blend_weights_pass(&self.device, &mut render_pass, edges);
+                        true
+                    } else {
+                        false
+                    }
+                }
+                // The neighborhood pass's target encodes on store, so it
+                // reads the stack's last version through its own sRGB view:
+                // the twin would encode the frame twice and wash it out.
+                PassKind::SmaaNeighborhood => {
+                    if let Some(smaa) = self.smaa.as_mut()
+                        && let Some(source) = views.sampled(pass.reads.first())
+                        && let Some(weights) = views.sampled(pass.reads.get(1))
+                    {
+                        smaa.record_neighborhood_pass(
+                            &self.device,
+                            &mut render_pass,
+                            source,
+                            weights,
+                        );
+                        true
+                    } else {
+                        false
+                    }
+                }
+                PassKind::Overlay => {
+                    // M54: the world labels first, under the paint list's game
+                    // layers (`D-161`); a frame without labels records nothing
+                    // here. M46: the UI's items in paint order, each setting its
+                    // scissor, then the text sections under the whole attachment.
+                    // An empty paint list records nothing here.
+                    if self.text_pipeline.has_labels() {
+                        render_pass.push_debug_group("world labels");
+                        self.text_pipeline.render_labels(&mut render_pass);
+                        render_pass.pop_debug_group();
+                    }
+                    let items = self.ui_pipeline.items();
+                    if !items.is_empty() {
+                        render_pass.push_debug_group("ui");
+                        for item in items {
+                            match item {
+                                DrawItem::Primitives { .. } => self.ui_pipeline.draw_primitives(
+                                    &mut render_pass,
+                                    item,
+                                    &self.sprite_pipeline,
+                                    attachment,
+                                ),
+                                DrawItem::Mesh { .. } => {
+                                    self.ui_pipeline
+                                        .draw_mesh(&mut render_pass, item, attachment);
+                                }
+                                DrawItem::Text { batch, scissor } => {
+                                    // glyphon clips through `TextBounds` and
+                                    // leaves the scissor as it finds it, so the
+                                    // batch draws under the viewport's.
+                                    if let Some((x, y, width, height)) =
+                                        attachment_scissor(*scissor, attachment)
+                                    {
+                                        render_pass.set_scissor_rect(x, y, width, height);
+                                        self.text_pipeline.render_batch(&mut render_pass, *batch);
+                                    }
                                 }
                             }
                         }
+                        render_pass.set_scissor_rect(0, 0, attachment.0, attachment.1);
+                        render_pass.pop_debug_group();
                     }
-                    pass.set_scissor_rect(0, 0, attachment.0, attachment.1);
-                    pass.pop_debug_group();
+                    render_pass.push_debug_group("text");
+                    self.text_pipeline.render(&mut render_pass);
+                    render_pass.pop_debug_group();
+                    true
                 }
-                pass.push_debug_group("text");
-                self.text_pipeline.render(&mut pass);
-                pass.pop_debug_group();
-            } else if is_present {
-                if let Some(bind_group) = blit_bind_group {
-                    pass.set_pipeline(&self.present_blit.pipeline);
-                    pass.set_bind_group(0, bind_group, &[]);
-                    counters::draw(&self.counts, &mut pass, 0..3, 0..1);
+                // A capture frame's blit samples the composed frame: a
+                // pooled texture, its bind group kept while the texture
+                // lives, or a direct capture's stand-in, built for the
+                // frame.
+                PassKind::Blit => {
+                    let bind_group = pass.reads.first().map(|read| match views.pooled(*read) {
+                        Some((id, texture)) => {
+                            self.present_blit
+                                .bind_group(&self.device, id, texture.view(read.mip))
+                        }
+                        None => self
+                            .present_blit
+                            .bind_group_for_view(&self.device, views.view(*read)),
+                    });
+                    if let Some(bind_group) = bind_group {
+                        render_pass.set_pipeline(&self.present_blit.pipeline);
+                        render_pass.set_bind_group(0, &bind_group, &[]);
+                        counters::draw(&self.counts, &mut render_pass, 0..3, 0..1);
+                        true
+                    } else {
+                        false
+                    }
                 }
-            } else if let Some(pi) = post_index
-                && let (Some(post_pass), Some(&(src, _dst))) =
-                    (post_stack.0.get(pi), plan.post_targets.get(pi))
-            {
-                self.post_stack
-                    .warn_inert(post_pass, self.clear_color.a as f32);
-                self.post_stack.record_pass(
-                    &self.device,
-                    &self.queue,
-                    &mut pass,
-                    &self.target_pool,
-                    post_pass,
-                    src,
-                    pi,
-                );
-            }
+            };
+            // What the surface held is undefined under a pass that loads
+            // nothing, so that pass must have drawn. The plan and the
+            // records read one stack and one set of textures, so no guard
+            // above fails; this holds a later change to that.
+            assert!(
+                drew || pass.color.load != Load::Nothing,
+                "the pass `{}` loads nothing and drew nothing",
+                pass.label
+            );
         }
     }
 }
 
-/// A frame's passes: its pass order, the post stack's source and destination
-/// targets, and the index it splits at around the surface acquire.
+/// A compiled frame and the pooled textures bound to its slots. It stands
+/// while the frame's shape holds, so the bind groups over those textures
+/// hold from frame to frame.
 struct FramePlan {
-    order: PassOrder,
-    post_targets: Vec<(TargetId, TargetId)>,
-    split: usize,
+    shape: Shape,
+    compiled: Compiled<PassKind>,
+    /// The identity of each slot's pooled texture.
+    bound: Vec<u64>,
+}
+
+/// The textures a planned frame's passes name: the pooled ones by the
+/// identities bound to the frame's slots, the imported ones by their views.
+struct FrameViews<'f> {
+    targets: &'f Pool<PoolTexture>,
+    bound: &'f [u64],
+    imports: &'f [&'f wgpu::TextureView],
+}
+
+impl<'f> FrameViews<'f> {
+    /// The pooled texture `at` names, with its identity; `None` for an
+    /// imported one.
+    fn pooled(&self, at: At) -> Option<(u64, &'f PoolTexture)> {
+        match at.target {
+            Target::Slot(slot) => {
+                let id = self.bound[usize::from(slot)];
+                Some((id, self.targets.get(id)))
+            }
+            Target::Imported(_) => None,
+        }
+    }
+
+    /// The pooled level a pass samples, with its texture's identity.
+    fn sampled(&self, read: Option<&At>) -> Option<(u64, &'f wgpu::TextureView)> {
+        let read = *read?;
+        self.pooled(read)
+            .map(|(id, texture)| (id, texture.view(read.mip)))
+    }
+
+    /// The view of the level `at` names.
+    ///
+    /// # Panics
+    ///
+    /// On an imported texture before the surface acquire: the frame's split
+    /// keeps every pass that names one after it.
+    fn view(&self, at: At) -> &'f wgpu::TextureView {
+        match at.target {
+            Target::Slot(slot) => self.targets.get(self.bound[usize::from(slot)]).view(at.mip),
+            Target::Imported(index) => self
+                .imports
+                .get(usize::from(index))
+                .copied()
+                .expect("a pass on an imported texture records after the surface acquire"),
+        }
+    }
+}
+
+/// The load of a pass that writes every pixel of the surface before any
+/// other pass has: wgpu's `DontCare`, which neither clears the texture nor
+/// reads it. Vulkan and Metal take it as their own load op; DX12 and GL
+/// load a back buffer wgpu counts as written, so every backend draws the
+/// same picture. A texture the renderer made itself never takes it: the
+/// graph clears a direct capture's stand-in, as D3D12 asks of a new render
+/// target.
+fn load_nothing() -> wgpu::LoadOp<wgpu::Color> {
+    // SAFETY: wgpu asks that every pixel of the target be written before any
+    // is read, blended with or stored. The frame's graph compiles this load
+    // only for the surface's first write by a `Write::Whole` pass: one
+    // triangle over the whole target with no blend, every channel written,
+    // no culling, no depth test and no scissor, by a shader of the engine's
+    // own text. The shader coverage test holds those files to no `discard`
+    // and each builder to that pipeline state, and `record_passes` asserts
+    // that a pass which loads nothing drew. No draw of such a pass samples
+    // its own target.
+    wgpu::LoadOp::DontCare(unsafe { wgpu::LoadOpDontCare::enabled() })
+}
+
+/// Opens the render pass of a compiled pass on its attachments' views. The
+/// scene's clear is the renderer's `scene_clear`, which a game may change
+/// between two frames of one shape; a store the frame does not need is a
+/// discard.
+fn begin_pass<'e>(
+    encoder: &'e mut wgpu::CommandEncoder,
+    pass: &CompiledPass<PassKind>,
+    color: &wgpu::TextureView,
+    resolve: Option<&wgpu::TextureView>,
+    depth: Option<&wgpu::TextureView>,
+    scene_clear: wgpu::Color,
+    timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
+) -> wgpu::RenderPass<'e> {
+    let load = match pass.color.load {
+        Load::Clear(_) if pass.kind == PassKind::Scene => wgpu::LoadOp::Clear(scene_clear),
+        Load::Clear(color) => wgpu::LoadOp::Clear(color),
+        Load::Keep => wgpu::LoadOp::Load,
+        Load::Nothing => load_nothing(),
+    };
+    let store = |keep: bool| {
+        if keep {
+            wgpu::StoreOp::Store
+        } else {
+            wgpu::StoreOp::Discard
+        }
+    };
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some(pass.label),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: color,
+            depth_slice: None,
+            resolve_target: resolve,
+            ops: wgpu::Operations {
+                load,
+                store: store(pass.color.store),
+            },
+        })],
+        depth_stencil_attachment: pass.depth.zip(depth).map(|(attach, view)| {
+            wgpu::RenderPassDepthStencilAttachment {
+                view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(attach.clear),
+                    store: store(attach.store),
+                }),
+                stencil_ops: None,
+            }
+        }),
+        timestamp_writes,
+        ..Default::default()
+    })
 }
 
 /// The frame's draw data, as [`Renderer::render_frame_full`] takes it.
@@ -2213,6 +2759,7 @@ fn record_main_draws<'a>(
     materials: &'a HashMap<MaterialAssetId, MaterialPipeline>,
     lit_sprite_pipeline: &'a LitSpritePipeline,
     lighting: &'a LightingResources,
+    target: (u32, u32),
 ) {
     render_pass.push_debug_group("quads");
     quad_pipeline.draw(device, render_pass, quads);
@@ -2227,6 +2774,7 @@ fn record_main_draws<'a>(
         materials,
         Some(lit_sprite_pipeline),
         Some(&lighting.bind_group),
+        target,
     );
     render_pass.pop_debug_group();
 
@@ -2253,9 +2801,9 @@ fn record_main_draws<'a>(
 struct PresentBlitPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
-    /// The source bind group, keyed on the pool generation and the target it
+    /// The source bind group, keyed on the identity of the pooled texture it
     /// samples.
-    bind_group: TargetCache<(u64, TargetId), wgpu::BindGroup>,
+    bind_group: TargetCache<u64, wgpu::BindGroup>,
 }
 
 impl PresentBlitPipeline {
@@ -2294,11 +2842,7 @@ impl PresentBlitPipeline {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: target_format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &[Some(whole_target(target_format))],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
@@ -2319,25 +2863,24 @@ impl PresentBlitPipeline {
         }
     }
 
-    /// The bind group sampling `source_view`, which is the view of target
-    /// `source` in pool generation `generation`.
+    /// The bind group sampling `source_view`, the view of the pooled texture
+    /// with identity `source`.
     fn bind_group(
         &mut self,
         device: &wgpu::Device,
-        generation: u64,
-        source: TargetId,
+        source: u64,
         source_view: &wgpu::TextureView,
     ) -> wgpu::BindGroup {
         let layout = &self.bind_group_layout;
         self.bind_group
-            .get_or_build((generation, source), || {
+            .get_or_build(source, || {
                 Self::build_bind_group(device, layout, source_view)
             })
             .clone()
     }
 
     /// A bind group sampling `source_view`, built for one frame: the view is
-    /// not a pool target, so nothing keys a cache.
+    /// no pooled texture's, so nothing keys a cache.
     fn bind_group_for_view(
         &self,
         device: &wgpu::Device,
@@ -2361,9 +2904,10 @@ impl PresentBlitPipeline {
         })
     }
 
-    /// Drops the bind group, and with it its view of a scene target.
-    fn release_target_views(&mut self) {
-        self.bind_group.clear();
+    /// Drops the bind group when it holds a view of one of the pooled
+    /// textures `freed`.
+    fn forget_targets(&mut self, freed: &[u64]) {
+        self.bind_group.clear_if(|source| freed.contains(source));
     }
 }
 

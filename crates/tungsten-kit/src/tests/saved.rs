@@ -197,6 +197,82 @@ fn each_saved_kit_component_round_trips_through_a_capture() {
     );
 }
 
+/// A World of the probes, `each` spawns of every one from a named source,
+/// stepped six times and captured.
+fn probed(each: usize) -> (WorldSave, Vec<&'static str>) {
+    let (mut world, mut schedule) = rig();
+    let names = probes(&mut world);
+    let source = world.spawn_with((Transform::from_position(Vec2::ZERO),));
+    named(&mut world, source, None, "source");
+    for name in &names {
+        for _ in 0..each {
+            let prepared = world
+                .prepare_prefab(&format!("probe_{name}"), [8.0, 8.0])
+                .unwrap_or_else(|err| panic!("{name}: {err}"));
+            world
+                .resource_mut::<CommandBuffer>()
+                .spawn_prefab_from(source, prepared);
+        }
+    }
+    flush(&mut world);
+    for _ in 0..6 {
+        step(&mut world, &mut schedule);
+    }
+    (capture_world(&world).unwrap(), names)
+}
+
+#[test]
+fn sixteen_spawns_of_a_probe_are_a_table_of_its_record() {
+    // Sixteen spawns of each probe prefab: a table a prefab (save format
+    // 2), whose rows expand to the record one spawn of it saves.
+    let (one, names) = probed(1);
+    let one = serde_json::to_value(&one).unwrap()["global"]["spawns"].clone();
+    let record_of = |prefab: &str| -> &Value {
+        let mut records = one.as_array().unwrap().iter();
+        records
+            .find(|record| record["prefab"] == json!(prefab))
+            .unwrap_or_else(|| panic!("{prefab}: no record of one spawn"))
+    };
+    let (saved, _) = probed(16);
+    let mut held = serde_json::to_value(&saved).unwrap();
+    assert_eq!(held["format"], json!(2));
+    for name in &names {
+        let prefab = format!("probe_{name}");
+        let of_it: Vec<&Value> = held["global"]["spawns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|spawn| spawn["prefab"] == json!(prefab))
+            .collect();
+        assert_eq!(of_it.len(), 1, "{name}: one table");
+        assert_eq!(
+            of_it[0]["rows"].as_array().map(Vec::len),
+            Some(16),
+            "{name}: sixteen rows"
+        );
+        assert!(of_it[0]["columns"].get(*name).is_some(), "{name}: a column");
+    }
+    save::expand_tables(&mut held).unwrap();
+    let expanded = held["global"]["spawns"].as_array().unwrap();
+    assert_eq!(expanded.len(), 16 * names.len());
+    for record in expanded {
+        let prefab = record["prefab"].as_str().unwrap();
+        let alone = record_of(prefab);
+        assert_eq!(record["components"], alone["components"], "{prefab}");
+        assert_eq!(record.get("refs"), alone.get("refs"), "{prefab}");
+    }
+
+    // And the tables restore: a World with other allocations captures the
+    // same save.
+    let (mut b, _) = rig();
+    probes(&mut b);
+    churn(&mut b, 40);
+    let source = b.spawn_with((Transform::from_position(Vec2::ZERO),));
+    named(&mut b, source, None, "source");
+    restore(&mut b, &saved);
+    assert_eq!(text(&capture_world(&b).unwrap()), text(&saved));
+}
+
 #[test]
 fn a_lifetime_and_a_spawner_keep_their_time() {
     let level = |world: &mut World| -> (Entity, Entity) {

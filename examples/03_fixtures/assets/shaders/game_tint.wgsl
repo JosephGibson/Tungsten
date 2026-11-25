@@ -1,0 +1,48 @@
+// A game's own post effect (`D-308`), for the fixtures: each colour channel
+// scaled toward a tint. v0.rgb = the tint, f.x = how far (0..1).
+//
+// The module opens with the stock post prefix (docs/assets.md). Its `@fx`
+// section is a `mix`: each channel its own value times a factor from 0 to 1,
+// the alpha handed on, so the pass fuses behind the stage before it when it
+// ends the stack.
+
+struct Params {
+    v0: vec4<f32>,
+    v1: vec4<f32>,
+    v2: vec4<f32>,
+    v3: vec4<f32>,
+    f: vec4<f32>,
+    i: vec4<i32>,
+};
+
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var src_sampler: sampler;
+@group(1) @binding(0) var<uniform> params: Params;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
+    var uv = vec2<f32>(f32((vi << 1u) & 2u), f32(vi & 2u));
+    var out: VertexOutput;
+    out.position = vec4<f32>(uv * 2.0 - 1.0, 0.0, 1.0);
+    out.uv = vec2<f32>(uv.x, 1.0 - uv.y);
+    return out;
+}
+
+// @fx begin mix
+fn tint_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let amount = clamp(p.f.x, 0.0, 1.0);
+    let tint = clamp(p.v0.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    let scale = mix(vec3<f32>(1.0), tint, amount);
+    return vec4<f32>(color.rgb * scale, color.a);
+}
+// @fx end
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return tint_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
+}

@@ -484,10 +484,8 @@ pub(crate) fn check_declared(world: &World, field: &str, name: &str) -> Result<(
         return Ok(());
     }
     let by_data = world.get_resource::<DataRegistry>().is_some_and(|data| {
-        data.ids(TAGS).any(|id| {
-            data.get::<TagList>(id)
-                .is_some_and(|list| list.0.iter().any(|declared| covers(declared, name)))
-        })
+        data.entries::<TagList>()
+            .any(|(_, list)| list.0.iter().any(|declared| covers(declared, name)))
     });
     if by_data {
         Ok(())

@@ -25,6 +25,7 @@ pub mod text;
 pub mod time;
 pub mod tween;
 pub mod ui;
+pub mod workers;
 
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
@@ -34,15 +35,16 @@ pub use assets::{
     LoadedManifest, ManifestError, MapCursor, MapObject, MaterialAssetId, MaterialRegistry,
     MaterialUniformDefaults, ObjectLayer, ParticleActive, ParticleBudget, ParticleConfig,
     ParticleConfigError, ParticleConfigRegistry, ParticleEntry, ParticleMesh, ParticleMeshAssetId,
-    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, PrefabData, PrefabEntry, PrefabError,
-    PrefabRegistry, PreparedPrefab, Range, ResolvedDataEntry, ResolvedFont, ResolvedFontFamily,
-    ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab,
-    ResolvedSound, ResolvedUiTheme, Room, RoomCommand, RoomError, RoomGenerator, RoomGenerators,
-    RoomJournal, RoomRegistry, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform,
-    SceneTween, SceneTweenChannel, SceneTweenRepeat, Slope, SlopeCorner, SlopeRise, SoundData,
-    SoundEntry, SoundRegistry, SpawnedRoom, SpriteAsset, SpriteAssetId, StagedLoad,
-    StagedLoadError, TextureHandle, TileChanges, TileDamage, TileIndex, TileProps, TilemapData,
-    TilemapInstance, TilemapLayer, TilemapRegistry, Tileset, UiThemeEntry, WorldRngSeed,
+    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, PostEffectId, PostEffectRegistry,
+    PrefabData, PrefabEntry, PrefabError, PrefabRegistry, PreparedPrefab, Range, ResolvedDataEntry,
+    ResolvedFont, ResolvedFontFamily, ResolvedManifest, ResolvedMaterial, ResolvedParticle,
+    ResolvedParticleMesh, ResolvedPrefab, ResolvedSound, ResolvedUiTheme, Room, RoomCommand,
+    RoomError, RoomGenerator, RoomGenerators, RoomJournal, RoomRegistry, SceneData, SceneEntry,
+    SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel, SceneTweenRepeat,
+    Slope, SlopeCorner, SlopeRise, SoundData, SoundEntry, SoundRegistry, SpawnedRoom, SpriteAlpha,
+    SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileChanges,
+    TileDamage, TileIndex, TileProps, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry,
+    Tileset, UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioBus, AudioCommand, AudioCommands, MAX_VOICES, Voice};
 pub use camera::{
@@ -78,17 +80,17 @@ pub use input::{
     STICK_PRESS, STICK_RELEASE, ScrollDirection, StickResponse, WheelDelta,
 };
 pub use inspect::{InspectRegistry, Inspectable};
-pub use lighting::{AmbientLight, LIGHT_CAP, light_at, light_level};
+pub use lighting::{AmbientLight, LIGHT_CAP, MAX_LIGHT_CAP, light_at, light_level};
 pub use physics::{
     Aabb, BodyKind, Collider, CollisionEvent, Contact, ContactBegan, ContactEnded, PhysicsBuffers,
-    PhysicsConfig, PhysicsLayers, PhysicsMaterial, PhysicsMaterials, PhysicsPlugin, Position,
-    PrevPosition, RigidBody, RigidBodyBundle, SensorEntered, SensorExited, Shape, SpatialFilter,
-    SpatialGrid, SpatialHit, Spin, TerrainFace, Velocity, aabb_vs_aabb, aabb_vs_circle,
-    circle_vs_circle, physics_prev_snapshot, physics_step, physics_sync,
+    PhysicsConfig, PhysicsLayers, PhysicsMaterial, PhysicsMaterials, PhysicsPlugin, PhysicsWorkers,
+    Position, PrevPosition, RigidBody, RigidBodyBundle, SensorEntered, SensorExited, Shape,
+    SpatialFilter, SpatialGrid, SpatialHit, Spin, TerrainFace, Velocity, aabb_vs_aabb,
+    aabb_vs_circle, circle_vs_circle, physics_prev_snapshot, physics_step, physics_sync,
 };
 pub use post::{
-    BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherMode, DitherParams,
-    FadeParams, FilmGrainParams, FogParams, GlitchParams, GodRaysParams, LutParams,
+    BloomParams, ColorAdjustParams, CrtParams, CustomPost, DissolveParams, DitherMode,
+    DitherParams, FadeParams, FilmGrainParams, FogParams, GlitchParams, GodRaysParams, LutParams,
     PixelOutlineParams, PostPass, PostStack, ToneMonoMode, ToneMonoParams, TonemapMode,
     TonemapParams, VignetteParams, WipeRadialParams,
 };
@@ -109,3 +111,4 @@ pub use tween::{
 pub use ui::{
     PaintList, UiDebug, UiEvent, UiProperty, UiRouter, UiThemeRegistry, UiTrack, UiTree, WidgetId,
 };
+pub use workers::SystemWorkers;

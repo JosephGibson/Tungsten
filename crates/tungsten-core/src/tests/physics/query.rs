@@ -722,7 +722,7 @@ fn index_is_built_at_most_once_per_step() {
             .builds
     };
     let mut world = world();
-    wall(&mut world, Vec2::new(100.0, 0.0), Vec2::splat(10.0));
+    let block = wall(&mut world, Vec2::new(100.0, 0.0), Vec2::splat(10.0));
     floor(&mut world, 4);
     physics_step(&mut world);
     assert_eq!(builds(&world), 0, "a step without sensors builds nothing");
@@ -752,7 +752,91 @@ fn index_is_built_at_most_once_per_step() {
     physics_step(&mut world);
     let _ = cast_ray(&world, Vec2::ZERO, Vec2::X, 500.0, &all());
     let _ = cast_ray(&world, Vec2::ZERO, Vec2::X, 500.0, &all());
+    assert_eq!(
+        builds(&world),
+        1,
+        "a World of statics stages its grid once: the boxes hold"
+    );
+    assert_eq!(
+        cast_ray(&world, Vec2::ZERO, Vec2::X, 500.0, &all()).map(|hit| hit.entity),
+        Some(Some(block))
+    );
+    // A body that moved has another box, so the next refresh stages again:
+    // one proxy is past an eighth of one.
+    world.get_mut::<Position>(block).unwrap().0.x = 200.0;
+    physics_step(&mut world);
+    let hit = cast_ray(&world, Vec2::ZERO, Vec2::X, 500.0, &all()).unwrap();
+    assert_eq!((hit.entity, hit.distance), (Some(block), 190.0));
+    let _ = cast_ray(&world, Vec2::ZERO, Vec2::X, 500.0, &all());
     assert_eq!(builds(&world), 2);
+}
+
+#[test]
+fn bodies_near_visits_the_gathers_proxies_in_id_order() {
+    // 300 seeded static boxes and posts over a floor, six sensors among
+    // them; after a step, 500 seeded query boxes from a point's size to
+    // wider than the field. The proxies `bodies_near` visits are the ones
+    // `gather_parts` gives, sorted, with the sensors left out.
+    let mut state = 0x2545_F491_4F6C_DD1D_u64;
+    let mut unit = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state >> 40) as f32 / (1_u64 << 24) as f32
+    };
+    let mut world = world();
+    floor(&mut world, 8);
+    for at in 0..300 {
+        let center = Vec2::new(600.0 * unit(), 400.0 * unit());
+        if at % 50 == 7 {
+            world.spawn_with(RigidBodyBundle::sensor(
+                Position(center),
+                Collider::aabb(Vec2::splat(40.0)),
+            ));
+        } else if at % 3 == 0 {
+            post(&mut world, center, 2.0 + 18.0 * unit());
+        } else {
+            let half = Vec2::new(2.0 + 30.0 * unit(), 2.0 + 30.0 * unit());
+            wall(&mut world, center, half);
+        }
+    }
+    physics_step(&mut world);
+    let (mut every, mut some, mut none) = (0, 0, 0);
+    for round in 0..500 {
+        let center = Vec2::new(700.0 * unit() - 50.0, 500.0 * unit() - 50.0);
+        let reach = [0.5, 6.0, 40.0, 150.0, 900.0][round % 5];
+        let query = Aabb::new(center, Vec2::new(reach * unit(), reach * unit()));
+        let (want, got, proxies) = with_index(&world, |state, _| {
+            state.gather_parts(&query, false);
+            let mut ids: Vec<ProxyId> = state
+                .candidates
+                .iter()
+                .copied()
+                .filter(|&id| (id as usize) < state.tile_base)
+                .collect();
+            ids.sort_unstable();
+            let want: Vec<u64> = ids
+                .iter()
+                .map(|&id| state.bodies[id as usize].identity)
+                .collect();
+            let mut got = Vec::new();
+            state.bodies_near(&query, |entry| got.push(entry.identity));
+            assert!(state.near.iter().all(|&word| word == 0), "round {round}");
+            (want, got, state.tile_base)
+        })
+        .unwrap();
+        assert_eq!(got, want, "round {round}");
+        assert_eq!(proxies, 294);
+        match got.len() {
+            0 => none += 1,
+            294 => every += 1,
+            _ => some += 1,
+        }
+    }
+    assert!(
+        every > 20 && some > 200 && none > 20,
+        "{every} {some} {none}"
+    );
 }
 
 #[test]

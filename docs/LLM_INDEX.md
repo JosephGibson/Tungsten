@@ -10,7 +10,7 @@ Task → file map: read only the matching row's. Prefixes: `core/` = `crates/tun
 | Deferred spawn/despawn (`D-039`) | `core/ecs/command_buffer.rs` |
 | Event flush, holds, `EventCursor` (`D-040`, `D-139`, `D-170`) | `core/ecs/event_queue.rs`, `core/ecs/world.rs` |
 | Frame order, winit loop, smoke (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
-| Schedule, stages, plugins, `DefaultPlugins`, engine system names (`D-128`, `D-133`) | `core/schedule.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
+| Schedule, stages, plugins, `DefaultPlugins`, system names, a system's map (`D-128`, `D-133`, `D-311`) | `core/schedule.rs`, `core/workers.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
 | Kit by domain: phases, tags, stats, cues, motion, recipes (`D-155`, `D-172`–`D-177`, `D-238`–`D-247`) | `crates/tungsten-kit/src/`, `tungsten/tests/kit.rs`, `tungsten/tests/kit_recipes/`, `crates/tungsten/tests/fixtures/kit/` |
 | Game clock, `Time`, `Timer`, fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`, `D-146`) | `core/time.rs`, `core/physics/plugin.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs` |
 | Tuple queries, `With`/`Without`, bundles, `spawn_with`, `RigidBodyBundle` (`D-130`, `D-135`) | `core/ecs/query.rs`, `core/ecs/bundle.rs`, `core/ecs/world.rs`, `core/tests/ecs/query.rs` |
@@ -56,14 +56,14 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | Task | Open |
 | --- | --- |
 | Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/timing.rs`, `render/surface_acquire.rs` |
-| Pass order, direct present, late acquire (`D-087`, `D-145`) | `render/passes/order.rs`, `render/renderer.rs`, `render/surface_acquire.rs`, `render/screenshot.rs` |
+| Frame graph, direct present, late acquire (`D-087`, `D-145`, `D-305`) | `render/graph/`, `render/renderer.rs`, `render/surface_acquire.rs`, `render/screenshot.rs` |
 | Text engine, layout cache, world labels, retained nodes, font families, fallback (`D-085`, `D-115`–`D-117`, `D-123`, `D-161`) | `render/text.rs`, `render/text/engine.rs`, `render/text/nodes.rs`, `render/text/fonts.rs`, `render/text/gpu.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/engine_font.rs` |
 | Neutral text types, world labels, `TextMeasure`, `TextNodeStore` (`D-117`, `D-125`) | `core/text.rs` |
 | UI tree, layout, focus, hits, routing, tracks, prompts, capture, prewarm, keys, widgets (`D-124`, `D-125`, `D-149`, `D-163`, `D-164`, `D-235`) | `core/ui/`, `tungsten/testing/ui.rs`, `core/tests/ui/`, `tungsten/tests/ui_route.rs` |
 | UI paint list, overlay pipeline, text batches, layout stage, debug actions (`D-147`, `D-148`) | `core/ui/paint.rs`, `render/ui.rs`, `render/ui.wgsl`, `tungsten/app.rs`, `tungsten/ui_debug.rs`, `render/tests/ui.rs`, `render/tests/text_batches.rs` |
 | Render components, default sprite extract, `Extracts` channels (`D-042`, `D-086`, `D-113`, `D-114`, `D-138`) | `core/components.rs`, `tungsten/sprite_extract.rs`, `tungsten/extract.rs` |
 | Materials, the fragment prelude, post-stack (`D-058`, `D-231`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/` |
-| SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
+| SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/graph/frame.rs` |
 | Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |
 | Lighting (`D-061`) | `core/components.rs`, `core/lighting.rs`, `render/lighting.rs`, `render/lit_sprite.rs`, `assets/shaders/lit_sprite.wgsl`, `tungsten/light_extract.rs` |
 | Overlays, captures (`D-047`, `D-142`) | `core/debug_draw.rs`, `core/inspect.rs`, `render/debug_line.rs`, `render/screenshot.rs`, `render/image_diff.rs`, `tungsten/capture.rs`, `tungsten/script.rs`, `tungsten/physics_debug.rs`, `tungsten/systems_overlay.rs`, `tungsten/inspector.rs` |
@@ -75,7 +75,7 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 
 | Task | Open |
 | --- | --- |
-| Platformer, a game on the template run from its folder | `examples/01_platformer/README.md` (each mechanic's kit item), `examples/01_platformer/src/game.rs` and `examples/01_platformer/src/save.rs` (the seam), `examples/01_platformer/src/features/`, `examples/01_platformer/src/shell/` (the template's, copied), `examples/01_platformer/tests/game/` (`saves`, `playthrough`) |
+| Platformer, a game on the template run from its folder | `examples/01_platformer/README.md` (each mechanic's kit item), `examples/01_platformer/src/{game,save}.rs` (the seam), `examples/01_platformer/src/features/`, `examples/01_platformer/src/shell/` (the template's, copied), `examples/01_platformer/tests/game/` (`saves`, `playthrough`) |
 | Platformer art, level and layout regeneration; the actors' bodies as data | `examples/01_platformer/tools/{README.md,generate.py,level.py,level.json,content/,locks.json,actors.py}` (the locks `D-223`, the bodies `BODIES`), `examples/01_platformer/src/shared.rs` (`Body`) |
 | Benchmarks: workloads, knobs, guards, `boot`'s seeded assets | `examples/02_bench/src/<bench>.rs`, `examples/02_bench/src/knobs.rs`, `examples/02_bench/src/tests/guards.rs`, `docs/perf/benchmarks.md` |
 | Fixtures crate (`D-193`): scenes by `TUNGSTEN_FIXTURE`, pixel tests, UI sprite generator | `examples/03_fixtures/src/`, `examples/03_fixtures/tests/`, `examples/03_fixtures/tools/README.md` |

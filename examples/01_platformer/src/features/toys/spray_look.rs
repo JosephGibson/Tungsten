@@ -410,7 +410,7 @@ fn lay_core(world: &mut World, look: &mut SprayLook, spray: &Spray, angle: f32, 
         let centre = spray.start + spray.aim * (size.x * (k as f32 + 0.5));
         place(world, tile, centre, size, angle, scale);
         if let Some(state) = world.get_mut::<AnimationState>(tile) {
-            state.frame_index = frame;
+            state.frame_index = frame as u32;
         }
     }
 }

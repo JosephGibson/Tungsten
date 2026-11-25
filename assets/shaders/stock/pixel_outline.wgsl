@@ -29,20 +29,26 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+// @fx begin head
+fn pixel_outline_head(uv: vec2<f32>, p: Params) -> vec4<f32> {
     let dims = vec2<f32>(textureDimensions(src, 0));
-    let thickness = max(params.f.x, 1.0);
+    let thickness = max(p.f.x, 1.0);
     let step = thickness / dims;
-    let threshold = clamp(params.f.y, 0.0, 1.0);
-    let center = textureSample(src, src_sampler, in.uv);
-    let up = textureSample(src, src_sampler, in.uv + vec2<f32>(0.0, -step.y));
-    let down = textureSample(src, src_sampler, in.uv + vec2<f32>(0.0, step.y));
-    let left = textureSample(src, src_sampler, in.uv + vec2<f32>(-step.x, 0.0));
-    let right = textureSample(src, src_sampler, in.uv + vec2<f32>(step.x, 0.0));
+    let threshold = clamp(p.f.y, 0.0, 1.0);
+    let center = textureSample(src, src_sampler, uv);
+    let up = textureSample(src, src_sampler, uv + vec2<f32>(0.0, -step.y));
+    let down = textureSample(src, src_sampler, uv + vec2<f32>(0.0, step.y));
+    let left = textureSample(src, src_sampler, uv + vec2<f32>(-step.x, 0.0));
+    let right = textureSample(src, src_sampler, uv + vec2<f32>(step.x, 0.0));
     let neighbor_max = max(max(up.a, down.a), max(left.a, right.a));
     if (center.a < threshold && neighbor_max >= threshold) {
-        return vec4<f32>(params.v0.rgb, params.v0.a);
+        return vec4<f32>(p.v0.rgb, p.v0.a);
     }
     return center;
+}
+// @fx end
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return pixel_outline_head(in.uv, params);
 }

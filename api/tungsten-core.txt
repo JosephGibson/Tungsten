@@ -101,7 +101,7 @@ pub struct tungsten_core::assets::animation::AnimationState
 pub tungsten_core::assets::animation::AnimationState::accumulated_ms: f32
 pub tungsten_core::assets::animation::AnimationState::animation_id: alloc::string::String
 pub tungsten_core::assets::animation::AnimationState::finished: bool
-pub tungsten_core::assets::animation::AnimationState::frame_index: usize
+pub tungsten_core::assets::animation::AnimationState::frame_index: u32
 pub tungsten_core::assets::animation::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
@@ -406,6 +406,7 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::Da
 pub struct tungsten_core::assets::data::DataRegistry
 impl tungsten_core::assets::data::DataRegistry
 pub fn tungsten_core::assets::data::DataRegistry::contains_kind(&self, &str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::entries<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &T)>
 pub fn tungsten_core::assets::data::DataRegistry::entry_for_path(&self, &std::path::Path) -> core::option::Option<(&'static str, &str)>
 pub fn tungsten_core::assets::data::DataRegistry::get<T: 'static>(&self, &str) -> core::option::Option<&T>
 pub fn tungsten_core::assets::data::DataRegistry::ids(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
@@ -558,6 +559,9 @@ pub tungsten_core::assets::manifest::ManifestError::PhysicsLayerTaken
 pub tungsten_core::assets::manifest::ManifestError::PhysicsLayerTaken::first: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::PhysicsLayerTaken::layer: u32
 pub tungsten_core::assets::manifest::ManifestError::PhysicsLayerTaken::second: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::PostEffectShaderMissing
+pub tungsten_core::assets::manifest::ManifestError::PostEffectShaderMissing::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::PostEffectShaderMissing::shader: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::RoomIsTilemap
 pub tungsten_core::assets::manifest::ManifestError::RoomIsTilemap::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::SharedFile
@@ -767,6 +771,22 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::PhysicsMaterialEnt
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::PhysicsMaterialEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::PhysicsMaterialEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::PhysicsMaterialEntry
+pub struct tungsten_core::assets::manifest::PostEffectEntry
+pub tungsten_core::assets::manifest::PostEffectEntry::shader: alloc::string::String
+pub tungsten_core::assets::manifest::PostEffectEntry::uniform_defaults: tungsten_core::assets::material::MaterialUniformDefaults
+impl core::clone::Clone for tungsten_core::assets::manifest::PostEffectEntry
+pub fn tungsten_core::assets::manifest::PostEffectEntry::clone(&self) -> tungsten_core::assets::manifest::PostEffectEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::PostEffectEntry
+pub fn tungsten_core::assets::manifest::PostEffectEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::PostEffectEntry
+pub fn tungsten_core::assets::manifest::PostEffectEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::PostEffectEntry
+impl core::marker::Send for tungsten_core::assets::manifest::PostEffectEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::PostEffectEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::PostEffectEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::PostEffectEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::PostEffectEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::PostEffectEntry
 #[non_exhaustive] pub struct tungsten_core::assets::manifest::PrefabEntry
 pub tungsten_core::assets::manifest::PrefabEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::PrefabEntry
@@ -794,6 +814,7 @@ pub tungsten_core::assets::manifest::RawManifest::particle_meshes: std::collecti
 pub tungsten_core::assets::manifest::RawManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ParticleEntry>
 pub tungsten_core::assets::manifest::RawManifest::physics_layers: std::collections::hash::map::HashMap<alloc::string::String, u32>
 pub tungsten_core::assets::manifest::RawManifest::physics_materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::PhysicsMaterialEntry>
+pub tungsten_core::assets::manifest::RawManifest::post_effects: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::PostEffectEntry>
 pub tungsten_core::assets::manifest::RawManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::PrefabEntry>
 pub tungsten_core::assets::manifest::RawManifest::rooms: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::RoomEntry>
 pub tungsten_core::assets::manifest::RawManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ShaderEntry>
@@ -906,6 +927,7 @@ pub tungsten_core::assets::manifest::ResolvedManifest::particle_meshes: std::col
 pub tungsten_core::assets::manifest::ResolvedManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticle>
 pub tungsten_core::assets::manifest::ResolvedManifest::physics_layers: std::collections::hash::map::HashMap<alloc::string::String, u32>
 pub tungsten_core::assets::manifest::ResolvedManifest::physics_materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::physics::PhysicsMaterial>
+pub tungsten_core::assets::manifest::ResolvedManifest::post_effects: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPostEffect>
 pub tungsten_core::assets::manifest::ResolvedManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPrefab>
 pub tungsten_core::assets::manifest::ResolvedManifest::rooms: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFile>
 pub tungsten_core::assets::manifest::ResolvedManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedShader>
@@ -975,6 +997,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedParticleMe
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedParticleMesh
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedParticleMesh
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedParticleMesh
+pub struct tungsten_core::assets::manifest::ResolvedPostEffect
+pub tungsten_core::assets::manifest::ResolvedPostEffect::shader: alloc::string::String
+pub tungsten_core::assets::manifest::ResolvedPostEffect::source_manifest: std::path::PathBuf
+pub tungsten_core::assets::manifest::ResolvedPostEffect::uniform_defaults: tungsten_core::assets::material::MaterialUniformDefaults
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedPostEffect
+pub fn tungsten_core::assets::manifest::ResolvedPostEffect::clone(&self) -> tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedPostEffect
+pub fn tungsten_core::assets::manifest::ResolvedPostEffect::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedPostEffect
 #[non_exhaustive] pub struct tungsten_core::assets::manifest::ResolvedPrefab
 pub tungsten_core::assets::manifest::ResolvedPrefab::path: std::path::PathBuf
 impl tungsten_core::assets::manifest::ResolvedPrefab
@@ -1720,6 +1757,52 @@ pub fn [f32; 4]::lerp(Self, Self, f32) -> Self
 impl tungsten_core::assets::particle::Lerp for f32
 pub fn f32::lerp(Self, Self, f32) -> Self
 pub type tungsten_core::assets::particle::ParticleMeshAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleMesh>
+pub mod tungsten_core::assets::post_effect
+pub struct tungsten_core::assets::post_effect::PostEffectId(pub u32)
+impl core::clone::Clone for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::clone(&self) -> tungsten_core::assets::post_effect::PostEffectId
+impl core::cmp::Eq for tungsten_core::assets::post_effect::PostEffectId
+impl core::cmp::PartialEq for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::eq(&self, &tungsten_core::assets::post_effect::PostEffectId) -> bool
+impl core::fmt::Debug for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::StructuralPartialEq for tungsten_core::assets::post_effect::PostEffectId
+impl serde_core::ser::Serialize for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::Send for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::Sync for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::Unpin for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::UnsafeUnpin for tungsten_core::assets::post_effect::PostEffectId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::post_effect::PostEffectId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::post_effect::PostEffectId
+pub struct tungsten_core::assets::post_effect::PostEffectRegistry
+impl tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::allocate(&mut self, &str, std::path::PathBuf, alloc::string::String, tungsten_core::assets::material::MaterialUniformDefaults) -> tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::defaults_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<tungsten_core::assets::material::MaterialUniformDefaults>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::get(&self, &str) -> core::option::Option<tungsten_core::assets::post_effect::PostEffectId>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::assets::post_effect::PostEffectId)>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::name_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<&str>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::new() -> Self
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::pass(&self, &str) -> core::option::Option<tungsten_core::post::CustomPost>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::path_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::shader_name_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<&str>
+impl core::clone::Clone for tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::clone(&self) -> tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::default::Default for tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::default() -> tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::fmt::Debug for tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::Send for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::Sync for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::Unpin for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::post_effect::PostEffectRegistry
 pub mod tungsten_core::assets::prefab
 #[non_exhaustive] pub enum tungsten_core::assets::prefab::PrefabError
 pub tungsten_core::assets::prefab::PrefabError::Component
@@ -1829,6 +1912,31 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PreparedPrefab
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PreparedPrefab
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PreparedPrefab
 pub mod tungsten_core::assets::registry
+pub enum tungsten_core::assets::registry::SpriteAlpha
+pub tungsten_core::assets::registry::SpriteAlpha::Blend
+pub tungsten_core::assets::registry::SpriteAlpha::Cutout
+pub tungsten_core::assets::registry::SpriteAlpha::Opaque
+impl tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::measure(&[u8]) -> Self
+pub fn tungsten_core::assets::registry::SpriteAlpha::solid(self, tungsten_core::assets::manifest::FilterMode) -> bool
+impl core::clone::Clone for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::clone(&self) -> tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::Eq for tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::PartialEq for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::eq(&self, &tungsten_core::assets::registry::SpriteAlpha) -> bool
+impl core::default::Default for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::default() -> tungsten_core::assets::registry::SpriteAlpha
+impl core::fmt::Debug for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::StructuralPartialEq for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Freeze for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Send for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Sync for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Unpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::SpriteAlpha
 pub struct tungsten_core::assets::registry::AssetRegistry
 impl tungsten_core::assets::registry::AssetRegistry
 pub fn tungsten_core::assets::registry::AssetRegistry::get_sprite(&self, &str) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
@@ -1837,6 +1945,8 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut s
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_alpha(&mut self, &str, tungsten_core::assets::registry::SpriteAlpha)
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_drawn(&mut self, &str, [u32; 4])
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
@@ -1880,8 +1990,10 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::FontRegistry
 pub struct tungsten_core::assets::registry::SpriteAsset
+pub tungsten_core::assets::registry::SpriteAsset::alpha: tungsten_core::assets::registry::SpriteAlpha
 pub tungsten_core::assets::registry::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::assets::registry::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
+pub tungsten_core::assets::registry::SpriteAsset::drawn: [u32; 4]
 pub tungsten_core::assets::registry::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::registry::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::assets::registry::SpriteAsset::height: u32
@@ -1894,6 +2006,7 @@ pub tungsten_core::assets::registry::SpriteAsset::rect: core::option::Option<[u3
 pub tungsten_core::assets::registry::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::assets::registry::SpriteAsset::width: u32
 impl tungsten_core::assets::registry::SpriteAsset
+pub fn tungsten_core::assets::registry::SpriteAsset::drawn_span(&self) -> ([f32; 2], [f32; 2])
 pub fn tungsten_core::assets::registry::SpriteAsset::point(&self, &str) -> core::option::Option<[f32; 2]>
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
 pub fn tungsten_core::assets::registry::SpriteAsset::clone(&self) -> tungsten_core::assets::registry::SpriteAsset
@@ -1925,6 +2038,7 @@ impl core::marker::Unpin for tungsten_core::assets::registry::TextureHandle
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::TextureHandle
+pub fn tungsten_core::assets::registry::drawn_box(&[u8], u32) -> [u32; 4]
 pub type tungsten_core::assets::registry::SpriteAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::registry::SpriteAsset>
 pub mod tungsten_core::assets::room
 pub mod tungsten_core::assets::room::tileset
@@ -4129,6 +4243,9 @@ pub tungsten_core::assets::ManifestError::PhysicsLayerTaken
 pub tungsten_core::assets::ManifestError::PhysicsLayerTaken::first: alloc::string::String
 pub tungsten_core::assets::ManifestError::PhysicsLayerTaken::layer: u32
 pub tungsten_core::assets::ManifestError::PhysicsLayerTaken::second: alloc::string::String
+pub tungsten_core::assets::ManifestError::PostEffectShaderMissing
+pub tungsten_core::assets::ManifestError::PostEffectShaderMissing::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::PostEffectShaderMissing::shader: alloc::string::String
 pub tungsten_core::assets::ManifestError::RoomIsTilemap
 pub tungsten_core::assets::ManifestError::RoomIsTilemap::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::SharedFile
@@ -4499,6 +4616,31 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::SlopeRise
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::SlopeRise
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::SlopeRise
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::SlopeRise
+pub enum tungsten_core::assets::SpriteAlpha
+pub tungsten_core::assets::SpriteAlpha::Blend
+pub tungsten_core::assets::SpriteAlpha::Cutout
+pub tungsten_core::assets::SpriteAlpha::Opaque
+impl tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::measure(&[u8]) -> Self
+pub fn tungsten_core::assets::registry::SpriteAlpha::solid(self, tungsten_core::assets::manifest::FilterMode) -> bool
+impl core::clone::Clone for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::clone(&self) -> tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::Eq for tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::PartialEq for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::eq(&self, &tungsten_core::assets::registry::SpriteAlpha) -> bool
+impl core::default::Default for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::default() -> tungsten_core::assets::registry::SpriteAlpha
+impl core::fmt::Debug for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::StructuralPartialEq for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Freeze for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Send for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Sync for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Unpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::SpriteAlpha
 #[non_exhaustive] pub enum tungsten_core::assets::StagedLoadError
 pub tungsten_core::assets::StagedLoadError::Data
 pub tungsten_core::assets::StagedLoadError::Data::id: alloc::string::String
@@ -4653,7 +4795,7 @@ pub struct tungsten_core::assets::AnimationState
 pub tungsten_core::assets::AnimationState::accumulated_ms: f32
 pub tungsten_core::assets::AnimationState::animation_id: alloc::string::String
 pub tungsten_core::assets::AnimationState::finished: bool
-pub tungsten_core::assets::AnimationState::frame_index: usize
+pub tungsten_core::assets::AnimationState::frame_index: u32
 pub tungsten_core::assets::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
@@ -4707,6 +4849,8 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut s
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_alpha(&mut self, &str, tungsten_core::assets::registry::SpriteAlpha)
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_drawn(&mut self, &str, [u32; 4])
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
@@ -4953,6 +5097,7 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::Da
 pub struct tungsten_core::assets::DataRegistry
 impl tungsten_core::assets::data::DataRegistry
 pub fn tungsten_core::assets::data::DataRegistry::contains_kind(&self, &str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::entries<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &T)>
 pub fn tungsten_core::assets::data::DataRegistry::entry_for_path(&self, &std::path::Path) -> core::option::Option<(&'static str, &str)>
 pub fn tungsten_core::assets::data::DataRegistry::get<T: 'static>(&self, &str) -> core::option::Option<&T>
 pub fn tungsten_core::assets::data::DataRegistry::ids(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
@@ -5482,6 +5627,67 @@ impl core::marker::Unpin for tungsten_core::assets::particle::ParticleMeshRegist
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::ParticleMeshRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::ParticleMeshRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleMeshRegistry
+pub struct tungsten_core::assets::PostEffectEntry
+pub tungsten_core::assets::PostEffectEntry::shader: alloc::string::String
+pub tungsten_core::assets::PostEffectEntry::uniform_defaults: tungsten_core::assets::material::MaterialUniformDefaults
+impl core::clone::Clone for tungsten_core::assets::manifest::PostEffectEntry
+pub fn tungsten_core::assets::manifest::PostEffectEntry::clone(&self) -> tungsten_core::assets::manifest::PostEffectEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::PostEffectEntry
+pub fn tungsten_core::assets::manifest::PostEffectEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::PostEffectEntry
+pub fn tungsten_core::assets::manifest::PostEffectEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::PostEffectEntry
+impl core::marker::Send for tungsten_core::assets::manifest::PostEffectEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::PostEffectEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::PostEffectEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::PostEffectEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::PostEffectEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::PostEffectEntry
+pub struct tungsten_core::assets::PostEffectId(pub u32)
+impl core::clone::Clone for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::clone(&self) -> tungsten_core::assets::post_effect::PostEffectId
+impl core::cmp::Eq for tungsten_core::assets::post_effect::PostEffectId
+impl core::cmp::PartialEq for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::eq(&self, &tungsten_core::assets::post_effect::PostEffectId) -> bool
+impl core::fmt::Debug for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::StructuralPartialEq for tungsten_core::assets::post_effect::PostEffectId
+impl serde_core::ser::Serialize for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::Send for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::Sync for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::Unpin for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::UnsafeUnpin for tungsten_core::assets::post_effect::PostEffectId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::post_effect::PostEffectId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::post_effect::PostEffectId
+pub struct tungsten_core::assets::PostEffectRegistry
+impl tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::allocate(&mut self, &str, std::path::PathBuf, alloc::string::String, tungsten_core::assets::material::MaterialUniformDefaults) -> tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::defaults_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<tungsten_core::assets::material::MaterialUniformDefaults>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::get(&self, &str) -> core::option::Option<tungsten_core::assets::post_effect::PostEffectId>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::assets::post_effect::PostEffectId)>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::name_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<&str>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::new() -> Self
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::pass(&self, &str) -> core::option::Option<tungsten_core::post::CustomPost>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::path_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::shader_name_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<&str>
+impl core::clone::Clone for tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::clone(&self) -> tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::default::Default for tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::default() -> tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::fmt::Debug for tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::Send for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::Sync for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::Unpin for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::post_effect::PostEffectRegistry
 #[non_exhaustive] pub struct tungsten_core::assets::PrefabData
 pub tungsten_core::assets::PrefabData::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub tungsten_core::assets::PrefabData::extends: core::option::Option<alloc::string::String>
@@ -5654,6 +5860,7 @@ pub tungsten_core::assets::ResolvedManifest::particle_meshes: std::collections::
 pub tungsten_core::assets::ResolvedManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticle>
 pub tungsten_core::assets::ResolvedManifest::physics_layers: std::collections::hash::map::HashMap<alloc::string::String, u32>
 pub tungsten_core::assets::ResolvedManifest::physics_materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::physics::PhysicsMaterial>
+pub tungsten_core::assets::ResolvedManifest::post_effects: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPostEffect>
 pub tungsten_core::assets::ResolvedManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPrefab>
 pub tungsten_core::assets::ResolvedManifest::rooms: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFile>
 pub tungsten_core::assets::ResolvedManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedShader>
@@ -5723,6 +5930,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedParticleMe
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedParticleMesh
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedParticleMesh
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedParticleMesh
+pub struct tungsten_core::assets::ResolvedPostEffect
+pub tungsten_core::assets::ResolvedPostEffect::shader: alloc::string::String
+pub tungsten_core::assets::ResolvedPostEffect::source_manifest: std::path::PathBuf
+pub tungsten_core::assets::ResolvedPostEffect::uniform_defaults: tungsten_core::assets::material::MaterialUniformDefaults
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedPostEffect
+pub fn tungsten_core::assets::manifest::ResolvedPostEffect::clone(&self) -> tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedPostEffect
+pub fn tungsten_core::assets::manifest::ResolvedPostEffect::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedPostEffect
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedPostEffect
 #[non_exhaustive] pub struct tungsten_core::assets::ResolvedPrefab
 pub tungsten_core::assets::ResolvedPrefab::path: std::path::PathBuf
 impl tungsten_core::assets::manifest::ResolvedPrefab
@@ -6383,8 +6605,10 @@ impl core::marker::UnsafeUnpin for tungsten_core::SpawnedRoom
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SpawnedRoom
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SpawnedRoom
 pub struct tungsten_core::assets::SpriteAsset
+pub tungsten_core::assets::SpriteAsset::alpha: tungsten_core::assets::registry::SpriteAlpha
 pub tungsten_core::assets::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::assets::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
+pub tungsten_core::assets::SpriteAsset::drawn: [u32; 4]
 pub tungsten_core::assets::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::assets::SpriteAsset::height: u32
@@ -6397,6 +6621,7 @@ pub tungsten_core::assets::SpriteAsset::rect: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::assets::SpriteAsset::width: u32
 impl tungsten_core::assets::registry::SpriteAsset
+pub fn tungsten_core::assets::registry::SpriteAsset::drawn_span(&self) -> ([f32; 2], [f32; 2])
 pub fn tungsten_core::assets::registry::SpriteAsset::point(&self, &str) -> core::option::Option<[f32; 2]>
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
 pub fn tungsten_core::assets::registry::SpriteAsset::clone(&self) -> tungsten_core::assets::registry::SpriteAsset
@@ -6742,6 +6967,7 @@ pub fn tungsten_core::assets::RoomGenerator::generate(&self, &mut tungsten_core:
 pub fn tungsten_core::assets::RoomGenerator::migrate(&self, &tungsten_core::Generation, core::option::Option<&tungsten_core::Generation>, &mut serde_json::value::Value) -> bool
 pub fn tungsten_core::assets::RoomGenerator::reproduces(&self, u32) -> bool
 pub fn tungsten_core::assets::RoomGenerator::version(&self) -> u32
+pub fn tungsten_core::assets::drawn_box(&[u8], u32) -> [u32; 4]
 pub fn tungsten_core::assets::oversized<'a, 'b>(&'b [tungsten_core::assets::atlas::PackInput<'a>], u32, u32) -> core::option::Option<&'b tungsten_core::assets::atlas::PackInput<'a>>
 pub fn tungsten_core::assets::pack_shelf(&[tungsten_core::assets::atlas::PackInput<'_>], u32, u32) -> tungsten_core::assets::atlas::PackResult
 pub type tungsten_core::assets::ParticleMeshAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleMesh>
@@ -7385,9 +7611,11 @@ pub struct tungsten_core::components::Light
 pub tungsten_core::components::Light::color: glam::f32::vec3::Vec3
 pub tungsten_core::components::Light::intensity: f32
 pub tungsten_core::components::Light::kind: tungsten_core::components::LightKind
+pub tungsten_core::components::Light::priority: u8
 impl tungsten_core::components::Light
 pub fn tungsten_core::components::Light::directional(glam::f32::vec3::Vec3, f32) -> Self
 pub fn tungsten_core::components::Light::point(glam::f32::vec3::Vec3, f32) -> Self
+pub fn tungsten_core::components::Light::with_priority(self, u8) -> Self
 impl core::clone::Clone for tungsten_core::components::Light
 pub fn tungsten_core::components::Light::clone(&self) -> tungsten_core::components::Light
 impl core::cmp::PartialEq for tungsten_core::components::Light
@@ -7698,6 +7926,37 @@ pub fn tungsten_core::components::parallax_world_position(glam::f32::vec2::Vec2,
 pub fn tungsten_core::components::sprite_point(&tungsten_core::World, tungsten_core::Entity, &str) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::components::sync_position_to_transform(&mut tungsten_core::World)
 pub mod tungsten_core::config
+#[non_exhaustive] pub enum tungsten_core::config::BloomBase
+pub tungsten_core::config::BloomBase::Auto
+pub tungsten_core::config::BloomBase::Half
+pub tungsten_core::config::BloomBase::Quarter
+impl tungsten_core::config::BloomBase
+pub const tungsten_core::config::BloomBase::AUTO_HALF_ROWS: u32
+pub const fn tungsten_core::config::BloomBase::as_str(self) -> &'static str
+pub const fn tungsten_core::config::BloomBase::halvings(self, u32) -> u32
+impl core::clone::Clone for tungsten_core::config::BloomBase
+pub fn tungsten_core::config::BloomBase::clone(&self) -> tungsten_core::config::BloomBase
+impl core::cmp::Eq for tungsten_core::config::BloomBase
+impl core::cmp::PartialEq for tungsten_core::config::BloomBase
+pub fn tungsten_core::config::BloomBase::eq(&self, &tungsten_core::config::BloomBase) -> bool
+impl core::default::Default for tungsten_core::config::BloomBase
+pub fn tungsten_core::config::BloomBase::default() -> tungsten_core::config::BloomBase
+impl core::fmt::Debug for tungsten_core::config::BloomBase
+pub fn tungsten_core::config::BloomBase::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::config::BloomBase
+impl core::marker::StructuralPartialEq for tungsten_core::config::BloomBase
+impl core::str::traits::FromStr for tungsten_core::config::BloomBase
+pub type tungsten_core::config::BloomBase::Err = tungsten_core::config::ParseBloomBaseError
+pub fn tungsten_core::config::BloomBase::from_str(&str) -> core::result::Result<Self, Self::Err>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::BloomBase
+pub fn tungsten_core::config::BloomBase::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::BloomBase
+impl core::marker::Send for tungsten_core::config::BloomBase
+impl core::marker::Sync for tungsten_core::config::BloomBase
+impl core::marker::Unpin for tungsten_core::config::BloomBase
+impl core::marker::UnsafeUnpin for tungsten_core::config::BloomBase
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::BloomBase
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::BloomBase
 pub enum tungsten_core::config::ConfigError
 pub tungsten_core::config::ConfigError::InvalidEnvOverride
 pub tungsten_core::config::ConfigError::InvalidEnvOverride::expected: &'static str
@@ -7755,6 +8014,36 @@ impl core::marker::Unpin for tungsten_core::config::DepthSortMode
 impl core::marker::UnsafeUnpin for tungsten_core::config::DepthSortMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::DepthSortMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::DepthSortMode
+#[non_exhaustive] pub enum tungsten_core::config::HdrMode
+pub tungsten_core::config::HdrMode::Off
+pub tungsten_core::config::HdrMode::Rg11b10
+pub tungsten_core::config::HdrMode::Rgba16f
+impl tungsten_core::config::HdrMode
+pub const fn tungsten_core::config::HdrMode::as_str(self) -> &'static str
+pub const fn tungsten_core::config::HdrMode::is_float(self) -> bool
+impl core::clone::Clone for tungsten_core::config::HdrMode
+pub fn tungsten_core::config::HdrMode::clone(&self) -> tungsten_core::config::HdrMode
+impl core::cmp::Eq for tungsten_core::config::HdrMode
+impl core::cmp::PartialEq for tungsten_core::config::HdrMode
+pub fn tungsten_core::config::HdrMode::eq(&self, &tungsten_core::config::HdrMode) -> bool
+impl core::default::Default for tungsten_core::config::HdrMode
+pub fn tungsten_core::config::HdrMode::default() -> tungsten_core::config::HdrMode
+impl core::fmt::Debug for tungsten_core::config::HdrMode
+pub fn tungsten_core::config::HdrMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::config::HdrMode
+impl core::marker::StructuralPartialEq for tungsten_core::config::HdrMode
+impl core::str::traits::FromStr for tungsten_core::config::HdrMode
+pub type tungsten_core::config::HdrMode::Err = tungsten_core::config::ParseHdrModeError
+pub fn tungsten_core::config::HdrMode::from_str(&str) -> core::result::Result<Self, Self::Err>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::HdrMode
+pub fn tungsten_core::config::HdrMode::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::HdrMode
+impl core::marker::Send for tungsten_core::config::HdrMode
+impl core::marker::Sync for tungsten_core::config::HdrMode
+impl core::marker::Unpin for tungsten_core::config::HdrMode
+impl core::marker::UnsafeUnpin for tungsten_core::config::HdrMode
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::HdrMode
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::HdrMode
 #[non_exhaustive] pub enum tungsten_core::config::PostAaMode
 pub tungsten_core::config::PostAaMode::Off
 pub tungsten_core::config::PostAaMode::SmaaHigh
@@ -7957,6 +8246,26 @@ impl core::marker::Unpin for tungsten_core::config::LoggingConfig
 impl core::marker::UnsafeUnpin for tungsten_core::config::LoggingConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::LoggingConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::LoggingConfig
+pub struct tungsten_core::config::ParseBloomBaseError
+impl core::clone::Clone for tungsten_core::config::ParseBloomBaseError
+pub fn tungsten_core::config::ParseBloomBaseError::clone(&self) -> tungsten_core::config::ParseBloomBaseError
+impl core::cmp::Eq for tungsten_core::config::ParseBloomBaseError
+impl core::cmp::PartialEq for tungsten_core::config::ParseBloomBaseError
+pub fn tungsten_core::config::ParseBloomBaseError::eq(&self, &tungsten_core::config::ParseBloomBaseError) -> bool
+impl core::error::Error for tungsten_core::config::ParseBloomBaseError
+impl core::fmt::Debug for tungsten_core::config::ParseBloomBaseError
+pub fn tungsten_core::config::ParseBloomBaseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::config::ParseBloomBaseError
+pub fn tungsten_core::config::ParseBloomBaseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::config::ParseBloomBaseError
+impl core::marker::StructuralPartialEq for tungsten_core::config::ParseBloomBaseError
+impl core::marker::Freeze for tungsten_core::config::ParseBloomBaseError
+impl core::marker::Send for tungsten_core::config::ParseBloomBaseError
+impl core::marker::Sync for tungsten_core::config::ParseBloomBaseError
+impl core::marker::Unpin for tungsten_core::config::ParseBloomBaseError
+impl core::marker::UnsafeUnpin for tungsten_core::config::ParseBloomBaseError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::ParseBloomBaseError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::ParseBloomBaseError
 pub struct tungsten_core::config::ParseDepthSortModeError
 impl core::clone::Clone for tungsten_core::config::ParseDepthSortModeError
 pub fn tungsten_core::config::ParseDepthSortModeError::clone(&self) -> tungsten_core::config::ParseDepthSortModeError
@@ -7977,6 +8286,26 @@ impl core::marker::Unpin for tungsten_core::config::ParseDepthSortModeError
 impl core::marker::UnsafeUnpin for tungsten_core::config::ParseDepthSortModeError
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::ParseDepthSortModeError
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::ParseDepthSortModeError
+pub struct tungsten_core::config::ParseHdrModeError
+impl core::clone::Clone for tungsten_core::config::ParseHdrModeError
+pub fn tungsten_core::config::ParseHdrModeError::clone(&self) -> tungsten_core::config::ParseHdrModeError
+impl core::cmp::Eq for tungsten_core::config::ParseHdrModeError
+impl core::cmp::PartialEq for tungsten_core::config::ParseHdrModeError
+pub fn tungsten_core::config::ParseHdrModeError::eq(&self, &tungsten_core::config::ParseHdrModeError) -> bool
+impl core::error::Error for tungsten_core::config::ParseHdrModeError
+impl core::fmt::Debug for tungsten_core::config::ParseHdrModeError
+pub fn tungsten_core::config::ParseHdrModeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::config::ParseHdrModeError
+pub fn tungsten_core::config::ParseHdrModeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::config::ParseHdrModeError
+impl core::marker::StructuralPartialEq for tungsten_core::config::ParseHdrModeError
+impl core::marker::Freeze for tungsten_core::config::ParseHdrModeError
+impl core::marker::Send for tungsten_core::config::ParseHdrModeError
+impl core::marker::Sync for tungsten_core::config::ParseHdrModeError
+impl core::marker::Unpin for tungsten_core::config::ParseHdrModeError
+impl core::marker::UnsafeUnpin for tungsten_core::config::ParseHdrModeError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::ParseHdrModeError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::ParseHdrModeError
 pub struct tungsten_core::config::ParsePostAaModeError
 impl core::clone::Clone for tungsten_core::config::ParsePostAaModeError
 pub fn tungsten_core::config::ParsePostAaModeError::clone(&self) -> tungsten_core::config::ParsePostAaModeError
@@ -8041,6 +8370,8 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::ParticlesSe
 #[non_exhaustive] pub struct tungsten_core::config::PhysicsSection
 pub tungsten_core::config::PhysicsSection::broadphase_cell: f32
 pub tungsten_core::config::PhysicsSection::gravity: [f32; 2]
+pub tungsten_core::config::PhysicsSection::worker_spin_ms: u32
+pub tungsten_core::config::PhysicsSection::workers: u32
 impl tungsten_core::config::PhysicsSection
 pub fn tungsten_core::config::PhysicsSection::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
 impl core::clone::Clone for tungsten_core::config::PhysicsSection
@@ -8062,15 +8393,22 @@ impl core::marker::UnsafeUnpin for tungsten_core::config::PhysicsSection
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::PhysicsSection
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::PhysicsSection
 pub struct tungsten_core::config::RenderConfig
+pub tungsten_core::config::RenderConfig::bloom_base: tungsten_core::config::BloomBase
 pub tungsten_core::config::RenderConfig::bloom_max_mips: u32
 pub tungsten_core::config::RenderConfig::clear_color: [f64; 4]
 pub tungsten_core::config::RenderConfig::depth_enabled: bool
 pub tungsten_core::config::RenderConfig::depth_sort: tungsten_core::config::DepthSortMode
+pub tungsten_core::config::RenderConfig::hdr: tungsten_core::config::HdrMode
+pub tungsten_core::config::RenderConfig::light_cap: u32
+pub tungsten_core::config::RenderConfig::light_tiles: bool
 pub tungsten_core::config::RenderConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::config::RenderConfig::msaa: u32
 pub tungsten_core::config::RenderConfig::post_aa: tungsten_core::config::PostAaMode
+pub tungsten_core::config::RenderConfig::post_fuse: bool
 pub tungsten_core::config::RenderConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::config::RenderConfig::system_fonts: bool
+impl tungsten_core::config::RenderConfig
+pub fn tungsten_core::config::RenderConfig::lights(&self) -> usize
 impl core::clone::Clone for tungsten_core::config::RenderConfig
 pub fn tungsten_core::config::RenderConfig::clone(&self) -> tungsten_core::config::RenderConfig
 impl core::default::Default for tungsten_core::config::RenderConfig
@@ -8173,6 +8511,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::config::WindowConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::WindowConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::WindowConfig
 pub const fn tungsten_core::config::is_supported_bloom_max_mips(u32) -> bool
+pub const fn tungsten_core::config::is_supported_light_cap(u32) -> bool
 pub const fn tungsten_core::config::is_supported_msaa(u32) -> bool
 pub mod tungsten_core::debug_draw
 pub enum tungsten_core::debug_draw::DebugShape
@@ -10118,6 +10457,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::lighting::AmbientLight
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::lighting::AmbientLight
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::lighting::AmbientLight
 pub const tungsten_core::lighting::LIGHT_CAP: usize
+pub const tungsten_core::lighting::MAX_LIGHT_CAP: usize
 pub const tungsten_core::lighting::MIN_LIGHT_RADIUS: f32
 pub fn tungsten_core::lighting::light_at(&tungsten_core::World, glam::f32::vec2::Vec2) -> glam::f32::vec3::Vec3
 pub fn tungsten_core::lighting::light_from(&tungsten_core::components::Light, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> glam::f32::vec3::Vec3
@@ -10941,6 +11281,34 @@ impl core::marker::Unpin for tungsten_core::PhysicsPlugin
 impl core::marker::UnsafeUnpin for tungsten_core::PhysicsPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::PhysicsPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::PhysicsPlugin
+pub struct tungsten_core::physics::PhysicsWorkers
+impl tungsten_core::physics::PhysicsWorkers
+pub const tungsten_core::physics::PhysicsWorkers::AUTO_MAX: usize
+pub const tungsten_core::physics::PhysicsWorkers::MAX: usize
+pub const tungsten_core::physics::PhysicsWorkers::SERIAL: Self
+pub const tungsten_core::physics::PhysicsWorkers::SPIN_MAX: core::time::Duration
+pub fn tungsten_core::physics::PhysicsWorkers::auto() -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::from_setting(u32) -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::new(usize) -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::participants(self) -> usize
+pub fn tungsten_core::physics::PhysicsWorkers::spin(self) -> core::time::Duration
+pub fn tungsten_core::physics::PhysicsWorkers::with_spin(self, core::time::Duration) -> Self
+impl core::clone::Clone for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::clone(&self) -> tungsten_core::physics::PhysicsWorkers
+impl core::cmp::Eq for tungsten_core::physics::PhysicsWorkers
+impl core::cmp::PartialEq for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::eq(&self, &tungsten_core::physics::PhysicsWorkers) -> bool
+impl core::fmt::Debug for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::PhysicsWorkers
+impl core::marker::StructuralPartialEq for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Freeze for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Send for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Sync for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Unpin for tungsten_core::physics::PhysicsWorkers
+impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsWorkers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsWorkers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsWorkers
 pub struct tungsten_core::physics::Position(pub glam::f32::vec2::Vec2)
 impl tungsten_core::physics::components::Position
 pub fn tungsten_core::physics::components::Position::new(f32, f32) -> Self
@@ -11345,6 +11713,7 @@ pub tungsten_core::post::PostPass::Bloom(tungsten_core::post::BloomParams)
 pub tungsten_core::post::PostPass::ChromaticAberration(f32)
 pub tungsten_core::post::PostPass::ColorAdjust(tungsten_core::post::ColorAdjustParams)
 pub tungsten_core::post::PostPass::Crt(tungsten_core::post::CrtParams)
+pub tungsten_core::post::PostPass::Custom(tungsten_core::post::CustomPost)
 pub tungsten_core::post::PostPass::Dissolve(tungsten_core::post::DissolveParams)
 pub tungsten_core::post::PostPass::Dither(tungsten_core::post::DitherParams)
 pub tungsten_core::post::PostPass::Fade(tungsten_core::post::FadeParams)
@@ -11509,6 +11878,33 @@ impl core::marker::Unpin for tungsten_core::post::CrtParams
 impl core::marker::UnsafeUnpin for tungsten_core::post::CrtParams
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::CrtParams
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::CrtParams
+pub struct tungsten_core::post::CustomPost
+pub tungsten_core::post::CustomPost::effect: tungsten_core::assets::post_effect::PostEffectId
+pub tungsten_core::post::CustomPost::f32s: [f32; 4]
+pub tungsten_core::post::CustomPost::i32s: [i32; 4]
+pub tungsten_core::post::CustomPost::vec4: [[f32; 4]; 4]
+impl tungsten_core::post::CustomPost
+pub fn tungsten_core::post::CustomPost::new(tungsten_core::assets::post_effect::PostEffectId, tungsten_core::assets::material::MaterialUniformDefaults) -> Self
+pub fn tungsten_core::post::CustomPost::set_f32(&mut self, usize, f32) -> &mut Self
+pub fn tungsten_core::post::CustomPost::set_i32(&mut self, usize, i32) -> &mut Self
+pub fn tungsten_core::post::CustomPost::set_vec4(&mut self, usize, [f32; 4]) -> &mut Self
+impl core::clone::Clone for tungsten_core::post::CustomPost
+pub fn tungsten_core::post::CustomPost::clone(&self) -> tungsten_core::post::CustomPost
+impl core::cmp::PartialEq for tungsten_core::post::CustomPost
+pub fn tungsten_core::post::CustomPost::eq(&self, &tungsten_core::post::CustomPost) -> bool
+impl core::fmt::Debug for tungsten_core::post::CustomPost
+pub fn tungsten_core::post::CustomPost::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::post::CustomPost
+impl core::marker::StructuralPartialEq for tungsten_core::post::CustomPost
+impl serde_core::ser::Serialize for tungsten_core::post::CustomPost
+pub fn tungsten_core::post::CustomPost::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for tungsten_core::post::CustomPost
+impl core::marker::Send for tungsten_core::post::CustomPost
+impl core::marker::Sync for tungsten_core::post::CustomPost
+impl core::marker::Unpin for tungsten_core::post::CustomPost
+impl core::marker::UnsafeUnpin for tungsten_core::post::CustomPost
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::CustomPost
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::CustomPost
 pub struct tungsten_core::post::DissolveParams
 pub tungsten_core::post::DissolveParams::edge_color: [f32; 4]
 pub tungsten_core::post::DissolveParams::noise_scale: f32
@@ -12203,11 +12599,14 @@ pub struct tungsten_core::save::SaveSlots
 impl tungsten_core::save::SaveSlots
 pub fn tungsten_core::save::SaveSlots::delete(&self, &str) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::dir(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::save::SaveSlots::flush(&self) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::list(&self) -> core::result::Result<tungsten_core::save::SlotList, tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::load<T: tungsten_core::save::SaveData>(&self, &str) -> core::result::Result<T, tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::new(core::option::Option<std::path::PathBuf>) -> Self
 pub fn tungsten_core::save::SaveSlots::save<T: tungsten_core::save::SaveData>(&self, &str, &T) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::save_stamped<T: serde_core::ser::Serialize>(&self, &str, &T, &tungsten_core::save::SaveStamp) -> core::result::Result<(), tungsten_core::save::SaveError>
+pub fn tungsten_core::save::SaveSlots::write_behind(&mut self)
+pub fn tungsten_core::save::SaveSlots::writes_behind(&self) -> bool
 impl core::clone::Clone for tungsten_core::save::SaveSlots
 pub fn tungsten_core::save::SaveSlots::clone(&self) -> tungsten_core::save::SaveSlots
 impl core::default::Default for tungsten_core::save::SaveSlots
@@ -12350,6 +12749,7 @@ pub fn tungsten_core::save::SaveData::migrate_step(u32, serde_json::value::Value
 pub fn tungsten_core::save::capture_world(&tungsten_core::World) -> core::result::Result<tungsten_core::save::WorldSave, tungsten_core::save::CaptureError>
 pub fn tungsten_core::save::check_world(&mut tungsten_core::World, &tungsten_core::save::WorldSave) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::enter_area<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &str, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
+pub fn tungsten_core::save::expand_tables(&mut serde_json::value::Value) -> core::result::Result<(), alloc::string::String>
 pub fn tungsten_core::save::name(&mut tungsten_core::World, tungsten_core::Entity, core::option::Option<&str>, &str) -> core::result::Result<tungsten_core::SaveId, tungsten_core::save::NameError>
 pub fn tungsten_core::save::order_key(&tungsten_core::World, tungsten_core::Entity) -> (bool, u64)
 pub fn tungsten_core::save::regenerate(&mut tungsten_core::World, &tungsten_core::save::WorldSave) -> core::result::Result<alloc::vec::Vec<tungsten_core::GeneratedRooms>, tungsten_core::GenerateError>
@@ -18381,6 +18781,27 @@ pub fn tungsten_core::ui::contrast_ratio([u8; 4], [u8; 4]) -> f32
 pub fn tungsten_core::ui::to_physical(tungsten_core::ui::geometry::Rect, f32) -> tungsten_core::ui::paint::ClipRect
 pub fn tungsten_core::ui::ui_animate_system(&mut tungsten_core::World)
 pub fn tungsten_core::ui::ui_route_system(&mut tungsten_core::World)
+pub mod tungsten_core::workers
+pub struct tungsten_core::workers::SystemWorkers
+impl tungsten_core::workers::SystemWorkers
+pub const tungsten_core::workers::SystemWorkers::MAX: usize
+pub fn tungsten_core::workers::SystemWorkers::forced(usize, usize) -> Self
+pub fn tungsten_core::workers::SystemWorkers::forks(&self, usize, usize, usize) -> bool
+pub fn tungsten_core::workers::SystemWorkers::map<S, O>(&mut self, S, usize, usize, usize, &mut alloc::vec::Vec<O>, fn(&S, core::ops::range::Range<usize>, &mut alloc::vec::Vec<O>)) -> S where S: core::marker::Send + core::marker::Sync + 'static, O: core::marker::Send + 'static
+pub fn tungsten_core::workers::SystemWorkers::new(usize) -> Self
+pub fn tungsten_core::workers::SystemWorkers::participants(&self) -> usize
+pub fn tungsten_core::workers::SystemWorkers::started(&self) -> bool
+impl core::fmt::Debug for tungsten_core::workers::SystemWorkers
+pub fn tungsten_core::workers::SystemWorkers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::workers::SystemWorkers
+impl core::marker::Send for tungsten_core::workers::SystemWorkers
+impl core::marker::Sync for tungsten_core::workers::SystemWorkers
+impl core::marker::Unpin for tungsten_core::workers::SystemWorkers
+impl core::marker::UnsafeUnpin for tungsten_core::workers::SystemWorkers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::workers::SystemWorkers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::workers::SystemWorkers
+pub fn tungsten_core::workers::forks(&tungsten_core::World, usize, usize, usize) -> bool
+pub fn tungsten_core::workers::map<S, O>(&mut tungsten_core::World, S, usize, usize, usize, &mut alloc::vec::Vec<O>, fn(&S, core::ops::range::Range<usize>, &mut alloc::vec::Vec<O>)) -> S where S: core::marker::Send + core::marker::Sync + 'static, O: core::marker::Send + 'static
 pub enum tungsten_core::ActionMapError
 pub tungsten_core::ActionMapError::Io
 pub tungsten_core::ActionMapError::Io::path: alloc::string::String
@@ -19397,6 +19818,9 @@ pub tungsten_core::ManifestError::PhysicsLayerTaken
 pub tungsten_core::ManifestError::PhysicsLayerTaken::first: alloc::string::String
 pub tungsten_core::ManifestError::PhysicsLayerTaken::layer: u32
 pub tungsten_core::ManifestError::PhysicsLayerTaken::second: alloc::string::String
+pub tungsten_core::ManifestError::PostEffectShaderMissing
+pub tungsten_core::ManifestError::PostEffectShaderMissing::id: alloc::string::String
+pub tungsten_core::ManifestError::PostEffectShaderMissing::shader: alloc::string::String
 pub tungsten_core::ManifestError::RoomIsTilemap
 pub tungsten_core::ManifestError::RoomIsTilemap::id: alloc::string::String
 pub tungsten_core::ManifestError::SharedFile
@@ -19551,6 +19975,7 @@ pub tungsten_core::PostPass::Bloom(tungsten_core::post::BloomParams)
 pub tungsten_core::PostPass::ChromaticAberration(f32)
 pub tungsten_core::PostPass::ColorAdjust(tungsten_core::post::ColorAdjustParams)
 pub tungsten_core::PostPass::Crt(tungsten_core::post::CrtParams)
+pub tungsten_core::PostPass::Custom(tungsten_core::post::CustomPost)
 pub tungsten_core::PostPass::Dissolve(tungsten_core::post::DissolveParams)
 pub tungsten_core::PostPass::Dither(tungsten_core::post::DitherParams)
 pub tungsten_core::PostPass::Fade(tungsten_core::post::FadeParams)
@@ -19995,6 +20420,31 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::SlopeRise
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::SlopeRise
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::SlopeRise
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::SlopeRise
+pub enum tungsten_core::SpriteAlpha
+pub tungsten_core::SpriteAlpha::Blend
+pub tungsten_core::SpriteAlpha::Cutout
+pub tungsten_core::SpriteAlpha::Opaque
+impl tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::measure(&[u8]) -> Self
+pub fn tungsten_core::assets::registry::SpriteAlpha::solid(self, tungsten_core::assets::manifest::FilterMode) -> bool
+impl core::clone::Clone for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::clone(&self) -> tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::Eq for tungsten_core::assets::registry::SpriteAlpha
+impl core::cmp::PartialEq for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::eq(&self, &tungsten_core::assets::registry::SpriteAlpha) -> bool
+impl core::default::Default for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::default() -> tungsten_core::assets::registry::SpriteAlpha
+impl core::fmt::Debug for tungsten_core::assets::registry::SpriteAlpha
+pub fn tungsten_core::assets::registry::SpriteAlpha::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::StructuralPartialEq for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Freeze for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Send for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Sync for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::Unpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::SpriteAlpha
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::SpriteAlpha
 pub enum tungsten_core::SquashTrigger
 pub tungsten_core::SquashTrigger::Manual
 pub tungsten_core::SquashTrigger::OnHit
@@ -20671,7 +21121,7 @@ pub struct tungsten_core::AnimationState
 pub tungsten_core::AnimationState::accumulated_ms: f32
 pub tungsten_core::AnimationState::animation_id: alloc::string::String
 pub tungsten_core::AnimationState::finished: bool
-pub tungsten_core::AnimationState::frame_index: usize
+pub tungsten_core::AnimationState::frame_index: u32
 pub tungsten_core::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
@@ -20725,6 +21175,8 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut s
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::note_sprite_size(&mut self, &str, u32, u32, core::option::Option<[f32; 2]>) -> tungsten_core::assets::registry::SpriteAssetId
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_alpha(&mut self, &str, tungsten_core::assets::registry::SpriteAlpha)
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_drawn(&mut self, &str, [u32; 4])
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_frame(&mut self, &str, core::option::Option<[u32; 4]>, core::option::Option<[f32; 2]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_points(&mut self, &str, alloc::collections::btree::map::BTreeMap<alloc::string::String, [f32; 2]>)
@@ -21305,6 +21757,33 @@ impl<V> core::marker::Unpin for tungsten_core::assets::particle::Curve<V> where 
 impl<V> core::marker::UnsafeUnpin for tungsten_core::assets::particle::Curve<V>
 impl<V> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::Curve<V> where V: core::panic::unwind_safe::RefUnwindSafe
 impl<V> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::Curve<V> where V: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::CustomPost
+pub tungsten_core::CustomPost::effect: tungsten_core::assets::post_effect::PostEffectId
+pub tungsten_core::CustomPost::f32s: [f32; 4]
+pub tungsten_core::CustomPost::i32s: [i32; 4]
+pub tungsten_core::CustomPost::vec4: [[f32; 4]; 4]
+impl tungsten_core::post::CustomPost
+pub fn tungsten_core::post::CustomPost::new(tungsten_core::assets::post_effect::PostEffectId, tungsten_core::assets::material::MaterialUniformDefaults) -> Self
+pub fn tungsten_core::post::CustomPost::set_f32(&mut self, usize, f32) -> &mut Self
+pub fn tungsten_core::post::CustomPost::set_i32(&mut self, usize, i32) -> &mut Self
+pub fn tungsten_core::post::CustomPost::set_vec4(&mut self, usize, [f32; 4]) -> &mut Self
+impl core::clone::Clone for tungsten_core::post::CustomPost
+pub fn tungsten_core::post::CustomPost::clone(&self) -> tungsten_core::post::CustomPost
+impl core::cmp::PartialEq for tungsten_core::post::CustomPost
+pub fn tungsten_core::post::CustomPost::eq(&self, &tungsten_core::post::CustomPost) -> bool
+impl core::fmt::Debug for tungsten_core::post::CustomPost
+pub fn tungsten_core::post::CustomPost::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::post::CustomPost
+impl core::marker::StructuralPartialEq for tungsten_core::post::CustomPost
+impl serde_core::ser::Serialize for tungsten_core::post::CustomPost
+pub fn tungsten_core::post::CustomPost::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for tungsten_core::post::CustomPost
+impl core::marker::Send for tungsten_core::post::CustomPost
+impl core::marker::Sync for tungsten_core::post::CustomPost
+impl core::marker::Unpin for tungsten_core::post::CustomPost
+impl core::marker::UnsafeUnpin for tungsten_core::post::CustomPost
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::CustomPost
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::CustomPost
 #[non_exhaustive] pub struct tungsten_core::DataEntry
 pub tungsten_core::DataEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::DataEntry
@@ -21351,6 +21830,7 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::Da
 pub struct tungsten_core::DataRegistry
 impl tungsten_core::assets::data::DataRegistry
 pub fn tungsten_core::assets::data::DataRegistry::contains_kind(&self, &str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::entries<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &T)>
 pub fn tungsten_core::assets::data::DataRegistry::entry_for_path(&self, &std::path::Path) -> core::option::Option<(&'static str, &str)>
 pub fn tungsten_core::assets::data::DataRegistry::get<T: 'static>(&self, &str) -> core::option::Option<&T>
 pub fn tungsten_core::assets::data::DataRegistry::ids(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
@@ -22121,9 +22601,11 @@ pub struct tungsten_core::Light
 pub tungsten_core::Light::color: glam::f32::vec3::Vec3
 pub tungsten_core::Light::intensity: f32
 pub tungsten_core::Light::kind: tungsten_core::components::LightKind
+pub tungsten_core::Light::priority: u8
 impl tungsten_core::components::Light
 pub fn tungsten_core::components::Light::directional(glam::f32::vec3::Vec3, f32) -> Self
 pub fn tungsten_core::components::Light::point(glam::f32::vec3::Vec3, f32) -> Self
+pub fn tungsten_core::components::Light::with_priority(self, u8) -> Self
 impl core::clone::Clone for tungsten_core::components::Light
 pub fn tungsten_core::components::Light::clone(&self) -> tungsten_core::components::Light
 impl core::cmp::PartialEq for tungsten_core::components::Light
@@ -22859,6 +23341,34 @@ impl core::marker::Unpin for tungsten_core::PhysicsPlugin
 impl core::marker::UnsafeUnpin for tungsten_core::PhysicsPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::PhysicsPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::PhysicsPlugin
+pub struct tungsten_core::PhysicsWorkers
+impl tungsten_core::physics::PhysicsWorkers
+pub const tungsten_core::physics::PhysicsWorkers::AUTO_MAX: usize
+pub const tungsten_core::physics::PhysicsWorkers::MAX: usize
+pub const tungsten_core::physics::PhysicsWorkers::SERIAL: Self
+pub const tungsten_core::physics::PhysicsWorkers::SPIN_MAX: core::time::Duration
+pub fn tungsten_core::physics::PhysicsWorkers::auto() -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::from_setting(u32) -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::new(usize) -> Self
+pub fn tungsten_core::physics::PhysicsWorkers::participants(self) -> usize
+pub fn tungsten_core::physics::PhysicsWorkers::spin(self) -> core::time::Duration
+pub fn tungsten_core::physics::PhysicsWorkers::with_spin(self, core::time::Duration) -> Self
+impl core::clone::Clone for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::clone(&self) -> tungsten_core::physics::PhysicsWorkers
+impl core::cmp::Eq for tungsten_core::physics::PhysicsWorkers
+impl core::cmp::PartialEq for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::eq(&self, &tungsten_core::physics::PhysicsWorkers) -> bool
+impl core::fmt::Debug for tungsten_core::physics::PhysicsWorkers
+pub fn tungsten_core::physics::PhysicsWorkers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::PhysicsWorkers
+impl core::marker::StructuralPartialEq for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Freeze for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Send for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Sync for tungsten_core::physics::PhysicsWorkers
+impl core::marker::Unpin for tungsten_core::physics::PhysicsWorkers
+impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsWorkers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsWorkers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsWorkers
 pub struct tungsten_core::PixelOutlineParams
 pub tungsten_core::PixelOutlineParams::alpha_threshold: f32
 pub tungsten_core::PixelOutlineParams::color: [f32; 4]
@@ -22923,6 +23433,51 @@ impl core::marker::Unpin for tungsten_core::physics::components::Position
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::Position
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::Position
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::Position
+pub struct tungsten_core::PostEffectId(pub u32)
+impl core::clone::Clone for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::clone(&self) -> tungsten_core::assets::post_effect::PostEffectId
+impl core::cmp::Eq for tungsten_core::assets::post_effect::PostEffectId
+impl core::cmp::PartialEq for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::eq(&self, &tungsten_core::assets::post_effect::PostEffectId) -> bool
+impl core::fmt::Debug for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::StructuralPartialEq for tungsten_core::assets::post_effect::PostEffectId
+impl serde_core::ser::Serialize for tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::Send for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::Sync for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::Unpin for tungsten_core::assets::post_effect::PostEffectId
+impl core::marker::UnsafeUnpin for tungsten_core::assets::post_effect::PostEffectId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::post_effect::PostEffectId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::post_effect::PostEffectId
+pub struct tungsten_core::PostEffectRegistry
+impl tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::allocate(&mut self, &str, std::path::PathBuf, alloc::string::String, tungsten_core::assets::material::MaterialUniformDefaults) -> tungsten_core::assets::post_effect::PostEffectId
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::defaults_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<tungsten_core::assets::material::MaterialUniformDefaults>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::get(&self, &str) -> core::option::Option<tungsten_core::assets::post_effect::PostEffectId>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::assets::post_effect::PostEffectId)>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::name_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<&str>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::new() -> Self
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::pass(&self, &str) -> core::option::Option<tungsten_core::post::CustomPost>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::path_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::shader_name_for_id(&self, tungsten_core::assets::post_effect::PostEffectId) -> core::option::Option<&str>
+impl core::clone::Clone for tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::clone(&self) -> tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::default::Default for tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::default() -> tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::fmt::Debug for tungsten_core::assets::post_effect::PostEffectRegistry
+pub fn tungsten_core::assets::post_effect::PostEffectRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::Send for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::Sync for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::Unpin for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::post_effect::PostEffectRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::post_effect::PostEffectRegistry
 pub struct tungsten_core::PostStack(pub alloc::vec::Vec<tungsten_core::post::PostPass>)
 impl tungsten_core::post::PostStack
 pub fn tungsten_core::post::PostStack::as_slice(&self) -> &[tungsten_core::post::PostPass]
@@ -23091,15 +23646,22 @@ impl core::marker::UnsafeUnpin for tungsten_core::input::RawEvent
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RawEvent
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RawEvent
 pub struct tungsten_core::RenderConfig
+pub tungsten_core::RenderConfig::bloom_base: tungsten_core::config::BloomBase
 pub tungsten_core::RenderConfig::bloom_max_mips: u32
 pub tungsten_core::RenderConfig::clear_color: [f64; 4]
 pub tungsten_core::RenderConfig::depth_enabled: bool
 pub tungsten_core::RenderConfig::depth_sort: tungsten_core::config::DepthSortMode
+pub tungsten_core::RenderConfig::hdr: tungsten_core::config::HdrMode
+pub tungsten_core::RenderConfig::light_cap: u32
+pub tungsten_core::RenderConfig::light_tiles: bool
 pub tungsten_core::RenderConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::RenderConfig::msaa: u32
 pub tungsten_core::RenderConfig::post_aa: tungsten_core::config::PostAaMode
+pub tungsten_core::RenderConfig::post_fuse: bool
 pub tungsten_core::RenderConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::RenderConfig::system_fonts: bool
+impl tungsten_core::config::RenderConfig
+pub fn tungsten_core::config::RenderConfig::lights(&self) -> usize
 impl core::clone::Clone for tungsten_core::config::RenderConfig
 pub fn tungsten_core::config::RenderConfig::clone(&self) -> tungsten_core::config::RenderConfig
 impl core::default::Default for tungsten_core::config::RenderConfig
@@ -23195,6 +23757,7 @@ pub tungsten_core::ResolvedManifest::particle_meshes: std::collections::hash::ma
 pub tungsten_core::ResolvedManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticle>
 pub tungsten_core::ResolvedManifest::physics_layers: std::collections::hash::map::HashMap<alloc::string::String, u32>
 pub tungsten_core::ResolvedManifest::physics_materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::physics::PhysicsMaterial>
+pub tungsten_core::ResolvedManifest::post_effects: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPostEffect>
 pub tungsten_core::ResolvedManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPrefab>
 pub tungsten_core::ResolvedManifest::rooms: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFile>
 pub tungsten_core::ResolvedManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedShader>
@@ -23665,11 +24228,14 @@ pub struct tungsten_core::SaveSlots
 impl tungsten_core::save::SaveSlots
 pub fn tungsten_core::save::SaveSlots::delete(&self, &str) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::dir(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::save::SaveSlots::flush(&self) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::list(&self) -> core::result::Result<tungsten_core::save::SlotList, tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::load<T: tungsten_core::save::SaveData>(&self, &str) -> core::result::Result<T, tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::new(core::option::Option<std::path::PathBuf>) -> Self
 pub fn tungsten_core::save::SaveSlots::save<T: tungsten_core::save::SaveData>(&self, &str, &T) -> core::result::Result<(), tungsten_core::save::SaveError>
 pub fn tungsten_core::save::SaveSlots::save_stamped<T: serde_core::ser::Serialize>(&self, &str, &T, &tungsten_core::save::SaveStamp) -> core::result::Result<(), tungsten_core::save::SaveError>
+pub fn tungsten_core::save::SaveSlots::write_behind(&mut self)
+pub fn tungsten_core::save::SaveSlots::writes_behind(&self) -> bool
 impl core::clone::Clone for tungsten_core::save::SaveSlots
 pub fn tungsten_core::save::SaveSlots::clone(&self) -> tungsten_core::save::SaveSlots
 impl core::default::Default for tungsten_core::save::SaveSlots
@@ -24235,8 +24801,10 @@ impl core::marker::UnsafeUnpin for tungsten_core::components::Sprite
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Sprite
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Sprite
 pub struct tungsten_core::SpriteAsset
+pub tungsten_core::SpriteAsset::alpha: tungsten_core::assets::registry::SpriteAlpha
 pub tungsten_core::SpriteAsset::anchor: core::option::Option<[f32; 2]>
 pub tungsten_core::SpriteAsset::atlas: tungsten_core::assets::registry::TextureHandle
+pub tungsten_core::SpriteAsset::drawn: [u32; 4]
 pub tungsten_core::SpriteAsset::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::SpriteAsset::height: u32
@@ -24249,6 +24817,7 @@ pub tungsten_core::SpriteAsset::rect: core::option::Option<[u32; 4]>
 pub tungsten_core::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
 pub tungsten_core::SpriteAsset::width: u32
 impl tungsten_core::assets::registry::SpriteAsset
+pub fn tungsten_core::assets::registry::SpriteAsset::drawn_span(&self) -> ([f32; 2], [f32; 2])
 pub fn tungsten_core::assets::registry::SpriteAsset::point(&self, &str) -> core::option::Option<[f32; 2]>
 impl core::clone::Clone for tungsten_core::assets::registry::SpriteAsset
 pub fn tungsten_core::assets::registry::SpriteAsset::clone(&self) -> tungsten_core::assets::registry::SpriteAsset
@@ -24400,6 +24969,24 @@ impl core::marker::Unpin for tungsten_core::schedule::SystemDesc
 impl core::marker::UnsafeUnpin for tungsten_core::schedule::SystemDesc
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::SystemDesc
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::SystemDesc
+pub struct tungsten_core::SystemWorkers
+impl tungsten_core::workers::SystemWorkers
+pub const tungsten_core::workers::SystemWorkers::MAX: usize
+pub fn tungsten_core::workers::SystemWorkers::forced(usize, usize) -> Self
+pub fn tungsten_core::workers::SystemWorkers::forks(&self, usize, usize, usize) -> bool
+pub fn tungsten_core::workers::SystemWorkers::map<S, O>(&mut self, S, usize, usize, usize, &mut alloc::vec::Vec<O>, fn(&S, core::ops::range::Range<usize>, &mut alloc::vec::Vec<O>)) -> S where S: core::marker::Send + core::marker::Sync + 'static, O: core::marker::Send + 'static
+pub fn tungsten_core::workers::SystemWorkers::new(usize) -> Self
+pub fn tungsten_core::workers::SystemWorkers::participants(&self) -> usize
+pub fn tungsten_core::workers::SystemWorkers::started(&self) -> bool
+impl core::fmt::Debug for tungsten_core::workers::SystemWorkers
+pub fn tungsten_core::workers::SystemWorkers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::workers::SystemWorkers
+impl core::marker::Send for tungsten_core::workers::SystemWorkers
+impl core::marker::Sync for tungsten_core::workers::SystemWorkers
+impl core::marker::Unpin for tungsten_core::workers::SystemWorkers
+impl core::marker::UnsafeUnpin for tungsten_core::workers::SystemWorkers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::workers::SystemWorkers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::workers::SystemWorkers
 pub struct tungsten_core::Tag
 pub tungsten_core::Tag::name: alloc::string::String
 impl tungsten_core::components::Tag
@@ -25683,6 +26270,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::W
 pub const tungsten_core::DEFAULT_CIRCLE_SEGMENTS: u16
 pub const tungsten_core::EMPTY_TILE: tungsten_core::assets::tilemap::TileIndex
 pub const tungsten_core::LIGHT_CAP: usize
+pub const tungsten_core::MAX_LIGHT_CAP: usize
 pub const tungsten_core::MAX_VOICES: u32
 pub const tungsten_core::STICK_PRESS: f32
 pub const tungsten_core::STICK_RELEASE: f32

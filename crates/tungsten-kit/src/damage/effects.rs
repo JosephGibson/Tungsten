@@ -2021,7 +2021,7 @@ impl From<Effect> for EffectDef {
 /// assert_eq!((instance.effect(), instance.stacks(), instance.left()), (&slow, 1, Some(2.0)));
 /// assert_eq!((instance.source(), instance.serial()), (None, 0));
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "InstanceFields", into = "InstanceFields")]
 pub struct EffectInstance {
     effect: DataRef<Effect>,
@@ -2050,6 +2050,61 @@ pub struct EffectInstance {
     rate: Option<f32>,
     /// Game seconds to its next emission, when the effect emits.
     emit_left: Option<f32>,
+    /// Where the counting pass its holder belongs to ([`CountToken`])
+    /// keeps its effect's entry, so the pass's next read needs no look at
+    /// the effect's ID. A cache of that lookup: never saved, compared or
+    /// printed, and a byte in the struct's padding, so an instance is no
+    /// larger for it.
+    slot: CountSlot,
+}
+
+/// The counting pass a holder's instances' [`CountSlot`]s belong to: that
+/// pass's token, held strongly, so its address names no other pass while a
+/// holder carries it. Equal to every other, since it is no part of what a
+/// holder's effects are.
+#[derive(Clone, Default)]
+struct CountToken(Option<std::sync::Arc<()>>);
+
+impl PartialEq for CountToken {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+/// An instance's entry among its holder's counting pass's known ones, plus
+/// one; 0 for an instance the pass has not read. Equal to every other, as
+/// [`CountToken`] is.
+#[derive(Clone, Copy, Default)]
+struct CountSlot(u8);
+
+impl PartialEq for CountSlot {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+/// As the derive printed it before the counting pass's mark joined the
+/// fields: the mark is left out, and no `..` stands in for it, so what a
+/// trace or a failed comparison prints is what it printed.
+#[allow(clippy::missing_fields_in_debug)]
+impl std::fmt::Debug for EffectInstance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EffectInstance")
+            .field("effect", &self.effect)
+            .field("source", &self.source)
+            .field("stacks", &self.stacks)
+            .field("left", &self.left)
+            .field("period_left", &self.period_left)
+            .field("factor", &self.factor)
+            .field("serial", &self.serial)
+            .field("granted", &self.granted)
+            .field("intensity", &self.intensity)
+            .field("bands", &self.bands)
+            .field("lines", &self.lines)
+            .field("rate", &self.rate)
+            .field("emit_left", &self.emit_left)
+            .finish()
+    }
 }
 
 impl EffectInstance {
@@ -2227,6 +2282,7 @@ impl TryFrom<InstanceFields> for EffectInstance {
                 .collect(),
             rate: fields.rate,
             emit_left: fields.emit_left,
+            slot: CountSlot::default(),
         })
     }
 }
@@ -2306,7 +2362,7 @@ struct Granted {
 /// assert_eq!(speeds, [50.0, 50.0, 100.0, 100.0]);
 /// assert_eq!(world.get::<Effects>(slime).unwrap().instances().count(), 0);
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "EffectsSave", into = "EffectsSave")]
 pub struct Effects {
     pending: Vec<DataRef<Effect>>,
@@ -2314,6 +2370,25 @@ pub struct Effects {
     next_serial: u64,
     /// Sorted by tag.
     granted: Vec<Granted>,
+    /// The counting pass its instances' slots belong to. An instance joins
+    /// a holder new, from a save, or with its whole holder cloned, so every
+    /// slot here was set under this token or is unread; a pass that finds
+    /// another's token, or none, starts the holder's slots over.
+    counted: CountToken,
+}
+
+/// As the derive printed it before the counting pass's token joined the
+/// fields: the token is left out.
+#[allow(clippy::missing_fields_in_debug)]
+impl std::fmt::Debug for Effects {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Effects")
+            .field("pending", &self.pending)
+            .field("instances", &self.instances)
+            .field("next_serial", &self.next_serial)
+            .field("granted", &self.granted)
+            .finish()
+    }
 }
 
 /// The component as a save writes it.
@@ -2342,6 +2417,7 @@ impl TryFrom<EffectsSave> for Effects {
             instances: save.instances,
             next_serial: save.next_serial,
             granted: save.granted,
+            counted: CountToken::default(),
         })
     }
 }
@@ -3648,6 +3724,7 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
                 lines: request.lines.clone(),
                 rate: request.rate,
                 emit_left: effect.emit.as_ref().map(|emit| emit.period),
+                slot: CountSlot::default(),
             };
             place_modifiers(world, target, &effect, &instance, true);
             grant(world, target, granted, &mut instance, &effect.grant);
@@ -3802,14 +3879,24 @@ struct Known {
 /// next step and a crowd holding one entry costs no lookup a holder. An ID
 /// met for the first time takes the full step and is read from the next.
 /// Its room is taken once, at the plugin's build, so no step allocates.
+///
+/// A holder it has read carries this pass's token ([`CountToken`]) and each
+/// of its instances its entry's place ([`CountSlot`]), so later steps read
+/// the entry by index: the ID's bytes sit in an allocation of their own,
+/// and comparing them missed the cache once an instance in a World whose
+/// rows have moved about. The known entries are only ever added to, and an
+/// instance's effect never changes, so a place found once holds while the
+/// holder stays this pass's.
 struct Counting {
     known: Vec<Known>,
+    token: std::sync::Arc<()>,
 }
 
 impl Default for Counting {
     fn default() -> Self {
         Self {
             known: Vec::with_capacity(COUNTING_CAP),
+            token: std::sync::Arc::new(()),
         }
     }
 }
@@ -3826,26 +3913,40 @@ impl Counting {
         }
     }
 
-    /// Whether `effect` only counts down; false for an ID not read yet,
-    /// which joins the known ones.
-    fn counts(&mut self, effect: &DataRef<Effect>) -> bool {
-        let Some(id) = effect.id() else {
-            return effect.as_inline().is_some_and(Effect::only_counts);
+    /// Whether `instance`'s effect only counts down; false for an ID not
+    /// read yet, which joins the known ones. An instance of a holder of this
+    /// pass that it has read answers from the place it carries; any other
+    /// is found by its ID's bytes, as every one was, and takes its place
+    /// with it. [`Self::count_down`] makes the holder this pass's first.
+    fn counts(&mut self, instance: &mut EffectInstance) -> bool {
+        if let Some(place) = usize::from(instance.slot.0).checked_sub(1) {
+            return self.known[place].counts;
+        }
+        let Some(id) = instance.effect.id() else {
+            return instance.effect.as_inline().is_some_and(Effect::only_counts);
         };
         let id = id.as_bytes();
-        if let Some(known) = self.known.iter().find(|known| &known.id[..known.len] == id) {
-            return known.counts;
-        }
-        if self.known.len() < COUNTING_CAP && id.len() <= COUNTING_ID {
-            let mut known = Known {
-                id: [0; COUNTING_ID],
-                len: id.len(),
-                counts: false,
-            };
-            known.id[..id.len()].copy_from_slice(id);
-            self.known.push(known);
-        }
-        false
+        let found = self
+            .known
+            .iter()
+            .position(|known| &known.id[..known.len] == id);
+        let (place, counts) = match found {
+            Some(place) => (place, self.known[place].counts),
+            None if self.known.len() < COUNTING_CAP && id.len() <= COUNTING_ID => {
+                let mut known = Known {
+                    id: [0; COUNTING_ID],
+                    len: id.len(),
+                    counts: false,
+                };
+                known.id[..id.len()].copy_from_slice(id);
+                self.known.push(known);
+                (self.known.len() - 1, false)
+            }
+            None => return false,
+        };
+        // `COUNTING_CAP` places, each plus one, fit a byte.
+        instance.slot = CountSlot(place as u8 + 1);
+        counts
     }
 
     /// Whether `effects` needs no more of a step of `dt` than its
@@ -3859,14 +3960,27 @@ impl Counting {
     /// `effect_tick` p95 1.36 to 1.45 ms).
     #[inline(never)]
     fn count_down(&mut self, effects: &mut Effects, dt: f32) -> bool {
+        // The instances' places are this pass's only under its token: a
+        // holder from another pass, or one no pass has read, starts over.
+        let ours = effects
+            .counted
+            .0
+            .as_ref()
+            .is_some_and(|token| std::sync::Arc::ptr_eq(token, &self.token));
+        if !ours {
+            for instance in &mut effects.instances {
+                instance.slot = CountSlot(0);
+            }
+            effects.counted = CountToken(Some(std::sync::Arc::clone(&self.token)));
+        }
         let plain = effects.pending.is_empty()
-            && effects.instances.iter().all(|instance| {
+            && effects.instances.iter_mut().all(|instance| {
                 instance.period_left.is_none()
                     && instance.emit_left.is_none()
                     && instance
                         .left
                         .is_none_or(|left| dt <= 0.0 || count_down(left, dt) > 0.0)
-                    && self.counts(&instance.effect)
+                    && self.counts(instance)
             });
         if plain && dt > 0.0 {
             for instance in &mut effects.instances {

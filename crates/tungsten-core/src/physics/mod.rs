@@ -46,6 +46,7 @@ pub use step::{
 };
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use glam::Vec2;
 
@@ -173,6 +174,138 @@ impl PhysicsMaterials {
         self.by_name
             .iter()
             .map(|(name, &material)| (name.as_str(), material))
+    }
+}
+
+/// How many threads the physics step's forked stages run on, the calling
+/// thread among them (`D-298`): the pair build's walks, a repair's walks and
+/// its removal's scan, an arrival round's search, the narrow phase.
+///
+/// A World without the resource, or with one participant, steps on the
+/// calling thread alone, as before the pool. Any count steps to the same
+/// bodies, events and sleep state, bit for bit: a stage's work is cut into
+/// fixed chunks whose output is laid out in chunk order, whichever thread
+/// took a chunk. A stage forks only above a fixed size, so a small world
+/// starts no thread. `App::run` inserts the resource from `tungsten.json`'s
+/// `physics.workers` unless the game inserted its own; `App::new` and the
+/// test harness do not, so tests and counter guards step serially unless
+/// they insert it.
+///
+/// Between a step's forks a worker may spin for the next one before it
+/// parks ([`Self::with_spin`], `D-300`): it then takes the fork without a
+/// wake-up, at the price of a busy core while the step runs. The
+/// constructors park; `App::run` passes `physics.worker_spin_ms`.
+///
+/// ```
+/// use std::time::Duration;
+/// use tungsten_core::physics::PhysicsWorkers;
+///
+/// assert_eq!(PhysicsWorkers::new(4).participants(), 4);
+/// assert_eq!(PhysicsWorkers::new(0).participants(), 1);
+/// assert_eq!(PhysicsWorkers::from_setting(1), PhysicsWorkers::SERIAL);
+/// assert!((1..=6).contains(&PhysicsWorkers::auto().participants()));
+/// assert_eq!(PhysicsWorkers::new(4).spin(), Duration::ZERO);
+/// let spinning = PhysicsWorkers::new(4).with_spin(Duration::from_millis(3));
+/// assert_eq!(spinning.spin(), Duration::from_millis(3));
+/// assert_eq!(spinning.with_spin(Duration::from_secs(9)).spin(), PhysicsWorkers::SPIN_MAX);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PhysicsWorkers {
+    participants: u32,
+    fork_any: bool,
+    /// Microseconds a worker spins for a step's next fork; 0 parks at once.
+    spin_us: u16,
+}
+
+impl PhysicsWorkers {
+    /// The most participants a step takes.
+    pub const MAX: usize = 16;
+    /// The most participants [`Self::auto`] picks: the count past which the
+    /// reference machine, six cores and twelve threads, read no faster.
+    pub const AUTO_MAX: usize = 6;
+    /// The calling thread alone.
+    pub const SERIAL: Self = Self {
+        participants: 1,
+        fork_any: false,
+        spin_us: 0,
+    };
+    /// The longest a worker spins for a step's next fork.
+    pub const SPIN_MAX: Duration = Duration::from_millis(50);
+
+    /// `participants` threads, the calling thread among them, clamped to 1
+    /// through [`Self::MAX`].
+    #[must_use]
+    pub fn new(participants: usize) -> Self {
+        Self {
+            participants: participants.clamp(1, Self::MAX) as u32,
+            fork_any: false,
+            spin_us: 0,
+        }
+    }
+
+    /// Half the machine's logical CPUs, at least 1 and at most
+    /// [`Self::AUTO_MAX`]: its cores where each runs two threads, and half
+    /// of them left to the rest of the game where each runs one.
+    #[must_use]
+    pub fn auto() -> Self {
+        let logical = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
+        Self::new((logical / 2).min(Self::AUTO_MAX))
+    }
+
+    /// `physics.workers`' value as a resource: 0 is [`Self::auto`], 1 is
+    /// [`Self::SERIAL`], and a larger number that many participants.
+    #[must_use]
+    pub fn from_setting(workers: u32) -> Self {
+        match workers {
+            0 => Self::auto(),
+            count => Self::new(count as usize),
+        }
+    }
+
+    /// The threads the step's forked stages run on, the calling thread
+    /// among them.
+    #[must_use]
+    pub fn participants(self) -> usize {
+        self.participants as usize
+    }
+
+    /// These workers, each spinning up to `spin` for its step's next fork
+    /// before it parks (`D-300`): whole microseconds, at most
+    /// [`Self::SPIN_MAX`]; zero parks at once. A worker spins only while
+    /// its step runs, so the cores it keeps busy are free again when the
+    /// step ends. The step's result is the same either way.
+    #[must_use]
+    pub fn with_spin(self, spin: Duration) -> Self {
+        Self {
+            spin_us: spin.min(Self::SPIN_MAX).as_micros() as u16,
+            ..self
+        }
+    }
+
+    /// How long a worker spins for its step's next fork before it parks.
+    #[must_use]
+    pub fn spin(self) -> Duration {
+        Duration::from_micros(u64::from(self.spin_us))
+    }
+
+    /// [`Self::spin`] in microseconds, as the step keeps it.
+    pub(crate) fn spin_us(self) -> u16 {
+        self.spin_us
+    }
+
+    /// `participants` threads whose stages fork whatever their size, so a
+    /// small test world runs the forked code.
+    #[cfg(test)]
+    pub(crate) fn forced(participants: usize) -> Self {
+        Self {
+            fork_any: true,
+            ..Self::new(participants)
+        }
+    }
+
+    /// Whether a stage forks under its size threshold.
+    pub(crate) fn forks_any(self) -> bool {
+        self.fork_any
     }
 }
 

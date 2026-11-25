@@ -18,6 +18,156 @@ use tungsten_render::{QuadInstance, RenderOutcome, ScreenshotError};
 struct ExampleEvent;
 
 #[test]
+fn a_windows_run_writes_its_saves_behind_and_new_writes_each_before_it_returns() {
+    use tungsten_core::SaveSlots;
+
+    let dir =
+        std::env::temp_dir().join(format!("tungsten_app_saves_behind_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    // A game without a user folder has no slots to write, behind or not.
+    app.start_saves_writer();
+    assert!(!app.world().resource::<SaveSlots>().writes_behind());
+
+    app.world_mut()
+        .insert_resource(SaveSlots::new(Some(dir.join("saves"))));
+    assert!(
+        !app.world().resource::<SaveSlots>().writes_behind(),
+        "the harness and the checks read a save's file as soon as it returns"
+    );
+    app.start_saves_writer();
+    assert!(app.world().resource::<SaveSlots>().writes_behind());
+
+    // A save made on the frame is read back at once, and in its slot's file
+    // once the run's end has flushed.
+    let slots = app.world().resource::<SaveSlots>().clone();
+    slots
+        .save_stamped(
+            "slot-1",
+            &7u32,
+            &tungsten_core::SaveStamp::new(1, "0.1.0", 1),
+        )
+        .unwrap();
+    assert!(
+        slots
+            .list()
+            .unwrap()
+            .slots
+            .iter()
+            .any(|slot| slot.name == "slot-1")
+    );
+    app.flush_saves();
+    assert!(dir.join("saves").join("slot-1.json").exists());
+    drop(slots);
+    drop(app);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_windows_run_gives_the_world_system_workers_at_the_steps_count() {
+    use tungsten_core::physics::PhysicsWorkers;
+    use tungsten_core::workers::SystemWorkers;
+
+    let count = |app: &App| {
+        app.world()
+            .get_resource::<SystemWorkers>()
+            .map(SystemWorkers::participants)
+    };
+    let config: Config = serde_json::from_str(r#"{ "physics": { "workers": 3 } }"#).unwrap();
+    let mut app = App::new(config).expect("App::new failed");
+    assert_eq!(
+        count(&app),
+        None,
+        "App::new maps serially, as the harness and the guards do"
+    );
+    app.start_workers();
+    assert_eq!(count(&app), Some(3));
+
+    // A game's own physics count sets the map's; its own map count stands.
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.world_mut().insert_resource(PhysicsWorkers::new(5));
+    app.start_workers();
+    assert_eq!(count(&app), Some(5));
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.world_mut().insert_resource(SystemWorkers::new(2));
+    app.start_workers();
+    assert_eq!(count(&app), Some(2));
+    assert!(
+        !app.world()
+            .get_resource::<SystemWorkers>()
+            .unwrap()
+            .started(),
+        "no thread starts before a map forks"
+    );
+}
+
+#[test]
+fn a_windows_run_gives_the_world_its_physics_workers_and_new_gives_none() {
+    use tungsten_core::physics::PhysicsWorkers;
+
+    let config: Config = serde_json::from_str(r#"{ "physics": { "workers": 3 } }"#).unwrap();
+    let mut app = App::new(config).expect("App::new failed");
+    assert!(
+        !app.world().has_resource::<PhysicsWorkers>(),
+        "App::new steps on the calling thread, as the harness and the guards do"
+    );
+    app.start_physics_workers();
+    // The workers park between forks unless `physics.worker_spin_ms` asks
+    // them to spin (`D-300`, `D-304`).
+    assert_eq!(
+        app.world().get_resource::<PhysicsWorkers>(),
+        Some(&PhysicsWorkers::new(3))
+    );
+
+    // 0, the default, is automatic; 1 is the serial step.
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.start_physics_workers();
+    assert_eq!(
+        app.world().get_resource::<PhysicsWorkers>(),
+        Some(&PhysicsWorkers::auto())
+    );
+    let config: Config = serde_json::from_str(r#"{ "physics": { "workers": 1 } }"#).unwrap();
+    let mut app = App::new(config).expect("App::new failed");
+    app.start_physics_workers();
+    assert_eq!(
+        app.world().get_resource::<PhysicsWorkers>(),
+        Some(&PhysicsWorkers::SERIAL)
+    );
+
+    // The key's own time is kept, 0 parking a worker at once.
+    for (millis, json) in [
+        (0, r#"{ "physics": { "workers": 4, "worker_spin_ms": 0 } }"#),
+        (3, r#"{ "physics": { "workers": 4, "worker_spin_ms": 3 } }"#),
+    ] {
+        let config: Config = serde_json::from_str(json).unwrap();
+        let mut app = App::new(config).expect("App::new failed");
+        app.start_physics_workers();
+        let workers = *app.world().get_resource::<PhysicsWorkers>().unwrap();
+        assert_eq!(workers.participants(), 4);
+        assert_eq!(workers.spin(), Duration::from_millis(millis));
+    }
+
+    // A game's own resource stands.
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.world_mut().insert_resource(PhysicsWorkers::new(2));
+    app.start_physics_workers();
+    assert_eq!(
+        app.world().get_resource::<PhysicsWorkers>(),
+        Some(&PhysicsWorkers::new(2))
+    );
+
+    // Past 64 is refused where the config is checked.
+    let mut bad = Config::default();
+    bad.physics.workers = 65;
+    let error = App::new(bad).err().expect("refused").to_string();
+    assert!(error.contains("physics.workers"), "{error}");
+    let mut bad = Config::default();
+    bad.physics.worker_spin_ms = 51;
+    let error = App::new(bad).err().expect("refused").to_string();
+    assert!(error.contains("physics.worker_spin_ms"), "{error}");
+}
+
+#[test]
 fn the_app_takes_physics_and_particles_from_its_config() {
     let config: Config = serde_json::from_str(
         r#"{ "physics": { "gravity": [0, 900], "broadphase_cell": 64 },

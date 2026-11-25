@@ -10,8 +10,13 @@
 //!   - `B` / `[`  → previous effect
 //!   - `C` / `Backspace` → clear stack (M25-byte-identical output)
 //!
-//! Env `TUNGSTEN_POST_STACK_FIXTURE={all|retro_arcade|dreamy|glitch_boss|bloom_only|fade_pair|fade_twice|empty}`
-//! preloads a fixed stack and **disables** the cycle. `fade_pair` and
+//! Env `TUNGSTEN_POST_STACK_FIXTURE={all|retro_arcade|dreamy|glitch_boss|bloom_only|fade_pair|fade_twice|bloom_vignette|bloom_vignette_fade|fog_fade|fog_bloom_vignette|vignette_dither_fade|game_tint|game_none|game_wave|game_wave_fade|pair:<kind>:<kind>|empty}`
+//! preloads a fixed stack and **disables** the cycle. `game_tint` and
+//! `game_wave` draw the fixtures' own post effects, manifest entries `tint`
+//! (a `mix` section, behind a vignette) and `wave` (no section) (`D-308`);
+//! `game_none` is `game_tint`'s stack less its effect, and `game_wave_fade`
+//! puts a fade behind the wave, which a module without a section never
+//! fuses with. `fade_pair` and
 //! `fade_twice` stack the same effect twice for `tests/integration/post_regression.rs`.
 //! `TUNGSTEN_POST_AA_FIXTURE` picks the SMAA preset before the renderer
 //! starts, and `TUNGSTEN_BLOOM_FIXTURE=on` turns on bloom over the emissive
@@ -44,18 +49,22 @@ use tungsten::core::config::PostAaMode;
 use tungsten::core::post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
     FilmGrainParams, FogParams, GodRaysParams, LutParams, PixelOutlineParams, PostPass, PostStack,
-    ToneMonoParams, TonemapParams, VignetteParams, WipeRadialParams,
+    ToneMonoMode, ToneMonoParams, TonemapParams, VignetteParams, WipeRadialParams,
 };
 use tungsten::core::tween::UniformOverrideBlock;
 use tungsten::core::{
     ActionMap, AssetRegistry, BlendMode, CameraController, CommandBuffer, Config, Curve, Easing,
     EmissionKind, Entity, EventQueue, FollowRig, InitialVelocity, InputState, MaterialRegistry,
     ParallaxLayer, ParticleConfig, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState,
-    ParticleRender, Pcg32, Range, RigKind, ShakeEvent, Sprite, SpriteAssetId, SpriteSquashStretch,
-    SquashEvent, SquashTrigger, Time, Transform, Visibility, With, World,
+    ParticleRender, Pcg32, PostEffectRegistry, Range, RigKind, ShakeEvent, Sprite, SpriteAssetId,
+    SpriteSquashStretch, SquashEvent, SquashTrigger, Time, Transform, Visibility, With, World,
 };
 use tungsten::particles::spawn_particle_via;
-use tungsten::{App, PostAaState, render::TextSection, request_post_aa};
+use tungsten::{
+    App, PostAaState,
+    render::{QuadInstance, TextSection},
+    request_post_aa,
+};
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/03_fixtures/assets/manifest.json";
@@ -173,11 +182,18 @@ pub fn run() -> anyhow::Result<()> {
         world.insert_resource(SparkRng(Pcg32::seeded(0xEF04_5A9C_A2D1_7B03)));
     }
 
-    app.on_startup(|world, _renderer| {
+    // `TUNGSTEN_POST_BRIGHT_FIXTURE=codes` draws the code quads alone.
+    let codes = std::env::var("TUNGSTEN_POST_BRIGHT_FIXTURE").unwrap_or_default() == "codes";
+    app.on_startup(move |world, _renderer| {
         // M30: backdrop first so the layers sit behind everything by z_order.
-        spawn_parallax_layers(world);
-        let bouncers = spawn_bouncers(world);
-        spawn_emissive_quad(world);
+        let bouncers = if codes {
+            Vec::new()
+        } else {
+            spawn_parallax_layers(world);
+            let bouncers = spawn_bouncers(world);
+            spawn_emissive_quad(world);
+            bouncers
+        };
         if let Some(&target) = bouncers.first() {
             configure_playground_camera(world, target);
             if std::env::var("TUNGSTEN_MESH_TRAIL_FIXTURE").unwrap_or_default() != "off" {
@@ -196,12 +212,39 @@ pub fn run() -> anyhow::Result<()> {
         if let Ok(fixture) = std::env::var("TUNGSTEN_MATERIAL_PAIR_FIXTURE") {
             spawn_material_pair(world, &fixture);
         }
+        if std::env::var("TUNGSTEN_POST_BACKDROP_FIXTURE").unwrap_or_default() == "gradient" {
+            spawn_gradient_backdrop(world);
+        }
+        if std::env::var("TUNGSTEN_POST_TEXT_FIXTURE").unwrap_or_default() == "off" {
+            world.insert_resource(TextOff);
+        }
 
         let fixture = std::env::var("TUNGSTEN_POST_STACK_FIXTURE").unwrap_or_default();
         let bloom_fixture = std::env::var("TUNGSTEN_BLOOM_FIXTURE").unwrap_or_default() == "on";
+        // The fixtures' own post effects, by their manifest IDs (`D-308`).
+        let game_effect = |world: &World, name: &str| -> Option<PostPass> {
+            let pass = world
+                .get_resource::<PostEffectRegistry>()
+                .and_then(|effects| effects.pass(name));
+            if pass.is_none() {
+                eprintln!("post effect '{name}' is not in the manifest");
+            }
+            pass.map(PostPass::Custom)
+        };
+        let (tint, wave) = (game_effect(world, "tint"), game_effect(world, "wave"));
         if !fixture.is_empty() && fixture != "empty" {
             if let Some(stack) = world.get_resource_mut::<PostStack>() {
                 match fixture.as_str() {
+                    "game_tint" => {
+                        stack.push(PostPass::Vignette(VignetteParams::default()));
+                        stack.0.extend(tint);
+                    }
+                    "game_none" => stack.push(PostPass::Vignette(VignetteParams::default())),
+                    "game_wave" => stack.0.extend(wave),
+                    "game_wave_fade" => {
+                        stack.0.extend(wave);
+                        stack.push(half_fade());
+                    }
                     "all" => push_every_effect(stack),
                     "retro_arcade" => push_retro_arcade(stack),
                     "dreamy" => push_dreamy(stack),
@@ -209,7 +252,26 @@ pub fn run() -> anyhow::Result<()> {
                     "bloom_only" => stack.push(PostPass::Bloom(demo_bloom_params())),
                     "fade_pair" => push_fades(stack, FADE_RED, FADE_BLUE),
                     "fade_twice" => push_fades(stack, FADE_BLUE, FADE_BLUE),
-                    _ => {}
+                    "bloom_vignette" => push_bloom_vignette(stack),
+                    "bloom_vignette_fade" => {
+                        push_bloom_vignette(stack);
+                        stack.push(half_fade());
+                    }
+                    "fog_fade" => {
+                        stack.push(PostPass::Fog(FogParams::default()));
+                        stack.push(half_fade());
+                    }
+                    "fog_bloom_vignette" => {
+                        stack.push(PostPass::Fog(FogParams::default()));
+                        push_bloom_vignette(stack);
+                    }
+                    // A quantising stage in the stack's middle.
+                    "vignette_dither_fade" => {
+                        stack.push(PostPass::Vignette(VignetteParams::default()));
+                        stack.push(PostPass::Dither(DitherParams::default()));
+                        stack.push(half_fade());
+                    }
+                    other => push_pair(stack, other),
                 }
             }
             if let Some(cursor) = world.get_resource_mut::<CycleCursor>() {
@@ -225,9 +287,75 @@ pub fn run() -> anyhow::Result<()> {
         }
     });
 
+    // `TUNGSTEN_POST_BRIGHT_FIXTURE=on`: quads four times white over the
+    // arena, a value only a float scene holds (`render.hdr`, `D-309`).
+    // `codes`: nothing but a quad for each 8-bit value, over the whole view.
+    match std::env::var("TUNGSTEN_POST_BRIGHT_FIXTURE").as_deref() {
+        Ok("on") => {
+            let quads = bright_quads();
+            app.set_extract_quads(move |_| quads.clone());
+        }
+        Ok("codes") => {
+            let quads = code_quads();
+            app.set_extract_quads(move |_| quads.clone());
+        }
+        _ => {}
+    }
+
     configure(&mut app);
 
     app.run()
+}
+
+/// A quad for each of the 256 values a channel of an 8-bit frame holds,
+/// sixteen a row with no gap over the 1280 by 720 view, each channel's value
+/// the linear one that sRGB code decodes to: red runs up the codes, green
+/// through them out of step, blue down. An 8-bit scene stores each exactly,
+/// and so must a float scene's tail (`D-309`).
+fn code_quads() -> Vec<QuadInstance> {
+    let size = [WINDOW_W / 16.0, WINDOW_H / 16.0];
+    let linear = |code: u32| {
+        let stored = code as f32 / 255.0;
+        if stored <= 0.04045 {
+            stored / 12.92
+        } else {
+            ((stored + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    (0..256u32)
+        .map(|code| QuadInstance {
+            position: [(code % 16) as f32 * size[0], (code / 16) as f32 * size[1]],
+            size,
+            color: [
+                linear(code),
+                linear((code * 7 + 3) % 256),
+                linear(255 - code),
+                1.0,
+            ],
+        })
+        .collect()
+}
+
+/// A grid of quads of colour 4 over the arena, so some are in view wherever
+/// the camera follows its bouncer.
+fn bright_quads() -> Vec<QuadInstance> {
+    const STEP: f32 = 320.0;
+    const SIDE: f32 = 48.0;
+    let mut quads = Vec::new();
+    let mut y = STEP * 0.5;
+    while y < ARENA_H {
+        let mut x = STEP * 0.5;
+        while x < ARENA_W {
+            quads.push(QuadInstance {
+                position: [x, y],
+                size: [SIDE, SIDE],
+                color: [4.0, 4.0, 4.0, 1.0],
+            });
+            x += STEP;
+        }
+        y += STEP;
+    }
+    quads
 }
 
 /// The playground's systems, in `update` in this order, and its text. Game
@@ -242,6 +370,63 @@ fn configure(app: &mut App) {
     app.add_system_named("playground_post_aa_input", post_aa_input_system);
     app.add_system_named("playground_bloom_input", bloom_input_system);
     app.set_extract_text(playground_text);
+}
+
+/// `TUNGSTEN_POST_TEXT_FIXTURE=off`: the scene draws no text, so a capture
+/// is the post stack's output with no overlay blended over it.
+struct TextOff;
+
+/// `TUNGSTEN_POST_BACKDROP_FIXTURE=gradient`: a screen-locked ramp behind
+/// the scene's sprites, five rows of 256 columns. In the first four (grey,
+/// red, green, blue) column `i` is tinted `i / 255` in linear light, so
+/// every channel runs from 0 to 1. The darkest of those is sRGB 13, past
+/// the curve's straight foot, so the fifth row is a grey of `1 / 255` at an
+/// alpha of `i / 255` over black: stored values 0 to 13, where the curve is
+/// steepest and one lost rounding moves a pixel furthest (`D-307`).
+fn spawn_gradient_backdrop(world: &mut World) {
+    const COLUMNS: u32 = 256;
+    const ROWS: [[bool; 3]; 4] = [
+        [true, true, true],
+        [true, false, false],
+        [false, true, false],
+        [false, false, true],
+    ];
+    // The emissive quad is 32 white texels a side.
+    const TEXELS: f32 = 32.0;
+    let sprite = sprite_id(world, EMISSIVE_QUAD_ID);
+    let size = Vec2::new(
+        WINDOW_W / COLUMNS as f32,
+        WINDOW_H / (ROWS.len() + 1) as f32,
+    );
+    let cell = |world: &mut World, column: u32, row: usize, color: [u8; 4], z_order: i32| {
+        let entity = world.spawn();
+        world.insert(
+            entity,
+            Transform {
+                position: Vec2::new(column as f32 * size.x, row as f32 * size.y),
+                rotation: 0.0,
+                scale: size / TEXELS,
+            },
+        );
+        let mut sprite = Sprite::new(sprite);
+        sprite.color = color;
+        sprite.z_order = z_order;
+        world.insert(entity, sprite);
+        world.insert(entity, Visibility::default());
+        world.insert(entity, ParallaxLayer::uniform(0.0));
+    };
+    for column in 0..COLUMNS {
+        let value = column as u8;
+        for (row, channels) in ROWS.iter().enumerate() {
+            let tint = |on: bool| if on { value } else { 0 };
+            let color = [tint(channels[0]), tint(channels[1]), tint(channels[2]), 255];
+            cell(world, column, row, color, -400);
+        }
+        // The dark row: black, and over it the faintest grey at this
+        // column's alpha.
+        cell(world, column, ROWS.len(), [0, 0, 0, 255], -401);
+        cell(world, column, ROWS.len(), [1, 1, 1, value], -400);
+    }
 }
 
 /// Spawn one bright emissive quad in the upper-right of the playground arena.
@@ -1139,6 +1324,9 @@ fn bloom_input_system(world: &mut World) {
 }
 
 fn playground_text(world: &World) -> Vec<TextSection> {
+    if world.get_resource::<TextOff>().is_some() {
+        return Vec::new();
+    }
     let cursor = world
         .get_resource::<CycleCursor>()
         .copied()
@@ -1293,6 +1481,76 @@ fn push_fades(stack: &mut PostStack, first: [f32; 4], second: [f32; 4]) {
             progress: 0.5,
             color,
         }));
+    }
+}
+
+/// Example 01's stack: bloom, then the vignette its composite draws.
+fn push_bloom_vignette(stack: &mut PostStack) {
+    stack.push(PostPass::Bloom(demo_bloom_params()));
+    stack.push(PostPass::Vignette(VignetteParams {
+        inner: 0.38,
+        outer: 0.78,
+        strength: 0.18,
+        color: [0.015, 0.013, 0.02, 1.0],
+    }));
+}
+
+/// A screen transition's fade, part of the way in.
+fn half_fade() -> PostPass {
+    PostPass::Fade(FadeParams {
+        progress: 0.4,
+        ..FadeParams::default()
+    })
+}
+
+/// A duotone whose tints fall as luma rises: white at black, black at
+/// white, at full amount.
+fn falling_duotone() -> PostPass {
+    PostPass::ToneMono(ToneMonoParams {
+        mode: ToneMonoMode::Duotone,
+        tint_a: [0.0, 0.0, 0.0, 1.0],
+        tint_b: [1.0, 1.0, 1.0, 1.0],
+        amount: 1.0,
+    })
+}
+
+/// `pair:<first>:<second>`: two effects in a row, each named by its kind
+/// (`PostPass::kind_name`) with the roster's values, `bloom` the demo's
+/// bloom and `duotone` a tone that falls as luma rises. Any other name
+/// pushes nothing.
+fn push_pair(stack: &mut PostStack, fixture: &str) {
+    let Some(names) = fixture.strip_prefix("pair:") else {
+        eprintln!("unknown TUNGSTEN_POST_STACK_FIXTURE='{fixture}'");
+        return;
+    };
+    let effect = |name: &str| -> Option<PostPass> {
+        if name == "duotone" {
+            return Some(falling_duotone());
+        }
+        // The roster's wipe is past the corners: a pair draws one whose
+        // falloff crosses the screen.
+        if name == "wipe_radial" {
+            return Some(PostPass::WipeRadial(WipeRadialParams {
+                progress: 0.3,
+                softness: 0.2,
+                ..WipeRadialParams::default()
+            }));
+        }
+        EFFECT_ROSTER
+            .iter()
+            .map(|ctor| ctor())
+            .find(|pass| pass.kind_name() == name)
+    };
+    let passes: Option<Vec<PostPass>> = names.split(':').map(effect).collect();
+    match passes {
+        Some(passes) if passes.len() == 2 => {
+            for pass in passes {
+                stack.push(pass);
+            }
+        }
+        _ => eprintln!(
+            "unknown TUNGSTEN_POST_STACK_FIXTURE='{fixture}': expected pair:<kind>:<kind>"
+        ),
     }
 }
 

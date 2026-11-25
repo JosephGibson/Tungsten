@@ -47,8 +47,8 @@ use tungsten_core::{
     AssetRegistry, AudioCommand, Binding, EventQueue, InputState, MaterialRegistry, Voice, World,
 };
 use tungsten_render::{
-    DebugLineInstance, LightUbo, MeshParticleBatch, QuadInstance, SpriteBatch, TextSection,
-    WorldLabelRun,
+    DebugLineInstance, GpuLight, LightUbo, MeshParticleBatch, QuadInstance, SpriteBatch,
+    TextSection, WorldLabelRun,
 };
 
 use crate::app::{App, ExitReason, Exiting, FrameClock, FrameEnd, FrameExtract, WindowSize};
@@ -181,6 +181,7 @@ impl Harness {
         asset_loader::allocate_engine_glow(&mut materials);
         asset_loader::allocate_hit_flash(&manifest, &mut materials);
         world.insert_resource(materials);
+        asset_loader::allocate_post_effects(&manifest, world);
         asset_loader::load_sounds(&manifest, world)?;
         asset_loader::load_tilemaps(&manifest, world)?;
         asset_loader::load_particles(&manifest, world)?;
@@ -418,20 +419,35 @@ impl Harness {
     /// `exit` or on the game's own exit; [`step`](Self::step) after it runs
     /// the game on, unscripted. A `resolution` sets [`WindowSize`] first.
     pub fn run_script(&mut self, script: &Script) -> Report {
+        self.begin_script(script);
+        loop {
+            if let Some(ending) = self.step_script() {
+                break self.end_script(ending);
+            }
+        }
+    }
+
+    /// Starts `script` from the next frame: its `resolution` as the
+    /// [`WindowSize`], its runner on the app.
+    fn begin_script(&mut self, script: &Script) {
         if let Some([width, height]) = script.resolution {
             self.world_mut()
                 .insert_resource(WindowSize { width, height });
         }
         self.app.script = Some(ScriptRunner::new(script.clone(), "harness", true));
-        let ending = loop {
-            let ran = self.step(1);
-            if let Some(ended) = self.app.script.as_ref().and_then(ScriptRunner::ended) {
-                break ended;
-            }
-            if ran == 0 || self.exit_requested {
-                break Ending::GameExit;
-            }
-        };
+    }
+
+    /// Runs the script's next frame; how the run ended, once it has.
+    fn step_script(&mut self) -> Option<Ending> {
+        let ran = self.step(1);
+        if let Some(ended) = self.app.script.as_ref().and_then(ScriptRunner::ended) {
+            return Some(ended);
+        }
+        (ran == 0 || self.exit_requested).then_some(Ending::GameExit)
+    }
+
+    /// Takes the ended script's runner off the app for its report.
+    fn end_script(&mut self, ending: Ending) -> Report {
         let runner = self
             .app
             .script
@@ -637,8 +653,11 @@ pub struct FrameDraw {
     pub debug_quads: Vec<QuadInstance>,
     /// Debug-draw lines and circles.
     pub debug_lines: Vec<DebugLineInstance>,
-    /// The frame's lights and ambient color.
+    /// The frame's lights and ambient color: the block of the first 16.
     pub light_ubo: LightUbo,
+    /// The lights packed past the block's 16, in packed order
+    /// (`render.light_cap`, `D-310`); none at the default cap.
+    pub more_lights: Vec<GpuLight>,
     /// Mesh particles, one batch per mesh.
     pub mesh_particles: Vec<MeshParticleBatch>,
     /// The UI paint list the frame drew (M46): the app's retained list,
@@ -673,12 +692,15 @@ impl FrameDraw {
                     material_id: batch.material_id,
                     uniform_overrides: batch.uniform_overrides,
                     lit: batch.lit,
+                    solid: batch.solid,
+                    clip: batch.clip,
                 })
                 .collect(),
             text: extract.text.clone(),
             debug_quads: extract.debug_quads.clone(),
             debug_lines: extract.debug_lines.clone(),
-            light_ubo: extract.light_ubo,
+            light_ubo: extract.lights.ubo,
+            more_lights: extract.lights.more.clone(),
             mesh_particles: extract.mesh_particles.clone(),
             ui: extract.ui.clone(),
             world_labels: extract.world_labels.clone(),

@@ -19,6 +19,17 @@
     "seams_white": { "path": "seams/white.png", "filter": "nearest" },
     "seams_ray": { "path": "seams/ray.png", "filter": "nearest" }
   },
+  "shaders": {
+    "game_tint": { "path": "shaders/game_tint.wgsl" },
+    "game_wave": { "path": "shaders/game_wave.wgsl" }
+  },
+  "post_effects": {
+    "tint": {
+      "shader": "game_tint",
+      "uniform_defaults": { "vec4": [[1.0, 0.55, 0.3, 1.0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], "f32s": [0.6, 0, 0, 0] }
+    },
+    "wave": { "shader": "game_wave", "uniform_defaults": { "f32s": [0.02, 6.0, 0, 0] } }
+  },
   "particle_meshes": {
     "ex04_bullet_tri": {
       "vertices": [[0.0, -7.0], [6.0, 7.0], [-6.0, 7.0]],

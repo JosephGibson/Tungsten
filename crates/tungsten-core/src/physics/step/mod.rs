@@ -133,6 +133,7 @@
 //! ~18%.
 
 use super::PhysicsConfig;
+use super::PhysicsWorkers;
 use super::broadphase::{ProxyId, SpatialGrid};
 use super::collision::{
     Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_ONE_WAY, FACE_RIGHT, FACE_TOP,
@@ -151,6 +152,7 @@ mod arrival;
 mod gather;
 mod outline;
 mod pairs;
+mod pool;
 mod sleep;
 pub(super) mod slope;
 mod solver;
@@ -447,8 +449,9 @@ pub struct PhysicsBuffers {
     sensor_pairs: Vec<u128>,
     /// Scratch for this step's sensor pairs.
     sensor_scratch: Vec<u128>,
-    /// Scratch: this step's sensor pairs with bodies, then all of them
-    /// merged into `sensor_scratch`.
+    /// Scratch: this step's sensor pairs with bodies in visit order, which
+    /// `StepExtra::sensor_visited` then keeps; the list given back is sorted
+    /// and merged into `sensor_scratch`.
     sensor_body_pairs: Vec<u128>,
     /// Each sensor's tile pairs, by gather index, kept while the sensor and
     /// the tiles stay as they were; cleared by a step without sensors.
@@ -496,6 +499,25 @@ pub struct PhysicsBuffers {
 /// the step moves the buffers out of the World and back each step, so they
 /// grow by this pointer alone. Its vectors are cleared and refilled, so a
 /// steady world allocates nothing new a step.
+impl StepExtra {
+    /// Reads the World's [`PhysicsWorkers`] for this step. Out of line: the
+    /// step's own function is one large body, and it holds this as a call.
+    #[inline(never)]
+    fn read_workers(&mut self, world: &World) {
+        let workers = world.get_resource::<PhysicsWorkers>().copied();
+        self.fork.participants = workers.map_or(1, |workers| workers.participants() as u32);
+        self.fork.any = workers.is_some_and(PhysicsWorkers::forks_any);
+        self.fork.spin_us = workers.map_or(0, PhysicsWorkers::spin_us);
+    }
+
+    /// Lets the pool's workers park (`D-300`): the step has run its last
+    /// fork. Out of line, like [`Self::read_workers`].
+    #[inline(never)]
+    fn rest_workers(&mut self) {
+        self.fork.rest();
+    }
+}
+
 #[derive(Debug, Default)]
 struct StepExtra {
     /// Each entity proxy's gravity scale, in proxy order; empty while every
@@ -574,6 +596,20 @@ struct StepExtra {
     sensor_cells_next: Vec<(u128, TileHit)>,
     /// The step's sensor exits, sent after its entries.
     sensor_exits: Vec<SensorExited>,
+    /// The last sensor pass's pairs with bodies in the order it visited
+    /// them, each one a pair of `PhysicsBuffers::sensor_pairs`: the next
+    /// pass compares its pairs with these in turn before it searches.
+    sensor_visited: Vec<u128>,
+    /// Scratch of the sensor pass: the sensors whose tile pairs it rewrote,
+    /// by gather index.
+    sensor_fresh: Vec<bool>,
+    /// Scratch of the sensor pass: the sensors' gather indices in key order.
+    sensor_order: Vec<usize>,
+    /// Tests: the path the sensor pass takes and what its last run did.
+    #[cfg(test)]
+    sensor_path: SensorPath,
+    #[cfg(test)]
+    sensor_stats: SensorStats,
     /// The kinematic bodies' pushes ([`take_push`]).
     push: PushRecord,
     /// Scratch for the gather's static joins (`gather::mask_static_joins`):
@@ -586,6 +622,126 @@ struct StepExtra {
     /// created.
     #[cfg(test)]
     static_join_checks: usize,
+    /// How the step forks (`D-298`): the World's [`PhysicsWorkers`] as this
+    /// step read it, and the worker threads, made at the first stage that
+    /// forks. It and the fields after it sit last, so the fields above keep
+    /// the places they had before them.
+    fork: pool::Fork,
+    /// The substep's contacts that can bounce, by index in contact order:
+    /// those with some restitution whose approach passes the threshold.
+    bouncing: Vec<u32>,
+    /// By pair index: the pair has joined its two bodies' islands since the
+    /// pair list was last built or repaired, so its later substeps need no
+    /// union; and whether a build or repair has changed the list since the
+    /// marks were last reset. A frame's first substep always builds, so the
+    /// marks never outlive the frame's islands.
+    joined: Vec<bool>,
+    joined_stale: bool,
+    /// Tests: every touching pair joins its islands in every substep, as
+    /// before the marks; and the unions the marks left out.
+    #[cfg(test)]
+    join_always: bool,
+    #[cfg(test)]
+    joins_skipped: usize,
+    /// Tests: the islands as a union in every substep builds them, which
+    /// every substep's must equal.
+    #[cfg(test)]
+    shadow_parent: Vec<u32>,
+    /// Scratch for the carry's remap by index (`D-299`).
+    carry_remap: pairs::CarryRemap,
+    /// What the sleep passes keep beside their table.
+    sleep_kept: sleep::SleepKept,
+    /// The narrow phase's slots, kept across forks for their capacity.
+    narrow_slots: Vec<pool::NarrowSlot>,
+    /// By proxy, the pair loop's writes while the proxies are the narrow
+    /// fork's input ([`WOKEN`], [`KEPT`]), all zero between substeps; and
+    /// the proxies they mark.
+    loop_flags: Vec<u8>,
+    loop_touched: Vec<u32>,
+    /// Tests: how a forked narrow phase is made to fail or to run one way.
+    #[cfg(test)]
+    narrow_test: NarrowTest,
+}
+
+/// Tests: how a forked narrow phase is made to fail or to run one way.
+#[cfg(test)]
+#[derive(Debug, Default, Clone, Copy)]
+struct NarrowTest {
+    /// The chunk whose worker panics after claiming it.
+    fail: Option<usize>,
+    /// How long a worker waits before each claim: the pair loop's own
+    /// thread then takes chunks itself.
+    claim_delay: std::time::Duration,
+    /// How long a worker waits between a claim and its chunk: the pair
+    /// loop's own thread then waits for chunks taken but not whole.
+    publish_delay: std::time::Duration,
+    /// The pair loop's own thread starts once this many chunks (at most all)
+    /// are claimed.
+    caller_after: Option<usize>,
+}
+
+/// The pair loop's writes to a proxy while it is the narrow fork's input: the
+/// body woke, or a kinematic body keeps it awake.
+const WOKEN: u8 = 1;
+const KEPT: u8 = 2;
+
+/// Whether proxy `index` sleeps, its pair loop's wake kept in `flags`.
+#[inline(always)]
+fn asleep(proxies: &[Proxy], flags: &[u8], index: usize) -> bool {
+    proxies[index].sleeping && flags[index] & WOKEN == 0
+}
+
+/// Marks `bit` for proxy `index`, listing it at its first mark.
+#[inline(always)]
+fn mark(flags: &mut [u8], touched: &mut Vec<u32>, index: usize, bit: u8) {
+    if flags[index] == 0 {
+        touched.push(index as u32);
+    }
+    flags[index] |= bit;
+}
+
+/// [`kinematic_touch`] while the proxies are the narrow fork's input: the
+/// pushed body's keep-awake goes to `flags`. Tests: `kept_reads` counts the
+/// keeps the byte decided.
+#[cold]
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn kinematic_touch_flagged(
+    proxies: &[Proxy],
+    flags: &mut [u8],
+    touched: &mut Vec<u32>,
+    events: Option<&mut Vec<CollisionEvent>>,
+    kept: &mut Vec<u32>,
+    a_idx: usize,
+    b_idx: usize,
+    contact: &Contact,
+    approach: f32,
+    #[cfg(test)] kept_reads: &mut usize,
+) {
+    let (pushed, kinematic, normal) = if proxies[a_idx].kinematic {
+        (b_idx, a_idx, -contact.normal)
+    } else {
+        (a_idx, b_idx, contact.normal)
+    };
+    #[cfg(test)]
+    {
+        *kept_reads += usize::from(!proxies[pushed].kept_awake && flags[pushed] & KEPT != 0);
+    }
+    let kept_awake = proxies[pushed].kept_awake || flags[pushed] & KEPT != 0;
+    if proxies[kinematic].velocity != Vec2::ZERO && !kept_awake {
+        mark(flags, touched, pushed, KEPT);
+        kept.push(pushed as u32);
+    }
+    if let (Some(events), Some(entity)) = (events, proxies[pushed].entity) {
+        events.push(CollisionEvent {
+            a: entity,
+            b: proxies[kinematic].entity,
+            normal,
+            penetration: contact.penetration,
+            speed: (-approach).max(0.0),
+            tile: None,
+        });
+    }
 }
 
 /// A swept sensor of the step ([`RigidBody::swept`]): its place among the
@@ -772,6 +928,14 @@ impl PhysicsBuffers {
     #[must_use]
     pub fn contact_count(&self) -> usize {
         self.contacts.len()
+    }
+
+    /// Tests: whether the sensor pass takes each sensor's candidates as a
+    /// sorted list, as it did before it read them by bit
+    /// ([`SensorPath::Search`]).
+    #[cfg(test)]
+    pub(super) fn sensor_candidates_sorted(&self) -> bool {
+        self.extra.sensor_path == SensorPath::Search
     }
 
     /// The last step's entity proxies at their final positions, in proxy
@@ -1048,6 +1212,7 @@ pub fn physics_step(world: &mut World) {
     integrate_loose_bodies(world, dt, config.gravity);
     // The contact record runs while a queue reads it.
     let extra = &mut *buffers.extra;
+    extra.read_workers(world);
     extra.swept_meets.clear();
     extra.swept_elapsed = 0.0;
     extra.record_on = world.has_resource::<EventQueue<ContactBegan>>()
@@ -1083,9 +1248,12 @@ pub fn physics_step(world: &mut World) {
     }
     // Island union-find over this frame's touching contacts (D-065).
     buffers.island_parent.clear();
-    buffers
-        .island_parent
-        .extend(0..buffers.proxies.len() as u32);
+    buffers.island_parent.extend(0..buffers.bodies as u32);
+    #[cfg(test)]
+    {
+        buffers.extra.shadow_parent.clear();
+        buffers.extra.shadow_parent.extend(0..buffers.bodies as u32);
+    }
     buffers.kept.clear();
     buffers.events.clear();
     buffers.extra.sent.begin_step(buffers.proxies.len());
@@ -1098,6 +1266,7 @@ pub fn physics_step(world: &mut World) {
             buffers.substeps_run += 1;
         }
     }
+    buffers.extra.rest_workers();
 
     sync_impulses(&mut buffers);
     if buffers.extra.record_on {
@@ -1128,7 +1297,7 @@ pub fn physics_step(world: &mut World) {
         dt,
     );
     // Queries see this step's final positions from here on.
-    SpatialIndex::mark_stale(world);
+    SpatialIndex::mark_stale(world, buffers.bodies);
     // A step without sensors keeps no pair, its last ones exiting.
     if buffers.sensors.is_empty() && buffers.sensor_pairs.is_empty() {
         buffers.sensor_tiles.clear();
@@ -1292,7 +1461,9 @@ fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
 /// One solver substep: contacts once, warm-started soft solve, integrate,
 /// arrival pass, relax, restitution, speculative safety net. Runs entirely on the
 /// dense proxy arrays — no `World` access (D-066). Each pair budget reads
-/// its own body's gravity scale (D-081).
+/// its own body's gravity scale (D-081). Never inlined: the step's own
+/// function holds it as the call it always was.
+#[inline(never)]
 fn substep(
     config: &PhysicsConfig,
     sub_dt: f32,
@@ -1310,6 +1481,64 @@ fn substep(
     if buffers.oracle.is_some() {
         oracle::after_refresh(config, sub_dt, time_left, buffers);
     }
+    // A pair list long enough to fork has its narrow phase computed beside it on
+    // the step's participants (`D-298`); the rest of the substep is compiled
+    // once for each, so the serial one holds nothing of the fork.
+    if buffers
+        .extra
+        .fork
+        .splits(buffers.pairs.len(), solver::NARROW_FORK_MIN)
+    {
+        substep_rest::<true>(config, sub_dt, buffers, sleep_enabled);
+    } else {
+        substep_rest::<false>(config, sub_dt, buffers, sleep_enabled);
+    }
+}
+
+/// What a pair's warm start reads: whether this substep seeds from the
+/// carry, by key or by index, the impulses the pair's slots held from the
+/// substep before, and its two proxies.
+#[derive(Clone, Copy)]
+struct Seed {
+    carry: bool,
+    keyed: bool,
+    cached: (f32, f32),
+    pair: (u32, u32),
+}
+
+impl Seed {
+    /// The pair's normal and tangent impulses from the substep before, or,
+    /// in the first substep after a build, from the carry. Always inlined:
+    /// as a closure it was compiled out of line, and the pair loop set its
+    /// captures up and called it for every contact of every substep.
+    #[inline(always)]
+    fn impulses(self, proxies: &[Proxy], impulses: &ImpulseMap, extra: &StepExtra) -> (f32, f32) {
+        if !self.carry {
+            self.cached
+        } else if self.keyed {
+            let (a, b) = self.pair;
+            let key = pair_key(proxies[a as usize].key, proxies[b as usize].key);
+            (impulses.get(key), extra.tangents.get(key))
+        } else {
+            extra.carry.get(self.pair.0, self.pair.1)
+        }
+    }
+}
+
+/// [`substep`] after its pairs are refreshed. With `FORKED`, the pair loop
+/// takes each pair's contact from a narrow phase the step's participants run
+/// beside it, a chunk at a time in pair order (NARROW-2): the narrow phase
+/// reads a proxy's shape, centre, velocity, face mask and slope, none of
+/// which the loop writes, so they are the contacts the loop computes.
+/// Without it this is the serial substep. Never inlined, so each is one
+/// function of its own.
+#[inline(never)]
+fn substep_rest<const FORKED: bool>(
+    config: &PhysicsConfig,
+    sub_dt: f32,
+    buffers: &mut PhysicsBuffers,
+    sleep_enabled: bool,
+) {
     let PhysicsBuffers {
         proxies,
         bodies,
@@ -1343,6 +1572,7 @@ fn substep(
     } = buffers;
     candidates.clear();
     contacts.clear();
+    extra.bouncing.clear();
     extra.friction.clear();
     extra.rolling.clear();
     extra.contact_closing.clear();
@@ -1367,222 +1597,636 @@ fn substep(
     // positive-gap contacts stay silent until touch.
     let speculative_slack = 4.0 * config.linear_slop;
     let wake_threshold = config.sleep_threshold.max(0.0);
-    for (pair_index, &(a_u, b_u)) in pairs.iter().enumerate() {
-        // Forget a disappearing contact immediately, even if it returns
-        // later without a broadphase rebuild.
-        let cached_impulse = std::mem::replace(&mut pair_impulses[pair_index], 0.0);
-        let cached_tangent = if friction_on {
-            std::mem::replace(&mut extra.pair_tangents[pair_index], 0.0)
-        } else {
-            0.0
-        };
-        let a_idx = a_u as usize;
-        let b_idx = b_u as usize;
-        let margin = (proxies[a_idx].velocity - proxies[b_idx].velocity).length() * sub_dt
-            + speculative_slack;
-        let Some(contact) = narrow_phase(&proxies[a_idx], &proxies[b_idx], margin) else {
-            continue;
-        };
-        // A one-way tile's new contact needs the body's bottom within the
-        // slack of its top face; one the pair carried last substep keeps the
-        // narrow phase's quarter cell, so a pressed body does not sink
-        // through.
-        // The pair's normal and tangent impulses from the substep before,
-        // or, in the first substep after a build, from the carry.
-        let carried = |proxies: &[Proxy], extra: &StepExtra| {
-            if !seed_impulses {
-                (cached_impulse, cached_tangent)
-            } else if seed_keyed {
-                let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
-                (impulses.get(key), extra.tangents.get(key))
-            } else {
-                extra.carry.get(a_u, b_u)
-            }
-        };
-        if proxies[b_idx].face_mask & FACE_ONE_WAY != 0 {
-            let held = carried(proxies, extra).0;
-            let (a, b) = (&proxies[a_idx], &proxies[b_idx]);
-            if held <= 0.0
-                && !one_way_holds(a, a.center, b, b.center, contact.normal, speculative_slack)
-            {
-                continue;
-            }
+    if sleep_enabled
+        && (std::mem::take(&mut extra.joined_stale) || extra.joined.len() != pairs.len())
+    {
+        extra.joined.clear();
+        extra.joined.resize(pairs.len(), false);
+    }
+    if FORKED {
+        // NARROW-2: the narrow phase forks a chunk a slot on the step's
+        // participants (`D-298`), and this thread consumes each chunk in pair
+        // order as soon as it is whole, computing one itself when no
+        // participant has taken it. The proxies are the workers' input
+        // meanwhile, so the loop's two writes to them, a body woken and a
+        // body kept awake, wait in a byte a body until the fork ends; the
+        // narrow phase reads neither.
+        let mut fork = std::mem::take(&mut extra.fork);
+        let chunk = fork.chunk(solver::NARROW_CHUNK, solver::NARROW_CHUNK_FORCED);
+        let chunks = pairs.len().div_ceil(chunk);
+        let mut slots = std::mem::take(&mut extra.narrow_slots);
+        if slots.len() < chunks {
+            slots.resize_with(chunks, pool::NarrowSlot::default);
         }
-        // Wake test (D-065): a touching contact with real relative motion, or
-        // a speculative gap approached faster than the threshold, wakes the
-        // sleeping side before the solver sees the contact — a bullet wakes
-        // its impact fringe while still a gap away. Resting-speed contacts
-        // leave the sleeper frozen (immovable below), so wake waves damp out
-        // where motion dies instead of sweeping the whole pile.
-        if proxies[b_idx].sleeping {
-            debug_assert!(!proxies[a_idx].sleeping, "sleeping bodies never initiate");
-            let relative = proxies[a_idx].velocity - proxies[b_idx].velocity;
-            let wakes = if proxies[a_idx].kinematic {
-                // A moving kinematic body wakes a sleeper it touches or
-                // closes on at any speed: under the threshold both sides
-                // would stay immovable, the pair would be dropped below and
-                // the kinematic body would pass through. A still one wakes
-                // nothing, as a static body does.
-                proxies[a_idx].velocity != Vec2::ZERO
-                    && (contact.penetration > 0.0 || relative.dot(contact.normal) < 0.0)
-            } else if !kept.is_empty() && island_holds_any(island_parent, a_u, kept) {
-                // The same wake reaches through the island a moving
-                // kinematic body presses: a sleeper ahead of it would hold
-                // the pressed bodies at inverse mass 0 against the
-                // kinematic body, and they would sink into it.
-                contact.penetration > 0.0 || relative.dot(contact.normal) < 0.0
-            } else if contact.penetration > 0.0 {
-                relative.length_squared() > wake_threshold * wake_threshold
-            } else {
-                relative.dot(contact.normal) < -wake_threshold
-            };
-            // A woken body keeps the list: it moves now without its awake
-            // pair flag, so the next refresh repairs it (D-234).
-            if wakes {
-                proxies[b_idx].sleeping = false;
-                let entry = &mut sleep.entries[b_idx];
-                entry.sleeping = false;
-                entry.timer = 0.0;
-                if record_on {
-                    extra.woken.push(b_u);
-                }
-            }
+        for slot in &mut slots[..chunks] {
+            *slot.done.get_mut() = false;
         }
-        // A sleeping side is frozen at inverse mass 0 for this substep.
-        let inv_a = proxies[a_idx].inv_mass;
-        let inv_b = if proxies[b_idx].sleeping {
-            0.0
-        } else {
-            proxies[b_idx].inv_mass
-        };
-        let inv_mass_sum = inv_a + inv_b;
-        if inv_mass_sum <= 0.0 {
-            continue;
-        }
-        let approach = (proxies[a_idx].velocity - proxies[b_idx].velocity).dot(contact.normal);
-        let (impulse, seeded_tangent) = carried(proxies, extra);
+        let mut flag_store = std::mem::take(&mut extra.loop_flags);
+        flag_store.resize(proxies.len(), 0);
+        let mut touched_store = std::mem::take(&mut extra.loop_touched);
         #[cfg(test)]
-        let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
-        #[cfg(test)]
-        if let Some(reference) = reference_impulses.as_ref() {
-            assert_eq!(
-                impulse.to_bits(),
-                reference.get(key).to_bits(),
-                "warm-start diverged"
-            );
-        }
-        contacts.push(ContactConstraint {
-            a: a_u,
-            b: b_u,
-            normal: contact.normal,
-            penetration: contact.penetration,
-            normal_mass: 1.0 / inv_mass_sum,
-            approach,
-            impulse,
-            restitution: proxies[a_idx].restitution.max(proxies[b_idx].restitution),
-            inv_a,
-            inv_b,
-            pair_index: pair_index as u32,
+        let narrow_test = extra.narrow_test;
+        let data = pool::ForkData {
+            stage: pool::Stage::Narrow {
+                sub_dt,
+                slack: speculative_slack,
+                chunk,
+                chunks,
+            },
+            proxies: std::mem::take(proxies),
+            pairs: std::mem::take(pairs),
+            narrow_slots: slots,
             #[cfg(test)]
-            key,
-        });
-        // The record carries the largest closing speed of a pair in reach
-        // since its last touch.
-        if record_on {
-            let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
-            let carried = extra.record.closing.get(key);
-            extra.contact_closing.push(carried.max(-approach));
-        }
-        // Friction rides beside the contact when both sides have some, and
-        // rolling resistance when a side spins. A spinning side's moment of
-        // inertia is `m r² / 2`, so its rim adds `r² / I = 2 / m` to the
-        // tangent's inverse mass.
-        let (spin_a, spin_b) = if spins_on {
-            (extra.spin_of[a_idx], extra.spin_of[b_idx])
-        } else {
-            (NO_SPIN, NO_SPIN)
+            fail_narrow: narrow_test.fail,
+            #[cfg(test)]
+            claim_delay: narrow_test.claim_delay,
+            #[cfg(test)]
+            publish_delay: narrow_test.publish_delay,
+            ..Default::default()
         };
-        if friction_on {
-            let mu = (extra.frictions[a_idx] * extra.frictions[b_idx]).sqrt();
-            if mu > 0.0 {
-                let mut inv_tangent = inv_mass_sum;
-                if spin_a != NO_SPIN {
-                    inv_tangent += 2.0 * inv_a;
+        let workers = fork.workers();
+        // Tests: the chunks this thread took and waited for, and the wakes and
+        // keeps the byte decided.
+        let (data, counts) = workers.fork_with(data, |data, _, shared| {
+            #[cfg(test)]
+            if let Some(claimed) = narrow_test.caller_after {
+                let claimed = claimed.min(chunks);
+                let waited = std::time::Instant::now();
+                while data.next.load(std::sync::atomic::Ordering::Acquire) < claimed
+                    && waited.elapsed() < std::time::Duration::from_secs(5)
+                {
+                    std::thread::yield_now();
                 }
-                if spin_b != NO_SPIN {
-                    inv_tangent += 2.0 * inv_b;
-                }
-                extra.friction.push(FrictionConstraint {
-                    contact: (contacts.len() - 1) as u32,
-                    spin_a,
-                    spin_b,
-                    mu,
-                    tangent_mass: 1.0 / inv_tangent,
-                    impulse: seeded_tangent,
-                });
-                #[cfg(test)]
-                if seed_impulses && reference_impulses.is_some() {
-                    assert_eq!(
-                        seeded_tangent.to_bits(),
-                        reference_tangents.get(key).to_bits(),
-                        "tangent warm-start diverged"
+            }
+            let (px, flags, touched) = (&data.proxies[..], &mut flag_store[..], &mut touched_store);
+            #[cfg_attr(not(test), allow(unused_mut))]
+            let mut counts = [0usize; 4];
+            for k in 0..chunks {
+                let slot = &data.narrow_slots[k];
+                if !slot.done.load(std::sync::atomic::Ordering::Acquire) {
+                    let free = data.next.compare_exchange(
+                        k,
+                        k + 1,
+                        std::sync::atomic::Ordering::Relaxed,
+                        std::sync::atomic::Ordering::Relaxed,
                     );
+                    if free.is_ok() {
+                        solver::narrow_slot(data, k, chunk, sub_dt, speculative_slack);
+                        #[cfg(test)]
+                        {
+                            counts[0] += 1;
+                        }
+                    } else {
+                        pool::wait_slot(slot, shared);
+                        #[cfg(test)]
+                        {
+                            counts[1] += 1;
+                        }
+                    }
+                }
+                let computed_chunk = slot
+                    .contacts
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                for (offset, &computed) in computed_chunk.iter().enumerate() {
+                    let pair_index = k * chunk + offset;
+                    let (a_u, b_u) = data.pairs[pair_index];
+                    // Forget a disappearing contact immediately, even if it returns
+                    // later without a broadphase rebuild.
+                    let cached_impulse = std::mem::replace(&mut pair_impulses[pair_index], 0.0);
+                    let cached_tangent = if friction_on {
+                        std::mem::replace(&mut extra.pair_tangents[pair_index], 0.0)
+                    } else {
+                        0.0
+                    };
+                    let a_idx = a_u as usize;
+                    let b_idx = b_u as usize;
+                    let Some(contact) = computed else {
+                        continue;
+                    };
+                    // A one-way tile's new contact needs the body's bottom within the
+                    // slack of its top face; one the pair carried last substep keeps the
+                    // narrow phase's quarter cell, so a pressed body does not sink
+                    // through.
+                    // The pair's normal and tangent impulses from the substep before,
+                    // or, in the first substep after a build, from the carry.
+                    let seed = Seed {
+                        carry: seed_impulses,
+                        keyed: seed_keyed,
+                        cached: (cached_impulse, cached_tangent),
+                        pair: (a_u, b_u),
+                    };
+                    if px[b_idx].face_mask & FACE_ONE_WAY != 0 {
+                        let held = seed.impulses(px, impulses, extra).0;
+                        let (a, b) = (&px[a_idx], &px[b_idx]);
+                        if held <= 0.0
+                            && !one_way_holds(
+                                a,
+                                a.center,
+                                b,
+                                b.center,
+                                contact.normal,
+                                speculative_slack,
+                            )
+                        {
+                            continue;
+                        }
+                    }
+                    // Wake test (D-065): a touching contact with real relative motion, or
+                    // a speculative gap approached faster than the threshold, wakes the
+                    // sleeping side before the solver sees the contact — a bullet wakes
+                    // its impact fringe while still a gap away. Resting-speed contacts
+                    // leave the sleeper frozen (immovable below), so wake waves damp out
+                    // where motion dies instead of sweeping the whole pile.
+                    #[cfg(test)]
+                    {
+                        counts[2] += usize::from(px[b_idx].sleeping && flags[b_idx] & WOKEN != 0);
+                    }
+                    if asleep(px, flags, b_idx) {
+                        debug_assert!(!asleep(px, flags, a_idx), "sleeping bodies never initiate");
+                        let relative = px[a_idx].velocity - px[b_idx].velocity;
+                        let wakes = if px[a_idx].kinematic {
+                            // A moving kinematic body wakes a sleeper it touches or
+                            // closes on at any speed: under the threshold both sides
+                            // would stay immovable, the pair would be dropped below and
+                            // the kinematic body would pass through. A still one wakes
+                            // nothing, as a static body does.
+                            px[a_idx].velocity != Vec2::ZERO
+                                && (contact.penetration > 0.0 || relative.dot(contact.normal) < 0.0)
+                        } else if !kept.is_empty() && island_holds_any(island_parent, a_u, kept) {
+                            // The same wake reaches through the island a moving
+                            // kinematic body presses: a sleeper ahead of it would hold
+                            // the pressed bodies at inverse mass 0 against the
+                            // kinematic body, and they would sink into it.
+                            contact.penetration > 0.0 || relative.dot(contact.normal) < 0.0
+                        } else if contact.penetration > 0.0 {
+                            relative.length_squared() > wake_threshold * wake_threshold
+                        } else {
+                            relative.dot(contact.normal) < -wake_threshold
+                        };
+                        // A woken body keeps the list: it moves now without its awake
+                        // pair flag, so the next refresh repairs it (D-234).
+                        if wakes {
+                            mark(flags, touched, b_idx, WOKEN);
+                            let entry = &mut sleep.entries[b_idx];
+                            entry.sleeping = false;
+                            entry.timer = 0.0;
+                            if record_on {
+                                extra.woken.push(b_u);
+                            }
+                        }
+                    }
+                    // A sleeping side is frozen at inverse mass 0 for this substep.
+                    let inv_a = px[a_idx].inv_mass;
+                    let inv_b = if asleep(px, flags, b_idx) {
+                        0.0
+                    } else {
+                        px[b_idx].inv_mass
+                    };
+                    let inv_mass_sum = inv_a + inv_b;
+                    if inv_mass_sum <= 0.0 {
+                        continue;
+                    }
+                    let approach = (px[a_idx].velocity - px[b_idx].velocity).dot(contact.normal);
+                    let (impulse, seeded_tangent) = seed.impulses(px, impulses, extra);
+                    #[cfg(test)]
+                    let key = pair_key(px[a_idx].key, px[b_idx].key);
+                    #[cfg(test)]
+                    if let Some(reference) = reference_impulses.as_ref() {
+                        assert_eq!(
+                            impulse.to_bits(),
+                            reference.get(key).to_bits(),
+                            "warm-start diverged"
+                        );
+                    }
+                    let restitution = px[a_idx].restitution.max(px[b_idx].restitution);
+                    // A contact bounces only with some restitution and an approach past
+                    // the threshold, both fixed here: restitution walks these alone.
+                    if !(restitution == 0.0 || approach > -config.restitution_threshold) {
+                        extra.bouncing.push(contacts.len() as u32);
+                    }
+                    contacts.push(ContactConstraint {
+                        a: a_u,
+                        b: b_u,
+                        normal: contact.normal,
+                        penetration: contact.penetration,
+                        normal_mass: 1.0 / inv_mass_sum,
+                        approach,
+                        impulse,
+                        restitution,
+                        inv_a,
+                        inv_b,
+                        pair_index: pair_index as u32,
+                        #[cfg(test)]
+                        key,
+                    });
+                    // The record carries the largest closing speed of a pair in reach
+                    // since its last touch.
+                    if record_on {
+                        let key = pair_key(px[a_idx].key, px[b_idx].key);
+                        let carried = extra.record.closing.get(key);
+                        extra.contact_closing.push(carried.max(-approach));
+                    }
+                    // Friction rides beside the contact when both sides have some, and
+                    // rolling resistance when a side spins. A spinning side's moment of
+                    // inertia is `m r² / 2`, so its rim adds `r² / I = 2 / m` to the
+                    // tangent's inverse mass.
+                    let (spin_a, spin_b) = if spins_on {
+                        (extra.spin_of[a_idx], extra.spin_of[b_idx])
+                    } else {
+                        (NO_SPIN, NO_SPIN)
+                    };
+                    if friction_on {
+                        let mu = (extra.frictions[a_idx] * extra.frictions[b_idx]).sqrt();
+                        if mu > 0.0 {
+                            let mut inv_tangent = inv_mass_sum;
+                            if spin_a != NO_SPIN {
+                                inv_tangent += 2.0 * inv_a;
+                            }
+                            if spin_b != NO_SPIN {
+                                inv_tangent += 2.0 * inv_b;
+                            }
+                            extra.friction.push(FrictionConstraint {
+                                contact: (contacts.len() - 1) as u32,
+                                spin_a,
+                                spin_b,
+                                mu,
+                                tangent_mass: 1.0 / inv_tangent,
+                                impulse: seeded_tangent,
+                            });
+                            #[cfg(test)]
+                            if seed_impulses && reference_impulses.is_some() {
+                                assert_eq!(
+                                    seeded_tangent.to_bits(),
+                                    reference_tangents.get(key).to_bits(),
+                                    "tangent warm-start diverged"
+                                );
+                            }
+                        }
+                    }
+                    if (spin_a != NO_SPIN || spin_b != NO_SPIN) && !extra.rollings.is_empty() {
+                        let k = extra.rollings[a_idx].max(extra.rollings[b_idx]);
+                        let radius_of = |slot: u32, inv: f32| {
+                            if slot == NO_SPIN || inv == 0.0 {
+                                (0.0, 0.0)
+                            } else {
+                                let radius = extra.spins[slot as usize].radius;
+                                (radius, 2.0 * inv / (radius * radius))
+                            }
+                        };
+                        let ((ra, inv_ia), (rb, inv_ib)) =
+                            (radius_of(spin_a, inv_a), radius_of(spin_b, inv_b));
+                        if k > 0.0 && inv_ia + inv_ib > 0.0 {
+                            extra.rolling.push(RollingConstraint {
+                                contact: (contacts.len() - 1) as u32,
+                                spin_a,
+                                spin_b,
+                                bound: k * ra.max(rb),
+                                mass: 1.0 / (inv_ia + inv_ib),
+                                impulse: 0.0,
+                            });
+                        }
+                    }
+                    if contact.penetration > 0.0 {
+                        // A pair sends its event once a step, in the first substep its
+                        // contact penetrates, unless the safety net's clamp sent it
+                        // (D-270).
+                        let net_side = !px[b_idx].is_dynamic && !px[b_idx].kinematic;
+                        let send = extra.sent.send(pair_index, a_u, b_u, net_side);
+                        if px[a_idx].kinematic || px[b_idx].kinematic {
+                            let events = send.then_some(&mut *events);
+                            #[cfg(test)]
+                            kinematic_touch_flagged(
+                                px,
+                                flags,
+                                touched,
+                                events,
+                                kept,
+                                a_idx,
+                                b_idx,
+                                &contact,
+                                approach,
+                                &mut counts[3],
+                            );
+                            #[cfg(not(test))]
+                            kinematic_touch_flagged(
+                                px, flags, touched, events, kept, a_idx, b_idx, &contact, approach,
+                            );
+                            continue;
+                        }
+                        // Touching contacts between awake dynamic bodies join one island;
+                        // islands sleep and re-sleep as a unit (D-065). Without a
+                        // kinematic side, `a` is an awake dynamic body.
+                        // A pair joins them once: two bodies of one island stay so
+                        // until the frame ends, and a union of two such changes no set.
+                        if sleep_enabled
+                            && px[b_idx].is_dynamic
+                            && !asleep(px, flags, b_idx)
+                            && px[b_idx].entity.is_some()
+                        {
+                            let joined = std::mem::replace(&mut extra.joined[pair_index], true);
+                            #[cfg(test)]
+                            let joined = {
+                                if extra.shadow_parent.len() == island_parent.len() {
+                                    uf_union(&mut extra.shadow_parent, a_u, b_u);
+                                }
+                                extra.joins_skipped += usize::from(joined && !extra.join_always);
+                                joined && !extra.join_always
+                            };
+                            if !joined {
+                                uf_union(island_parent, a_u, b_u);
+                            }
+                        }
+                        if send && let Some(a_entity) = px[a_idx].entity {
+                            events.push(CollisionEvent {
+                                a: a_entity,
+                                b: px[b_idx].entity,
+                                normal: contact.normal,
+                                penetration: contact.penetration,
+                                speed: (-approach).max(0.0),
+                                tile: tile_hit(tiles, bodies, b_idx, &px[b_idx]),
+                            });
+                        }
+                    }
                 }
             }
+            counts
+        });
+        *proxies = data.proxies;
+        *pairs = data.pairs;
+        extra.narrow_slots = data.narrow_slots;
+        // The loop's writes, now that the proxies are the step's again.
+        for &body in &touched_store {
+            let body = body as usize;
+            let bits = std::mem::take(&mut flag_store[body]);
+            if bits & WOKEN != 0 {
+                proxies[body].sleeping = false;
+            }
+            if bits & KEPT != 0 {
+                proxies[body].kept_awake = true;
+            }
         }
-        if (spin_a != NO_SPIN || spin_b != NO_SPIN) && !extra.rollings.is_empty() {
-            let k = extra.rollings[a_idx].max(extra.rollings[b_idx]);
-            let radius_of = |slot: u32, inv: f32| {
-                if slot == NO_SPIN || inv == 0.0 {
-                    (0.0, 0.0)
-                } else {
-                    let radius = extra.spins[slot as usize].radius;
-                    (radius, 2.0 * inv / (radius * radius))
-                }
+        touched_store.clear();
+        extra.loop_flags = flag_store;
+        extra.loop_touched = touched_store;
+        #[cfg(test)]
+        {
+            let workers = fork.workers();
+            workers.narrow_forks += 1;
+            workers.caller_claims += counts[0];
+            workers.caller_waits += counts[1];
+            workers.woken_by_byte += counts[2];
+            workers.kept_by_byte += counts[3];
+        }
+        #[cfg(not(test))]
+        let _ = counts;
+        extra.fork = fork;
+    } else {
+        for (pair_index, &(a_u, b_u)) in pairs.iter().enumerate() {
+            // Forget a disappearing contact immediately, even if it returns
+            // later without a broadphase rebuild.
+            let cached_impulse = std::mem::replace(&mut pair_impulses[pair_index], 0.0);
+            let cached_tangent = if friction_on {
+                std::mem::replace(&mut extra.pair_tangents[pair_index], 0.0)
+            } else {
+                0.0
             };
-            let ((ra, inv_ia), (rb, inv_ib)) = (radius_of(spin_a, inv_a), radius_of(spin_b, inv_b));
-            if k > 0.0 && inv_ia + inv_ib > 0.0 {
-                extra.rolling.push(RollingConstraint {
-                    contact: (contacts.len() - 1) as u32,
-                    spin_a,
-                    spin_b,
-                    bound: k * ra.max(rb),
-                    mass: 1.0 / (inv_ia + inv_ib),
-                    impulse: 0.0,
-                });
+            let a_idx = a_u as usize;
+            let b_idx = b_u as usize;
+            let margin = (proxies[a_idx].velocity - proxies[b_idx].velocity).length() * sub_dt
+                + speculative_slack;
+            let Some(contact) = narrow_phase(&proxies[a_idx], &proxies[b_idx], margin) else {
+                continue;
+            };
+            // A one-way tile's new contact needs the body's bottom within the
+            // slack of its top face; one the pair carried last substep keeps the
+            // narrow phase's quarter cell, so a pressed body does not sink
+            // through.
+            // The pair's normal and tangent impulses from the substep before,
+            // or, in the first substep after a build, from the carry.
+            let seed = Seed {
+                carry: seed_impulses,
+                keyed: seed_keyed,
+                cached: (cached_impulse, cached_tangent),
+                pair: (a_u, b_u),
+            };
+            if proxies[b_idx].face_mask & FACE_ONE_WAY != 0 {
+                let held = seed.impulses(proxies, impulses, extra).0;
+                let (a, b) = (&proxies[a_idx], &proxies[b_idx]);
+                if held <= 0.0
+                    && !one_way_holds(a, a.center, b, b.center, contact.normal, speculative_slack)
+                {
+                    continue;
+                }
             }
-        }
-        if contact.penetration > 0.0 {
-            // A pair sends its event once a step, in the first substep its
-            // contact penetrates, unless the safety net's clamp sent it
-            // (D-270).
-            let net_side = !proxies[b_idx].is_dynamic && !proxies[b_idx].kinematic;
-            let send = extra.sent.send(pair_index, a_u, b_u, net_side);
-            if proxies[a_idx].kinematic || proxies[b_idx].kinematic {
-                let events = send.then_some(&mut *events);
-                kinematic_touch(proxies, events, kept, a_idx, b_idx, &contact, approach);
+            // Wake test (D-065): a touching contact with real relative motion, or
+            // a speculative gap approached faster than the threshold, wakes the
+            // sleeping side before the solver sees the contact — a bullet wakes
+            // its impact fringe while still a gap away. Resting-speed contacts
+            // leave the sleeper frozen (immovable below), so wake waves damp out
+            // where motion dies instead of sweeping the whole pile.
+            if proxies[b_idx].sleeping {
+                debug_assert!(!proxies[a_idx].sleeping, "sleeping bodies never initiate");
+                let relative = proxies[a_idx].velocity - proxies[b_idx].velocity;
+                let wakes = if proxies[a_idx].kinematic {
+                    // A moving kinematic body wakes a sleeper it touches or
+                    // closes on at any speed: under the threshold both sides
+                    // would stay immovable, the pair would be dropped below and
+                    // the kinematic body would pass through. A still one wakes
+                    // nothing, as a static body does.
+                    proxies[a_idx].velocity != Vec2::ZERO
+                        && (contact.penetration > 0.0 || relative.dot(contact.normal) < 0.0)
+                } else if !kept.is_empty() && island_holds_any(island_parent, a_u, kept) {
+                    // The same wake reaches through the island a moving
+                    // kinematic body presses: a sleeper ahead of it would hold
+                    // the pressed bodies at inverse mass 0 against the
+                    // kinematic body, and they would sink into it.
+                    contact.penetration > 0.0 || relative.dot(contact.normal) < 0.0
+                } else if contact.penetration > 0.0 {
+                    relative.length_squared() > wake_threshold * wake_threshold
+                } else {
+                    relative.dot(contact.normal) < -wake_threshold
+                };
+                // A woken body keeps the list: it moves now without its awake
+                // pair flag, so the next refresh repairs it (D-234).
+                if wakes {
+                    proxies[b_idx].sleeping = false;
+                    let entry = &mut sleep.entries[b_idx];
+                    entry.sleeping = false;
+                    entry.timer = 0.0;
+                    if record_on {
+                        extra.woken.push(b_u);
+                    }
+                }
+            }
+            // A sleeping side is frozen at inverse mass 0 for this substep.
+            let inv_a = proxies[a_idx].inv_mass;
+            let inv_b = if proxies[b_idx].sleeping {
+                0.0
+            } else {
+                proxies[b_idx].inv_mass
+            };
+            let inv_mass_sum = inv_a + inv_b;
+            if inv_mass_sum <= 0.0 {
                 continue;
             }
-            // Touching contacts between awake dynamic bodies join one island;
-            // islands sleep and re-sleep as a unit (D-065). Without a
-            // kinematic side, `a` is an awake dynamic body.
-            if sleep_enabled
-                && proxies[b_idx].is_dynamic
-                && !proxies[b_idx].sleeping
-                && proxies[b_idx].entity.is_some()
-            {
-                uf_union(island_parent, a_u, b_u);
+            let approach = (proxies[a_idx].velocity - proxies[b_idx].velocity).dot(contact.normal);
+            let (impulse, seeded_tangent) = seed.impulses(proxies, impulses, extra);
+            #[cfg(test)]
+            let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
+            #[cfg(test)]
+            if let Some(reference) = reference_impulses.as_ref() {
+                assert_eq!(
+                    impulse.to_bits(),
+                    reference.get(key).to_bits(),
+                    "warm-start diverged"
+                );
             }
-            if send && let Some(a_entity) = proxies[a_idx].entity {
-                events.push(CollisionEvent {
-                    a: a_entity,
-                    b: proxies[b_idx].entity,
-                    normal: contact.normal,
-                    penetration: contact.penetration,
-                    speed: (-approach).max(0.0),
-                    tile: tile_hit(tiles, bodies, b_idx, &proxies[b_idx]),
-                });
+            let restitution = proxies[a_idx].restitution.max(proxies[b_idx].restitution);
+            // A contact bounces only with some restitution and an approach past
+            // the threshold, both fixed here: restitution walks these alone.
+            if !(restitution == 0.0 || approach > -config.restitution_threshold) {
+                extra.bouncing.push(contacts.len() as u32);
             }
+            contacts.push(ContactConstraint {
+                a: a_u,
+                b: b_u,
+                normal: contact.normal,
+                penetration: contact.penetration,
+                normal_mass: 1.0 / inv_mass_sum,
+                approach,
+                impulse,
+                restitution,
+                inv_a,
+                inv_b,
+                pair_index: pair_index as u32,
+                #[cfg(test)]
+                key,
+            });
+            // The record carries the largest closing speed of a pair in reach
+            // since its last touch.
+            if record_on {
+                let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
+                let carried = extra.record.closing.get(key);
+                extra.contact_closing.push(carried.max(-approach));
+            }
+            // Friction rides beside the contact when both sides have some, and
+            // rolling resistance when a side spins. A spinning side's moment of
+            // inertia is `m r² / 2`, so its rim adds `r² / I = 2 / m` to the
+            // tangent's inverse mass.
+            let (spin_a, spin_b) = if spins_on {
+                (extra.spin_of[a_idx], extra.spin_of[b_idx])
+            } else {
+                (NO_SPIN, NO_SPIN)
+            };
+            if friction_on {
+                let mu = (extra.frictions[a_idx] * extra.frictions[b_idx]).sqrt();
+                if mu > 0.0 {
+                    let mut inv_tangent = inv_mass_sum;
+                    if spin_a != NO_SPIN {
+                        inv_tangent += 2.0 * inv_a;
+                    }
+                    if spin_b != NO_SPIN {
+                        inv_tangent += 2.0 * inv_b;
+                    }
+                    extra.friction.push(FrictionConstraint {
+                        contact: (contacts.len() - 1) as u32,
+                        spin_a,
+                        spin_b,
+                        mu,
+                        tangent_mass: 1.0 / inv_tangent,
+                        impulse: seeded_tangent,
+                    });
+                    #[cfg(test)]
+                    if seed_impulses && reference_impulses.is_some() {
+                        assert_eq!(
+                            seeded_tangent.to_bits(),
+                            reference_tangents.get(key).to_bits(),
+                            "tangent warm-start diverged"
+                        );
+                    }
+                }
+            }
+            if (spin_a != NO_SPIN || spin_b != NO_SPIN) && !extra.rollings.is_empty() {
+                let k = extra.rollings[a_idx].max(extra.rollings[b_idx]);
+                let radius_of = |slot: u32, inv: f32| {
+                    if slot == NO_SPIN || inv == 0.0 {
+                        (0.0, 0.0)
+                    } else {
+                        let radius = extra.spins[slot as usize].radius;
+                        (radius, 2.0 * inv / (radius * radius))
+                    }
+                };
+                let ((ra, inv_ia), (rb, inv_ib)) =
+                    (radius_of(spin_a, inv_a), radius_of(spin_b, inv_b));
+                if k > 0.0 && inv_ia + inv_ib > 0.0 {
+                    extra.rolling.push(RollingConstraint {
+                        contact: (contacts.len() - 1) as u32,
+                        spin_a,
+                        spin_b,
+                        bound: k * ra.max(rb),
+                        mass: 1.0 / (inv_ia + inv_ib),
+                        impulse: 0.0,
+                    });
+                }
+            }
+            if contact.penetration > 0.0 {
+                // A pair sends its event once a step, in the first substep its
+                // contact penetrates, unless the safety net's clamp sent it
+                // (D-270).
+                let net_side = !proxies[b_idx].is_dynamic && !proxies[b_idx].kinematic;
+                let send = extra.sent.send(pair_index, a_u, b_u, net_side);
+                if proxies[a_idx].kinematic || proxies[b_idx].kinematic {
+                    let events = send.then_some(&mut *events);
+                    kinematic_touch(proxies, events, kept, a_idx, b_idx, &contact, approach);
+                    continue;
+                }
+                // Touching contacts between awake dynamic bodies join one island;
+                // islands sleep and re-sleep as a unit (D-065). Without a
+                // kinematic side, `a` is an awake dynamic body.
+                // A pair joins them once: two bodies of one island stay so
+                // until the frame ends, and a union of two such changes no set.
+                if sleep_enabled
+                    && proxies[b_idx].is_dynamic
+                    && !proxies[b_idx].sleeping
+                    && proxies[b_idx].entity.is_some()
+                {
+                    let joined = std::mem::replace(&mut extra.joined[pair_index], true);
+                    #[cfg(test)]
+                    let joined = {
+                        if extra.shadow_parent.len() == island_parent.len() {
+                            uf_union(&mut extra.shadow_parent, a_u, b_u);
+                        }
+                        extra.joins_skipped += usize::from(joined && !extra.join_always);
+                        joined && !extra.join_always
+                    };
+                    if !joined {
+                        uf_union(island_parent, a_u, b_u);
+                    }
+                }
+                if send && let Some(a_entity) = proxies[a_idx].entity {
+                    events.push(CollisionEvent {
+                        a: a_entity,
+                        b: proxies[b_idx].entity,
+                        normal: contact.normal,
+                        penetration: contact.penetration,
+                        speed: (-approach).max(0.0),
+                        tile: tile_hit(tiles, bodies, b_idx, &proxies[b_idx]),
+                    });
+                }
+            }
+        }
+    }
+    // Tests: the islands are those a union in every substep builds. A step
+    // run by hand, outside `physics_step`, has no shadow to compare.
+    #[cfg(test)]
+    if sleep_enabled && extra.shadow_parent.len() == island_parent.len() {
+        for body in 0..island_parent.len() as u32 {
+            assert_eq!(
+                sleep::uf_find(island_parent, body),
+                sleep::uf_find(&mut extra.shadow_parent, body),
+                "body {body}'s island left the one every union builds"
+            );
         }
     }
 
@@ -1706,11 +2350,12 @@ fn substep(
             pair_flags,
             layers,
             repaired,
-            &extra.oversize,
+            &mut extra.oversize,
             candidates,
             arrival,
             &mut extra.arrival_reach,
             (record_on || push_on).then_some(&mut extra.touches),
+            &mut extra.fork,
         );
     }
     // The record samples each contact's closing speed after the solve and
@@ -1747,7 +2392,24 @@ fn substep(
         extra.push.relax(proxies, contacts);
     }
 
-    apply_restitution(proxies, contacts, config.restitution_threshold);
+    // Tests: the list is what a scan of every contact finds now, so no
+    // contact's restitution or approach moved since the pair loop listed it.
+    #[cfg(test)]
+    {
+        let scanned: Vec<u32> = contacts
+            .iter()
+            .enumerate()
+            .filter(|(_, contact)| {
+                !(contact.restitution == 0.0 || contact.approach > -config.restitution_threshold)
+            })
+            .map(|(index, _)| index as u32)
+            .collect();
+        assert_eq!(
+            extra.bouncing, scanned,
+            "restitution's list left the scan of the contacts"
+        );
+    }
+    apply_restitution(proxies, contacts, &extra.bouncing);
 
     // A contact that penetrates or that the solve gave an impulse touches;
     // a touch spends its pair's carried speed.
@@ -1930,6 +2592,40 @@ fn sweep_sensors(
     *swept_elapsed += sub_dt;
 }
 
+/// Tests: the path the sensor pass takes. `Search` is the pass as it stood
+/// before it compared its pairs in visit order: every pair searched in the
+/// sorted previous pairs, a sensor's candidates gathered into a sorted list,
+/// and the pairs sorted and merged every pass. `TrustCursor` is broken on
+/// purpose, for a negative control: a pair that is not the cursor's is taken
+/// as new without the search.
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum SensorPath {
+    #[default]
+    InOrder,
+    Search,
+    TrustCursor,
+}
+
+/// Tests: what the last sensor pass did.
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct SensorStats {
+    /// Body pairs found at the cursor.
+    in_turn: usize,
+    /// Body pairs that took the search of the sorted previous pairs.
+    searched: usize,
+    /// Searched pairs that moved the cursor up to them.
+    caught_up: usize,
+    /// The pass kept the last one's sorted pairs whole.
+    unchanged: bool,
+}
+
+/// How far past the cursor a pair found by the search is looked for among
+/// the last pass's visits, so the cursor follows when the pairs before it
+/// left.
+const SENSOR_CATCH_UP: usize = 8;
+
 /// Sensor pass: each sensor, in gather order, against the bodies it
 /// overlaps at the step's final positions, in index order (the spatial
 /// index, built here), then the solid cells of the tile cache's grids, in
@@ -1943,17 +2639,41 @@ fn sweep_sensors(
 /// pass kept keeps its tile pairs, drops those of the cells the step's
 /// refresh changed and tests those cells alone; the events and the pairs
 /// are those a test of every cell gives.
+///
+/// A pair with a body is old when the sorted previous pairs hold it. The
+/// last pass's body pairs are kept in the order it visited them, each of
+/// them a previous pair, with a cursor: a pair equal to the cursor's entry
+/// is old without a search, and any other pair takes the search, so the
+/// answer is the search's in every case. A pass whose body pairs are the
+/// last one's in turn, with no sensor's tile pairs rewritten and no sensor
+/// swept, has the last pass's sorted pairs, and keeps them without the
+/// sort, the merge and the walk for exits.
+///
+/// Out of line, so a profile counts the whole pass under its name.
+#[inline(never)]
 fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     let mut pairs = std::mem::take(&mut buffers.sensor_scratch);
     let mut body_pairs = std::mem::take(&mut buffers.sensor_body_pairs);
     let mut entered = std::mem::take(&mut buffers.sensor_events);
     let mut kept = std::mem::take(&mut buffers.sensor_tiles);
     let mut cells = std::mem::take(&mut buffers.extra.sensor_cells_next);
+    let visited = std::mem::take(&mut buffers.extra.sensor_visited);
+    let mut fresh = std::mem::take(&mut buffers.extra.sensor_fresh);
+    let mut order = std::mem::take(&mut buffers.extra.sensor_order);
     buffers.sensor_passes += 1;
     let pass = buffers.sensor_passes;
     let (replaced, written) = (buffers.tiles.replaced(), buffers.tiles.written_ids());
+    #[cfg(test)]
+    let path = buffers.extra.sensor_path;
+    #[cfg(test)]
+    let mut stats = SensorStats::default();
+    // The tile pairs stand as the last pass left them until a sensor's are
+    // rewritten below: a sensor more or fewer, a swept one, a key that
+    // changed, a tile written under one.
+    let mut tiles_stand = kept.len() == buffers.sensors.len() && buffers.extra.swept.is_empty();
     kept.resize_with(buffers.sensors.len(), SensorTiles::default);
-    let mut fresh = vec![false; buffers.sensors.len()];
+    fresh.clear();
+    fresh.resize(buffers.sensors.len(), false);
     body_pairs.clear();
     let previous = &buffers.sensor_pairs;
     let pair_of = |sensor: u64, other: u64| (u128::from(sensor) << 64) | u128::from(other);
@@ -1963,15 +2683,23 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
             .binary_search_by_key(&(index as u32), |sweep| sweep.sensor)
             .is_ok()
     };
+    // Whether every body pair so far is the last pass's at its own place.
+    let mut in_turn = true;
     {
         let kept = &mut kept;
         let fresh = &mut fresh;
         let entered = &mut entered;
         let body_pairs = &mut body_pairs;
+        let visited = &visited;
+        let in_turn = &mut in_turn;
+        #[cfg(test)]
+        let stats = &mut stats;
+        let mut cursor = 0;
         // Both closures below take the event list and the kept pairs, so
         // they go through cells shared by the three callbacks.
         let entered = std::cell::RefCell::new(entered);
         let kept = std::cell::RefCell::new(kept);
+        let tile_pairs_pushed = std::cell::Cell::new(false);
         let tested = SpatialIndex::sensor_overlaps(
             world,
             buffers,
@@ -2000,10 +2728,48 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
             },
             |sensor, other| {
                 let pair = pair_of(sensor.identity, other.identity);
+                let at = body_pairs.len();
                 body_pairs.push(pair);
-                if previous.binary_search(&pair).is_err()
-                    && let Some(entity) = sensor.entity
-                {
+                #[cfg(test)]
+                let at_cursor = path != SensorPath::Search && visited.get(cursor) == Some(&pair);
+                #[cfg(not(test))]
+                let at_cursor = visited.get(cursor) == Some(&pair);
+                let old = if at_cursor {
+                    *in_turn &= cursor == at;
+                    cursor += 1;
+                    #[cfg(test)]
+                    {
+                        stats.in_turn += 1;
+                    }
+                    true
+                } else {
+                    *in_turn = false;
+                    #[cfg(test)]
+                    let found =
+                        path != SensorPath::TrustCursor && previous.binary_search(&pair).is_ok();
+                    #[cfg(not(test))]
+                    let found = previous.binary_search(&pair).is_ok();
+                    #[cfg(test)]
+                    {
+                        stats.searched += 1;
+                    }
+                    if found {
+                        // An old pair out of turn: the pairs before it left,
+                        // so the cursor moves past it where it is near.
+                        let from = (cursor + 1).min(visited.len());
+                        let to = (from + SENSOR_CATCH_UP).min(visited.len());
+                        if let Some(skipped) = visited[from..to].iter().position(|&was| was == pair)
+                        {
+                            cursor = from + skipped + 1;
+                            #[cfg(test)]
+                            {
+                                stats.caught_up += 1;
+                            }
+                        }
+                    }
+                    found
+                };
+                if !old && let Some(entity) = sensor.entity {
                     entered
                         .borrow_mut()
                         .push(SensorEntered::new(entity, other.entity).with_point(other.center));
@@ -2012,6 +2778,7 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
             |index, sensor, tile, cell| {
                 let pair = pair_of(sensor.identity, tile.identity);
                 kept.borrow_mut()[index].pairs.push((pair, cell));
+                tile_pairs_pushed.set(true);
                 if previous.binary_search(&pair).is_err()
                     && let Some(entity) = sensor.entity
                 {
@@ -2023,6 +2790,7 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
                 }
             },
         );
+        tiles_stand &= !tile_pairs_pushed.get();
         #[cfg(test)]
         {
             buffers.sensor_cells = tested;
@@ -2110,6 +2878,28 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
             }
         });
     }
+    tiles_stand &= !fresh.contains(&true);
+    // The body pairs are the last pass's in turn and no tile pair moved: the
+    // sorted pairs and their cells are the last pass's too, and none exits.
+    let unchanged = in_turn && body_pairs.len() == visited.len() && tiles_stand;
+    #[cfg(test)]
+    let unchanged = unchanged && path != SensorPath::Search;
+    #[cfg(test)]
+    {
+        stats.unchanged = unchanged;
+        buffers.extra.sensor_stats = stats;
+    }
+    if unchanged {
+        buffers.sensor_scratch = pairs;
+        buffers.sensor_body_pairs = body_pairs;
+        buffers.sensor_events = entered;
+        buffers.sensor_tiles = kept;
+        buffers.extra.sensor_cells_next = cells;
+        buffers.extra.sensor_visited = visited;
+        buffers.extra.sensor_fresh = fresh;
+        buffers.extra.sensor_order = order;
+        return;
+    }
     for (entry, &fresh) in kept.iter_mut().zip(&fresh) {
         if fresh {
             entry.pairs.sort_unstable_by_key(|&(pair, _)| pair);
@@ -2117,13 +2907,19 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     }
     // Every pair, sorted: the body pairs merged with each sensor's sorted
     // tile pairs, the sensors in key order, since a pair's high half is its
-    // sensor's identity; the tile pairs' cells beside them.
-    body_pairs.sort_unstable();
-    let mut order: Vec<usize> = (0..kept.len()).collect();
+    // sensor's identity; the tile pairs' cells beside them. The body pairs
+    // are sorted in a copy, the last pass's visits' list, which this pass
+    // has done with; their visit order is the next pass's.
+    let mut sorted = visited;
+    sorted.clear();
+    sorted.extend_from_slice(&body_pairs);
+    sorted.sort_unstable();
+    order.clear();
+    order.extend(0..kept.len());
     order.sort_unstable_by_key(|&index| buffers.sensors.get(index).map_or(0, |sensor| sensor.key));
     pairs.clear();
     cells.clear();
-    let mut bodies = body_pairs.iter().copied().peekable();
+    let mut bodies = sorted.iter().copied().peekable();
     for &index in &order {
         for &(tile, cell) in &kept[index].pairs {
             while let Some(body) = bodies.next_if(|&body| body < tile) {
@@ -2157,9 +2953,12 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     }
     buffers.extra.sensor_cells_next = std::mem::replace(&mut buffers.extra.sensor_cells, cells);
     buffers.sensor_scratch = std::mem::replace(&mut buffers.sensor_pairs, pairs);
-    buffers.sensor_body_pairs = body_pairs;
+    buffers.sensor_body_pairs = sorted;
     buffers.sensor_events = entered;
     buffers.sensor_tiles = kept;
+    buffers.extra.sensor_visited = body_pairs;
+    buffers.extra.sensor_fresh = fresh;
+    buffers.extra.sensor_order = order;
 }
 
 /// A touching contact with a kinematic side; the other is an awake dynamic

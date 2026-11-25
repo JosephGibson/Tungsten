@@ -125,10 +125,13 @@ pub fn build_material_pipeline(
             cull_mode: None,
             ..Default::default()
         },
+        // Under the depth test (`depth_write`, the `gpu_depth` sort) a
+        // material batch is tested and writes nothing: its shader promises
+        // nothing of its fragments' alpha (redo 7.15).
         depth_stencil: if depth_write {
             Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: Some(true),
+                depth_write_enabled: Some(false),
                 depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),

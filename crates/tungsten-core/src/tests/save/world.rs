@@ -712,12 +712,15 @@ fn a_newer_version_or_a_value_that_fails_changes_nothing() {
     ));
     assert_eq!(snapshot(&b), before);
 
-    let mut format = saved;
-    format["format"] = json!(2);
-    assert_eq!(
-        restore_world(&mut b, &from_value(format), &(Scene,)),
-        Err(RestoreError::Format { found: 2 })
-    );
+    // Formats 1 and 2 read; a later one is refused, and so is none.
+    for found in [3, 0] {
+        let mut format = saved.clone();
+        format["format"] = json!(found);
+        assert_eq!(
+            restore_world(&mut b, &from_value(format), &(Scene,)),
+            Err(RestoreError::Format { found })
+        );
+    }
     assert_eq!(snapshot(&b), before);
     assert!(b.query::<&Scene>().next().is_none());
 }
@@ -1514,7 +1517,7 @@ mod generated {
         world.get_mut::<Health>(last).unwrap().current = 2.0;
     }
 
-    /// The run at version 1 played and captured, as `generated_v1.json`
+    /// The run at version 1 played and captured, as `generated_v2.json`
     /// holds it.
     fn v1_save() -> WorldSave {
         let mut world = world_of(chain(1));
@@ -1523,9 +1526,33 @@ mod generated {
         capture_world(&world).unwrap()
     }
 
-    /// The save captured once from `v1_save`, committed.
+    /// The save captured once from `v1_save`, committed, at format 2.
     fn fixture() -> WorldSave {
+        serde_json::from_str(include_str!("generated_v2.json")).unwrap()
+    }
+
+    /// The same save as format 1 wrote it, before tables: the file an older
+    /// build left.
+    fn format_1_fixture() -> WorldSave {
         serde_json::from_str(include_str!("generated_v1.json")).unwrap()
+    }
+
+    #[test]
+    fn a_format_1_save_restores_and_captures_as_format_2() {
+        let old = format_1_fixture();
+        assert_eq!(value(&old)["format"], json!(1));
+        let mut as_two = value(&old);
+        as_two["format"] = json!(FORMAT);
+        assert_eq!(as_two, value(&fixture()), "the fixtures differ by format");
+        let (world, restored) = restore(chain(1), &old);
+        assert!(restored.unwrap().is_clean());
+        assert_eq!(health(&world, "chain_r0.crate_1"), Some(1.0));
+        assert_eq!(named(&world, "chain_r1.crate_2"), None, "broken in the run");
+        assert_eq!(
+            text(&capture_world(&world).unwrap()),
+            text(&fixture()),
+            "the restored run captures at this build's format"
+        );
     }
 
     /// `save` restored into a new World of `chain`: regenerated, each room
@@ -1733,6 +1760,55 @@ mod generated {
                 ["current"],
             json!(4.0)
         );
+    }
+
+    #[test]
+    fn a_generators_migration_reads_a_tables_spawns_as_records() {
+        // Twenty crates spawned in the run from the first room's crate: a
+        // table in that area's record. Version 2's migration is handed each
+        // as a record, and the area restores from what it returns.
+        let mut world = world_of(chain(1));
+        run(&mut world);
+        let source = named(&world, "chain_r0.crate_1").unwrap();
+        let mut commands = CommandBuffer::new();
+        for at in 0..20_u8 {
+            let spawn = world.prepare_prefab("crate", [f32::from(at), 8.0]).unwrap();
+            commands.spawn_prefab_from(source, spawn);
+        }
+        world.flush(commands);
+        let save = capture_world(&world).unwrap();
+        let held = &value(&save)["areas"]["chain_r0"]["spawns"];
+        assert_eq!(held.as_array().unwrap().len(), 1, "one table");
+        assert_eq!(held[0]["rows"].as_array().unwrap().len(), 20);
+
+        let seen = Seen::default();
+        let migrating = Chain {
+            migrate: Some(keep),
+            seen: seen.clone(),
+            ..chain(2)
+        };
+        let (world, restored) = restore(migrating, &save);
+        restored.unwrap();
+        let calls = seen.borrow();
+        let spawned = |area: &Value| {
+            area["spawns"]
+                .as_array()
+                .is_some_and(|held| !held.is_empty())
+        };
+        let (from, _, area) = calls
+            .iter()
+            .find(|(_, _, area)| spawned(area))
+            .expect("the record that holds the spawns");
+        assert_eq!(from.version, 1);
+        let handed = area["spawns"].as_array().unwrap();
+        assert_eq!(handed.len(), 20);
+        for (at, spawn) in handed.iter().enumerate() {
+            assert!(spawn.get("rows").is_none() && spawn.get("columns").is_none());
+            assert_eq!(spawn["id"], json!(at), "by ID");
+            assert_eq!(spawn["prefab"], json!("crate"));
+            assert_eq!(spawn["components"]["health"]["current"], json!(3.0));
+        }
+        assert_eq!(spawns(&world).len(), 20, "the migrated record's spawns");
     }
 
     #[test]
@@ -2244,4 +2320,800 @@ fn check_world_refuses_what_restore_world_refuses_and_changes_nothing() {
     assert_eq!(before(&b), fresh, "a passing check changes nothing either");
     assert_eq!(restore_world(&mut b, &saved, &(Scene,)), Ok(report));
     assert_eq!(b.resource::<Weather>().wind, 4.0);
+}
+
+// The capture's spawns read an archetype at a time (phase 7's C5), against
+// the walk that asks every registered component of every spawn.
+
+/// `world`'s capture as text, its spawns read both ways: the saves are
+/// equal, their bytes and the references they counted as dropped.
+fn captured_both_ways(world: &World) -> (String, usize) {
+    let by_archetype = capture_world(world).unwrap();
+    let asked = capture_world_asking_every_component(world).unwrap();
+    assert_eq!(text(&by_archetype), text(&asked));
+    assert_eq!(by_archetype.dropped_refs(), asked.dropped_refs());
+    assert_eq!(by_archetype, asked);
+    (text(&by_archetype), by_archetype.dropped_refs())
+}
+
+/// A run whose spawns differ: the level, a second turret in area `tower`,
+/// and 60 bolts shot from the hero (global), the cave's turret and the
+/// tower's by seeded turns, each then losing its brain or its health,
+/// gaining ammo, or chasing the hero, the cave's bat, another bolt or an
+/// entity no save holds, by seeded picks. Returns the bolts.
+fn varied_run(world: &mut World, seed: u64) -> Vec<Entity> {
+    let level = level(world);
+    let tower = world.spawn_prefab("turret", [300.0, 40.0]).unwrap();
+    name(world, tower, Some("tower"), "tower_turret").unwrap();
+    let mut stream = seed;
+    let mut draw = move || {
+        stream = stream.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = stream;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    };
+    for shot in 0..60_u8 {
+        let source = [level.hero, level.turret, tower][(draw() % 3) as usize];
+        shoot(world, source, 10.0 * f32::from(shot));
+    }
+    flush(world);
+    let stray = world.spawn();
+    let bolts: Vec<Entity> = spawns(world).into_iter().map(|(_, bolt)| bolt).collect();
+    assert_eq!(bolts.len(), 60);
+    for (at, &bolt) in bolts.iter().enumerate() {
+        let pick = draw();
+        if pick & 1 != 0 {
+            world.remove_component::<Brain>(bolt);
+        }
+        if pick & 2 != 0 {
+            world.insert(bolt, Ammo((pick >> 8) as u32 % 9));
+        }
+        if pick & 4 != 0 {
+            world.remove_component::<Health>(bolt);
+        }
+        if pick & 0b1_1000 != 0 {
+            let target = match (pick >> 5) % 4 {
+                0 => level.hero,
+                1 => level.bat_1,
+                2 => bolts[(at + 7) % bolts.len()],
+                _ => stray,
+            };
+            world.insert(
+                bolt,
+                Chase {
+                    target,
+                    speed: at as f32,
+                },
+            );
+        }
+    }
+    bolts
+}
+
+#[test]
+fn a_capture_by_archetype_writes_the_bytes_asking_every_component_does() {
+    for seed in [1_u64, 2, 3] {
+        let mut world = world();
+        let bolts = varied_run(&mut world, seed);
+        // The spawns are spread over component sets, each an archetype.
+        let sets: BTreeSet<Vec<&str>> = bolts
+            .iter()
+            .map(|&bolt| {
+                let types = world.component_types(bolt);
+                types.into_iter().map(|(_, name)| name).collect()
+            })
+            .collect();
+        assert!(
+            sets.len() >= 8,
+            "seed {seed}: {} component sets",
+            sets.len()
+        );
+        let (saved, dropped) = captured_both_ways(&world);
+        let saved: Value = serde_json::from_str(&saved).unwrap();
+        // Three areas' records hold them, and the references to the entity
+        // no save holds were dropped and counted.
+        let held = |area: &Value| area["spawns"].as_array().map_or(0, Vec::len);
+        let (global, cave, tower) = (
+            held(&saved["global"]),
+            held(&saved["areas"]["cave"]),
+            held(&saved["areas"]["tower"]),
+        );
+        assert_eq!(global + cave + tower, 60, "seed {seed}");
+        assert!(global > 5 && cave > 5 && tower > 5, "seed {seed}");
+        assert!(dropped > 0, "seed {seed}");
+        // The run goes on: bolts despawn, a bolt changes its set, others
+        // move to a set no spawn had, and the walks still agree.
+        for &bolt in bolts.iter().step_by(4) {
+            world.despawn(bolt);
+        }
+        world.remove_component::<Chase>(bolts[1]);
+        struct Marked;
+        world.insert(bolts[2], Marked);
+        world.insert(bolts[3], Marked);
+        let later: Value = serde_json::from_str(&captured_both_ways(&world).0).unwrap();
+        let spawned = held(&later["global"]) + held(&later["areas"]["cave"]);
+        assert_eq!(spawned + held(&later["areas"]["tower"]), 45, "seed {seed}");
+    }
+}
+
+#[test]
+fn a_capture_by_archetype_writes_its_spawns_waiting_references() {
+    // Two bolts shot from the hero, global spawns: one chases the cave's
+    // bat, one the hero. The restoring World has not loaded the cave, so
+    // the cave is kept and the first bolt's reference waits; a capture adds
+    // it to that bolt's record, by either walk.
+    let mut a = world();
+    let (hero, _, bat) = hero_dog(&mut a, true);
+    shoot(&mut a, hero, 10.0);
+    shoot(&mut a, hero, 20.0);
+    flush(&mut a);
+    let bolts = spawns(&a);
+    let (waits, speed) = (bolts[0].0, 3.0);
+    a.insert(
+        bolts[0].1,
+        Chase {
+            target: bat.unwrap(),
+            speed,
+        },
+    );
+    a.insert(
+        bolts[1].1,
+        Chase {
+            target: hero,
+            speed: 4.0,
+        },
+    );
+    let (first, _) = captured_both_ways(&a);
+
+    let mut b = world();
+    hero_dog(&mut b, false);
+    restore_world(&mut b, &serde_json::from_str(&first).unwrap(), &(Scene,)).unwrap();
+    let state = b.resource::<SaveState>();
+    assert!(state.is_kept("cave"));
+    let waiting: Vec<_> = state
+        .pending
+        .iter()
+        .filter(|pending| pending.holder == Some(waits))
+        .collect();
+    assert_eq!(waiting.len(), 1, "the bolt's reference waits");
+    let second: Value = serde_json::from_str(&captured_both_ways(&b).0).unwrap();
+    let records = second["global"]["spawns"].as_array().unwrap();
+    assert_eq!(records.len(), 2);
+    let record = records
+        .iter()
+        .find(|record| record["id"] == json!(waits.0))
+        .unwrap();
+    assert_eq!(record["components"]["chase"]["speed"], json!(speed));
+    assert_eq!(
+        record["refs"]["chase"]["target"],
+        json!(waiting[0].ids),
+        "the waiting reference is written with the record"
+    );
+}
+
+/// A saved value whose `Serialize` fails on a NaN.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct Brittle {
+    load: f32,
+}
+
+impl Serialize for Brittle {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        if self.load.is_nan() {
+            return Err(serde::ser::Error::custom("the load is not a number"));
+        }
+        let mut fields = serializer.serialize_struct("Brittle", 1)?;
+        fields.serialize_field("load", &self.load)?;
+        fields.end()
+    }
+}
+
+#[test]
+fn a_spawn_that_fails_to_serialize_is_named_by_either_walk() {
+    // Three bolts carry a `Brittle`; the second's fails. Both walks stop at
+    // it with one error, which names the spawn by its ID and the component.
+    let mut world = world();
+    world.register_saved::<Brittle>("brittle");
+    let level = level(&mut world);
+    for shot in 0..3_u8 {
+        shoot(&mut world, level.turret, 10.0 * f32::from(shot));
+    }
+    flush(&mut world);
+    let bolts = spawns(&world);
+    for (at, &(_, bolt)) in bolts.iter().enumerate() {
+        let load = if at == 1 { f32::NAN } else { 2.0 };
+        world.insert(bolt, Brittle { load });
+    }
+    let by_archetype = capture_world(&world).unwrap_err();
+    let asked = capture_world_asking_every_component(&world).unwrap_err();
+    assert_eq!(by_archetype, asked);
+    assert_eq!(
+        by_archetype,
+        CaptureError::Serialize {
+            what: format!("`spawn {}`'s `brittle`", bolts[1].0.0),
+            message: "the load is not a number".into(),
+        }
+    );
+}
+
+// 7.14's C5 (`D-295`): sixteen or more spawns of one area, one prefab and
+// one set of saved components are a table. The reference is the walk that
+// asks every component of every spawn, which writes records alone.
+
+/// `world`'s capture and the capture of the walk that writes records alone:
+/// the first with its tables expanded is the second, as values and byte for
+/// byte, both dropped the same references, and a second capture is the
+/// first's bytes.
+#[track_caller]
+fn captured_and_expanded(world: &World) -> (WorldSave, WorldSave) {
+    let tabled = capture_world(world).unwrap();
+    let asked = capture_world_asking_every_component(world).unwrap();
+    let mut expanded = value(&tabled);
+    crate::save::expand_tables(&mut expanded).unwrap();
+    assert_eq!(expanded, value(&asked), "the expansion is the records");
+    assert_eq!(text(&from_value(expanded)), text(&asked), "byte for byte");
+    assert_eq!(tabled.dropped_refs(), asked.dropped_refs());
+    assert_eq!(text(&capture_world(world).unwrap()), text(&tabled));
+    (tabled, asked)
+}
+
+/// How `saved`'s record of `area` (the global one for `None`) holds its
+/// spawns of `prefab`: the records, and each table's rows.
+fn held_as(saved: &Value, area: Option<&str>, prefab: &str) -> (usize, Vec<usize>) {
+    let record = match area {
+        Some(area) => &saved["areas"][area],
+        None => &saved["global"],
+    };
+    let (mut records, mut tables) = (0, Vec::new());
+    for spawn in record["spawns"].as_array().into_iter().flatten() {
+        if spawn["prefab"] != json!(prefab) {
+            continue;
+        }
+        match spawn["rows"].as_array() {
+            Some(rows) => tables.push(rows.len()),
+            None => records += 1,
+        }
+    }
+    (records, tables)
+}
+
+/// A run whose spawns fill tables: the level, a turret in area `tower`,
+/// 300 bolts shot from the hero (global), the cave's turret and the tower's
+/// by seeded turns, then fifteen `spark`s and sixteen `ember`s from the
+/// cave's turret. Each bolt then loses its brain or its health, gains ammo
+/// or a shield (a field its saved form skips without one), or chases the
+/// hero (most), the cave's bat, another bolt or an entity no save holds, by
+/// seeded picks drawn in ID order and applied in that order or, `backwards`,
+/// the other way, so the archetypes are made in another order. Returns the
+/// bolts by ID.
+fn tabled_run(world: &mut World, seed: u64, backwards: bool) -> Vec<Entity> {
+    let level = level(world);
+    let tower = world.spawn_prefab("turret", [300.0, 40.0]).unwrap();
+    name(world, tower, Some("tower"), "tower_turret").unwrap();
+    for id in ["spark", "ember"] {
+        let ember = prefab(json!({ "tag": id, "components": {
+            "health": { "current": 1.0, "max": 1.0 } } }));
+        world
+            .resource_mut::<PrefabRegistry>()
+            .insert(id.into(), ember);
+    }
+    let mut stream = seed;
+    let mut draw = move || {
+        stream = stream.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        crate::rng::splitmix64(stream)
+    };
+    for shot in 0..300_u16 {
+        let source = [level.hero, level.turret, tower][(draw() % 3) as usize];
+        shoot(world, source, f32::from(shot));
+    }
+    for shot in 0..31_u8 {
+        let id = if shot < 15 { "spark" } else { "ember" };
+        let prepared = world.prepare_prefab(id, [f32::from(shot), 80.0]).unwrap();
+        world
+            .resource_mut::<CommandBuffer>()
+            .spawn_prefab_from(level.turret, prepared);
+    }
+    flush(world);
+    let stray = world.spawn();
+    let bolts: Vec<Entity> = spawns(world)
+        .into_iter()
+        .take(300)
+        .map(|(_, bolt)| bolt)
+        .collect();
+    let picks: Vec<u64> = bolts.iter().map(|_| draw()).collect();
+    let mut order: Vec<usize> = (0..bolts.len()).collect();
+    if backwards {
+        order.reverse();
+    }
+    for at in order {
+        let (bolt, pick) = (bolts[at], picks[at]);
+        if pick % 8 == 0 {
+            world.remove_component::<Brain>(bolt);
+        }
+        if (pick >> 3) % 4 == 0 {
+            world.insert(bolt, Ammo((pick >> 8) as u32 % 9));
+        }
+        if (pick >> 5) % 8 == 0 {
+            world.remove_component::<Health>(bolt);
+        } else if (pick >> 12) % 6 == 0 {
+            world.get_mut::<Health>(bolt).unwrap().shield = Some(0.5);
+        }
+        if (pick >> 16) % 2 == 0 {
+            let target = match (pick >> 20) % 16 {
+                0..=11 => level.hero,
+                12 => level.bat_1,
+                13 | 14 => bolts[(at + 7) % bolts.len()],
+                _ => stray,
+            };
+            world.insert(
+                bolt,
+                Chase {
+                    target,
+                    speed: (at % 4) as f32,
+                },
+            );
+        }
+    }
+    bolts
+}
+
+#[test]
+fn a_capture_with_tables_expands_to_the_bytes_of_records_alone() {
+    // Over the seeds: tables of bolts, and tables that share a reference.
+    let (mut all_tables, mut all_shared) = (0, 0);
+    for seed in [1_u64, 2, 3, 4, 5, 6] {
+        let mut world = world();
+        let bolts = tabled_run(&mut world, seed, false);
+        let sets: BTreeSet<Vec<&str>> = bolts
+            .iter()
+            .map(|&bolt| {
+                let types = world.component_types(bolt);
+                types.into_iter().map(|(_, name)| name).collect()
+            })
+            .collect();
+        assert!(sets.len() >= 8, "seed {seed}: {} sets", sets.len());
+        let (tabled, asked) = captured_and_expanded(&world);
+        assert!(asked.dropped_refs() > 0, "seed {seed}");
+        let saved = value(&tabled);
+        assert_eq!(saved["format"], json!(2));
+
+        // The bolts, over three areas: tables of sixteen rows or more, and
+        // records for the small groups and for the bolts whose references
+        // or whose layout are not their table's.
+        let (mut records, mut rows, mut tables) = (0, 0, 0);
+        for area in [None, Some("cave"), Some("tower")] {
+            let (alone, tabled) = held_as(&saved, area, "bolt");
+            assert!(tabled.iter().all(|&rows| rows >= 16), "seed {seed}");
+            records += alone;
+            rows += tabled.iter().sum::<usize>();
+            tables += tabled.len();
+        }
+        assert_eq!(records + rows, 300, "seed {seed}");
+        assert!(records > 100, "seed {seed}: {records} records");
+        all_tables += tables;
+        // A table of bolts that chase the hero writes the reference once.
+        let shared = saved["areas"]
+            .as_object()
+            .unwrap()
+            .values()
+            .chain([&saved["global"]])
+            .flat_map(|area| area["spawns"].as_array().unwrap())
+            .filter(|spawn| spawn["rows"].is_array() && spawn["refs"]["chase"].is_object())
+            .count();
+        all_shared += shared;
+        // Fifteen of a prefab stay records; sixteen are a table.
+        assert_eq!(held_as(&saved, Some("cave"), "spark"), (15, vec![]));
+        assert_eq!(held_as(&saved, Some("cave"), "ember"), (0, vec![16]));
+
+        // The run goes on: bolts and an ember despawn, others move to sets
+        // no spawn had, and the capture still expands to the records.
+        for &bolt in bolts.iter().step_by(4) {
+            world.despawn(bolt);
+        }
+        for &bolt in bolts.iter().skip(1).step_by(8) {
+            world.insert(bolt, Ammo(7));
+        }
+        let ember = spawns(&world).last().unwrap().1;
+        world.despawn(ember);
+        let later = value(&captured_and_expanded(&world).0);
+        assert_eq!(held_as(&later, Some("cave"), "ember"), (15, vec![]));
+    }
+    assert!(
+        all_tables >= 9 && all_shared >= 2,
+        "{all_tables} tables of bolts, {all_shared} sharing a reference"
+    );
+}
+
+#[test]
+fn a_table_holds_the_references_waiting_on_a_kept_area() {
+    // Twenty bolts shot from the hero, global spawns, each chasing the
+    // cave's bat. The restoring World has not loaded the cave, so each
+    // bolt's reference waits; a capture writes it once, with their table.
+    let mut a = world();
+    let (hero, _, bat) = hero_dog(&mut a, true);
+    for shot in 0..20_u8 {
+        shoot(&mut a, hero, f32::from(shot));
+    }
+    flush(&mut a);
+    for (_, bolt) in spawns(&a) {
+        a.insert(
+            bolt,
+            Chase {
+                target: bat.unwrap(),
+                speed: 3.0,
+            },
+        );
+    }
+    let (first, _) = captured_and_expanded(&a);
+    assert_eq!(held_as(&value(&first), None, "bolt"), (0, vec![20]));
+
+    let mut b = world();
+    hero_dog(&mut b, false);
+    restore_world(&mut b, &first, &(Scene,)).unwrap();
+    let state = b.resource::<SaveState>();
+    assert!(state.is_kept("cave"));
+    assert_eq!(state.pending.len(), 20, "each bolt's reference waits");
+    let (second, _) = captured_and_expanded(&b);
+    assert_eq!(text(&second), text(&first));
+    let table = &value(&second)["global"]["spawns"][0];
+    assert_eq!(
+        table["refs"]["chase"]["target"],
+        json!([SaveId::authored("bat_1")])
+    );
+}
+
+#[test]
+fn a_tabled_capture_does_not_depend_on_the_order_the_world_was_made_in() {
+    for seed in [4_u64, 5] {
+        let mut a = world();
+        tabled_run(&mut a, seed, false);
+        let saved = capture_world(&a).unwrap();
+        assert!(text(&saved).contains("\"rows\""));
+        // The same run, its archetypes made the other way round and its
+        // entities at other indices.
+        let mut b = world();
+        churn(&mut b, 70);
+        tabled_run(&mut b, seed, true);
+        assert_eq!(
+            text(&capture_world(&b).unwrap()),
+            text(&saved),
+            "seed {seed}"
+        );
+        // And restored into other allocations.
+        let mut c = world();
+        churn(&mut c, 40);
+        level(&mut c);
+        let tower = c.spawn_prefab("turret", [300.0, 40.0]).unwrap();
+        name(&mut c, tower, Some("tower"), "tower_turret").unwrap();
+        for id in ["spark", "ember"] {
+            let ember = prefab(json!({ "tag": id, "components": {
+                "health": { "current": 1.0, "max": 1.0 } } }));
+            c.resource_mut::<PrefabRegistry>().insert(id.into(), ember);
+        }
+        let report = restore_world(&mut c, &saved, &(Scene,)).unwrap();
+        assert!(report.is_clean(), "{report:?}");
+        assert_eq!(
+            text(&capture_world(&c).unwrap()),
+            text(&saved),
+            "seed {seed}"
+        );
+    }
+}
+
+#[test]
+fn spawns_with_references_of_their_own_open_one_table_and_serialize_once() {
+    // 2,000 bolts of one group, each chasing the one before it: no two hold
+    // the same references, so none joins the table their lowest ID opens.
+    let mut world = world();
+    let level = level(&mut world);
+    for shot in 0..2_000_u16 {
+        shoot(&mut world, level.turret, f32::from(shot));
+    }
+    flush(&mut world);
+    let bolts = spawns(&world);
+    for pair in bolts.windows(2) {
+        world.insert(
+            pair[1].1,
+            Chase {
+                target: pair[0].1,
+                speed: 1.0,
+            },
+        );
+    }
+    world.insert(
+        bolts[0].1,
+        Chase {
+            target: level.hero,
+            speed: 1.0,
+        },
+    );
+    CAPTURE_COUNTS.with(|counts| counts.set((0, 0)));
+    let tabled = capture_world(&world).unwrap();
+    let (opened, serialized) = CAPTURE_COUNTS.with(std::cell::Cell::get);
+    assert_eq!(opened, 1, "one group, one table opened");
+    assert_eq!(serialized, 2_000, "each spawn's components serialized once");
+    assert_eq!(
+        held_as(&value(&tabled), Some("cave"), "bolt"),
+        (2_000, vec![])
+    );
+    assert_eq!(
+        text(&tabled),
+        text(&capture_world_asking_every_component(&world).unwrap())
+    );
+}
+
+/// A World of the level, the tower and the two extra prefabs, ready for a
+/// restore of a [`tabled_run`]'s save.
+fn tabled_level(world: &mut World) {
+    level(world);
+    let tower = world.spawn_prefab("turret", [300.0, 40.0]).unwrap();
+    name(world, tower, Some("tower"), "tower_turret").unwrap();
+    for id in ["spark", "ember"] {
+        let ember = prefab(json!({ "tag": id, "components": {
+            "health": { "current": 1.0, "max": 1.0 } } }));
+        world
+            .resource_mut::<PrefabRegistry>()
+            .insert(id.into(), ember);
+    }
+}
+
+#[test]
+fn a_tabled_save_and_its_expansion_restore_alike() {
+    for seed in [6_u64, 7] {
+        let mut a = world();
+        tabled_run(&mut a, seed, false);
+        let (tabled, asked) = captured_and_expanded(&a);
+        // Twin Worlds: one restores the tables, one their records.
+        let restored: Vec<World> = [&tabled, &asked]
+            .into_iter()
+            .map(|save| {
+                let mut world = world();
+                tabled_level(&mut world);
+                let report = check_world(&mut world, save).unwrap();
+                assert!(report.is_clean(), "seed {seed}: {report:?}");
+                let report = restore_world(&mut world, save, &(Scene,)).unwrap();
+                assert!(report.is_clean(), "seed {seed}: {report:?}");
+                world
+            })
+            .collect();
+        for world in &restored {
+            assert_eq!(text(&capture_world(world).unwrap()), text(&tabled));
+            assert_eq!(chases(world), chases(&a), "seed {seed}");
+        }
+        // Each area's spawns were made in ID order, by either save, so the
+        // twins hold each ID on the same entity.
+        assert_eq!(spawns(&restored[0]), spawns(&restored[1]), "seed {seed}");
+        let by_area = |world: &World| {
+            let mut areas: BTreeMap<Option<String>, Vec<(SaveId, u32)>> = BTreeMap::new();
+            for (id, entity) in spawns(world) {
+                let area = world
+                    .get::<Saved>(entity)
+                    .unwrap()
+                    .area()
+                    .map(str::to_owned);
+                areas.entry(area).or_default().push((id, entity.id()));
+            }
+            areas
+        };
+        for (area, made) in by_area(&restored[0]) {
+            assert!(
+                made.windows(2).all(|pair| pair[0].1 < pair[1].1),
+                "seed {seed}: area {area:?} out of ID order"
+            );
+        }
+    }
+
+    // A format-1 save, records alone, restores and captures as format 2.
+    let mut a = world();
+    let la = level(&mut a);
+    for x in [210.0, 220.0, 230.0] {
+        fire(&mut a, la.turret, x);
+    }
+    flush(&mut a);
+    let now = capture_world(&a).unwrap();
+    let mut old = value(&now);
+    old["format"] = json!(1);
+    let mut b = world();
+    level(&mut b);
+    let report = restore_world(&mut b, &from_value(old), &(Scene,)).unwrap();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(text(&capture_world(&b).unwrap()), text(&now));
+}
+
+/// Twenty bolts in the cave from its turret, five of them shielded, and the
+/// capture: a table of fifteen... of the unshielded and records beside it.
+fn cave_of_bolts() -> (World, WorldSave) {
+    let mut world = world();
+    let level = level(&mut world);
+    for shot in 0..40_u8 {
+        shoot(&mut world, level.turret, f32::from(shot));
+    }
+    flush(&mut world);
+    for (at, (_, bolt)) in spawns(&world).into_iter().enumerate() {
+        world.get_mut::<Health>(bolt).unwrap().current = at as f32;
+        if at % 8 == 3 {
+            world.get_mut::<Health>(bolt).unwrap().shield = Some(2.0);
+        }
+    }
+    let saved = capture_world(&world).unwrap();
+    (world, saved)
+}
+
+/// A World that named the hero alone: the cave is not loaded, so a restore
+/// keeps it.
+fn without_the_cave(options: SaveOptions<Health>) -> World {
+    let mut world = world_with(options);
+    let hero = world.spawn_prefab("hero", [16.0, 16.0]).unwrap();
+    name(&mut world, hero, None, "hero").unwrap();
+    world
+}
+
+#[test]
+fn a_kept_table_is_checked_as_its_records_are() {
+    let (_, saved) = cave_of_bolts();
+    assert_eq!(held_as(&value(&saved), Some("cave"), "bolt"), (5, vec![35]));
+    let mut expanded = value(&saved);
+    crate::save::expand_tables(&mut expanded).unwrap();
+    let expanded = from_value(expanded);
+
+    // Kept as it came: a capture before the area loads writes the table.
+    let mut kept = without_the_cave(SaveOptions::new());
+    assert!(
+        restore_world(&mut kept, &saved, &(Scene,))
+            .unwrap()
+            .is_clean()
+    );
+    assert!(kept.resource::<SaveState>().is_kept("cave"));
+    assert_eq!(text(&capture_world(&kept).unwrap()), text(&saved));
+
+    // A column saved at an older version: the table is expanded, migrated
+    // and checked as its records are, and kept as those records.
+    let newer = || {
+        without_the_cave(SaveOptions::new().version(2).step(
+            1,
+            |mut value| -> Result<Value, String> {
+                let current = value["current"].as_f64().ok_or("no current")?;
+                value["current"] = json!(current * 2.0);
+                Ok(value)
+            },
+        ))
+    };
+    let captured: Vec<String> = [&saved, &expanded]
+        .into_iter()
+        .map(|save| {
+            let mut world = newer();
+            assert!(
+                restore_world(&mut world, save, &(Scene,))
+                    .unwrap()
+                    .is_clean()
+            );
+            text(&capture_world(&world).unwrap())
+        })
+        .collect();
+    assert_eq!(captured[0], captured[1]);
+    let migrated: Value = serde_json::from_str(&captured[0]).unwrap();
+    assert_eq!(held_as(&migrated, Some("cave"), "bolt"), (40, vec![]));
+    assert_eq!(
+        migrated["areas"]["cave"]["spawns"][7]["components"]["health"]["current"],
+        json!(14.0),
+        "7, doubled by the step"
+    );
+
+    // A bad value at its registered version fails the check and the
+    // restore as its record's does, and changes nothing.
+    let mut bad = value(&saved);
+    let table = bad["areas"]["cave"]["spawns"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|spawn| spawn["rows"].is_array())
+        .unwrap();
+    let columns: Vec<String> = table["columns"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(columns[0], "brain", "the first leaf is the brain's mood");
+    table["rows"][9][1] = json!(false);
+    let id = table["rows"][9][0].as_u64().unwrap();
+    let mut bad_expanded = bad.clone();
+    crate::save::expand_tables(&mut bad_expanded).unwrap();
+    let errors: Vec<RestoreError> = [bad, bad_expanded]
+        .into_iter()
+        .map(|save| {
+            let save = from_value(save);
+            let mut world = without_the_cave(SaveOptions::new());
+            let before = snapshot(&world);
+            let checked = check_world(&mut world, &save).unwrap_err();
+            let restored = restore_world(&mut world, &save, &(Scene,)).unwrap_err();
+            assert_eq!(checked, restored);
+            assert_eq!(snapshot(&world), before, "nothing changed");
+            assert!(world.get_resource::<SaveState>().unwrap().kept.is_empty());
+            restored
+        })
+        .collect();
+    assert_eq!(errors[0], errors[1]);
+    assert!(
+        matches!(&errors[0], RestoreError::Value { what, .. }
+            if *what == format!("spawn {id} (`bolt`)'s `brain`")),
+        "{:?}",
+        errors[0]
+    );
+
+    // A component the registry lacks is dropped with its record's line,
+    // and the rest is kept as records.
+    let lacking = || {
+        let mut world = World::new();
+        PhysicsPlugin.build(&mut Schedule::new(), &mut world);
+        world.register_component::<Health>("health");
+        world.register_saved::<Health>("health");
+        world.insert_resource(PrefabRegistry::new());
+        world.insert_resource(CommandBuffer::new());
+        world
+    };
+    let reports: Vec<(RestoreReport, String)> = [&saved, &expanded]
+        .into_iter()
+        .map(|save| {
+            let mut world = lacking();
+            let report = restore_world(&mut world, save, &(Scene,)).unwrap();
+            (report, text(&capture_world(&world).unwrap()))
+        })
+        .collect();
+    assert_eq!(reports[0], reports[1]);
+    let brains = reports[0]
+        .0
+        .dropped
+        .iter()
+        .filter(|line| line.ends_with("'s `brain`: not a saved component"))
+        .count();
+    assert_eq!(brains, 40, "{:?}", reports[0].0.dropped);
+    let kept: Value = serde_json::from_str(&reports[0].1).unwrap();
+    assert_eq!(held_as(&kept, Some("cave"), "bolt"), (40, vec![]));
+}
+
+#[test]
+fn a_kept_table_enters_its_area_as_its_records_do() {
+    let (a, saved) = cave_of_bolts();
+    let mut b = without_the_cave(SaveOptions::new());
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert!(spawns(&b).is_empty(), "the cave's spawns wait with it");
+    // The game spawns the cave, then enters it.
+    let bat_1 = b.spawn_prefab("bat", [100.0, 40.0]).unwrap();
+    let bat_2 = b.spawn_prefab("bat", [140.0, 40.0]).unwrap();
+    let turret = b.spawn_prefab("turret", [200.0, 40.0]).unwrap();
+    let hero = b
+        .resource::<SaveState>()
+        .named_entity(SaveId::authored("hero"))
+        .unwrap();
+    b.insert(
+        bat_1,
+        Chase {
+            target: hero,
+            speed: 2.0,
+        },
+    );
+    b.insert(
+        bat_2,
+        Chase {
+            target: bat_1,
+            speed: 1.5,
+        },
+    );
+    name(&mut b, bat_1, Some("cave"), "bat_1").unwrap();
+    name(&mut b, bat_2, Some("cave"), "bat_2").unwrap();
+    name(&mut b, turret, Some("cave"), "turret").unwrap();
+    let report = crate::save::enter_area(&mut b, "cave", &(Scene,)).unwrap();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(spawns(&b).len(), 40);
+    let healths = |world: &World| -> Vec<(SaveId, Health)> {
+        spawns(world)
+            .into_iter()
+            .map(|(id, bolt)| (id, world.get::<Health>(bolt).unwrap().clone()))
+            .collect()
+    };
+    assert_eq!(healths(&b), healths(&a));
+    assert_eq!(text(&capture_world(&b).unwrap()), text(&saved));
 }

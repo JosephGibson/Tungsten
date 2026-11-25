@@ -28,17 +28,22 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
-    let luma = dot(sample.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
-    let mode = u32(params.f.x);
+// @fx begin pixel
+fn tone_mono_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let luma = dot(color.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let mode = u32(p.f.x);
     var tinted = vec3<f32>(luma);
     if (mode == 0u) {
-        tinted = luma * params.v0.rgb;
+        tinted = luma * p.v0.rgb;
     } else if (mode == 2u) {
-        tinted = mix(params.v1.rgb, params.v0.rgb, luma);
+        tinted = mix(p.v1.rgb, p.v0.rgb, luma);
     }
-    let amount = clamp(params.f.y, 0.0, 1.0);
-    return vec4<f32>(mix(sample.rgb, tinted, amount), sample.a);
+    let amount = clamp(p.f.y, 0.0, 1.0);
+    return vec4<f32>(mix(color.rgb, tinted, amount), color.a);
+}
+// @fx end
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return tone_mono_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
 }

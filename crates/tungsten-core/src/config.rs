@@ -22,6 +22,12 @@ const RENDER_DEPTH_ENABLED_ENV: &str = "TUNGSTEN_RENDER_DEPTH_ENABLED";
 const RENDER_DEPTH_SORT_ENV: &str = "TUNGSTEN_RENDER_DEPTH_SORT";
 const RENDER_POST_AA_ENV: &str = "TUNGSTEN_RENDER_POST_AA";
 const RENDER_BLOOM_MAX_MIPS_ENV: &str = "TUNGSTEN_RENDER_BLOOM_MAX_MIPS";
+const RENDER_BLOOM_BASE_ENV: &str = "TUNGSTEN_RENDER_BLOOM_BASE";
+const RENDER_POST_FUSE_ENV: &str = "TUNGSTEN_RENDER_POST_FUSE";
+const RENDER_HDR_ENV: &str = "TUNGSTEN_RENDER_HDR";
+const RENDER_LIGHT_CAP_ENV: &str = "TUNGSTEN_RENDER_LIGHT_CAP";
+const RENDER_LIGHT_TILES_ENV: &str = "TUNGSTEN_RENDER_LIGHT_TILES";
+const PHYSICS_WORKERS_ENV: &str = "TUNGSTEN_PHYSICS_WORKERS";
 const DISPLAY_MODE_EXPECTED: &str = "one of: windowed, borderless_fullscreen, exclusive_fullscreen";
 const DISPLAY_RESOLUTION_EXPECTED: &str = "WIDTHxHEIGHT with integers >= 1";
 const DISPLAY_FRAME_RATE_CAP_EXPECTED: &str = "an integer >= 0";
@@ -33,6 +39,9 @@ const DEPTH_ENABLED_EXPECTED: &str = "one of: true, false, 1, 0";
 const DEPTH_SORT_EXPECTED: &str = "one of: cpu_stable, gpu_depth";
 const POST_AA_EXPECTED: &str = "one of: off, smaa_low, smaa_medium, smaa_high, smaa_ultra";
 const BLOOM_MAX_MIPS_EXPECTED: &str = "an integer in 1..=8";
+const LIGHT_CAP_EXPECTED: &str = "an integer in 1..=256";
+const BLOOM_BASE_EXPECTED: &str = "auto, half or quarter";
+const HDR_EXPECTED: &str = "off, rg11b10 or rgba16f";
 const GAME_ID_EXPECTED: &str = "1-64 ASCII letters, digits, '.', '_' or '-', starting with a letter or digit, not ending in '.', and not a Windows device name";
 const LOGGING_LEVEL_EXPECTED: &str = "one of: off, error, warn, info, debug, trace";
 const FIXED_STEP_HZ_EXPECTED: &str = "an integer >= 30";
@@ -40,6 +49,14 @@ const MAX_STEPS_PER_FRAME_EXPECTED: &str = "an integer >= 1";
 const VOLUME_EXPECTED: &str = "a number from 0 to 1";
 const GRAVITY_EXPECTED: &str = "two finite numbers, px/s² with y down";
 const BROADPHASE_CELL_EXPECTED: &str = "a finite number of pixels above 0";
+const PHYSICS_WORKERS_EXPECTED: &str = "a whole number from 0, automatic, to 64";
+/// The most `physics.workers` takes; the step itself clamps to
+/// `PhysicsWorkers::MAX`.
+const PHYSICS_WORKERS_MAX: u32 = 64;
+const PHYSICS_WORKER_SPIN_EXPECTED: &str =
+    "a whole number of milliseconds from 0, which parks at once, to 50";
+/// The most `physics.worker_spin_ms` takes: `PhysicsWorkers::SPIN_MAX`.
+const PHYSICS_WORKER_SPIN_MAX_MS: u32 = 50;
 const GAME_ID_MAX_LEN: usize = 64;
 /// The lowest step rate: a longer step than physics' default
 /// `max_step_dt`, 1/30 s, would run physics slow against the game (`D-094`).
@@ -183,11 +200,18 @@ impl FromStr for PresentModeConfig {
     }
 }
 
+/// How the scene pass orders its sprites (`render.depth_sort`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DepthSortMode {
+    /// The painter's order alone: every batch draws in the frame's order
+    /// and no depth is tested.
     #[default]
     CpuStable,
+    /// The same picture under a depth test (redo 7.15): each batch's depth
+    /// is its place in the frame's order, the batches marked solid draw
+    /// first and write it, and every fragment an opaque texel of theirs
+    /// covers is skipped. Needs `depth_enabled`.
     GpuDepth,
 }
 
@@ -269,7 +293,159 @@ impl FromStr for PostAaMode {
     }
 }
 
+/// `render.bloom_base`: the size of bloom's first pyramid level against its
+/// target (`D-301`). Every later level halves the one before, so a quarter
+/// costs about a quarter of a half's largest passes and spreads the same
+/// glow over twice as many pixels.
+///
+/// ```
+/// use tungsten_core::config::BloomBase;
+///
+/// assert_eq!(BloomBase::Auto.halvings(1080), 1);
+/// assert_eq!(BloomBase::Auto.halvings(1440), 1);
+/// assert_eq!(BloomBase::Auto.halvings(2160), 2);
+/// assert_eq!(BloomBase::Half.halvings(2160), 1);
+/// assert_eq!(BloomBase::Quarter.halvings(720), 2);
+/// assert_eq!("quarter".parse(), Ok(BloomBase::Quarter));
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum BloomBase {
+    /// A half while the target has at most [`Self::AUTO_HALF_ROWS`] rows, a
+    /// quarter above: the glow then keeps the share of the screen it has at
+    /// 1080 rows, and its cost stops growing with the target.
+    #[default]
+    Auto,
+    /// A half at any size.
+    Half,
+    /// A quarter at any size.
+    Quarter,
+}
+
+/// A `render.bloom_base` value that names no [`BloomBase`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("expected {BLOOM_BASE_EXPECTED}")]
+pub struct ParseBloomBaseError;
+
+impl BloomBase {
+    /// The most rows a target has for [`Self::Auto`] to start at a half.
+    pub const AUTO_HALF_ROWS: u32 = 1440;
+
+    /// The value's name in `tungsten.json` and its environment override.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Half => "half",
+            Self::Quarter => "quarter",
+        }
+    }
+
+    /// How many times a target of `rows` rows is halved for bloom's first
+    /// level: once for a half, twice for a quarter.
+    #[must_use]
+    pub const fn halvings(self, rows: u32) -> u32 {
+        match self {
+            Self::Half => 1,
+            Self::Quarter => 2,
+            Self::Auto => {
+                if rows > Self::AUTO_HALF_ROWS {
+                    2
+                } else {
+                    1
+                }
+            }
+        }
+    }
+}
+
+impl FromStr for BloomBase {
+    type Err = ParseBloomBaseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(Self::Auto),
+            "half" => Ok(Self::Half),
+            "quarter" => Ok(Self::Quarter),
+            _ => Err(ParseBloomBaseError),
+        }
+    }
+}
+
+/// `render.hdr`: the format the scene is drawn in (`D-309`). `off`, the
+/// default, draws it in the frame's own 8-bit format, as before. A float
+/// format keeps what the scene holds above 1, a lit sprite's sum, a
+/// material's output or a quad's colour, for bloom to read, and the frame's
+/// last full-screen pass brings it back to 8 bits: a clamp, which is `off`'s
+/// look, and a dither against banding short enough to leave a colour 8 bits
+/// hold as it is. `rg11b10` costs the 8-bit scene's bytes and holds 6 and 5
+/// bits of mantissa a channel; `rgba16f` twice the bytes, with alpha. A
+/// tonemap is the game's own, a `Tonemap` pass.
+///
+/// ```
+/// use tungsten_core::config::HdrMode;
+///
+/// assert_eq!(HdrMode::default(), HdrMode::Off);
+/// assert!(!HdrMode::Off.is_float());
+/// assert!(HdrMode::Rg11b10.is_float() && HdrMode::Rgba16f.is_float());
+/// assert_eq!("rg11b10".parse(), Ok(HdrMode::Rg11b10));
+/// assert_eq!(HdrMode::Rgba16f.as_str(), "rgba16f");
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum HdrMode {
+    /// The scene in the frame's 8-bit format.
+    #[default]
+    Off,
+    /// A 32-bit float format, 11, 11 and 10 bits a channel with no alpha:
+    /// about the cost of `off`. The scene holds no alpha, so a
+    /// `PixelOutline` pass finds no edge. Where the device does not draw
+    /// and blend the format, the renderer uses `rgba16f` and says so.
+    Rg11b10,
+    /// 16-bit floats a channel with alpha: twice the scene's bytes.
+    Rgba16f,
+}
+
+/// A `render.hdr` value that names no [`HdrMode`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("expected {HDR_EXPECTED}")]
+pub struct ParseHdrModeError;
+
+impl HdrMode {
+    /// The value's name in `tungsten.json` and its environment override.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Rg11b10 => "rg11b10",
+            Self::Rgba16f => "rgba16f",
+        }
+    }
+
+    /// Whether the scene draws in a float format.
+    #[must_use]
+    pub const fn is_float(self) -> bool {
+        !matches!(self, Self::Off)
+    }
+}
+
+impl FromStr for HdrMode {
+    type Err = ParseHdrModeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "off" => Ok(Self::Off),
+            "rg11b10" => Ok(Self::Rg11b10),
+            "rgba16f" => Ok(Self::Rgba16f),
+            _ => Err(ParseHdrModeError),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // Independent switches, each a key of the file.
 pub struct RenderConfig {
     /// The colour the scene clears to, RGBA from 0 to 1 in linear light,
     /// which the frame encodes to sRGB: the default,
@@ -288,10 +464,57 @@ pub struct RenderConfig {
     pub post_aa: PostAaMode,
     #[serde(default = "default_bloom_max_mips")]
     pub bloom_max_mips: u32,
+    /// The size of bloom's first level against its target: `auto` (the
+    /// default: a half up to 1440 rows, a quarter above), `half` or
+    /// `quarter` (`D-301`). Startup-only, as the level count is;
+    /// `TUNGSTEN_RENDER_BLOOM_BASE` overrides the file.
+    #[serde(default)]
+    pub bloom_base: BloomBase,
+    /// Draw in one pass the post stages the composer may fuse (`D-307`):
+    /// the stack's last two, when the last only mixes each pixel towards a
+    /// colour. On by default; `false` draws every stage in a pass of its
+    /// own, which the pixel tests compare with. Startup-only;
+    /// `TUNGSTEN_RENDER_POST_FUSE` overrides the file.
+    #[serde(default = "default_post_fuse")]
+    pub post_fuse: bool,
+    /// The scene's format: `off` (the default), `rg11b10` or `rgba16f`
+    /// (`D-309`). Startup-only, as `msaa` is; `TUNGSTEN_RENDER_HDR`
+    /// overrides the file.
+    #[serde(default)]
+    pub hdr: HdrMode,
+    /// The most lights a frame packs, from 1 to 256 (`D-310`): 16 by
+    /// default, the block every lit shader binds. Past the cap the lights
+    /// kept are chosen by `Light::priority`, then nearness to the view. A
+    /// compute pass bins the packed lights into screen tiles, so a light
+    /// costs a pixel only where it can light it. Startup-only;
+    /// `TUNGSTEN_RENDER_LIGHT_CAP` overrides the file.
+    #[serde(default = "default_light_cap")]
+    pub light_cap: u32,
+    /// Test each point light's reach against each screen tile (`D-310`). On
+    /// by default; `false` lists every packed light in every tile, so a
+    /// fragment's own range test is the only one, which draws the same
+    /// picture and is what the pixel tests compare the tiles with.
+    /// Startup-only; `TUNGSTEN_RENDER_LIGHT_TILES` overrides the file.
+    #[serde(default = "default_light_tiles")]
+    pub light_tiles: bool,
     /// Let text fall back to the system's fonts after the manifest's
     /// (`D-116`). Off by default: text draws only with packaged faces.
     #[serde(default)]
     pub system_fonts: bool,
+}
+
+impl RenderConfig {
+    /// The most lights a frame packs: `light_cap`, or the default of 16
+    /// where a config built in code holds a value outside 1 to 256, which a
+    /// loaded file cannot.
+    #[must_use]
+    pub fn lights(&self) -> usize {
+        if is_supported_light_cap(self.light_cap) {
+            self.light_cap as usize
+        } else {
+            crate::lighting::LIGHT_CAP
+        }
+    }
 }
 
 impl Default for RenderConfig {
@@ -305,6 +528,11 @@ impl Default for RenderConfig {
             depth_sort: DepthSortMode::default(),
             post_aa: PostAaMode::default(),
             bloom_max_mips: default_bloom_max_mips(),
+            bloom_base: BloomBase::default(),
+            post_fuse: default_post_fuse(),
+            hdr: HdrMode::default(),
+            light_cap: default_light_cap(),
+            light_tiles: default_light_tiles(),
             system_fonts: false,
         }
     }
@@ -316,6 +544,10 @@ fn default_clear_color() -> [f64; 4] {
 
 fn default_msaa() -> u32 {
     1
+}
+
+fn default_post_fuse() -> bool {
+    true
 }
 
 fn default_depth_enabled() -> bool {
@@ -334,6 +566,21 @@ pub const fn is_supported_msaa(sample_count: u32) -> bool {
 #[must_use]
 pub const fn is_supported_bloom_max_mips(n: u32) -> bool {
     n >= 1 && n <= 8
+}
+
+fn default_light_cap() -> u32 {
+    crate::lighting::LIGHT_CAP as u32
+}
+
+fn default_light_tiles() -> bool {
+    true
+}
+
+/// Whether `render.light_cap` may be `n`: from one light to
+/// [`MAX_LIGHT_CAP`](crate::lighting::MAX_LIGHT_CAP).
+#[must_use]
+pub const fn is_supported_light_cap(n: u32) -> bool {
+    n >= 1 && n <= crate::lighting::MAX_LIGHT_CAP as u32
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -640,10 +887,13 @@ pub struct UiConfig {
 
 /// `tungsten.json`'s `physics` (redo 7.12, S-85): the World's gravity and
 /// its broadphase's cell, which `App::new` puts into the World's
-/// `PhysicsConfig`; a game's plugin may set them again after.
+/// `PhysicsConfig`; a game's plugin may set them again after. And the
+/// threads the step's forked stages run on (`D-298`) with the time each
+/// spins for a step's next fork (`D-300`, `D-304`), which `App::run` puts into the
+/// World's `PhysicsWorkers` unless the game inserted its own.
 ///
 /// ```json
-/// "physics": { "gravity": [0, 900], "broadphase_cell": 32 }
+/// "physics": { "gravity": [0, 900], "broadphase_cell": 32, "workers": 0, "worker_spin_ms": 0 }
 /// ```
 ///
 /// A file without the section, or a field left out, keeps the engine's
@@ -658,6 +908,21 @@ pub struct PhysicsSection {
     /// `physics.broadphase_cell`: the broadphase grid's cell in pixels; 32
     /// unless set, finite and above 0.
     pub broadphase_cell: f32,
+    /// `physics.workers`: the threads the step's forked stages run on, the
+    /// main thread among them, and as many for the systems' maps (`D-311`).
+    /// 0, the default, picks half the machine's logical CPUs, at most 6; 1 is
+    /// the serial step and serial maps; the step takes at most 16. Every
+    /// count steps and maps to the same result, bit for bit.
+    /// `TUNGSTEN_PHYSICS_WORKERS` overrides the file.
+    pub workers: u32,
+    /// `physics.worker_spin_ms`: how long a worker spins for its step's
+    /// next fork before it parks, 0 to 50 ms; 0 unless set, which parks at
+    /// once (`D-304`). A spinning worker takes the fork without a wake-up
+    /// and keeps a core busy while the step runs, never past it: at 3 ms a
+    /// large step read 0.1 to 0.6 ms shorter on the reference machine. A
+    /// step that never forks starts no worker, so a small world pays
+    /// nothing either way.
+    pub worker_spin_ms: u32,
 }
 
 impl Default for PhysicsSection {
@@ -666,19 +931,23 @@ impl Default for PhysicsSection {
         Self {
             gravity: physics.gravity.to_array(),
             broadphase_cell: physics.broadphase_cell_size,
+            workers: 0,
+            worker_spin_ms: 0,
         }
     }
 }
 
 impl PhysicsSection {
-    /// Checks the gravity is finite and the cell finite and above 0.
-    /// `Config::load` and `App::new` both call this, since a config built
-    /// in code skips the load.
+    /// Checks the gravity is finite, the cell finite and above 0, the
+    /// workers at most 64 and their spin at most 50 ms. `Config::load` and
+    /// `App::new` both call this, since a config built in code skips the
+    /// load.
     ///
     /// # Errors
     ///
     /// [`ConfigError::InvalidValue`] with an empty `path` for field
-    /// `physics.gravity` or `physics.broadphase_cell`.
+    /// `physics.gravity`, `physics.broadphase_cell`, `physics.workers` or
+    /// `physics.worker_spin_ms`.
     pub fn validate(&self) -> Result<(), ConfigError> {
         let [x, y] = self.gravity;
         if !(x.is_finite() && y.is_finite()) {
@@ -696,6 +965,22 @@ impl PhysicsSection {
                 field: "physics.broadphase_cell",
                 value: cell.to_string(),
                 expected: BROADPHASE_CELL_EXPECTED,
+            });
+        }
+        if self.workers > PHYSICS_WORKERS_MAX {
+            return Err(ConfigError::InvalidValue {
+                path: String::new(),
+                field: "physics.workers",
+                value: self.workers.to_string(),
+                expected: PHYSICS_WORKERS_EXPECTED,
+            });
+        }
+        if self.worker_spin_ms > PHYSICS_WORKER_SPIN_MAX_MS {
+            return Err(ConfigError::InvalidValue {
+                path: String::new(),
+                field: "physics.worker_spin_ms",
+                value: self.worker_spin_ms.to_string(),
+                expected: PHYSICS_WORKER_SPIN_EXPECTED,
             });
         }
         Ok(())
@@ -826,6 +1111,14 @@ impl Config {
                         expected: BLOOM_MAX_MIPS_EXPECTED,
                     });
                 }
+                if !is_supported_light_cap(parsed.render.light_cap) {
+                    return Err(ConfigError::InvalidValue {
+                        path: path.display().to_string(),
+                        field: "render.light_cap",
+                        value: parsed.render.light_cap.to_string(),
+                        expected: LIGHT_CAP_EXPECTED,
+                    });
+                }
                 parsed.game.validate().map_err(|e| e.with_path(path))?;
                 parsed.time.validate().map_err(|e| e.with_path(path))?;
                 parsed.audio.validate().map_err(|e| e.with_path(path))?;
@@ -952,6 +1245,38 @@ impl Config {
         if let Some(value) = env(RENDER_BLOOM_MAX_MIPS_ENV) {
             self.apply_bloom_max_mips_override(&value)?;
         }
+        if let Some(value) = env(RENDER_BLOOM_BASE_ENV) {
+            self.apply_bloom_base_override(&value)?;
+        }
+        if let Some(value) = env(RENDER_POST_FUSE_ENV) {
+            self.apply_post_fuse_override(&value)?;
+        }
+        if let Some(value) = env(RENDER_HDR_ENV) {
+            self.apply_hdr_override(&value)?;
+        }
+        if let Some(value) = env(RENDER_LIGHT_CAP_ENV) {
+            self.apply_light_cap_override(&value)?;
+        }
+        if let Some(value) = env(RENDER_LIGHT_TILES_ENV) {
+            self.apply_light_tiles_override(&value)?;
+        }
+        if let Some(value) = env(PHYSICS_WORKERS_ENV) {
+            self.apply_physics_workers_override(&value)?;
+        }
+        Ok(())
+    }
+
+    fn apply_physics_workers_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = value
+            .parse::<u32>()
+            .ok()
+            .filter(|workers| *workers <= PHYSICS_WORKERS_MAX)
+            .ok_or_else(|| ConfigError::InvalidEnvOverride {
+                var: PHYSICS_WORKERS_ENV,
+                value: value.to_string(),
+                expected: PHYSICS_WORKERS_EXPECTED,
+            })?;
+        self.physics.workers = parsed;
         Ok(())
     }
 
@@ -1017,6 +1342,72 @@ impl Config {
                 expected: BLOOM_MAX_MIPS_EXPECTED,
             })?;
         self.render.bloom_max_mips = parsed;
+        Ok(())
+    }
+
+    fn apply_post_fuse_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = match value {
+            "true" | "1" => true,
+            "false" | "0" => false,
+            _ => {
+                return Err(ConfigError::InvalidEnvOverride {
+                    var: RENDER_POST_FUSE_ENV,
+                    value: value.to_string(),
+                    expected: DEPTH_ENABLED_EXPECTED,
+                });
+            }
+        };
+        self.render.post_fuse = parsed;
+        Ok(())
+    }
+
+    fn apply_light_tiles_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = match value {
+            "true" | "1" => true,
+            "false" | "0" => false,
+            _ => {
+                return Err(ConfigError::InvalidEnvOverride {
+                    var: RENDER_LIGHT_TILES_ENV,
+                    value: value.to_string(),
+                    expected: DEPTH_ENABLED_EXPECTED,
+                });
+            }
+        };
+        self.render.light_tiles = parsed;
+        Ok(())
+    }
+
+    fn apply_light_cap_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = value
+            .parse::<u32>()
+            .ok()
+            .filter(|v| is_supported_light_cap(*v))
+            .ok_or_else(|| ConfigError::InvalidEnvOverride {
+                var: RENDER_LIGHT_CAP_ENV,
+                value: value.to_string(),
+                expected: LIGHT_CAP_EXPECTED,
+            })?;
+        self.render.light_cap = parsed;
+        Ok(())
+    }
+
+    fn apply_hdr_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = HdrMode::from_str(value).map_err(|_| ConfigError::InvalidEnvOverride {
+            var: RENDER_HDR_ENV,
+            value: value.to_string(),
+            expected: HDR_EXPECTED,
+        })?;
+        self.render.hdr = parsed;
+        Ok(())
+    }
+
+    fn apply_bloom_base_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = BloomBase::from_str(value).map_err(|_| ConfigError::InvalidEnvOverride {
+            var: RENDER_BLOOM_BASE_ENV,
+            value: value.to_string(),
+            expected: BLOOM_BASE_EXPECTED,
+        })?;
+        self.render.bloom_base = parsed;
         Ok(())
     }
 

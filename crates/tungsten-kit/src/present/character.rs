@@ -1522,13 +1522,13 @@ fn hold_pose(
         .map(|frame| frame.sprite);
     match world.get_mut::<AnimationState>(entity) {
         Some(state) if unchanged && state.animation_id == id => {
-            state.frame_index = frame;
+            state.frame_index = frame as u32;
             state.accumulated_ms = 0.0;
             state.playing = false;
         }
         _ => {
             let mut shown = AnimationState::new(id).with_speed(speed);
-            shown.frame_index = frame;
+            shown.frame_index = frame as u32;
             shown.playing = false;
             world.insert(entity, shown);
         }

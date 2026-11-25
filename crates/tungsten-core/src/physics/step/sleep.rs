@@ -85,6 +85,34 @@ pub(super) struct SleepTable {
     /// Tests: the supports the comparison has sorted.
     #[cfg(test)]
     pub(super) sorted: usize,
+    /// Tests: a rebuild looks every body up through the key index, as it
+    /// did before its cursor; and the bodies the cursor found.
+    #[cfg(test)]
+    pub(super) probe_only: bool,
+    #[cfg(test)]
+    pub(super) cursor_hits: usize,
+    /// Tests: the comparison walks the tiles' supports every frame, as it
+    /// did before it could leave them out; and the frames it left them out.
+    #[cfg(test)]
+    pub(super) walk_tiles: bool,
+    #[cfg(test)]
+    pub(super) tiles_skipped: usize,
+}
+
+/// What the sleep passes keep beside the [`SleepTable`], in `StepExtra`: the
+/// table sits in the buffers, which the step boxes anew every step, so a
+/// field there is bytes every step allocates.
+#[derive(Debug, Default)]
+pub(super) struct SleepKept {
+    /// The entity proxies of the frame the table was last lined up with:
+    /// the proxies after them are tiles, which hold no key and never sleep.
+    entity_proxies: usize,
+    /// The entity supports at the support record's head, and the tile
+    /// cache's version its tile part was brought up to: while both hold,
+    /// the tiles' supports are the record's and the comparison leaves them
+    /// out.
+    supports_bodies: usize,
+    supports_tiles: Option<u64>,
 }
 
 /// A proxy sleepers can rest on that holds no sleep entry: a static entity,
@@ -226,13 +254,22 @@ impl SleepTable {
     fn same_bodies(
         &self,
         proxies: &[Proxy],
+        bodies: usize,
+        bodies_then: usize,
         layers: &[Layers],
         wake_islands: &mut Vec<u64>,
     ) -> bool {
         if proxies.len() != self.keys.len() {
             return false;
         }
-        for (index, ((proxy, &key), entry)) in proxies
+        // With as many entity proxies as the last frame, the proxies after
+        // them were tiles then and are tiles now: no key, no sleeper.
+        let scan = if bodies == bodies_then {
+            bodies
+        } else {
+            proxies.len()
+        };
+        for (index, ((proxy, &key), entry)) in proxies[..scan]
             .iter()
             .zip(&self.keys)
             .zip(&self.entries)
@@ -248,21 +285,51 @@ impl SleepTable {
         true
     }
 
-    /// Carry entries over by entity key into the order of `proxies`. Sleeping
-    /// entries that do not carry over (despawn or component removal) wake
-    /// their island: bodies above a removed support must fall.
-    fn rebuild(&mut self, proxies: &[Proxy], layers: &[Layers], wake_islands: &mut Vec<u64>) {
+    /// Carry entries over by entity key into the order of `proxies`, whose
+    /// first `bodies` are the entity proxies. Sleeping entries that do not
+    /// carry over (despawn or component removal) wake their island: bodies
+    /// above a removed support must fall.
+    ///
+    /// The World swap-removes rows, so the new bodies are mostly the old
+    /// ones in the old order: a body's entry is looked for first where the
+    /// one after the last found sat, and through the key index only when
+    /// another key sits there. A key names one old entry, so both find the
+    /// same one. Out of line: it runs in a frame whose bodies changed, and
+    /// the step's own function holds it as a call.
+    #[inline(never)]
+    fn rebuild(
+        &mut self,
+        proxies: &[Proxy],
+        bodies: usize,
+        layers: &[Layers],
+        wake_islands: &mut Vec<u64>,
+    ) {
         self.next_keys.clear();
         self.next_entries.clear();
         self.carried.clear();
         self.carried.resize(self.entries.len(), false);
         let mut members = 0_usize;
-        for (proxy, &proxy_layers) in proxies.iter().zip(layers) {
+        let mut cursor = 0_usize;
+        for (proxy, &proxy_layers) in proxies[..bodies].iter().zip(layers) {
             let key = Self::key_of(proxy);
             let mut entry = SleepEntry::default();
             if key != EMPTY_SLEEP {
                 members += 1;
-                if let Some(old) = self.index_of(key) {
+                #[cfg(test)]
+                if self.probe_only {
+                    cursor = usize::MAX - 1;
+                }
+                let old = if self.keys.get(cursor) == Some(&key) {
+                    #[cfg(test)]
+                    {
+                        self.cursor_hits += 1;
+                    }
+                    Some(cursor)
+                } else {
+                    self.index_of(key)
+                };
+                if let Some(old) = old {
+                    cursor = old;
                     self.carried[old] = true;
                     entry = self.entries[old];
                     if entry.sleeping && written(proxy, proxy_layers, &entry) {
@@ -270,9 +337,14 @@ impl SleepTable {
                     }
                 }
             }
+            cursor = cursor.wrapping_add(1);
             self.next_keys.push(key);
             self.next_entries.push(entry);
         }
+        // The tile proxies follow the entity proxies, and none sleeps.
+        self.next_keys.resize(proxies.len(), EMPTY_SLEEP);
+        self.next_entries
+            .resize(proxies.len(), SleepEntry::default());
         for (entry, &carried) in self.entries.iter().zip(&self.carried) {
             if entry.sleeping && !carried {
                 wake_islands.push(entry.island);
@@ -339,30 +411,41 @@ impl SleepTable {
     /// changed shape or changed its layers or mask (a kinematic one: its
     /// shape, layers or mask, its last box for both), and the box of every
     /// one that went or appeared. While the supports keep their keys in
-    /// order, they compare in place.
-    fn diff_supports(&mut self, proxies: &[Proxy], layers: &[Layers]) {
+    /// order, they compare in place: the entity proxies' first, the first
+    /// `bodies`, then the tiles'. A tile's proxy and layers change only with
+    /// the tile cache's version, so under the version the record's tile
+    /// part was brought up to, behind as many entity supports as it has,
+    /// every tile's support is the record's and the comparison leaves the
+    /// tiles out.
+    fn diff_supports(
+        &mut self,
+        proxies: &[Proxy],
+        bodies: usize,
+        tile_version: u64,
+        layers: &[Layers],
+        kept: &mut SleepKept,
+    ) {
         self.changed_supports.clear();
         self.moved_supports.clear();
         let mut count = 0;
-        let mut same_keys = true;
-        for (proxy, &proxy_layers) in proxies
-            .iter()
-            .zip(layers)
-            .filter(|(proxy, _)| is_support(proxy))
-        {
-            match self.supports.get(count) {
-                Some(old) if old.key == proxy.key => {
-                    let new = Support::of(proxy, proxy_layers);
-                    if *old != new {
-                        self.moved_supports.push((count, new, old.changed(&new)));
-                    }
+        let mut same_keys = self.walk_supports(&mut count, &proxies[..bodies], layers);
+        let entity_supports = count;
+        if same_keys {
+            let tiles = proxies.len() - bodies;
+            let same_tiles = entity_supports == kept.supports_bodies
+                && kept.supports_tiles == Some(tile_version)
+                && self.supports.len() == entity_supports + tiles;
+            #[cfg(test)]
+            let same_tiles = same_tiles && !self.walk_tiles;
+            if same_tiles {
+                count = self.supports.len();
+                #[cfg(test)]
+                {
+                    self.tiles_skipped += 1;
                 }
-                _ => {
-                    same_keys = false;
-                    break;
-                }
+            } else {
+                same_keys = self.walk_supports(&mut count, &proxies[bodies..], &layers[bodies..]);
             }
-            count += 1;
         }
         if same_keys && count == self.supports.len() {
             for &(index, new, wakes) in &self.moved_supports {
@@ -372,6 +455,8 @@ impl SleepTable {
                 }
                 self.supports[index] = new;
             }
+            kept.supports_bodies = entity_supports;
+            kept.supports_tiles = Some(tile_version);
             return;
         }
         // A support appeared or went: every entry in only one of the two
@@ -386,9 +471,17 @@ impl SleepTable {
         // once were.
         self.next_supports.clear();
         self.next_supports.extend(
-            proxies
+            proxies[..bodies]
                 .iter()
                 .zip(layers)
+                .filter(|(proxy, _)| is_support(proxy))
+                .map(|(proxy, &proxy_layers)| Support::of(proxy, proxy_layers)),
+        );
+        let entity_supports = self.next_supports.len();
+        self.next_supports.extend(
+            proxies[bodies..]
+                .iter()
+                .zip(&layers[bodies..])
                 .filter(|(proxy, _)| is_support(proxy))
                 .map(|(proxy, &proxy_layers)| Support::of(proxy, proxy_layers)),
         );
@@ -506,10 +599,43 @@ impl SleepTable {
             );
         }
         std::mem::swap(&mut self.supports, &mut self.next_supports);
+        kept.supports_bodies = entity_supports;
+        kept.supports_tiles = Some(tile_version);
     }
 
-    /// Records this frame's supports, in proxy order.
-    fn record_supports(&mut self, proxies: &[Proxy], layers: &[Layers]) {
+    /// Compares `proxies`' supports with the record's from `count` on, in
+    /// place, noting each that differs; false at the first whose key is not
+    /// the record's there.
+    fn walk_supports(&mut self, count: &mut usize, proxies: &[Proxy], layers: &[Layers]) -> bool {
+        for (proxy, &proxy_layers) in proxies
+            .iter()
+            .zip(layers)
+            .filter(|(proxy, _)| is_support(proxy))
+        {
+            match self.supports.get(*count) {
+                Some(old) if old.key == proxy.key => {
+                    let new = Support::of(proxy, proxy_layers);
+                    if *old != new {
+                        self.moved_supports.push((*count, new, old.changed(&new)));
+                    }
+                }
+                _ => return false,
+            }
+            *count += 1;
+        }
+        true
+    }
+
+    /// Records this frame's supports, in proxy order: the entity proxies',
+    /// the first `bodies`, then the tiles' as of `tile_version`.
+    fn record_supports(
+        &mut self,
+        proxies: &[Proxy],
+        bodies: usize,
+        tile_version: u64,
+        layers: &[Layers],
+        kept: &mut SleepKept,
+    ) {
         self.supports.clear();
         self.supports.extend(
             proxies
@@ -518,11 +644,16 @@ impl SleepTable {
                 .filter(|(proxy, _)| is_support(proxy))
                 .map(|(proxy, &proxy_layers)| Support::of(proxy, proxy_layers)),
         );
+        kept.supports_bodies = proxies[..bodies]
+            .iter()
+            .filter(|proxy| is_support(proxy))
+            .count();
+        kept.supports_tiles = Some(tile_version);
     }
 }
 
 /// Union-find root with path halving; serial and deterministic (D-065).
-fn uf_find(parent: &mut [u32], mut i: u32) -> u32 {
+pub(super) fn uf_find(parent: &mut [u32], mut i: u32) -> u32 {
     while parent[i as usize] != i {
         let grandparent = parent[parent[i as usize] as usize];
         parent[i as usize] = grandparent;
@@ -532,7 +663,9 @@ fn uf_find(parent: &mut [u32], mut i: u32) -> u32 {
 }
 
 /// True when the island of `a`, as this frame's unions have built it so far,
-/// holds one of `members`.
+/// holds one of `members`. Always inlined, as it was while the substep had
+/// one compile: its two (`D-298`) would each turn it into a call a contact.
+#[inline(always)]
 pub(super) fn island_holds_any(parent: &mut [u32], a: u32, members: &[u32]) -> bool {
     let root = uf_find(parent, a);
     members
@@ -540,7 +673,9 @@ pub(super) fn island_holds_any(parent: &mut [u32], a: u32, members: &[u32]) -> b
         .any(|&member| uf_find(parent, member) == root)
 }
 
-/// Min-index root keeps island roots independent of union order.
+/// Min-index root keeps island roots independent of union order. Always
+/// inlined, as [`island_holds_any`] is.
+#[inline(always)]
 pub(super) fn uf_union(parent: &mut [u32], a: u32, b: u32) {
     let root_a = uf_find(parent, a);
     let root_b = uf_find(parent, b);
@@ -564,23 +699,29 @@ pub(super) fn uf_union(parent: &mut [u32], a: u32, b: u32) {
 pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers, margin: f32) {
     let PhysicsBuffers {
         proxies,
+        bodies,
+        tiles,
         layers,
         sleep,
         wake_islands,
+        extra,
         ..
     } = buffers;
     let layers = &layers.of;
+    let bodies = *bodies;
+    let kept = &mut extra.sleep_kept;
 
     wake_islands.clear();
-    if !sleep.same_bodies(proxies, layers, wake_islands) {
+    if !sleep.same_bodies(proxies, bodies, kept.entity_proxies, layers, wake_islands) {
         wake_islands.clear();
-        sleep.rebuild(proxies, layers, wake_islands);
+        sleep.rebuild(proxies, bodies, layers, wake_islands);
     }
+    kept.entity_proxies = bodies;
     if sleep.supports_valid {
-        sleep.diff_supports(proxies, layers);
+        sleep.diff_supports(proxies, bodies, tiles.version(), layers, kept);
         if !sleep.changed_supports.is_empty() {
             let reach = Vec2::splat(margin);
-            for (proxy, entry) in proxies.iter().zip(&sleep.entries) {
+            for (proxy, entry) in proxies[..bodies].iter().zip(&sleep.entries) {
                 if !entry.sleeping {
                     continue;
                 }
@@ -598,9 +739,10 @@ pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers, margin: f32) {
     }
 
     // Proxies persist across the frame's substeps (D-066), so the flag set
-    // here carries through until a contact wake flips it. Statics and tiles
-    // hold a default entry, which never sleeps.
-    for (proxy, entry) in proxies.iter_mut().zip(&sleep.entries) {
+    // here carries through until a contact wake flips it. Statics hold a
+    // default entry, which never sleeps; the tiles after the entity proxies
+    // keep the gather's `false`.
+    for (proxy, entry) in proxies[..bodies].iter_mut().zip(&sleep.entries) {
         proxy.sleeping = entry.sleeping;
     }
 }
@@ -627,6 +769,8 @@ pub(super) fn sleep_frame_end(
 ) {
     let PhysicsBuffers {
         proxies,
+        bodies,
+        tiles,
         layers,
         contacts,
         sleep,
@@ -637,6 +781,10 @@ pub(super) fn sleep_frame_end(
         ..
     } = buffers;
     let layers = &layers.of;
+    // Only an entity proxy is dynamic, sleeps, or roots an island: the
+    // passes below stop at the tiles, and the islands' arrays hold a slot an
+    // entity proxy.
+    let bodies = *bodies;
     // The final substep's contacts, speculative ones included, mark the
     // members something holds or is about to; with no gravity none falls.
     let falls = config.gravity != Vec2::ZERO;
@@ -672,11 +820,11 @@ pub(super) fn sleep_frame_end(
     );
     let threshold_sq = config.sleep_threshold * config.sleep_threshold;
     island_min_timer.clear();
-    island_min_timer.resize(proxies.len(), f32::INFINITY);
+    island_min_timer.resize(bodies, f32::INFINITY);
     island_tag.clear();
-    island_tag.resize(proxies.len(), 0);
+    island_tag.resize(bodies, 0);
 
-    for (index, proxy) in proxies.iter().enumerate() {
+    for (index, proxy) in proxies[..bodies].iter().enumerate() {
         if !proxy.is_dynamic || proxy.sleeping || proxy.entity.is_none() {
             continue;
         }
@@ -730,7 +878,7 @@ pub(super) fn sleep_frame_end(
         }
     }
 
-    for index in 0..proxies.len() {
+    for index in 0..bodies {
         let proxy = proxies[index];
         if !proxy.is_dynamic || proxy.sleeping {
             continue;
@@ -764,9 +912,15 @@ pub(super) fn sleep_frame_end(
 
     // The supports the sleepers rest among, for the next frame's start; the
     // start's comparison already brought a valid record up to date.
-    if sleep.entries.iter().any(|entry| entry.sleeping) {
+    if sleep.entries[..bodies].iter().any(|entry| entry.sleeping) {
         if !sleep.supports_valid {
-            sleep.record_supports(proxies, layers);
+            sleep.record_supports(
+                proxies,
+                bodies,
+                tiles.version(),
+                layers,
+                &mut extra.sleep_kept,
+            );
             sleep.supports_valid = true;
         }
     } else {

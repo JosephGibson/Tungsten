@@ -84,9 +84,12 @@ use super::{
 const TOP: f32 = 1000.0;
 const CORNER: Vec2 = Vec2::new(0.0, 500.0);
 
-/// A save as JSON, to compare whole.
+/// A save as JSON, to compare whole, its world's tables as the records
+/// they stand for, which these tests walk.
 fn json(save: &SaveGame) -> serde_json::Value {
-    serde_json::to_value(save).expect("a save serializes")
+    let mut value = serde_json::to_value(save).expect("a save serializes");
+    tungsten::core::save::expand_tables(&mut value["world"]).expect("a world save");
+    value
 }
 
 fn capture(harness: &UiHarness) -> SaveGame {

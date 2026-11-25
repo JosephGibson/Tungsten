@@ -48,12 +48,11 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     let world_pos = centre + rotated;
 
     var out: VertexOutput;
-    // `inst_z` is a pre-normalised [0, 1] NDC-space depth derived from the
-    // same stable CPU painter ordering used by `DepthSortMode::CpuStable`,
-    // so the `GpuDepth` path reproduces the visible order rather than
-    // approximating by raw `z_order` alone. When the pipeline has no depth
-    // attachment, `inst_z` is unused and the value collapses to 0.0 in the
-    // default data path.
+    // `inst_z` is a pass-through in [0, 1], the clip range. No depth reads
+    // it: under `DepthSortMode::GpuDepth` the draw sets each batch's depth
+    // by the viewport's depth range, which maps every `inst_z` in the clip
+    // range onto the batch's place in the frame's list (redo 7.15), and
+    // under `CpuStable` the pass has no depth attachment.
     out.clip_position = camera.projection * vec4<f32>(world_pos, 0.0, 1.0);
     out.clip_position.z = instance.inst_z;
     out.tex_coord = instance.inst_uv_min + vertex.uv * instance.inst_uv_size;
@@ -64,4 +63,17 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return textureSample(t_sprite, s_sprite, in.tex_coord) * in.tint;
+}
+
+// A solid batch's fragment under the depth test (redo 7.15): every texel
+// the batch samples is clear or opaque and its tint's alpha is 1, so a
+// clear texel, which blends to nothing, is dropped before it writes depth,
+// and an opaque one draws what `fs_main` draws.
+@fragment
+fn fs_solid(in: VertexOutput) -> @location(0) vec4<f32> {
+    let texel = textureSample(t_sprite, s_sprite, in.tex_coord);
+    if (texel.a < 0.5) {
+        discard;
+    }
+    return texel * in.tint;
 }

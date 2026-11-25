@@ -27,6 +27,9 @@ pub(crate) struct TileSprite {
     uv_size: [f32; 2],
     /// The sprite's own size in pixels, which a whole tile draws at.
     size: [f32; 2],
+    /// Whether its quads draw only clear and opaque fragments
+    /// (`SpriteAlpha::solid`), tint aside.
+    solid: bool,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -72,6 +75,7 @@ impl TilesetCache {
                         asset.uv.max[1] - asset.uv.min[1],
                     ],
                     size: [asset.width as f32, asset.height as f32],
+                    solid: asset.alpha.solid(asset.filter),
                 }),
                 None => TileSlot::Missing,
             };
@@ -89,7 +93,9 @@ impl TilesetCache {
 /// visible tiles (row by row) first use each. A tile whose sprite has a lit
 /// atlas draws in a lit batch, as a sprite does (`D-061`), unless its layer
 /// is unlit; each tile takes its layer's tint as its colour. Every instance
-/// has `z_norm` 0.
+/// has `z_norm` 0. A batch is solid (redo 7.15) while every tile in it is:
+/// its sprite's alpha two-level under a nearest sampler and its layer's tint
+/// at an alpha of 255.
 #[must_use]
 pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
     extract_layers(world, None, None)
@@ -251,6 +257,8 @@ fn extract_layers(
                                         .map_or(0, |&len| len as usize);
                                     let mut batch = SpriteBatch::new(sprite.atlas, sprite.filter);
                                     batch.lit = lit;
+                                    // Solid until a tile of it is not.
+                                    batch.solid = true;
                                     batch.instances = pool.take(len);
                                     target.push(batch);
                                     target.len() - 1
@@ -268,6 +276,9 @@ fn extract_layers(
                         } else {
                             ([world_x, world_y], [tw, th])
                         };
+                        if !(sprite.solid && draw.tint[3] == 255) {
+                            target[batch].solid = false;
+                        }
                         target[batch].instances.push(SpriteInstance {
                             position,
                             size,

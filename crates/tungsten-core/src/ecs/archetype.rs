@@ -193,8 +193,15 @@ impl Archetype {
         }
     }
 
+    /// Whether the key holds `type_id`, through its slot as
+    /// [`slot_column`](Self::slot_column) finds a column: the slot's own key
+    /// entry is compared, since a type the archetype lacks can share its
+    /// slot with one it has. An archetype with no separating shift scans
+    /// its key.
+    #[inline]
     pub fn has(&self, type_id: TypeId) -> bool {
-        self.component_types.contains(&type_id)
+        self.slot_index(type_id)
+            .is_some_and(|index| self.component_types[index] == type_id)
     }
 
     /// Index of `type_id`'s column: its position in the sorted type key,

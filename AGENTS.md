@@ -8,9 +8,9 @@ Native Rust 2D game engine: `winit` + `wgpu` + `glam` + hand-rolled ECS + manife
 
 ## Reading
 
-- Start here, then open only the files the task touches. [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) maps tasks to files; open it before a broad search.
+- Start here; open only the files the task touches. [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) maps tasks to files; open it before a broad search.
 - Rationale: matching rows in [`docs/DECISION_INDEX.md`](docs/DECISION_INDEX.md), then `rg -n 'D-0NN' DECISIONS.md`. Never read `DECISIONS.md`, `DESIGN.md` or `CHANGELOG.md` whole: `rg -n '^#' <file>`, then read one section.
-- **Never read, search or glob `docs/plans/archive/`** (completed or abandoned plans). `.ignore` filters it; never bypass that with `rg -uu`.
+- **Never read, search or glob `docs/plans/archive/`** (done or abandoned plans). `.ignore` filters it; never bypass that with `rg -uu`.
 - Status: [`ROADMAP.md`](ROADMAP.md); the plan to 1.0: [the roadmap redo](docs/plans/roadmap-redo.md); how work runs: [operating rules](docs/operating-rules.md) (`D-215`). The 1.0 register, `roadmap.json` and the 1.0 README's fields are frozen.
 - [Doc map](docs/README.md): canonical sources. Plans follow [`docs/plans/README.md`](docs/plans/README.md); client setup is in [`docs/agent-setup.md`](docs/agent-setup.md).
 
@@ -41,16 +41,16 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 ## Hard rules
 
 - No external ECS or engine crate (`bevy_ecs`, `hecs`, `specs`, `legion`, `amethyst`, `fyrox`, `ggez`, `macroquad`; `D-005`).
-- No async runtime (`tokio`, `async-std`). Only three background threads: the `cpal` callback (commands via `rtrb`, `D-034`), the `notify` watcher and `gilrs`'s backend thread (events via `std::sync::mpsc`, `D-220`).
+- No async runtime (`tokio`, `async-std`). Only these other threads: the `cpal` callback (`rtrb`, `D-034`), the `notify` watcher and `gilrs`'s backend (`mpsc`, `D-220`), the physics/map workers (`D-298`, `D-311`), the saves' writer (`D-303`).
 - No global mutable state (`static mut`, `lazy_static`); state lives in `World` or is passed explicitly.
 - No new third-party runtime dependency without a `DECISIONS.md` entry citing its `D-015` rule.
 - No hardcoded asset paths in game code except explicit scene loading (`D-046`).
 - No scope creep: finish the task, name what grows past it and propose the smallest version; a new idea goes to `ROADMAP.md`'s Later as one line.
-- Commit at each logical step in Conventional Commits, staging only the paths you changed, never `git add -A`, and push the version branch after each commit; tags, merges and every other push stay with the human ([rules](docs/operating-rules.md#git)).
+- Commit at each logical step in Conventional Commits, staging only the paths you changed, never `git add -A`, and push the version branch after each commit; tags, merges and every other push stay the owner's ([rules](docs/operating-rules.md#git)).
 
 ## Conventions
 
-- `rustfmt` defaults and Rust naming conventions.
+- `rustfmt` defaults and Rust naming.
 - Doc comments where a public name isn't self-evident; unit tests in `#[cfg(test)] mod tests`.
 - `thiserror` at library boundaries, `anyhow` at app/example top level; `log` for logging (`println!` in examples only).
 - `unwrap`/`expect` are fine while exploring; tighten once a module stabilizes.

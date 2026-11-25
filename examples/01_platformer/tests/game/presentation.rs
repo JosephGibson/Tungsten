@@ -13,11 +13,11 @@ use std::path::PathBuf;
 use example_01_platformer::features::combat::draw::overlays;
 use example_01_platformer::features::level::components::{Glow, GlowParts};
 use example_01_platformer::features::level::draw;
-use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
+use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL, PLAYER_LIGHT_PRIORITY};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{BURST_CAP, Burst, Saved, despawn_tree, spawn_burst};
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use tungsten::core::assets::{LayerKind, ResolvedManifest, TilemapData, TilemapLayer};
 use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::ui::contrast_ratio;
@@ -598,6 +598,82 @@ fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
 }
 
 #[test]
+fn the_lantern_keeps_its_slot_among_more_lamps_than_the_renderer_packs() {
+    let (mut harness, player) = run();
+    harness.step(5);
+    // A run starts with the lantern dark, and a dark light takes no slot.
+    harness.harness_mut().press_action("lantern");
+    harness.step(1);
+    harness.harness_mut().release_action("lantern");
+    // The view's corner a little up and left of the wizard, so he stands at
+    // its edge, far from its centre.
+    let stand = centre(&harness, player);
+    pin_camera(&mut harness, stand - Vec2::splat(96.0));
+    harness.step(2);
+    let world = harness.world();
+    let lantern = world
+        .get::<GlowParts>(player)
+        .unwrap()
+        .light
+        .expect("the lantern's light");
+    assert_eq!(
+        world.get::<Light>(lantern).unwrap().priority,
+        PLAYER_LIGHT_PRIORITY
+    );
+    assert_eq!(
+        world
+            .query::<&Light>()
+            .filter(|light| light.priority != 0)
+            .count(),
+        1,
+        "the map's lamps and the moon stay at 0"
+    );
+    let window = world.resource::<WindowSize>();
+    let (min, max) = world
+        .resource::<CameraState>()
+        .visible_world_aabb(window.width as f32, window.height as f32);
+    let middle = (min + max) * 0.5;
+    let hung = world.get::<Transform>(lantern).unwrap().position;
+    assert!(
+        hung.cmpge(min).all() && hung.cmple(max).all(),
+        "the lantern is in view: {hung} in {min}..{max}"
+    );
+    // Twenty lamps, lit, each nearer the view's centre than the lantern.
+    let world = harness.world_mut();
+    for i in 0..20 {
+        let lamp = middle + Vec2::new(i as f32 * 3.0 - 30.0, 0.0);
+        assert!(lamp.distance(middle) < hung.distance(middle));
+        world.spawn_with((
+            Transform::from_position(lamp),
+            Light::point(Vec3::ONE, 60.0),
+            SceneEntity { state_id: GAMEPLAY },
+        ));
+    }
+    let packs_the_lantern = |harness: &UiHarness| {
+        let hung = harness.world().get::<Transform>(lantern).unwrap().position;
+        let lights = harness.harness().draw().expect("a frame").light_ubo;
+        assert_eq!(lights.count_pad[0], 16, "more lights reach the view");
+        lights.lights.iter().any(|light| {
+            Vec2::new(light.position_radius[0], light.position_radius[1]).distance(hung) < 0.01
+        })
+    };
+    harness.step(1);
+    assert!(
+        packs_the_lantern(&harness),
+        "the lantern's light is among the sixteen"
+    );
+    // The control: at the lamps' priority the twenty nearer the centre
+    // take its slot.
+    harness
+        .world_mut()
+        .get_mut::<Light>(lantern)
+        .unwrap()
+        .priority = 0;
+    harness.step(1);
+    assert!(!packs_the_lantern(&harness));
+}
+
+#[test]
 fn the_wizards_overlays_sit_on_his_body() {
     let (mut harness, player) = run();
     harness.step(10);
@@ -980,6 +1056,117 @@ fn the_backdrop_skips_quads_opaque_tiles_cover() {
             .any(|b| b.texture.0 == 800 && !b.instances.is_empty()),
         "the clearing's sky quad is drawn"
     );
+}
+
+#[test]
+fn the_backdrop_marks_the_batches_that_hide() {
+    // Under the depth test a solid batch hides what its opaque texels
+    // cover: the sky and the two-level strips, tinted whole, never the
+    // clouds, whose alpha lies between, nor any sprite nothing measured.
+    use example_01_platformer::features::level::TILE;
+    use tungsten::core::SpriteAlpha;
+    let (mut harness, _) = run();
+    let world = harness.world_mut();
+    let names = [
+        ("ex10_sky", SpriteAlpha::Opaque),
+        ("ex10_clouds_far", SpriteAlpha::Blend),
+        ("ex10_clouds_near", SpriteAlpha::Blend),
+        ("ex10_distant_ridges", SpriteAlpha::Cutout),
+        ("ex10_near_woodland", SpriteAlpha::Cutout),
+    ];
+    let assets = world.resource_mut::<AssetRegistry>();
+    for (i, (name, _)) in names.iter().enumerate() {
+        mock_sprite(assets, name, 800 + i as u32, false);
+    }
+    world.insert_resource(WindowSize {
+        width: 1920,
+        height: 1080,
+    });
+    // The clearing's sky, where every strip draws at its full share.
+    world.resource_mut::<CameraState>().position = Vec2::new(10.0, 0.0) * TILE;
+    let marks = |world: &tungsten::core::World| -> Vec<(u32, bool)> {
+        draw::backdrop(world)
+            .iter()
+            .filter(|batch| (800..805).contains(&batch.texture.0))
+            .map(|batch| (batch.texture.0, batch.solid))
+            .collect()
+    };
+    let unmeasured = marks(world);
+    assert!(!unmeasured.is_empty());
+    assert!(
+        unmeasured.iter().all(|&(_, solid)| !solid),
+        "{unmeasured:?}"
+    );
+    let assets = world.resource_mut::<AssetRegistry>();
+    for (name, alpha) in names {
+        assets.set_sprite_alpha(name, alpha);
+    }
+    let measured = marks(world);
+    assert_eq!(measured.len(), unmeasured.len(), "the same batches");
+    for &(page, solid) in &measured {
+        let (name, alpha) = names[(page - 800) as usize];
+        assert_eq!(solid, alpha != SpriteAlpha::Blend, "{name}");
+    }
+    assert!(measured.contains(&(800, true)), "the sky: {measured:?}");
+}
+
+#[test]
+fn a_strips_batch_is_clipped_to_the_rows_its_sprite_draws() {
+    // The ridges' top rows are clear: its batch draws from the first row
+    // that holds a texel, where a quad samples that row, down to the view's
+    // foot, which its own foot runs to; a cloud bank ends at its last row.
+    use example_01_platformer::features::level::TILE;
+    let (mut harness, _) = run();
+    let world = harness.world_mut();
+    let assets = world.resource_mut::<AssetRegistry>();
+    mock_sprite(assets, "ex10_sky", 800, false);
+    mock_sprite(assets, "ex10_clouds_far", 801, false);
+    mock_sprite(assets, "ex10_distant_ridges", 802, false);
+    world.insert_resource(WindowSize {
+        width: 1920,
+        height: 1080,
+    });
+    world.resource_mut::<CameraState>().position = Vec2::new(10.0, 0.0) * TILE;
+    let clip_of = |world: &tungsten::core::World, page: u32| {
+        let batches = draw::backdrop(world);
+        let batch = batches
+            .iter()
+            .find(|batch| batch.texture.0 == page)
+            .expect("the strip draws");
+        let copy = batch
+            .instances
+            .iter()
+            .find(|copy| copy.uv_size[1] != 0.0)
+            .expect("a copy of the sprite");
+        (batch.clip.expect("a clip"), copy.position[1], copy.size[1])
+    };
+    // Unmeasured, the clip holds the whole strip.
+    let (clip, top, _) = clip_of(world, 802);
+    assert_eq!(clip[1], top);
+    let (min, max) = draw::view(world);
+    assert!(
+        clip[0] < min.x && clip[2] > max.x && clip[3] > max.y,
+        "{clip:?}"
+    );
+    // Measured: from row 57 of the ridges' sprite, under the UVs' mapping.
+    let (rows, drawn_from) = {
+        let assets = world.resource_mut::<AssetRegistry>();
+        let rows = assets.get_sprite("ex10_distant_ridges").unwrap().height;
+        assets.set_sprite_drawn("ex10_distant_ridges", [0, 57, 16, rows - 57]);
+        assets.set_sprite_drawn("ex10_clouds_far", [0, 3, 16, 5]);
+        (rows as f32, 57.0)
+    };
+    let (clip, top, height) = clip_of(world, 802);
+    let expected = top + height * (drawn_from - 0.5) / (rows - 1.0);
+    assert!(
+        (clip[1] - expected).abs() < 1e-3,
+        "{} against {expected}",
+        clip[1]
+    );
+    assert!(clip[1] > top && clip[3] > max.y, "{clip:?}");
+    // The clouds, which have no foot, end at their last drawn row.
+    let (clip, top, height) = clip_of(world, 801);
+    assert!(clip[1] > top && clip[3] < top + height, "{clip:?}");
 }
 
 #[test]

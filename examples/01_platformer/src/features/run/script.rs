@@ -2,8 +2,9 @@
 //! script to call, `player` and `area` for it to read, as the template's
 //! sample registers its own, the shell `start_run`; `fill_pit`, `wake_foes`
 //! and `pit` set up and read the full pit ([`pit`](super::pit), redo 7.3),
-//! and `cast_at` and `pit_fire` land spells on it and read its fire for the
-//! `e01-stress` row.
+//! `cast_at` and `pit_fire` land spells on it and read its fire for the
+//! `e01-stress` row, and `pit_shock` reads its cold and its chains for the
+//! `e01-shock` row.
 
 use serde::Deserialize;
 use tungsten::core::{Position, PrevPosition, Velocity, World};
@@ -119,7 +120,7 @@ pub fn register(world: &mut World) {
     );
     world.add_script_action(
         "cast_at",
-        "Lands a spell's toy at `{\"spell\": name, \"at\": [x, y]}`, free of mana and cooldown: `fire_missile`'s blast, a `lightning` strike, `force_push`'s wave from the wizard, a `black_hole` or an `iron_block`.",
+        "Lands a spell's toy at `{\"spell\": name, \"at\": [x, y]}`, free of mana and cooldown: `fire_missile`'s blast, `ice_spray`'s cold cone from the wizard toward it for the step, a `lightning` strike, `force_push`'s wave from the wizard, a `black_hole` or an `iron_block`.",
         |world, args| {
             let cast = CastAt::deserialize(args).map_err(|e| e.to_string())?;
             pit::cast_at(world, &cast.spell, cast.at.into())
@@ -131,6 +132,16 @@ pub fn register(world: &mut World) {
         |world, _| {
             let (burning, burnt) = pit::fire(world);
             Ok([("burning", burning), ("burnt", burnt)]
+                .into_iter()
+                .collect())
+        },
+    );
+    world.add_script_probe(
+        "pit_shock",
+        "The pit's cold among its fire: `{frozen, shocks, steams}`, the small balls frozen now and the thermal shocks and steam bursts the run has set off.",
+        |world, _| {
+            let (frozen, shocks, steams) = pit::shock(world);
+            Ok([("frozen", frozen as u64), ("shocks", shocks), ("steams", steams)]
                 .into_iter()
                 .collect())
         },

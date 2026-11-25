@@ -11,6 +11,7 @@ use tungsten::kit::{LocalOffset, spawn_child};
 
 use super::components::{Area, AreaLight, Glow, GlowParts, Zoom};
 use super::{AMBIENT, AMBIENT_INDOOR, AREA_FADE, LIGHT_EASE, MOONLIGHT_INTENSITY, TILE};
+use crate::features::player::components::Player;
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
 
@@ -23,6 +24,10 @@ pub const CORE_MATERIAL: &str = "ex10_soft_flame";
 /// under the hazards, the decks and the player, as their art expects.
 pub const HALO_Z: i32 = -8;
 pub const CORE_Z: i32 = -7;
+/// The priority of the player's own lights, the lantern's: over the map's
+/// lamps, at 0, so it keeps its slot where more lamps reach the view than
+/// the renderer packs.
+pub const PLAYER_LIGHT_PRIORITY: u8 = 1;
 
 /// `level_zoom`: the player's camera rig, which its prefab gives a view of
 /// [`CAMERA_ROWS`](super::CAMERA_ROWS) rows of tiles in the window's height, takes the
@@ -124,7 +129,8 @@ fn hang(world: &mut World, entity: Entity, at: Vec2, point: Vec2) {
 /// A glow's parts for `owner`, its children (the kit's `spawn_child`),
 /// owned by gameplay, phased by its save ID's low bits, which keep the
 /// clock's in an `f32` at an authored ID's size, or by its column when it
-/// has none; recorded in the owner's [`GlowParts`].
+/// has none; recorded in the owner's [`GlowParts`]. The player's glow, the
+/// lantern, takes its light at [`PLAYER_LIGHT_PRIORITY`].
 fn spawn_parts(world: &mut World, owner: Entity, glow: &Glow) -> GlowParts {
     let phase = crate::shared::save_id(world, owner).map_or_else(
         || {
@@ -139,6 +145,9 @@ fn spawn_parts(world: &mut World, owner: Entity, glow: &Glow) -> GlowParts {
     let light = (glow.light > 0.0).then(|| {
         let mut light = Light::point(Vec3::new(r, g, b), glow.reach());
         light.intensity = glow.light;
+        if world.has::<Player>(owner) {
+            light.priority = PLAYER_LIGHT_PRIORITY;
+        }
         spawn_child(
             world,
             owner,

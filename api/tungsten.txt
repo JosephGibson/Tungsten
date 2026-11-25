@@ -188,6 +188,7 @@ pub tungsten::asset_loader::LoadUnit::Pack(tungsten_core::assets::manifest::Filt
 pub tungsten::asset_loader::LoadUnit::ParticleMeshes
 pub tungsten::asset_loader::LoadUnit::Particles
 pub tungsten::asset_loader::LoadUnit::PhysicsNames
+pub tungsten::asset_loader::LoadUnit::PostEffects
 pub tungsten::asset_loader::LoadUnit::Prefabs
 pub tungsten::asset_loader::LoadUnit::Room(alloc::string::String)
 pub tungsten::asset_loader::LoadUnit::Shaders
@@ -354,6 +355,7 @@ pub fn tungsten::asset_loader::load_materials(&tungsten_core::assets::manifest::
 pub fn tungsten::asset_loader::load_particle_meshes(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_particles(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_physics_names(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World)
+pub fn tungsten::asset_loader::load_post_effects(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_prefabs(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_scene(&tungsten_core::ecs::world::World, &std::path::Path) -> anyhow::Result<tungsten_core::assets::scene::SceneData>
 pub fn tungsten::asset_loader::load_shaders(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
@@ -541,7 +543,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten::inspector::InspectorS
 impl core::panic::unwind_safe::UnwindSafe for tungsten::inspector::InspectorState
 pub fn tungsten::inspector::default_inspect_registry() -> tungsten_core::inspect::InspectRegistry
 pub mod tungsten::light_extract
-pub fn tungsten::light_extract::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32) -> tungsten_render::lighting::LightUbo
+pub fn tungsten::light_extract::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32, usize) -> tungsten_render::lighting::FrameLights
 pub mod tungsten::particles
 pub struct tungsten::particles::ParticleBurstEmitted
 pub tungsten::particles::ParticleBurstEmitted::count: u32
@@ -1238,6 +1240,7 @@ pub tungsten::testing::CounterGuard::spawned: u64
 impl tungsten::testing::CounterGuard
 pub fn tungsten::testing::CounterGuard::check(&self, impl core::convert::AsRef<std::path::Path>)
 pub fn tungsten::testing::CounterGuard::measure(&mut tungsten::testing::Harness, u32, u32) -> Self
+pub fn tungsten::testing::CounterGuard::measure_script(&mut tungsten::testing::Harness, &tungsten_core::script::Script, u32) -> (Self, tungsten_core::script::Report)
 impl core::clone::Clone for tungsten::testing::CounterGuard
 pub fn tungsten::testing::CounterGuard::clone(&self) -> tungsten::testing::CounterGuard
 impl core::cmp::Eq for tungsten::testing::CounterGuard
@@ -1274,6 +1277,7 @@ pub tungsten::testing::FrameDraw::debug_lines: alloc::vec::Vec<tungsten_render::
 pub tungsten::testing::FrameDraw::debug_quads: alloc::vec::Vec<tungsten_render::quad::QuadInstance>
 pub tungsten::testing::FrameDraw::light_ubo: tungsten_render::lighting::LightUbo
 pub tungsten::testing::FrameDraw::mesh_particles: alloc::vec::Vec<tungsten_render::mesh_particle::MeshParticleBatch>
+pub tungsten::testing::FrameDraw::more_lights: alloc::vec::Vec<tungsten_render::lighting::GpuLight>
 pub tungsten::testing::FrameDraw::post: alloc::vec::Vec<tungsten_core::post::PostPass>
 pub tungsten::testing::FrameDraw::quads: alloc::vec::Vec<tungsten_render::quad::QuadInstance>
 pub tungsten::testing::FrameDraw::sprites: alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
@@ -2373,7 +2377,7 @@ pub fn tungsten::apply_settings(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::beam(&mut tungsten::sprite_extract::Batches, &tungsten_core::assets::registry::SpriteAsset, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32, [u8; 4], f32)
 pub fn tungsten::camera_update_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::despawn_scene_entities(&mut tungsten_core::ecs::world::World, tungsten::state::StateId)
-pub fn tungsten::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32) -> tungsten_render::lighting::LightUbo
+pub fn tungsten::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32, usize) -> tungsten_render::lighting::FrameLights
 pub fn tungsten::extract_mesh_particles(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::mesh_particle::MeshParticleBatch>
 pub fn tungsten::extract_sprites_default(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
 pub fn tungsten::extract_tilemap_layers(&tungsten_core::ecs::world::World, &[&str]) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>

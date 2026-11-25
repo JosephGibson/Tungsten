@@ -714,3 +714,67 @@ fn a_backdrop_repeats_across_the_view_and_runs_on_its_foot() {
             .all(|copy| copy.color == [10, 20, 30, 255] && copy.z_norm == 1.0)
     );
 }
+
+#[test]
+fn backdrops_share_a_batch_while_they_agree_on_being_solid() {
+    use tungsten_core::SpriteAlpha;
+    use tungsten_core::components::Backdrop;
+    let mut app = new_app();
+    let world = app.world_mut();
+    // One page, four backdrops back to front: the sky, a cloud bank, the
+    // hills and the hills again, faded.
+    let sky = register(world, "sky", 4);
+    let clouds = register(world, "clouds", 4);
+    let hills = register(world, "hills", 4);
+    let sprites = world.resource_mut::<AssetRegistry>();
+    sprites.set_sprite_alpha("sky", SpriteAlpha::Opaque);
+    sprites.set_sprite_alpha("clouds", SpriteAlpha::Blend);
+    sprites.set_sprite_alpha("hills", SpriteAlpha::Cutout);
+    let layer = |sprite, z_order, tint| Backdrop {
+        z_order,
+        tint,
+        ..Backdrop::new(sprite)
+    };
+    for backdrop in [
+        layer(sky, 0, [255; 4]),
+        layer(clouds, 1, [255; 4]),
+        layer(hills, 2, [9, 9, 9, 255]),
+        layer(hills, 3, [255, 255, 255, 200]),
+    ] {
+        world.spawn_with((Transform::from_position(Vec2::ZERO), backdrop));
+    }
+    let mut harness = Harness::new(app);
+    harness.step(1);
+    let draw = harness.draw().expect("a completed frame");
+    let marks: Vec<(u32, bool, usize)> = draw
+        .sprites
+        .iter()
+        .map(|batch| (batch.texture.0, batch.solid, batch.instances.len()))
+        .collect();
+    // The order stands; a batch ends where the mark changes.
+    assert_eq!(
+        marks,
+        [(4, true, 1), (4, false, 1), (4, true, 1), (4, false, 1)]
+    );
+
+    // Unmeasured, as every backdrop was before the measure: one batch.
+    let mut app = new_app();
+    let world = app.world_mut();
+    let sky = register(world, "sky", 4);
+    let hills = register(world, "hills", 4);
+    for (sprite, z_order) in [(sky, 0), (hills, 1)] {
+        world.spawn_with((
+            Transform::from_position(Vec2::ZERO),
+            Backdrop {
+                z_order,
+                ..Backdrop::new(sprite)
+            },
+        ));
+    }
+    let mut harness = Harness::new(app);
+    harness.step(1);
+    let draw = harness.draw().expect("a completed frame");
+    assert_eq!(draw.sprites.len(), 1);
+    assert!(!draw.sprites[0].solid);
+    assert_eq!(draw.sprites[0].instances.len(), 2);
+}

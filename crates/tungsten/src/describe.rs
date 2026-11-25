@@ -214,6 +214,7 @@ fn assets(manifest: &ResolvedManifest) -> Value {
         "particle_meshes": ids(&manifest.particle_meshes),
         "shaders": ids(&manifest.shaders),
         "materials": ids(&manifest.materials),
+        "post_effects": ids(&manifest.post_effects),
         "ui_themes": ids(&manifest.ui_themes),
         "ui_screens": ids(&manifest.ui_screens),
         "prefabs": ids(&manifest.prefabs),

@@ -38,12 +38,13 @@ use tungsten_core::assets::{
     FontRegistry, LoadedManifest, ParticleConfigRegistry, ParticleMeshRegistry, ResolvedManifest,
     RoomGenerator, ShaderRegistry, SoundRegistry, TilemapRegistry,
 };
-use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig, Position};
+use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig, PhysicsWorkers, Position};
 use tungsten_core::post::{PostPass, PostStack, PostTail};
 use tungsten_core::save::SaveOptions;
 use tungsten_core::ui::{
     CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree, WindowPlacements,
 };
+use tungsten_core::workers::SystemWorkers;
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, Binding, CameraController, CameraState,
     CommandBuffer, ComponentRegistry, Config, ConfigError, DebugDraw, DebugShape, DisplayMode,
@@ -1198,15 +1199,22 @@ impl App {
         self.startup_clock.started = Some(Instant::now());
         self.resolve_schedule()
             .inspect_err(|err| log::error!("{err}"))?;
+        // A script run forks its physics step and its systems' maps too: the
+        // perf rows are scripts.
+        self.start_workers();
+        // And it writes its saves behind, as a played run does.
+        self.start_saves_writer();
         if self.script.is_none() {
             self.start_hot_reload();
             self.start_gamepads();
         }
         let event_loop = EventLoop::new()
             .inspect_err(|err| log::error!("Failed to create the event loop: {err}"))?;
-        event_loop
+        let ran = event_loop
             .run_app(self)
-            .inspect_err(|err| log::error!("Event loop failed: {err}"))?;
+            .inspect_err(|err| log::error!("Event loop failed: {err}"));
+        self.flush_saves();
+        ran?;
         Ok(())
     }
 
@@ -1613,6 +1621,72 @@ impl App {
             self.manifest_path.as_deref(),
         ));
         self.hot_reload = HotReloadWatcher::new(&dirs, &extra_files);
+    }
+
+    /// Gives the World its [`PhysicsWorkers`] from `physics.workers`
+    /// (`D-298`), spinning `physics.worker_spin_ms` for a step's next fork
+    /// (`D-300`), unless the game inserted its own. Only a window's run
+    /// does: `App::new` inserts none, so the harness, the checks and every
+    /// counter guard step on the calling thread. The step starts its
+    /// threads at the first stage large enough to fork, not here.
+    fn start_physics_workers(&mut self) {
+        if self.world.has_resource::<PhysicsWorkers>() {
+            return;
+        }
+        let spin = Duration::from_millis(u64::from(self.config.physics.worker_spin_ms));
+        let workers = PhysicsWorkers::from_setting(self.config.physics.workers).with_spin(spin);
+        log::debug!(
+            "physics step: {} participants (physics.workers {}), spinning {} ms for a step's next fork",
+            workers.participants(),
+            self.config.physics.workers,
+            self.config.physics.worker_spin_ms
+        );
+        self.world.insert_resource(workers);
+    }
+
+    /// Gives the World its physics workers, then its systems' map workers at
+    /// the step's count (`D-298`, `D-311`): the order matters, since the map
+    /// reads the step's.
+    fn start_workers(&mut self) {
+        self.start_physics_workers();
+        self.start_system_workers();
+    }
+
+    /// Gives the World its [`SystemWorkers`] at its [`PhysicsWorkers`]'
+    /// count (`D-311`), unless the game inserted its own: a window's run
+    /// forks its systems' maps as it forks its step. `App::new` inserts
+    /// none, so the harness, the checks and every test map serially.
+    fn start_system_workers(&mut self) {
+        if self.world.has_resource::<SystemWorkers>() {
+            return;
+        }
+        let participants = self
+            .world
+            .get_resource::<PhysicsWorkers>()
+            .map_or(1, |workers| workers.participants());
+        log::debug!("systems' maps: {participants} participants");
+        self.world.insert_resource(SystemWorkers::new(participants));
+    }
+
+    /// Turns the World's [`SaveSlots`] to writing behind (`D-303`): a save
+    /// is staged on the frame, and its wait for the disk goes to the slots'
+    /// writer thread, which starts at the first save. Only a window's run
+    /// does: `App::new` leaves each save written before it returns, so the
+    /// harness, the checks and every test find their files at once.
+    fn start_saves_writer(&mut self) {
+        if let Some(slots) = self.world.get_resource_mut::<SaveSlots>() {
+            slots.write_behind();
+        }
+    }
+
+    /// Waits for the saves still staged as the run ends, the exit's own
+    /// autosave among them, so each is in its slot before the process goes.
+    fn flush_saves(&mut self) {
+        if let Some(slots) = self.world.get_resource::<SaveSlots>()
+            && let Err(error) = slots.flush()
+        {
+            log::error!("a save was not written before the exit: {error}");
+        }
     }
 
     /// Starts the gamepad backend (`D-220`), after the watcher: its thread
@@ -2067,7 +2141,7 @@ pub(crate) struct FrameExtract {
     pub(crate) debug_lines: Vec<DebugLineInstance>,
     /// M29 per-frame lighting payload; uploaded to the GPU once per render
     /// stage. With no lights this carries `count = 0` + ambient default.
-    pub(crate) light_ubo: tungsten_render::LightUbo,
+    pub(crate) lights: tungsten_render::FrameLights,
     /// M31 mesh particles, one batch per mesh. Engine-owned extract: there is
     /// no setter.
     pub(crate) mesh_particles: Vec<MeshParticleBatch>,
@@ -2555,8 +2629,21 @@ impl App {
             .get_resource::<CameraState>()
             .copied()
             .unwrap_or_default();
-        let light_ubo =
-            crate::light_extract::extract_lights(&self.world, &camera, viewport.0, viewport.1);
+        // The most lights the frame packs: the renderer's, which is the
+        // block's 16 while its lit file builds no pipeline that walks tiles.
+        let light_cap = self
+            .renderer
+            .as_ref()
+            .map_or(self.config.render.lights(), |renderer| {
+                renderer.light_cap() as usize
+            });
+        let lights = crate::light_extract::extract_lights(
+            &self.world,
+            &camera,
+            viewport.0,
+            viewport.1,
+            light_cap,
+        );
 
         let mesh_particles = crate::particles::extract_mesh_particles(&self.world);
 
@@ -2567,7 +2654,7 @@ impl App {
             text,
             debug_quads,
             debug_lines,
-            light_ubo,
+            lights,
             mesh_particles,
             ui: self.ui_paint.clone(),
             ui_prewarm,
@@ -2619,7 +2706,7 @@ impl App {
                 frame_post_stack(&self.world, &empty_stack, &mut self.transition_post_stack);
 
             // M29: upload the per-frame light UBO before any draw records it.
-            renderer.update_lights(&extract.light_ubo);
+            renderer.update_lights(&extract.lights);
             // M31: this frame's mesh particle instances; an empty list clears
             // the previous frame's draws.
             renderer.update_mesh_particles(&extract.mesh_particles);
@@ -2937,6 +3024,15 @@ impl App {
                 && let Some(buffers) = self.world.get_resource::<PhysicsBuffers>()
             {
                 log::debug!("{}", format_perf_physics_line(buffers));
+            }
+            // The kit's chemistry this frame (the chemistry shock pass):
+            // `scripts/perf_stats.py` reads it as counters, outside the digest.
+            #[cfg(feature = "kit")]
+            if log::log_enabled!(log::Level::Debug)
+                && let Some(stats) = self.world.get_resource::<tungsten_kit::ChemistryStats>()
+            {
+                let frame = self.world.get_resource::<Time>().map_or(0, Time::frame);
+                log::debug!("{}", stats.line(frame));
             }
         }
 

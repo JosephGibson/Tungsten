@@ -29,13 +29,18 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let sample = textureSample(src, src_sampler, in.uv);
+// @fx begin pixel
+fn lut_fx(color: vec4<f32>, uv: vec2<f32>, p: Params) -> vec4<f32> {
     // Identity LUT until a real LUT-sprite binding lands; `mix` smoothly
     // fades between source and a 1.0-gamma desaturation placeholder.
-    let luma = dot(sample.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let luma = dot(color.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
     let placeholder = vec3<f32>(luma);
-    let mix_amount = clamp(params.f.x, 0.0, 1.0);
-    return vec4<f32>(mix(sample.rgb, placeholder, mix_amount), sample.a);
+    let mix_amount = clamp(p.f.x, 0.0, 1.0);
+    return vec4<f32>(mix(color.rgb, placeholder, mix_amount), color.a);
+}
+// @fx end
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return lut_fx(textureSample(src, src_sampler, in.uv), in.uv, params);
 }

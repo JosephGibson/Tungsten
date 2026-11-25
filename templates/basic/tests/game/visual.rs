@@ -21,6 +21,7 @@ fn the_title_matches_its_fixture() {
     let status = Command::new(env!("CARGO_BIN_EXE_tungsten-template-basic"))
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .env_remove("TUNGSTEN_CAPTURE_DIRECT")
+        .env_remove("TUNGSTEN_RENDER_HDR")
         .env("TUNGSTEN_SMOKE_FRAMES", "24")
         .env("TUNGSTEN_CAPTURE_FRAME", "20")
         .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")

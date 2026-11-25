@@ -3150,6 +3150,98 @@ fn save_ordered(world: &mut World) -> ([Entity; 3], Entity) {
     ([x1, x2, x3], source)
 }
 
+/// A rule whose handler sets off a stimulus-free blast at its receiver.
+fn popping() -> ChemistryPlugin {
+    ChemistryPlugin::new().with_handler("pop", |world: &mut World, reaction: &Reaction| {
+        let receiver = reaction.receiver();
+        let at = receiver
+            .and_then(|entity| world.get::<Transform>(entity))
+            .map_or(Vec2::ZERO, |transform| transform.position);
+        let pop = Blast::new(30.0)
+            .with_damage(1.0)
+            .landing_now()
+            .with_stimulus(false);
+        blast(world, at, &pop, None, receiver);
+    })
+}
+
+#[test]
+fn chemistry_counts_a_frames_work_on_its_line() {
+    let (mut world, mut schedule) = rig_with(&popping());
+    rule(
+        &mut world,
+        "pops",
+        json!({ "stimulus": "heat", "outputs": [{ "handler": "pop" }] }),
+    );
+    let targets: Vec<Entity> = (0..3_u8)
+        .map(|at| {
+            let target = receiver(&mut world, &["flammable"]);
+            let point = Vec2::new(100.0 * f32::from(at), 0.0);
+            world.insert(target, Transform::from_position(point));
+            target
+        })
+        .collect();
+    for &target in &targets {
+        assert!(stimulate(&mut world, target, "heat", 1.0, None));
+    }
+    // A blast inside the frame before its fixed update, as a script's
+    // action sets one off: it counts in that frame, beside the run's.
+    world.resource_mut::<Time>().advance_frame(STEP);
+    let frame = world.resource::<Time>().frame();
+    let far = Blast::new(20.0)
+        .with_damage(1.0)
+        .landing_now()
+        .with_stimulus(false);
+    blast(&mut world, Vec2::new(-500.0, 0.0), &far, None, None);
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    let line = world.resource::<ChemistryStats>().line(frame);
+    assert!(line.starts_with("chemistry: "), "{line}");
+    for field in [
+        "runs=1 ",
+        "queued=3 ",
+        "taken=3 ",
+        "dropped=0 ",
+        "cut=0 ",
+        "pending=0 ",
+        "depth=0 ",
+        "blasts=4 ",
+        "handler.pop=3 ",
+    ] {
+        assert!(line.contains(field), "{field} in {line}");
+    }
+    // The next frame's run takes nothing; the frame gone reads zeros.
+    step(&mut world, &mut schedule);
+    let next = world.resource::<Time>().frame();
+    let quiet = world.resource::<ChemistryStats>().line(next);
+    for field in ["runs=1 ", "taken=0 ", "blasts=0 ", "handler.pop=0 "] {
+        assert!(quiet.contains(field), "{field} in {quiet}");
+    }
+    let gone = world.resource::<ChemistryStats>().line(frame);
+    assert!(
+        gone.contains("runs=0 ") && gone.contains("handler.pop=0 "),
+        "{gone}"
+    );
+}
+
+#[test]
+fn a_blast_in_a_frame_with_no_run_counts_in_it() {
+    // No rule and an empty queue: chemistry runs nothing.
+    let (mut world, _schedule) = rig();
+    world.resource_mut::<Time>().advance_frame(STEP);
+    let frame = world.resource::<Time>().frame();
+    let target = receiver(&mut world, &["flammable"]);
+    world.insert(target, Transform::from_position(Vec2::ZERO));
+    let pop = Blast::new(20.0)
+        .with_damage(1.0)
+        .landing_now()
+        .with_stimulus(false);
+    blast(&mut world, Vec2::ZERO, &pop, None, None);
+    let line = world.resource::<ChemistryStats>().line(frame);
+    for field in ["runs=0 ", "blasts=1 ", "gathered=1 "] {
+        assert!(line.contains(field), "{field} in {line}");
+    }
+}
+
 #[test]
 fn a_blast_lands_now_in_save_id_order() {
     let rolls = [true, false, true];
@@ -3192,6 +3284,170 @@ fn a_blast_lands_now_in_save_id_order() {
         [40.0, 20.0, 40.0],
         "at the step's resolve, as drawn"
     );
+}
+
+/// A seeded World for the stimulus-free gather's comparison: 150
+/// candidates within 220 px of the origin, by turns a dynamic circle, a
+/// dynamic box or a bodiless point, each with tags alone, health alone,
+/// both, both and dead, or both and despawning; every third saved under a
+/// save ID drawn against its index order; physics on, its index built by a
+/// step, so a blast's impulse finds its bodies. With `gathers_all`, every
+/// blast gathers as it did before the health holders' gather.
+fn gather_world(seed: u64, gathers_all: bool) -> (World, Schedule, Vec<Entity>) {
+    let (mut world, mut schedule) = physics_rig(&ChemistryPlugin::new());
+    if gathers_all {
+        world.insert_resource(blast::GathersAll);
+    }
+    let mut stream = seed;
+    let mut entities = Vec::new();
+    // A named anchor turns the World's saves on, so its save IDs exist.
+    let anchor = world.spawn();
+    tungsten_core::save::name(&mut world, anchor, None, "anchor").unwrap();
+    let mut ids = Vec::new();
+    for _ in 0..50 {
+        ids.push(tungsten_core::save::take_id(&mut world).unwrap());
+    }
+    for at in 0..150_usize {
+        let point = Vec2::new(
+            220.0 * (2.0 * grid_unit(&mut stream) - 1.0),
+            220.0 * (2.0 * grid_unit(&mut stream) - 1.0),
+        );
+        let entity = match at % 3 {
+            0 => world.spawn_with(RigidBodyBundle::dynamic(
+                Position(point),
+                Collider::circle(1.0 + 30.0 * grid_unit(&mut stream)),
+            )),
+            1 => world.spawn_with(RigidBodyBundle::dynamic(
+                Position(point),
+                Collider::aabb(Vec2::new(
+                    1.0 + 40.0 * grid_unit(&mut stream),
+                    1.0 + 12.0 * grid_unit(&mut stream),
+                )),
+            )),
+            _ => {
+                let entity = world.spawn();
+                world.insert(entity, Transform::from_position(point));
+                entity
+            }
+        };
+        match at % 5 {
+            0 => world.insert(entity, Tags::new(["flammable"])),
+            1 => world.insert(entity, Health::new(1000.0)),
+            _ => {
+                world.insert(entity, Health::new(1000.0));
+                world.insert(entity, Tags::new(["team.enemy"]));
+            }
+        }
+        world.insert(entity, crate::Knockback::new(1.0));
+        if at % 3 == 1 {
+            // IDs taken from the back, so save order runs against index order.
+            let id = ids.pop().unwrap();
+            world.insert(entity, tungsten_core::save::Saved::kept(id));
+        }
+        entities.push(entity);
+    }
+    step(&mut world, &mut schedule);
+    for (at, &entity) in entities.iter().enumerate() {
+        match at % 5 {
+            3 => {
+                crate::kill(&mut world, entity);
+            }
+            4 => world.insert(entity, crate::lifecycle::ended::Despawning),
+            _ => {}
+        }
+    }
+    world.insert_resource(crate::KitRng::seeded(seed));
+    (world, schedule, entities)
+}
+
+/// Everything the comparison reads of `world` after its blasts: each
+/// entity's health and velocity, the landed hits in order with their
+/// amounts and crits, and the crit stream's draws.
+fn gather_outcome(world: &World, entities: &[Entity]) -> Vec<String> {
+    let mut out: Vec<String> = entities
+        .iter()
+        .map(|&entity| {
+            let health = world.get::<Health>(entity).map(|h| h.current().to_bits());
+            let velocity = world
+                .get::<Velocity>(entity)
+                .map(|v| (v.0.x.to_bits(), v.0.y.to_bits()));
+            format!("{entity:?} {health:?} {velocity:?}")
+        })
+        .collect();
+    out.extend(
+        world
+            .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+            .iter()
+            .map(|hit| format!("hit {:?} {} {}", hit.entity, hit.amount.to_bits(), hit.crit)),
+    );
+    out.push(format!(
+        "draws {}",
+        world.resource::<crate::KitRng>().draws()
+    ));
+    out
+}
+
+#[test]
+fn a_stimulus_free_blast_hits_from_the_health_holders_as_from_all() {
+    for seed in [3_u64, 17, 2026] {
+        let mut outcomes = Vec::new();
+        for gathers_all in [false, true] {
+            let (mut world, mut schedule, entities) = gather_world(seed, gathers_all);
+            let mut stream = seed ^ 0xA5A5;
+            for at in 0..24_usize {
+                let centre = Vec2::new(
+                    200.0 * (2.0 * grid_unit(&mut stream) - 1.0),
+                    200.0 * (2.0 * grid_unit(&mut stream) - 1.0),
+                );
+                let radius = 20.0 + 140.0 * grid_unit(&mut stream);
+                let mut def = Blast::new(radius)
+                    .with_damage(5.0)
+                    .with_far(0.25)
+                    .with_push(300.0)
+                    .with_stimulus(false);
+                if at % 2 == 0 {
+                    def = def.landing_now();
+                }
+                if at % 3 == 0 {
+                    def = def.with_impulse(200.0);
+                }
+                if at % 4 == 1 {
+                    def = def.with_receiver(true);
+                }
+                if at % 5 == 2 {
+                    def = def.sparing_source();
+                }
+                if at % 7 == 3 {
+                    def = def.with_filter(crate::TagFilter::new().any(["team.enemy"]));
+                }
+                let receiver = entities[(grid_draw(&mut stream) % 150) as usize];
+                let credit = entities[(grid_draw(&mut stream) % 150) as usize];
+                blast(&mut world, centre, &def, Some(credit), Some(receiver));
+                let (held, health_only) = blast::last_build(&world);
+                assert_eq!(
+                    health_only, !gathers_all,
+                    "seed {seed}: the build the path took"
+                );
+                if !gathers_all {
+                    assert_eq!(held, 120, "seed {seed}: the health holders alone");
+                }
+            }
+            step(&mut world, &mut schedule);
+            outcomes.push(gather_outcome(&world, &entities));
+        }
+        assert!(
+            outcomes[0]
+                .iter()
+                .filter(|line| line.starts_with("hit "))
+                .count()
+                > 50,
+            "seed {seed}: the blasts landed hits"
+        );
+        assert_eq!(
+            outcomes[0], outcomes[1],
+            "seed {seed}: the health holders' gather is the full one's"
+        );
+    }
 }
 
 #[test]
@@ -3419,4 +3675,487 @@ fn a_blast_passes_the_dead() {
     );
     assert!(velocity(&world, live).x < 0.0, "{}", velocity(&world, live));
     assert_eq!(lost(&world, going), 0.0);
+}
+
+// The receiver grid's directory, packed centres and squared test (phase 7's
+// C2), against the grid's query as it stood (`Grid::within_by_search`).
+
+/// The grid's own stream (splitmix64).
+fn grid_draw(stream: &mut u64) -> u64 {
+    *stream = stream.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = *stream;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// A draw in `[0, 1)`.
+fn grid_unit(stream: &mut u64) -> f32 {
+    (grid_draw(stream) >> 40) as f32 / (1_u64 << 24) as f32
+}
+
+/// A World of seeded candidates about `origin`, `count` of them within
+/// `spread` px of it on each axis: one in three a circle, one in three a
+/// box, the rest bodiless points, every fourth with `Health` in place of
+/// `Tags`. Returns the World and each candidate's point.
+fn grid_world(seed: u64, count: usize, origin: Vec2, spread: f32) -> (World, Vec<Vec2>) {
+    let (mut world, _) = rig();
+    let mut stream = seed;
+    let mut points = Vec::new();
+    for at in 0..count {
+        let point = origin
+            + Vec2::new(
+                spread * (2.0 * grid_unit(&mut stream) - 1.0),
+                spread * (2.0 * grid_unit(&mut stream) - 1.0),
+            );
+        points.push(point);
+        let entity = world.spawn();
+        if at % 4 == 3 {
+            world.insert(entity, Health::new(5.0));
+        } else {
+            world.insert(entity, Tags::new(["flammable"]));
+        }
+        match at % 3 {
+            0 => {
+                world.insert(entity, Position(point));
+                world.insert(
+                    entity,
+                    Collider::circle(1.0 + 30.0 * grid_unit(&mut stream)),
+                );
+            }
+            1 => {
+                world.insert(entity, Position(point));
+                let half = Vec2::new(
+                    1.0 + 40.0 * grid_unit(&mut stream),
+                    1.0 + 12.0 * grid_unit(&mut stream),
+                );
+                world.insert(entity, Collider::aabb(half));
+            }
+            _ => world.insert(entity, Transform::from_position(point)),
+        }
+    }
+    (world, points)
+}
+
+/// Seeded queries of `world`'s grid by the directory and by the searches:
+/// the finds are equal, content and order. Around each of `points` it also
+/// asks at the candidate's own distance from a seeded point and a step to
+/// each side of it. Returns whether the build made a directory, the
+/// queries that found something and the ones that found nothing.
+fn grid_queries(world: &World, points: &[Vec2], seed: u64) -> (bool, usize, usize) {
+    let mut grid = grid::Grid::default();
+    grid.build(world);
+    let (directory, len) = grid.directory_and_len();
+    assert_eq!(len, points.len());
+    let mut stream = seed;
+    let (mut found, mut by_search) = (Vec::new(), Vec::new());
+    let (mut some, mut none) = (0, 0);
+    let mut ask = |point: Vec2, radius: f32| {
+        grid.within(point, radius, &mut found);
+        grid.within_by_search(point, radius, &mut by_search);
+        assert_eq!(found, by_search, "at {point:?}, radius {radius}");
+        if found.is_empty() {
+            none += 1;
+        } else {
+            some += 1;
+        }
+    };
+    for (at, &centre) in points.iter().enumerate() {
+        // A point a few to a few hundred px off the candidate, and radii at
+        // its exact distance and one step to each side.
+        let reach = [3.0, 40.0, 300.0][at % 3] * (0.1 + grid_unit(&mut stream));
+        let angle = std::f32::consts::TAU * grid_unit(&mut stream);
+        let point = centre + reach * Vec2::new(angle.cos(), angle.sin());
+        let exact = (point - centre).length();
+        for radius in [exact.next_down(), exact, exact.next_up()] {
+            ask(point, radius);
+        }
+        // And a seeded radius, from none to wider than the field.
+        let radius = [0.0, 8.0, 50.0, 120.0, 900.0][(grid_draw(&mut stream) % 5) as usize]
+            * grid_unit(&mut stream);
+        ask(point, radius);
+    }
+    // Points no query takes.
+    ask(Vec2::new(f32::NAN, 0.0), 10.0);
+    ask(Vec2::ZERO, f32::INFINITY);
+    ask(Vec2::ZERO, -1.0);
+    (directory, some, none)
+}
+
+#[test]
+fn the_grid_sorts_by_save_order_as_its_stable_sort_did() {
+    for seed in [5_u64, 41, 977] {
+        // A World that keeps no save order: by entity index.
+        let (plain, _) = grid_world(seed, 400, Vec2::ZERO, 900.0);
+        assert!(!crate::foundation::saved::saving(&plain));
+        let mut grid = grid::Grid::default();
+        grid.build(&plain);
+        let built: Vec<Entity> = (0..400_u32).map(|at| grid.get(at).entity).collect();
+        let mut by_index = built.clone();
+        by_index.sort_by_key(|entity| entity.id());
+        assert_eq!(built, by_index, "seed {seed}: by index");
+        let (mut world, _) = grid_world(seed, 400, Vec2::ZERO, 900.0);
+        // Saves on, then about half the candidates saved under IDs taken in
+        // a shuffled order, and two pairs sharing an ID, whose tie the
+        // stable sort left in query order.
+        let anchor = world.spawn();
+        tungsten_core::save::name(&mut world, anchor, None, "anchor").unwrap();
+        let entities: Vec<Entity> = world
+            .query::<(Entity, &Tags)>()
+            .map(|(entity, _)| entity)
+            .chain(world.query::<(Entity, &Health)>().map(|(entity, _)| entity))
+            .collect();
+        let mut stream = seed;
+        let mut ids: Vec<_> = (0..entities.len())
+            .map(|_| tungsten_core::save::take_id(&mut world).unwrap())
+            .collect();
+        for at in (1..ids.len()).rev() {
+            ids.swap(at, (grid_draw(&mut stream) % (at as u64 + 1)) as usize);
+        }
+        for (at, &entity) in entities.iter().enumerate() {
+            let paired = at % 97 < 2;
+            if paired || grid_draw(&mut stream).is_multiple_of(2) {
+                let id = if at % 97 == 1 { ids[at - 1] } else { ids[at] };
+                world.insert(entity, tungsten_core::save::Saved::kept(id));
+            }
+        }
+        let mut grid = grid::Grid::default();
+        grid.build(&world);
+        let (_, len) = grid.directory_and_len();
+        let built: Vec<Entity> = (0..len as u32).map(|at| grid.get(at).entity).collect();
+        // As the build gathered them, then the stable sort it ran before.
+        let order = crate::foundation::saved::order_of(&world);
+        let mut reference: Vec<Entity> = world
+            .query::<(Entity, &Tags)>()
+            .map(|(entity, _)| entity)
+            .chain(
+                world
+                    .query::<(Entity, &Health)>()
+                    .map(|(entity, _)| entity)
+                    .filter(|&entity| !world.has::<Tags>(entity)),
+            )
+            .collect();
+        reference.sort_by_key(|&entity| order.key(entity));
+        assert_eq!(built.len(), 400, "seed {seed}");
+        assert_eq!(built, reference, "seed {seed}");
+    }
+}
+
+#[test]
+fn the_grids_directory_finds_what_its_searches_do() {
+    let far = 64.0 * 2_147_483_648.0;
+    // Clustered fields, which get a directory, at the origin, far from it
+    // and across it; sparse ones, whose box is past the directory's bound;
+    // and fields about the clamp's two ends, where cell keys wrap.
+    let fields = [
+        (300, Vec2::ZERO, 200.0, true),
+        (500, Vec2::new(-3.0e6, 8.0e5), 600.0, true),
+        (64, Vec2::new(12.0, -7.0), 31.0, true),
+        (40, Vec2::ZERO, 50_000.0, false),
+        (200, Vec2::new(1.0e7, 1.0e7), 2.0e6, false),
+        (120, Vec2::new(far, 0.0), 4_000.0, true),
+        (120, Vec2::new(-far, far), 4_000.0, true),
+        (90, Vec2::new(0.0, far), 2.0e12, false),
+    ];
+    let (mut with_directory, mut without, mut some, mut none) = (0, 0, 0, 0);
+    for (seed, &(count, origin, spread, directory)) in fields.iter().enumerate() {
+        let (world, points) = grid_world(seed as u64 + 1, count, origin, spread);
+        let (made, found, empty) = grid_queries(&world, &points, 77 + seed as u64);
+        assert_eq!(made, directory, "field {seed}");
+        with_directory += usize::from(made);
+        without += usize::from(!made);
+        some += found;
+        none += empty;
+    }
+    assert!(with_directory >= 3 && without >= 3);
+    assert!(some > 2_000 && none > 200, "{some} found, {none} empty");
+    // No candidates: no directory, and nothing found.
+    let (world, points) = grid_world(1, 0, Vec2::ZERO, 1.0);
+    assert_eq!(grid_queries(&world, &points, 5), (false, 0, 3));
+}
+
+#[test]
+fn a_squared_bound_is_the_last_square_whose_root_fits() {
+    // For a radius, `bound` is the largest float whose root is at most it:
+    // every float about the radius' square sits on the side of the bound
+    // its root sits on of the radius.
+    let mut stream = 9_u64;
+    let mut radii = vec![
+        0.0,
+        -0.0,
+        f32::MIN_POSITIVE,
+        1.0e-30,
+        0.1,
+        1.0,
+        2.0_f32.sqrt(),
+        50.0,
+        288.0,
+        1.0e9,
+        1.8e19,
+        1.9e19,
+        3.0e19,
+        f32::MAX,
+    ];
+    for _ in 0..3_000 {
+        let scale = [1.0e-3, 1.0, 64.0, 5_000.0, 1.0e8][(grid_draw(&mut stream) % 5) as usize];
+        radii.push(scale * grid_unit(&mut stream));
+    }
+    let mut rounded_up = 0;
+    for radius in radii {
+        let bound = grid::Grid::square_bound(radius);
+        assert!(bound.sqrt() <= radius, "radius {radius}: {bound}");
+        assert!(
+            bound == f32::MAX || bound.next_up().sqrt() > radius,
+            "radius {radius}: {bound} is not the last"
+        );
+        rounded_up += usize::from(bound != radius * radius);
+        let mut square = (radius * radius).min(f32::MAX);
+        for _ in 0..40 {
+            square = square.next_down();
+        }
+        for _ in 0..80 {
+            // A squared length is never below 0.
+            if square >= 0.0 {
+                assert_eq!(
+                    square.sqrt() <= radius,
+                    square <= bound,
+                    "radius {radius}, square {square}"
+                );
+            }
+            if square == f32::MAX {
+                break;
+            }
+            square = square.next_up();
+        }
+        for square in [0.0, f32::MAX, f32::INFINITY, f32::NAN] {
+            assert_eq!(square.sqrt() <= radius, square <= bound, "radius {radius}");
+        }
+    }
+    // The radius' own square is often not the bound: the product and the
+    // root both round.
+    assert!(rounded_up > 500, "{rounded_up}");
+}
+
+// A receiver's kept slot as a hint across runs, the cells' order kept, the
+// coordinate without `floorf` and the take's cut-off age (phase 7's C2),
+// against the runs as they stood (`AsItStood`).
+
+/// A seeded field for the twin runs: 20 × 20 named receivers 24 px apart,
+/// `heat` building `burning` on them and `elemental.fire` too, six sturdier
+/// ones with health among them, three lit; chemistry at a cap of 24, a
+/// bound of 300 and a depth limit of 2, so the queue backs up, drops and
+/// cuts. Returns the World, its schedule, the receivers and the sturdy
+/// ones.
+fn hinted_field(as_it_stood: bool) -> (World, Schedule, Vec<Entity>, Vec<Entity>) {
+    let plugin = ChemistryPlugin::new()
+        .with_cap(24)
+        .with_bound(300)
+        .with_depth(2);
+    let (mut world, schedule) = rig_with(&plugin);
+    if as_it_stood {
+        world.insert_resource(AsItStood);
+    }
+    let receivers = field(&mut world, 400);
+    rule(
+        &mut world,
+        "kindles",
+        json!({ "stimulus": "elemental.fire", "on": { "all": ["flammable"] }, "outputs": [{ "build": { "status": "burning", "amount": 2 } }] }),
+    );
+    let sturdy: Vec<Entity> = (0..6)
+        .map(|at| {
+            let entity = receiver(&mut world, &["flammable"]);
+            let point = Vec2::new(60.0 + 70.0 * at as f32, 130.0);
+            world.insert(entity, Transform::from_position(point));
+            entity
+        })
+        .collect();
+    for (at, &entity) in receivers.iter().chain(&sturdy).enumerate() {
+        tungsten_core::save::name(&mut world, entity, None, &format!("r{at}")).unwrap();
+    }
+    for at in [21, 190, 377] {
+        EffectRequest::new(receivers[at], DataRef::by_id("burning")).apply(&mut world);
+    }
+    (world, schedule, receivers, sturdy)
+}
+
+#[test]
+fn chemistrys_runs_with_hints_queue_what_the_runs_as_they_stood_do() {
+    for seed in [4_u64, 31] {
+        let (mut old, mut old_schedule, receivers, sturdy) = hinted_field(true);
+        let (mut new, mut new_schedule, same, _) = hinted_field(false);
+        assert_eq!(same, receivers);
+        let mut stream = seed;
+        let mut live: Vec<Entity> = receivers.clone();
+        let (mut hinted, mut loads, mut despawned, mut held, mut peak) = (0, 0, 0, 0, 0);
+        for run in 0..260_u32 {
+            // One stream scripts both Worlds: a direct hit, an emission past
+            // the depth limit, a hold, and a despawn, by seeded turns.
+            let pick = |stream: &mut u64, of: &[Entity]| {
+                of[(grid_draw(stream) % of.len() as u64) as usize]
+            };
+            if grid_draw(&mut stream).is_multiple_of(4) {
+                let target = pick(&mut stream, &sturdy);
+                for world in [&mut old, &mut new] {
+                    hit(world, target, "elemental.fire", 2.0);
+                }
+            }
+            if grid_draw(&mut stream).is_multiple_of(6) {
+                let from = pick(&mut stream, &live);
+                for world in [&mut old, &mut new] {
+                    let heat = stimuli::Named::New("heat".into());
+                    stimuli::emit_from(world, from, heat, 1.0, 60.0, None, 3);
+                }
+            }
+            if grid_draw(&mut stream).is_multiple_of(9) {
+                let entity = pick(&mut stream, &live);
+                held += 1;
+                for world in [&mut old, &mut new] {
+                    world.resource_mut::<Chemistry>().hold(entity);
+                }
+            }
+            if grid_draw(&mut stream).is_multiple_of(5) {
+                let at = (grid_draw(&mut stream) % live.len() as u64) as usize;
+                let entity = live.swap_remove(at);
+                despawned += 1;
+                for world in [&mut old, &mut new] {
+                    world.despawn(entity);
+                }
+            }
+            step(&mut old, &mut old_schedule);
+            step(&mut new, &mut new_schedule);
+            let (want, got) = (chemistry(&old), chemistry(&new));
+            assert_eq!(got.slotted(), want.slotted(), "seed {seed}, run {run}");
+            assert_eq!(
+                (got.pending(), got.dropped(), got.cut(), got.ran()),
+                (want.pending(), want.dropped(), want.cut(), want.ran()),
+                "seed {seed}, run {run}"
+            );
+            assert_eq!(want.hinted, 0, "the runs as they stood take no hint");
+            peak = peak.max(want.pending());
+            // The saved forms, and twice a load of each World's own save:
+            // the queue comes back in its saved order, under other slots.
+            if run % 20 == 19 {
+                let saves = [&old, &new].map(|world| capture_world(world).unwrap());
+                let [saved_old, saved_new] = &saves;
+                assert_eq!(
+                    serde_json::to_value(saved_new).unwrap(),
+                    serde_json::to_value(saved_old).unwrap(),
+                    "seed {seed}, run {run}"
+                );
+                if run == 99 || run == 179 {
+                    hinted += chemistry(&new).hinted;
+                    restore_world(&mut old, saved_old, &(Restored,)).unwrap();
+                    restore_world(&mut new, saved_new, &(Restored,)).unwrap();
+                    assert_eq!(chemistry(&new).slotted(), chemistry(&old).slotted());
+                    loads += 1;
+                }
+            }
+        }
+        hinted += chemistry(&new).hinted;
+        let queue = chemistry(&old);
+        let seen = format!(
+            "seed {seed}: {hinted} hinted, {} ran, {} dropped, {} cut, peak {peak}, {despawned} \
+             despawned, {held} held, {loads} loads",
+            queue.ran(),
+            queue.dropped(),
+            queue.cut(),
+        );
+        assert!(hinted > 1_000, "{seen}");
+        assert!(
+            queue.ran() > 2_000 && queue.dropped() > 0 && queue.cut() > 20,
+            "{seen}"
+        );
+        assert!(
+            peak >= 200 && despawned > 30 && held > 15 && loads == 2,
+            "{seen}"
+        );
+    }
+}
+
+#[test]
+fn a_coordinate_is_the_floor_of_its_cell() {
+    // The cell of every kind of float: seeded bit patterns, the values
+    // about each cell's edge, and the ends.
+    let mut stream = 17_u64;
+    let mut values: Vec<f32> = vec![
+        0.0,
+        -0.0,
+        63.999_996,
+        64.0,
+        -64.0,
+        -64.000_01,
+        f32::MIN_POSITIVE,
+        -f32::MIN_POSITIVE,
+        f32::MAX,
+        f32::MIN,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NAN,
+        -f32::NAN,
+        64.0 * 2_147_483_648.0,
+        -64.0 * 2_147_483_648.0,
+        64.0 * 2_147_483_520.0,
+        64.0 * 16_777_216.0,
+        -64.0 * 16_777_217.0,
+    ];
+    for _ in 0..200_000 {
+        values.push(f32::from_bits(grid_draw(&mut stream) as u32));
+        // About a cell's edge, either side of zero.
+        let cell = (grid_draw(&mut stream) % 4_000_000) as f32 - 2_000_000.0;
+        let edge = cell * 64.0;
+        values.extend([edge, edge.next_down(), edge.next_up()]);
+    }
+    let mut negative_fractions = 0;
+    for value in values {
+        let want = grid::coordinate_by_floor(value);
+        assert_eq!(grid::coordinate_of(value), want, "{value:?}");
+        negative_fractions += usize::from(value < 0.0 && value % 64.0 != 0.0);
+    }
+    assert!(negative_fractions > 100_000);
+}
+
+#[test]
+fn a_take_by_its_cut_off_age_takes_what_keying_every_entry_does() {
+    // Queues of entries queued over 3 to 200 runs, taken at seeded caps
+    // and runs: the entries taken, in order, and the ones left are the
+    // same whether every waiting entry gets a key or only those at the
+    // cap's cut-off age or before.
+    let (mut world, _) = rig();
+    let entities: Vec<Entity> = (0..400).map(|_| world.spawn()).collect();
+    let mut stream = 23_u64;
+    let (mut taken_some, mut left_some, mut old_ages) = (0, 0, 0);
+    for round in 0..300 {
+        let span = [3, 20, 64, 200][round % 4];
+        let count = 1 + (grid_draw(&mut stream) % 400) as usize;
+        let run = span + grid_draw(&mut stream) % 3;
+        let cap = [0, 1, 7, 64, 256, 1_000][(grid_draw(&mut stream) % 6) as usize];
+        let build = |stream: &mut u64| {
+            let mut queue = Chemistry::default();
+            let settings = Settings::default();
+            for &entity in &entities[..count] {
+                let age = grid_draw(stream) % (span + 4);
+                let receiver = Receiver::Entity(entity);
+                let name = ["heat", "ping", "pong"][(grid_draw(stream) % 3) as usize];
+                let stimulus = Stimulus {
+                    amount: 1.0,
+                    status_effect: 1.0,
+                    dot_base: 1.0,
+                    depth: (grid_draw(stream) % 3) as u8,
+                    credit: None,
+                };
+                queue.stimulate(&settings, receiver, name, stimulus, age);
+            }
+            queue
+        };
+        let (mut by_age, mut every) = (build(&mut stream.clone()), build(&mut stream));
+        let (mut got, mut want) = (Vec::new(), Vec::new());
+        by_age.take(&world, cap, run, &mut got);
+        every.take_keying_every_entry(&world, cap, run, &mut want);
+        assert_eq!(got, want, "round {round}: cap {cap}, run {run}");
+        assert_eq!(by_age.slotted(), every.slotted(), "round {round}");
+        taken_some += usize::from(!want.is_empty());
+        left_some += usize::from(every.pending() > 0);
+        old_ages += usize::from(span == 200);
+    }
+    assert!(taken_some > 200 && left_some > 200 && old_ages == 75);
 }

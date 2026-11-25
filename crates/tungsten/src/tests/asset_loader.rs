@@ -1033,7 +1033,7 @@ fn the_umbrella_components_spawn_with_their_values() {
                 "particle_emitter": { "config": "embers" }
             } },
             { "transform": { "position": [0.0, 0.0] }, "components": {
-                "light": { "kind": "point", "radius": 40.0, "color": [1.0, 0.5, 0.0], "intensity": 2.0 },
+                "light": { "kind": "point", "radius": 40.0, "color": [1.0, 0.5, 0.0], "intensity": 2.0, "priority": 3 },
                 "parallax_layer": { "scroll_factor": [0.5, 0.25] },
                 "squash_stretch": { "on": "on_land", "amount": [1.3, 0.7], "duration": 0.2, "easing": "cubic_out" }
             } },
@@ -1071,11 +1071,13 @@ fn the_umbrella_components_spawn_with_their_values() {
                 kind: LightKind::Directional { angle: 1.5 },
                 color: glam::Vec3::new(0.2, 0.2, 0.2),
                 intensity: 1.0,
+                priority: 0,
             },
             Light {
                 kind: LightKind::Point { radius: 40.0 },
                 color: glam::Vec3::new(1.0, 0.5, 0.0),
                 intensity: 2.0,
+                priority: 3,
             },
         ]
     );
@@ -1141,6 +1143,21 @@ fn the_umbrella_components_reject_bad_values() {
             "light",
             r#"{ "kind": "point", "radius": 4.0 }"#,
             "missing field `color`",
+        ),
+        (
+            "light",
+            r#"{ "kind": "point", "radius": 4.0, "color": [1.0, 1.0, 1.0], "priority": 256 }"#,
+            "invalid value: integer `256`, expected u8",
+        ),
+        (
+            "light",
+            r#"{ "kind": "directional", "angle": 0.0, "color": [1.0, 1.0, 1.0], "priority": -1 }"#,
+            "invalid value: integer `-1`, expected u8",
+        ),
+        (
+            "light",
+            r#"{ "kind": "point", "radius": 4.0, "color": [1.0, 1.0, 1.0], "priority": 1.5 }"#,
+            "invalid type: floating point `1.5`, expected u8",
         ),
         (
             "parallax_layer",
@@ -1623,6 +1640,7 @@ fn a_plan_lists_load_alls_units_in_order() {
         LoadUnit::Themes,
         LoadUnit::Shaders,
         LoadUnit::Materials,
+        LoadUnit::PostEffects,
         LoadUnit::Sound("hum".into()),
         LoadUnit::Sound("step".into()),
         LoadUnit::Tilemap("level".into()),
@@ -1671,6 +1689,119 @@ fn a_plan_run_in_slices_registers_and_packs_what_load_all_does() {
     assert_eq!(target.uploads[0], TextureHandle(0));
     let timings = plan.timings();
     assert!(timings.units >= timings.sprites + timings.sounds + timings.pack);
+}
+
+#[test]
+fn a_load_measures_each_sprites_alpha_from_its_pixels() {
+    use tungsten_core::SpriteAlpha;
+    // `plan_game`'s sprites: an opaque file, a wholly clear one, and a sheet
+    // whose fourth cell is half clear.
+    let manifest_path = plan_game("");
+    let dir = manifest_path.parent().unwrap().to_path_buf();
+    // A cutout beside them: one clear texel in an opaque image.
+    let mut hill = image::RgbaImage::from_pixel(4, 4, image::Rgba([5, 5, 5, 255]));
+    hill.put_pixel(0, 0, image::Rgba([0, 0, 0, 0]));
+    hill.save(dir.join("hero.png")).unwrap();
+    let manifest = ResolvedManifest::load(&manifest_path).unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest, &mut world);
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    let sprites = world.resource::<AssetRegistry>();
+    let alpha = |name: &str| sprites.get_sprite(name).unwrap().alpha;
+    assert_eq!(alpha("hero"), SpriteAlpha::Cutout);
+    assert_eq!(alpha("panel"), SpriteAlpha::Cutout, "every texel clear");
+    // A sheet's frames are measured a frame, not a file.
+    for frame in ["walk_0", "walk_1", "walk_2"] {
+        assert_eq!(alpha(frame), SpriteAlpha::Opaque, "{frame}");
+    }
+    assert_eq!(alpha("walk_3"), SpriteAlpha::Blend);
+    // The engine's white texel.
+    assert_eq!(alpha(ENGINE_WHITE), SpriteAlpha::Opaque);
+    // And where each one's texels are not clear: all of the hero but its
+    // corner, so its whole box; none of the panel; all of a frame.
+    let drawn = |name: &str| sprites.get_sprite(name).unwrap().drawn;
+    assert_eq!(drawn("hero"), [0, 0, 4, 4]);
+    assert_eq!(drawn("panel"), [0; 4]);
+    assert_eq!(drawn("walk_3"), [0, 0, 16, 16]);
+}
+
+#[test]
+fn a_load_measures_a_strips_clear_rows() {
+    // Sixteen rows, the top five clear: the box a strip's batch is clipped
+    // to starts at the sixth.
+    let dir = tempdir();
+    let mut strip = image::RgbaImage::new(8, 16);
+    for y in 5..16 {
+        for x in 0..8 {
+            strip.put_pixel(x, y, image::Rgba([40, 60, 80, 255]));
+        }
+    }
+    strip.save(dir.join("ridge.png")).unwrap();
+    let manifest_path = dir.join("manifest.json");
+    write(
+        &manifest_path,
+        r#"{"sprites": {"ridge": {"path": "ridge.png"}}}"#,
+    );
+    let manifest = ResolvedManifest::load(&manifest_path).unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest, &mut world);
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    let sprites = world.resource::<AssetRegistry>();
+    let ridge = sprites.get_sprite("ridge").unwrap();
+    assert_eq!(ridge.alpha, tungsten_core::SpriteAlpha::Cutout);
+    assert_eq!(ridge.drawn, [0, 5, 8, 11]);
+    assert_eq!(ridge.drawn_span(), ([0.0, 4.5 / 15.0], [1.0, 1.0]));
+}
+
+#[test]
+fn a_reloads_cut_measures_as_the_edited_pixels() {
+    use tungsten_core::SpriteAlpha;
+    let dir = tempdir();
+    write_walk_frames(&dir, 200);
+    let rects: Vec<_> = (0..4)
+        .map(|n| Some([n % 2 * 16, n / 2 * 16, 16, 16]))
+        .collect();
+    let cut = |dir: &Path| {
+        super::atlas::reload_cuts(&dir.join("walk.png"), None, None, &rects, |_, why| {
+            panic!("no sibling: {why}")
+        })
+        .unwrap()
+    };
+    let measured = |cuts: &[Option<super::atlas::Cut>]| -> Vec<SpriteAlpha> {
+        cuts.iter()
+            .map(|cut| SpriteAlpha::measure(&cut.as_ref().unwrap().rgba))
+            .collect()
+    };
+    let before = measured(&cut(&dir));
+    assert_eq!(
+        before,
+        [
+            SpriteAlpha::Opaque,
+            SpriteAlpha::Opaque,
+            SpriteAlpha::Opaque,
+            SpriteAlpha::Blend
+        ]
+    );
+    // The edit: the first cell gains a clear texel, the fourth turns opaque.
+    let mut sheet = image::open(dir.join("walk.png")).unwrap().to_rgba8();
+    sheet.put_pixel(3, 3, image::Rgba([0, 0, 0, 0]));
+    for y in 16..32 {
+        for x in 16..32 {
+            sheet.put_pixel(x, y, image::Rgba([7, 7, 7, 255]));
+        }
+    }
+    sheet.save(dir.join("walk.png")).unwrap();
+    assert_eq!(
+        measured(&cut(&dir)),
+        [
+            SpriteAlpha::Cutout,
+            SpriteAlpha::Opaque,
+            SpriteAlpha::Opaque,
+            SpriteAlpha::Opaque
+        ]
+    );
 }
 
 #[test]

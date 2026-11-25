@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use tungsten_core::script::{Report, Script};
+
 use super::Harness;
 use crate::LogConsole;
 use crate::app::FrameExtract;
@@ -162,6 +164,63 @@ impl CounterGuard {
         }
     }
 
+    /// Runs `script` on `harness` as [`Harness::run_script`] does and
+    /// counts its frames from frame `from`, the script's own count from 1,
+    /// through its last: a scripted benchmark row's window on the row's own
+    /// script. What the script's steps, probes and asserts do in those
+    /// frames counts too; building the report does not. Returns the
+    /// reading and the script's report, for the test to assert it passed.
+    ///
+    /// # Panics
+    ///
+    /// When the run ends before frame `from`.
+    pub fn measure_script(harness: &mut Harness, script: &Script, from: u32) -> (Self, Report) {
+        // As in `measure`: the window counts without the console's feed.
+        let feed = harness
+            .world_mut()
+            .get_resource_mut::<LogConsole>()
+            .and_then(LogConsole::take_feed);
+        harness.count_only = true;
+        harness.begin_script(script);
+        let mut start = None;
+        let (mut batches, mut instances) = (0, 0);
+        let mut frame = 0;
+        let ending = loop {
+            frame += 1;
+            if frame == from {
+                start = Some((harness.world().counters(), allocations()));
+            }
+            let ended = harness.step_script();
+            if start.is_some() {
+                batches = harness.sprite_counts.0.max(batches);
+                instances = harness.sprite_counts.1.max(instances);
+            }
+            if let Some(ending) = ended {
+                break ending;
+            }
+        };
+        let allocated_after = allocations();
+        let world_after = harness.world().counters();
+        harness.count_only = false;
+        if let Some(console) = harness.world_mut().get_resource_mut::<LogConsole>() {
+            console.restore_feed(feed);
+        }
+        let report = harness.end_script(ending);
+        let (world, allocated) =
+            start.expect("CounterGuard::measure_script: the run ended before its window");
+        let reading = Self {
+            allocations: allocated_after.count - allocated.count,
+            allocated_bytes: allocated_after.bytes - allocated.bytes,
+            archetype_moves: world_after.archetype_moves - world.archetype_moves,
+            spawned: world_after.spawned - world.spawned,
+            despawned: world_after.despawned - world.despawned,
+            events_sent: world_after.events_sent - world.events_sent,
+            max_sprite_batches: batches,
+            max_sprite_instances: instances,
+        };
+        (reading, report)
+    }
+
     /// Compares the reading with its pin file at `pin`, one file per guard,
     /// and fails naming each counter that differs, its pinned and its new
     /// value. `TUNGSTEN_GUARDS_WRITE=1` rewrites the pin instead, through a
@@ -275,7 +334,10 @@ mod tests {
 
     use glam::Vec2;
     use tungsten_core::assets::{FilterMode, UvRect};
-    use tungsten_core::{AssetRegistry, Config, EventQueue, Sprite, Transform, Visibility};
+    use tungsten_core::{
+        AssetRegistry, Config, Entity, EventQueue, Sprite, Transform, Visibility, With, Without,
+        World,
+    };
 
     use super::*;
     use crate::App;
@@ -367,7 +429,14 @@ mod tests {
         assert!(first.allocations >= 30, "{first:?}");
         assert!(harness.draw().is_none(), "a counted frame copies no draw");
 
-        // A counted step allocates what the bare frame body does.
+        // A counted step allocates what the bare frame body does. The feed
+        // stays off for both frames, as in `measure`: the process's first
+        // app holds the logger's feed, and the first frame after a measure
+        // would drain the records queued behind it.
+        let feed = harness
+            .world_mut()
+            .get_resource_mut::<LogConsole>()
+            .and_then(LogConsole::take_feed);
         harness.count_only = true;
         let before = allocations();
         harness.step(1);
@@ -379,6 +448,54 @@ mod tests {
             .run_frame(Instant::now(), FrameClock::Pinned(harness.dt), |_| {});
         let bare = allocations().count - before.count;
         assert_eq!(stepped, bare);
+        if let Some(console) = harness.world_mut().get_resource_mut::<LogConsole>() {
+            console.restore_feed(feed);
+        }
+    }
+
+    fn frames_script(frames: u32) -> Script {
+        Script::parse(&format!(
+            r#"{{ "version": 1, "frames": {frames}, "steps": [
+                {{ "frame": {frames}, "assert": {{ "probe": "frame", "op": "==", "value": {frames} }} }}
+            ] }}"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn counter_guard_counts_a_scripts_frames_from_its_window_to_its_end() {
+        let mut scripted = Harness::new(busy_app());
+        let (reading, report) = CounterGuard::measure_script(&mut scripted, &frames_script(40), 11);
+        assert!(report.passed, "{report:?}");
+        assert_eq!(report.frames, 40);
+        // Frames 11 to 40: what a stepped window of 30 reads after 10.
+        let mut stepped = Harness::new(busy_app());
+        let window = CounterGuard::measure(&mut stepped, 10, 30);
+        assert_eq!(
+            (
+                reading.spawned,
+                reading.despawned,
+                reading.archetype_moves,
+                reading.events_sent
+            ),
+            (30, 30, 30, 30)
+        );
+        assert_eq!(
+            (reading.max_sprite_batches, reading.max_sprite_instances),
+            (window.max_sprite_batches, window.max_sprite_instances)
+        );
+        assert!(reading.allocations >= window.allocations, "{reading:?}");
+        assert!(scripted.draw().is_none(), "a counted frame copies no draw");
+        // The script's runner is gone and the harness steps on, uncounted.
+        assert_eq!(scripted.step(1), 1);
+        assert!(scripted.draw().is_some());
+    }
+
+    #[test]
+    #[should_panic(expected = "the run ended before its window")]
+    fn counter_guard_refuses_a_script_that_ends_before_its_window() {
+        let mut harness = Harness::new(busy_app());
+        let _ = CounterGuard::measure_script(&mut harness, &frames_script(5), 6);
     }
 
     #[test]
@@ -429,5 +546,122 @@ mod tests {
         let split = CounterGuard::measure(&mut harness, 1, 2);
         assert_eq!(split.max_sprite_instances, 3);
         assert_eq!(split.max_sprite_batches, 2);
+    }
+
+    struct Marked(u32);
+    struct Part<const N: u8>;
+
+    /// A World of 64 archetypes that hold a `Marked`, one entity in each:
+    /// the subsets of six parts.
+    fn marked_world() -> (World, Vec<Entity>) {
+        let mut world = World::new();
+        let mut entities = Vec::new();
+        for mask in 0..64_u32 {
+            let entity = world.spawn_with((Marked(mask),));
+            if mask & 1 != 0 {
+                world.insert(entity, Part::<0>);
+            }
+            if mask & 2 != 0 {
+                world.insert(entity, Part::<1>);
+            }
+            if mask & 4 != 0 {
+                world.insert(entity, Part::<2>);
+            }
+            if mask & 8 != 0 {
+                world.insert(entity, Part::<3>);
+            }
+            if mask & 16 != 0 {
+                world.insert(entity, Part::<4>);
+            }
+            if mask & 32 != 0 {
+                world.insert(entity, Part::<5>);
+            }
+            entities.push(entity);
+        }
+        (world, entities)
+    }
+
+    /// Each of four query shapes run once, which keeps its matching
+    /// archetypes: the one allocation a shape makes outside its calls' lists.
+    fn first_calls(world: &mut World) {
+        assert_eq!(world.query::<(Entity, &Marked)>().count(), 64);
+        assert_eq!(world.query_mut::<&mut Marked>().count(), 64);
+        let with = world.query_slices_filtered::<&Marked, With<Part<0>>>();
+        assert_eq!(with.count(), 32);
+        let without = world.query_mut_slices_filtered::<&mut Marked, Without<Part<1>>>();
+        assert_eq!(without.count(), 32);
+    }
+
+    /// The allocations and bytes of one run of `call`, with its result.
+    fn counted<R>(call: impl FnOnce() -> R) -> (u64, u64, R) {
+        let before = allocations();
+        let result = call();
+        let after = allocations();
+        (
+            after.count - before.count,
+            after.bytes - before.bytes,
+            result,
+        )
+    }
+
+    #[test]
+    fn a_query_whose_matching_archetypes_are_empty_allocates_nothing() {
+        let (mut world, entities) = marked_world();
+        first_calls(&mut world);
+        // Every archetype outlives its rows, so each shape still matches its
+        // 64 or 32.
+        for entity in entities {
+            world.despawn(entity);
+        }
+        let read = counted(|| world.query::<(Entity, &Marked)>().count());
+        assert_eq!(read, (0, 0, 0));
+        let write = counted(|| world.query_mut::<&mut Marked>().count());
+        assert_eq!(write, (0, 0, 0));
+        let slices = counted(|| {
+            world
+                .query_slices_filtered::<&Marked, With<Part<0>>>()
+                .count()
+        });
+        assert_eq!(slices, (0, 0, 0));
+        let slices_mut = counted(|| {
+            world
+                .query_mut_slices_filtered::<&mut Marked, Without<Part<1>>>()
+                .count()
+        });
+        assert_eq!(slices_mut, (0, 0, 0));
+    }
+
+    #[test]
+    fn a_query_with_rows_allocates_its_list_once() {
+        let (mut world, entities) = marked_world();
+        first_calls(&mut world);
+        // Three archetypes keep their row, 61 lose it: masks 5 and 21 hold
+        // part 0 and not part 1, mask 62 part 1 and not part 0.
+        for (mask, entity) in entities.into_iter().enumerate() {
+            if ![5, 21, 62].contains(&mask) {
+                world.despawn(entity);
+            }
+        }
+        let masks: Vec<u32> = world.query::<&Marked>().map(|marked| marked.0).collect();
+        assert_eq!(masks, [5, 21, 62]);
+        // One list a call, sized for the archetypes with rows alone.
+        let entry = size_of::<(usize, (&[Entity], &[Marked]))>() as u64;
+        let read = counted(|| world.query::<(Entity, &Marked)>().count());
+        assert_eq!(read, (1, 3 * entry, 3));
+        let entry = size_of::<(usize, &mut [Marked])>() as u64;
+        let write = counted(|| world.query_mut::<&mut Marked>().count());
+        assert_eq!(write, (1, 3 * entry, 3));
+        let slices = counted(|| {
+            world
+                .query_slices_filtered::<&Marked, With<Part<0>>>()
+                .count()
+        });
+        assert_eq!(slices, (1, 2 * entry, 2));
+        let slices_mut = counted(|| {
+            world
+                .query_mut_slices_filtered::<&mut Marked, Without<Part<1>>>()
+                .count()
+        });
+        assert_eq!(slices_mut, (1, 2 * entry, 2));
     }
 }

@@ -2,12 +2,12 @@
 
 mod counters;
 pub mod debug_line;
+mod graph;
 pub mod image_diff;
 pub mod lighting;
 pub mod lit_sprite;
 pub mod material;
 pub mod mesh_particle;
-pub mod passes;
 pub mod post;
 pub mod quad;
 pub mod renderer;
@@ -25,8 +25,9 @@ pub use counters::FrameCounters;
 pub use debug_line::{DebugLineInstance, DebugLinePipeline};
 pub use image_diff::{DiffReport, ImageDiffError, compare_png};
 pub use lighting::{
-    GpuLight, LIT_LIGHT_CAP, LightUbo, LightingResources, cull_to_cap, distance_to_aabb_sq,
-    pack_lights, pack_one_light,
+    FrameLights, GpuLight, LIGHT_TILE, LIT_LIGHT_CAP, LightUbo, LightingResources, TileGrid,
+    cull_to_cap, distance_to_aabb_sq, lights_view, pack_lights, pack_one_light, tile_grid,
+    tile_reaches, tile_words,
 };
 pub use lit_sprite::{
     EMISSIVE_MASK_SHADER_NAME, LIT_SPRITE_SHADER_NAME, LIT_SPRITE_SHADER_SOURCE, LitSpritePipeline,
@@ -34,7 +35,6 @@ pub use lit_sprite::{
 };
 pub use material::MaterialPipeline;
 pub use mesh_particle::{MeshParticleBatch, MeshParticleInstance, MeshParticlePipeline};
-pub use passes::{PassDesc, PassOrder, PassRecorder, PresentPath, TargetId, default_pass_order};
 pub use post::PostStackRenderer;
 pub use post::smaa::{
     SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
@@ -45,6 +45,5 @@ pub use renderer::{CpuFrameTimings, GpuFrameTimings, RenderOutcome, Renderer};
 pub use screenshot::ScreenshotError;
 pub use shader_hot_reload::{ShaderError, ShaderModuleCache, validate_wgsl_source};
 pub use sprite::{SpriteBatch, SpriteInstance, SpritePipeline};
-pub use targets::{RenderTargetPool, SceneTarget};
 pub use text::{TextEngine, TextPipeline, TextPrewarm, TextSection, TextStats, WorldLabelRun};
 pub use ui::{UiInstance, UiPipeline};

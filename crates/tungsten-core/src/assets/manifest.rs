@@ -103,6 +103,14 @@ pub enum ManifestError {
     },
     #[error("material '{id}' references unknown shader '{shader}'")]
     MaterialShaderMissing { id: String, shader: String },
+    /// A `post_effects` entry names a shader no `shaders` entry declares.
+    #[error("post effect '{id}' references unknown shader '{shader}'")]
+    PostEffectShaderMissing {
+        /// The effect's manifest ID.
+        id: String,
+        /// The shader ID it names.
+        shader: String,
+    },
     #[error("particle mesh '{id}' is invalid: {reason}")]
     InvalidParticleMesh { id: String, reason: String },
     #[error("duplicate asset ID '{id}' across manifests")]
@@ -407,6 +415,9 @@ pub struct RawManifest {
     pub shaders: HashMap<String, ShaderEntry>,
     #[serde(default, deserialize_with = "unique_ids")]
     pub materials: HashMap<String, MaterialEntry>,
+    /// A game's own post effects (`D-308`).
+    #[serde(default, deserialize_with = "unique_ids")]
+    pub post_effects: HashMap<String, PostEffectEntry>,
     #[serde(default, deserialize_with = "unique_ids")]
     pub particle_meshes: HashMap<String, ParticleMeshEntry>,
     /// Font families: a family ID and the `fonts` face IDs it groups (`D-115`).
@@ -966,6 +977,19 @@ pub struct MaterialEntry {
     pub uniform_defaults: MaterialUniformDefaults,
 }
 
+/// A game's own post effect (`D-308`): a whole WGSL module on the stock post
+/// prefix, by its `shaders` ID, and the defaults of the block it reads. Its
+/// pass is `PostPass::Custom`, built by `PostEffectRegistry::pass`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PostEffectEntry {
+    /// Stable shader id (must exist under `shaders`).
+    pub shader: String,
+    /// The defaults of the block the shader reads, as a material's are;
+    /// absent, the type's default.
+    #[serde(default)]
+    pub uniform_defaults: MaterialUniformDefaults,
+}
+
 /// M31 particle mesh entry (`D-093`): inline geometry, like `materials`; there
 /// is no standalone mesh file.
 pub type ParticleMeshEntry = ParticleMesh;
@@ -997,6 +1021,8 @@ pub struct ResolvedManifest {
     pub particles: HashMap<String, ResolvedParticle>,
     pub shaders: HashMap<String, ResolvedShader>,
     pub materials: HashMap<String, ResolvedMaterial>,
+    /// A game's own post effects by ID (`D-308`).
+    pub post_effects: HashMap<String, ResolvedPostEffect>,
     pub particle_meshes: HashMap<String, ResolvedParticleMesh>,
     /// Font families by family ID (`D-115`).
     pub font_families: HashMap<String, ResolvedFontFamily>,
@@ -1164,6 +1190,18 @@ pub struct ResolvedMaterial {
     /// Name of the shader entry this material targets; resolved to a
     /// `ShaderAssetId` by `tungsten::asset_loader::load_materials`.
     pub shader: String,
+    pub uniform_defaults: MaterialUniformDefaults,
+}
+
+/// Resolved post effect, as [`ResolvedMaterial`] is: its shader's name is
+/// resolved at asset load.
+#[derive(Debug, Clone)]
+pub struct ResolvedPostEffect {
+    /// Manifest path that this entry was parsed from.
+    pub source_manifest: PathBuf,
+    /// Name of the shader entry the effect draws with.
+    pub shader: String,
+    /// The entry's block defaults, which the effect's pass starts from.
     pub uniform_defaults: MaterialUniformDefaults,
 }
 
@@ -1543,6 +1581,16 @@ impl ResolvedManifest {
                 },
             );
         }
+        for (id, entry) in raw.post_effects {
+            result.post_effects.insert(
+                id,
+                ResolvedPostEffect {
+                    source_manifest: source_manifest.clone(),
+                    shader: entry.shader,
+                    uniform_defaults: entry.uniform_defaults,
+                },
+            );
+        }
 
         // Sorted, so the layer or material an error names does not depend
         // on map order; a layer two names give keeps the smaller name.
@@ -1713,6 +1761,11 @@ impl ResolvedManifest {
             .keys()
             .map(|id| format!("materials.{id}"))
             .chain(
+                self.post_effects
+                    .keys()
+                    .map(|id| format!("post_effects.{id}")),
+            )
+            .chain(
                 self.font_families
                     .keys()
                     .map(|id| format!("font_families.{id}")),
@@ -1750,6 +1803,21 @@ impl ResolvedManifest {
                 ManifestError::MaterialShaderMissing {
                     id: id.clone(),
                     shader: material.shader.clone(),
+                },
+            )?;
+        }
+        let mut missing: Vec<(&String, &ResolvedPostEffect)> = self
+            .post_effects
+            .iter()
+            .filter(|(_, effect)| !self.shaders.contains_key(&effect.shader))
+            .collect();
+        missing.sort_by(|a, b| a.0.cmp(b.0));
+        for (id, effect) in missing {
+            sink.report_entry(
+                &format!("post_effects.{id}"),
+                ManifestError::PostEffectShaderMissing {
+                    id: id.clone(),
+                    shader: effect.shader.clone(),
                 },
             )?;
         }
@@ -1895,6 +1963,20 @@ impl ResolvedManifest {
                 continue;
             }
             self.materials.insert(id, material);
+        }
+        for (id, effect) in other.post_effects {
+            if self.post_effects.contains_key(&id) {
+                sink.report(ManifestError::DuplicateId { id })?;
+                continue;
+            }
+            if check_refs && !self.shaders.contains_key(&effect.shader) {
+                sink.report(ManifestError::PostEffectShaderMissing {
+                    id,
+                    shader: effect.shader,
+                })?;
+                continue;
+            }
+            self.post_effects.insert(id, effect);
         }
         merge_section(&mut self.particle_meshes, other.particle_meshes, sink)?;
         merge_section(&mut self.font_families, other.font_families, sink)?;

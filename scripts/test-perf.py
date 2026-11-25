@@ -102,6 +102,29 @@ class Parsing(unittest.TestCase):
         self.assertEqual(log.backend["present_mode"], "immediate")
         self.assertEqual(json.loads(log.bench_config)["row"], "physics")
 
+    def test_a_chemistry_line_reads_as_counters_outside_the_digest(self):
+        plain = physics_log(3)
+        lines = plain.splitlines()
+        chemistry = []
+        for line in lines:
+            chemistry.append(line)
+            if "physics: " in line:
+                count = len([seen for seen in chemistry if "physics: " in seen])
+                chemistry.append(APP + f"chemistry: runs=1 taken={count} take=0.25ms handler.steam=3 handler.steam.time=1.50ms")
+        text = "\n".join(chemistry) + "\n"
+        log = perf_stats.parse_log(text)
+        self.assertEqual(log.orphans, 0)
+        self.assertEqual(log.frames[1].chemistry["taken"], 2.0)
+        self.assertEqual(log.frames[0].chemistry["handler.steam.time"], 1.5)
+        stats = perf_stats.cpu_stats(log.frames)
+        self.assertIn("chemistry.take", stats["counters"])
+        self.assertIn("chemistry.handler.steam", stats["counters"])
+        self.assertEqual(
+            perf_stats.digest(log.frames),
+            perf_stats.digest(perf_stats.parse_log(plain).frames),
+            "the digest hashes physics: and bench: lines alone",
+        )
+
     def test_orphans_and_values(self):
         log = perf_stats.parse_log(APP + "systems: a=1.00ms\n" + frame_line(9.0) + "\n" + APP + "counters: draw_calls=12 upload_bytes=n/a")
         self.assertEqual(log.orphans, 1)
@@ -261,6 +284,7 @@ class Comparability(unittest.TestCase):
             "present mode": lambda c: c["renderer"].update(present_mode="fifo"),
             "max frame latency": lambda c: c["renderer"].update(max_frame_latency=2),
             "machine": lambda c: c["machine"].update(fingerprint="000000000000"),
+            "physics workers": lambda c: c["machine"].update(physics_workers_env="1"),
         }
         for label, change in cases.items():
             with self.subTest(label=label):
@@ -272,6 +296,14 @@ class Comparability(unittest.TestCase):
         report = perf_stats.compare(base, capture(updates=(12.0, 12.1, 11.9)), OWNED)
         self.assertEqual(report["hard"], [])
         self.assertEqual(report["owned"][0]["verdict"], "regressed")
+        # A capture without the field ran at the engine's own count, as `auto` does.
+        pinned = capture(updates=(12.0, 12.1, 11.9))
+        pinned["machine"].update(physics_workers_env="auto")
+        self.assertEqual(perf_stats.compare(base, pinned, OWNED)["hard"], [])
+        both = capture()
+        both["machine"].update(physics_workers_env="1")
+        pinned["machine"].update(physics_workers_env="1")
+        self.assertEqual(perf_stats.compare(both, pinned, OWNED)["hard"], [])
 
     def test_an_invalid_side_suppresses_verdicts(self):
         report = perf_stats.compare(capture(), capture(updates=(12.0, 12.1, 11.9), valid=False), OWNED)
@@ -559,6 +591,18 @@ class Sittings(unittest.TestCase):
         self.assertEqual((outcome["verdict"], order), ("new", ["A1", "B1"]))
         outcome, _ = sitting({}, valid={"B2": False})
         self.assertEqual(outcome["verdict"], "invalid")
+
+    def test_a_script_changed_at_one_workload_version_is_named(self):
+        steps = [{"frame": 2, "action": "start_run"}]
+        scripted = lambda name, steps=steps, version=1: row(name=name, launch={"script": {"steps": steps}}, workload_version=version)  # noqa: E731
+        moved = [{"frame": 3, "action": "start_run"}]
+        base = {"rows": [scripted("same"), scripted("moved"), scripted("bumped"), row(name="bench"), row(name="was-bench")]}
+        rows = [scripted("same"), scripted("moved", moved), scripted("bumped", moved, 2), scripted("new", moved), row(name="bench"),
+                scripted("was-bench")]  # fmt: skip
+        self.assertEqual(perf.changed_scripts(rows, base), ["moved", "was-bench"])
+        self.assertEqual(perf.changed_scripts(rows, {}), [], "a base with no rows freezes nothing")
+        registry = perf.load_registry()
+        self.assertEqual(perf.changed_scripts(registry["rows"], registry), [])
 
     def test_quick_runs_cpu_rows_a1_b1_a2_without_a_rerun(self):
         outcome, order = sitting({"A2": SLOW}, quick=True)

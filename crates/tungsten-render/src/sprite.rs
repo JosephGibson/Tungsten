@@ -12,10 +12,11 @@ use crate::shader_hot_reload::build_validated;
 
 /// GPU sprite instance; POD layout.
 ///
-/// `z_norm` is the [0, 1] NDC-space depth derived from stable CPU painter
-/// order. It is ignored by the pipeline unless `DepthSortMode::GpuDepth` is
-/// active, in which case it drives the depth buffer; under `CpuStable` it
-/// stays a benign per-instance pass-through.
+/// `z_norm` is a pass-through in [0, 1], the clip range: no stock pipeline's
+/// depth reads it. Under `DepthSortMode::GpuDepth` a batch's depth is its
+/// place in the frame's list (redo 7.15), set by the viewport's depth range,
+/// which maps every `z_norm` in the clip range onto it; under `CpuStable` no
+/// depth is tested. A material's own vertex stage may read it.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 #[allow(clippy::pub_underscore_fields)]
@@ -203,6 +204,25 @@ pub struct SpriteBatch {
     /// material pipelines. `lit` wins over `material_id` (lit + material is
     /// out of scope in M29, `D-061`).
     pub lit: bool,
+    /// Every fragment the batch draws is clear or opaque (redo 7.15): each
+    /// instance samples only texels of alpha 0 or 255 through a nearest
+    /// sampler ([`SpriteAlpha::solid`](tungsten_core::SpriteAlpha::solid))
+    /// and carries a colour alpha of 255. Under `DepthSortMode::GpuDepth`
+    /// such a batch draws ahead of the frame's other batches and writes
+    /// depth, so what an opaque texel of it covers is never shaded, and its
+    /// clear texels are dropped; the frame's pixels are the painter's. A
+    /// batch marked solid that draws a fragment between the two loses that
+    /// fragment. Ignored under `CpuStable`, and on a batch whose material
+    /// draws it.
+    pub solid: bool,
+    /// A world box, `[min_x, min_y, max_x, max_y]`, outside which the batch
+    /// draws nothing (redo 7.15): its draw is scissored to the pixels the
+    /// box can reach under the frame's camera, a pixel wider each way, under
+    /// either depth sort. A caller that knows where its quads sample only
+    /// clear texels (`SpriteAsset::drawn_span`) skips those fragments, which
+    /// draw nothing, and changes no pixel. `None`, or a box that is not a
+    /// number, clips nothing.
+    pub clip: Option<[f32; 4]>,
 }
 
 impl SpriteBatch {
@@ -216,8 +236,101 @@ impl SpriteBatch {
             material_id: None,
             uniform_overrides: None,
             lit: false,
+            solid: false,
+            clip: None,
         }
     }
+}
+
+/// What a batch's `clip` leaves of the pass's target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Scissor {
+    /// No clip, or a box that is not a number: the whole target.
+    Whole,
+    /// These pixels, `[x, y, width, height]`.
+    Rect([u32; 4]),
+    /// The box misses the target: the batch draws nothing.
+    Nothing,
+}
+
+/// The scissor of world box `clip` on a `target` sized pass under
+/// `view_proj`: the pixels its four corners span, a pixel wider each way, so
+/// a camera that turns keeps every pixel the box can reach.
+pub(crate) fn clip_scissor(view_proj: &glam::Mat4, clip: [f32; 4], target: (u32, u32)) -> Scissor {
+    let (width, height) = (f64::from(target.0), f64::from(target.1));
+    let m = view_proj.to_cols_array().map(f64::from);
+    let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for (x, y) in [
+        (clip[0], clip[1]),
+        (clip[2], clip[1]),
+        (clip[0], clip[3]),
+        (clip[2], clip[3]),
+    ] {
+        let (x, y) = (f64::from(x), f64::from(y));
+        let w = m[3] * x + m[7] * y + m[15];
+        let ndc_x = (m[0] * x + m[4] * y + m[12]) / w;
+        let ndc_y = (m[1] * x + m[5] * y + m[13]) / w;
+        if !(ndc_x.is_finite() && ndc_y.is_finite()) {
+            return Scissor::Whole;
+        }
+        let px = (ndc_x * 0.5 + 0.5) * width;
+        let py = (0.5 - ndc_y * 0.5) * height;
+        left = left.min(px);
+        right = right.max(px);
+        top = top.min(py);
+        bottom = bottom.max(py);
+    }
+    let low = |edge: f64, size: f64| (edge.floor() - 1.0).clamp(0.0, size) as u32;
+    let high = |edge: f64, size: f64| (edge.ceil() + 1.0).clamp(0.0, size) as u32;
+    let (x0, x1) = (low(left, width), high(right, width));
+    let (y0, y1) = (low(top, height), high(bottom, height));
+    if x1 > x0 && y1 > y0 {
+        Scissor::Rect([x0, y0, x1 - x0, y1 - y0])
+    } else {
+        Scissor::Nothing
+    }
+}
+
+/// One batch's turn in the sprite draw: its index in the frame's list and
+/// whether it draws as a solid batch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Turn {
+    pub(crate) batch: u32,
+    pub(crate) solid: bool,
+}
+
+/// The order the sprite draw takes `batches` in (redo 7.15). Without the
+/// depth test (`depth` false) the list's own, the painter's. With it, the
+/// solid batches first, the last of them first, so a fragment an opaque
+/// texel covers fails the test before it is shaded; then every other batch
+/// in the list's order, tested against them and writing no depth. A batch
+/// whose material draws it promises nothing of its fragments, so it is never
+/// solid; a lit batch draws the lit shader whatever material it names.
+pub(crate) fn draw_turns(batches: &[SpriteBatch], depth: bool, out: &mut Vec<Turn>) {
+    let solid =
+        |batch: &SpriteBatch| depth && batch.solid && (batch.lit || batch.material_id.is_none());
+    out.clear();
+    let turn = |(index, batch): (usize, &SpriteBatch)| Turn {
+        batch: index as u32,
+        solid: solid(batch),
+    };
+    out.extend(
+        batches
+            .iter()
+            .enumerate()
+            .rev()
+            .map(turn)
+            .filter(|t| t.solid),
+    );
+    out.extend(batches.iter().enumerate().map(turn).filter(|t| !t.solid));
+}
+
+/// The depth of batch `index` of `count` under the depth test: lower for a
+/// later batch, so under `LessEqual` a later batch's fragment passes over an
+/// earlier one's and an earlier one's fails where a later solid batch wrote.
+/// Every value lies inside (0, 1); the scene's depth clears to 1.
+pub(crate) fn batch_depth(index: usize, count: usize) -> f32 {
+    1.0 - (index + 1) as f32 / (count + 1) as f32
 }
 
 /// Instances a growing instance buffer is sized for: `required` rounded up
@@ -298,6 +411,15 @@ impl Default for TextureHandles {
 /// Textured sprite pipeline, samplers, and texture pool.
 pub struct SpritePipeline {
     pipeline: wgpu::RenderPipeline,
+    /// Under `DepthSortMode::GpuDepth`, the pipeline a solid batch draws
+    /// with: `fs_solid`, writing depth (redo 7.15).
+    pipeline_solid: Option<wgpu::RenderPipeline>,
+    /// The frame's turns and each batch's first instance, kept between
+    /// frames.
+    turns: Vec<Turn>,
+    starts: Vec<u32>,
+    /// The camera last uploaded, which a batch's `clip` is projected with.
+    view_proj: glam::Mat4,
     pipeline_layout: wgpu::PipelineLayout,
     vertex_buffer: wgpu::Buffer,
     instance_buffer: wgpu::Buffer,
@@ -459,8 +581,18 @@ impl SpritePipeline {
             &pipeline_layout,
             surface_format,
             sample_count,
-            depth_write,
+            depth_write.then_some(false),
         );
+        let pipeline_solid = depth_write.then(|| {
+            build_sprite_pipeline(
+                device,
+                &shader,
+                &pipeline_layout,
+                surface_format,
+                sample_count,
+                Some(true),
+            )
+        });
 
         let counts = Counts::boxed();
         let vertex_buffer = counters::create_buffer_init(
@@ -496,6 +628,10 @@ impl SpritePipeline {
 
         Self {
             pipeline,
+            pipeline_solid,
+            turns: Vec::new(),
+            starts: Vec::new(),
+            view_proj: glam::Mat4::IDENTITY,
             pipeline_layout,
             vertex_buffer,
             instance_buffer,
@@ -553,12 +689,13 @@ impl SpritePipeline {
         &self.camera_bind_group
     }
 
-    /// Hot-reload entry point: swap the live pipeline to one built against
+    /// Hot-reload entry point: swap the live pipelines to ones built against
     /// `new_module`. Leaves texture bind groups, samplers, and buffers intact.
-    /// `depth_write = true` produces the GpuDepth variant (LessEqual + write);
-    /// `false` produces the CpuStable variant (no depth_stencil state). A
-    /// pipeline that fails validation is not swapped in: `Err` carries the
-    /// report and the live pipeline stays.
+    /// `depth_write = true` produces the GpuDepth pair, the tested pipeline
+    /// (`LessEqual`, no write) and the solid one that writes; `false` the
+    /// CpuStable one (no depth_stencil state). A pipeline that fails
+    /// validation is not swapped in: `Err` carries the report and the live
+    /// pipelines stay.
     pub fn rebuild_with_shader(
         &mut self,
         device: &wgpu::Device,
@@ -567,16 +704,26 @@ impl SpritePipeline {
         sample_count: u32,
         depth_write: bool,
     ) -> Result<(), String> {
-        self.pipeline = build_validated(device, || {
-            build_sprite_pipeline(
-                device,
-                new_module,
-                &self.pipeline_layout,
-                surface_format,
-                sample_count,
-                depth_write,
-            )
-        })?;
+        let build = |write: Option<bool>| {
+            build_validated(device, || {
+                build_sprite_pipeline(
+                    device,
+                    new_module,
+                    &self.pipeline_layout,
+                    surface_format,
+                    sample_count,
+                    write,
+                )
+            })
+        };
+        let pipeline = build(depth_write.then_some(false))?;
+        let pipeline_solid = if depth_write {
+            Some(build(Some(true))?)
+        } else {
+            None
+        };
+        self.pipeline = pipeline;
+        self.pipeline_solid = pipeline_solid;
         Ok(())
     }
 
@@ -942,8 +1089,10 @@ impl SpritePipeline {
         self.lit_textures.remove(&handle);
     }
 
-    /// Upload caller-owned camera view-projection matrix.
-    pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
+    /// Upload caller-owned camera view-projection matrix; the pipeline keeps
+    /// it for the batches' `clip` boxes.
+    pub fn update_camera(&mut self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
+        self.view_proj = *view_proj;
         let matrix_ref: &[f32; 16] = view_proj.as_ref();
         counters::write_buffer(
             &self.counts,
@@ -990,6 +1139,12 @@ impl SpritePipeline {
     /// wins over `material_id` when both are present. Redo 7.9: a lit batch
     /// binds its uniform block at group 3, the k-th lit batch with one slot
     /// k, and a lit batch without one a zeroed block, so it draws as before.
+    ///
+    /// Redo 7.15: under `DepthSortMode::GpuDepth` the batches draw in
+    /// `draw_turns`' order, each at `batch_depth`, which the viewport's
+    /// depth range sets over the pass's `target` size; a batch with a
+    /// `clip` draws under `clip_scissor`'s rectangle. The range and the
+    /// scissor are the whole target's again when the draw returns.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -1000,6 +1155,7 @@ impl SpritePipeline {
         material_pipelines: &HashMap<MaterialAssetId, MaterialPipeline>,
         lit_sprite_pipeline: Option<&LitSpritePipeline>,
         lighting_bind_group: Option<&wgpu::BindGroup>,
+        target: (u32, u32),
     ) {
         let total_instances: usize = batches.iter().map(|batch| batch.instances.len()).sum();
         if total_instances == 0 {
@@ -1047,33 +1203,54 @@ impl SpritePipeline {
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
 
         // Pipeline-key tracking covers built-in / material / lit, in that
-        // order of precedence. `None` = built-in sprite pipeline; lit batches
-        // collapse onto a synthetic sentinel id so adjacent lit batches don't
-        // rebind. Material precedence remains; lit wins over material.
+        // order of precedence, each with its solid variant; adjacent batches
+        // of one key don't rebind. Material precedence remains; lit wins
+        // over material.
         #[derive(PartialEq, Clone, Copy)]
         enum PipelineKey {
-            BuiltIn,
+            BuiltIn { solid: bool },
             Material(MaterialAssetId),
-            Lit,
+            Lit { solid: bool },
         }
-        let mut base_instance = 0usize;
         let mut last_pipeline_key: Option<PipelineKey> = None;
 
+        // Each batch's first instance in the upload, and the frame's turns.
+        let depth = self.pipeline_solid.is_some();
+        let mut starts = std::mem::take(&mut self.starts);
+        let mut turns = std::mem::take(&mut self.turns);
+        starts.clear();
+        let mut first = 0usize;
         for batch in batches {
-            if batch.instances.is_empty() {
-                continue;
-            }
+            starts.push(first.min(drawn) as u32);
+            first += batch.instances.len();
+        }
+        draw_turns(batches, depth, &mut turns);
+        let (width, height) = (target.0 as f32, target.1 as f32);
+        // The scissor in force.
+        let mut scissor = Scissor::Whole;
+
+        for turn in &turns {
+            let index = turn.batch as usize;
+            let batch = &batches[index];
+            let base_instance = starts[index] as usize;
             let count = batch.instances.len().min(drawn - base_instance);
             if count == 0 {
-                break;
+                continue;
             }
+            // A clip that misses the target draws nothing.
+            let wanted = batch.clip.map_or(Scissor::Whole, |clip| {
+                clip_scissor(&self.view_proj, clip, target)
+            });
+            if wanted == Scissor::Nothing {
+                continue;
+            }
+            let lit = batch.lit;
 
             let start = (base_instance as wgpu::BufferAddress) * instance_stride;
             let end = start + (count as wgpu::BufferAddress) * instance_stride;
-            base_instance += count;
 
             // Decide pipeline up-front.
-            let lit_resources = if batch.lit {
+            let lit_resources = if lit {
                 match (
                     self.lit_textures.get(&batch.texture),
                     lit_sprite_pipeline,
@@ -1086,7 +1263,7 @@ impl SpritePipeline {
                 None
             };
 
-            if batch.lit && lit_resources.is_none() {
+            if lit && lit_resources.is_none() {
                 log::warn!(
                     "lit sprite batch missing lit-pool entry or lit pipeline for handle {:?}; skipping",
                     batch.texture
@@ -1094,28 +1271,41 @@ impl SpritePipeline {
                 continue;
             }
 
-            let material_pipeline = if !batch.lit {
-                batch.material_id.and_then(|id| material_pipelines.get(&id))
-            } else {
+            let material_pipeline = if lit {
                 None
+            } else {
+                batch.material_id.and_then(|id| material_pipelines.get(&id))
             };
 
-            let pipeline_key = if batch.lit {
-                PipelineKey::Lit
-            } else if let Some(_mp) = material_pipeline {
-                PipelineKey::Material(batch.material_id.unwrap())
+            let pipeline_key = if lit {
+                PipelineKey::Lit { solid: turn.solid }
+            } else if let Some(mp) = material_pipeline {
+                PipelineKey::Material(mp.material_id)
             } else {
-                PipelineKey::BuiltIn
+                PipelineKey::BuiltIn { solid: turn.solid }
             };
 
             if last_pipeline_key != Some(pipeline_key) {
+                // A solid turn comes only under the depth test, which
+                // built the solid pipelines.
                 match pipeline_key {
-                    PipelineKey::BuiltIn => render_pass.set_pipeline(&self.pipeline),
+                    PipelineKey::BuiltIn { solid: false } => {
+                        render_pass.set_pipeline(&self.pipeline);
+                    }
+                    PipelineKey::BuiltIn { solid: true } => {
+                        if let Some(pipeline) = &self.pipeline_solid {
+                            render_pass.set_pipeline(pipeline);
+                        }
+                    }
                     PipelineKey::Material(_) => {
                         render_pass.set_pipeline(&material_pipeline.unwrap().pipeline);
                     }
-                    PipelineKey::Lit => {
-                        render_pass.set_pipeline(&lit_resources.unwrap().1.pipeline);
+                    // The frame's lit pipeline: the block's loop, or the
+                    // tiles' walk in a frame of more than 16 lights.
+                    PipelineKey::Lit { solid } => {
+                        if let Some(pipeline) = lit_resources.unwrap().1.frame_pipeline(solid) {
+                            render_pass.set_pipeline(pipeline);
+                        }
                     }
                 }
                 last_pipeline_key = Some(pipeline_key);
@@ -1177,13 +1367,13 @@ impl SpritePipeline {
                     // batches sharing one buffer all drew the last payload
                     // (`D-101`). A slot is written only when its bytes change.
                     let count = self.material_batches.entry(mp.material_id).or_insert(0);
-                    let index = *count;
+                    let slot_index = *count;
                     *count += 1;
                     let (slot, stale) = self
                         .material_slots
                         .entry(mp.material_id)
                         .or_default()
-                        .stage(index, &payload, || {
+                        .stage(slot_index, &payload, || {
                             MaterialSlot::new(device, &mp.bind_group_layout, &mp.name)
                         });
                     if stale {
@@ -1193,9 +1383,29 @@ impl SpritePipeline {
                 }
             }
 
+            if depth {
+                let z = batch_depth(index, batches.len());
+                render_pass.set_viewport(0.0, 0.0, width, height, z, z);
+            }
+            if wanted != scissor {
+                let [x, y, w, h] = match wanted {
+                    Scissor::Rect(rect) => rect,
+                    Scissor::Whole | Scissor::Nothing => [0, 0, target.0, target.1],
+                };
+                render_pass.set_scissor_rect(x, y, w, h);
+                scissor = wanted;
+            }
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(start..end));
             counters::draw(&self.counts, render_pass, 0..6, 0..count as u32);
         }
+        if depth {
+            render_pass.set_viewport(0.0, 0.0, width, height, 0.0, 1.0);
+        }
+        if scissor != Scissor::Whole {
+            render_pass.set_scissor_rect(0, 0, target.0, target.1);
+        }
+        self.starts = starts;
+        self.turns = turns;
     }
 
     /// Vertex layout used by both the built-in sprite pipeline and any
@@ -1212,10 +1422,17 @@ fn build_sprite_pipeline(
     layout: &wgpu::PipelineLayout,
     surface_format: wgpu::TextureFormat,
     sample_count: u32,
-    depth_write: bool,
+    depth: Option<bool>,
 ) -> wgpu::RenderPipeline {
+    // `depth`: no depth state, or the test with (`Some(true)`, a solid
+    // batch's `fs_solid`) or without a write.
+    let solid = depth == Some(true);
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("sprite_pipeline"),
+        label: Some(if solid {
+            "sprite_solid_pipeline"
+        } else {
+            "sprite_pipeline"
+        }),
         layout: Some(layout),
         vertex: wgpu::VertexState {
             module: shader,
@@ -1225,7 +1442,7 @@ fn build_sprite_pipeline(
         },
         fragment: Some(wgpu::FragmentState {
             module: shader,
-            entry_point: Some("fs_main"),
+            entry_point: Some(if solid { "fs_solid" } else { "fs_main" }),
             targets: &[Some(wgpu::ColorTargetState {
                 format: surface_format,
                 blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -1239,17 +1456,13 @@ fn build_sprite_pipeline(
             cull_mode: None,
             ..Default::default()
         },
-        depth_stencil: if depth_write {
-            Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            })
-        } else {
-            None
-        },
+        depth_stencil: depth.map(|write| wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(write),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
         multisample: wgpu::MultisampleState {
             count: sample_count,
             mask: !0,

@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.118.0"
+version = "0.119.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -26,7 +26,7 @@ members = [
 [workspace.metadata.cargo-shear]
 ignored-paths = [
     "crates/tungsten-core/src/tests/{assets,ecs,input,physics,ui}/*.rs",
-    "crates/tungsten-render/src/tests/{bloom,passes_order,post,smaa,text,text_fonts,text_nodes}.rs",
+    "crates/tungsten-render/src/tests/{bloom,compose,graph,graph_frame,graph_pool,post,smaa,text,text_fonts,text_nodes}.rs",
     "crates/tungsten/src/tests/{asset_loader,testing_ui,check}.rs",
 ]
 

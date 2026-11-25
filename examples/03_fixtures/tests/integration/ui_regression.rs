@@ -40,6 +40,7 @@ fn lab_command(fixture: &str, post_aa: &str, post: &str, path: &Path, direct: bo
         .env("TUNGSTEN_UI_LAB_POST", post)
         .env("TUNGSTEN_RENDER_POST_AA", post_aa)
         .env_remove("TUNGSTEN_CAPTURE_DIRECT")
+        .env_remove("TUNGSTEN_RENDER_HDR")
         .env("TUNGSTEN_SMOKE_FRAMES", "8")
         .env("TUNGSTEN_CAPTURE_FRAME", "5")
         .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")

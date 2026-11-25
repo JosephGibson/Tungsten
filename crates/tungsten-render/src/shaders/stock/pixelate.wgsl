@@ -27,10 +27,16 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
+// @fx begin head
+fn pixelate_head(uv: vec2<f32>, p: Params) -> vec4<f32> {
+    let dims = vec2<f32>(textureDimensions(src, 0));
+    let block = max(p.f.x, 1.0);
+    let snapped = floor(uv * dims / block) * block / dims;
+    return textureSample(src, src_sampler, snapped);
+}
+// @fx end
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let dims = vec2<f32>(textureDimensions(src, 0));
-    let block = max(params.f.x, 1.0);
-    let snapped = floor(in.uv * dims / block) * block / dims;
-    return textureSample(src, src_sampler, snapped);
+    return pixelate_head(in.uv, params);
 }

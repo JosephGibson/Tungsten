@@ -1,6 +1,7 @@
 //! Warm-started soft contact solver (D-063) and the signed-distance narrow
 //! phase that admits speculative contacts (D-064).
 
+use super::pool::ForkData;
 use super::slope;
 use super::{ContactConstraint, FrictionConstraint, NO_SPIN, Proxy, RollingConstraint, SpinState};
 use crate::physics::PhysicsConfig;
@@ -231,14 +232,20 @@ fn slope_contact(
 }
 
 /// Restitution from the approach velocity stored at contact build; contacts
-/// slower than the threshold stay inelastic so piles can settle.
+/// slower than the threshold stay inelastic so piles can settle. `bouncing`
+/// names, in contact order, the contacts with some restitution whose
+/// approach passes the threshold, which the pair loop found as it built
+/// them; the solve has since set their impulses, so that test stays here.
+/// Always inlined, as it was while the substep had one compile (`D-298`).
+#[inline(always)]
 pub(super) fn apply_restitution(
     proxies: &mut [Proxy],
     contacts: &mut [ContactConstraint],
-    threshold: f32,
+    bouncing: &[u32],
 ) {
-    for contact in contacts.iter_mut() {
-        if contact.restitution == 0.0 || contact.approach > -threshold || contact.impulse <= 0.0 {
+    for &index in bouncing {
+        let contact = &mut contacts[index as usize];
+        if contact.impulse <= 0.0 {
             continue;
         }
         let a = contact.a as usize;
@@ -261,6 +268,75 @@ pub(super) fn apply_restitution(
 #[inline(always)]
 pub(super) fn narrow_phase(a: &Proxy, b: &Proxy, margin: f32) -> Option<Contact> {
     narrow_phase_at(a, a.center, b, b.center, margin)
+}
+
+/// The pairs a participant takes at a time in a forked narrow phase, and in
+/// one the lockstep tests force; and the fewest pairs whose narrow phase runs
+/// beside the pair loop (`D-298`).
+pub(super) const NARROW_CHUNK: usize = 1024;
+pub(super) const NARROW_CHUNK_FORCED: usize = 8;
+pub(super) const NARROW_FORK_MIN: usize = 4096;
+
+/// A worker's share of a forked narrow phase: the chunks it takes, each
+/// computed into its slot.
+pub(super) fn narrow_work(
+    data: &ForkData,
+    sub_dt: f32,
+    slack: f32,
+    chunk_size: usize,
+    chunks: usize,
+) {
+    while let Some(chunk) = claim_narrow(data, chunks) {
+        #[cfg(test)]
+        {
+            assert!(
+                data.fail_narrow != Some(chunk),
+                "a test's narrow chunk fails"
+            );
+            if !data.publish_delay.is_zero() {
+                std::thread::sleep(data.publish_delay);
+            }
+        }
+        narrow_slot(data, chunk, chunk_size, sub_dt, slack);
+    }
+}
+
+/// A worker's next narrow chunk. Tests: a slow worker waits before it
+/// claims, leaving the chunks to the pair loop's own thread.
+fn claim_narrow(data: &ForkData, chunks: usize) -> Option<usize> {
+    #[cfg(test)]
+    if !data.claim_delay.is_zero() {
+        std::thread::sleep(data.claim_delay);
+    }
+    data.take_chunk(chunks)
+}
+
+/// Chunk `chunk`'s contacts, the contact the substep's pair loop computes for
+/// each of its pairs at the margin it computes, into its slot, then the slot
+/// marked whole.
+pub(super) fn narrow_slot(
+    data: &ForkData,
+    chunk: usize,
+    chunk_size: usize,
+    sub_dt: f32,
+    slack: f32,
+) {
+    let (proxies, pairs) = (&data.proxies[..], &data.pairs[..]);
+    let slot = &data.narrow_slots[chunk];
+    let mut contacts = slot
+        .contacts
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    contacts.clear();
+    let from = chunk * chunk_size;
+    let to = (from + chunk_size).min(pairs.len());
+    for &(a, b) in &pairs[from..to] {
+        let (a, b) = (&proxies[a as usize], &proxies[b as usize]);
+        let margin = (a.velocity - b.velocity).length() * sub_dt + slack;
+        contacts.push(narrow_phase(a, b, margin));
+    }
+    drop(contacts);
+    slot.done.store(true, std::sync::atomic::Ordering::Release);
 }
 
 /// `narrow_phase` with the two bodies placed at `a_center` and `b_center`.

@@ -9,6 +9,91 @@ use super::particle::AssetId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureHandle(pub u32);
 
+/// What a sprite's alpha channel holds (redo 7.15), measured from its
+/// decoded pixels when it loads and again when it reloads, so a draw can
+/// tell a sprite whose texels hide what lies behind them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SpriteAlpha {
+    /// Every texel is opaque, alpha 255.
+    Opaque,
+    /// Every texel is clear or opaque, alpha 0 or 255.
+    Cutout,
+    /// Some texel lies between, or nothing measured the sprite: one
+    /// registered without pixels, as a headless load's are.
+    #[default]
+    Blend,
+}
+
+impl SpriteAlpha {
+    /// The class of `rgba`, RGBA8 pixels; no pixels are [`Self::Blend`].
+    #[must_use]
+    pub fn measure(rgba: &[u8]) -> Self {
+        let pixels = rgba.as_chunks::<4>().0;
+        // A pixel a word, its alpha the top byte. `all` keeps the bits every
+        // alpha shares, 255 only while each is 255. `between` gathers, of
+        // each alpha plus one, every bit but the lowest: none for 255, which
+        // wraps to 0, none for 0, which becomes 1, and some for any alpha
+        // between the two. No branch on the data and no early exit: the
+        // loop is word arithmetic the compiler runs four pixels a step, and
+        // a load pays it for every sprite (the `boot` row).
+        let (mut all, mut between) = (u32::MAX, 0u32);
+        for pixel in pixels {
+            let word = u32::from_le_bytes(*pixel);
+            all &= word;
+            between |= word.wrapping_add(0x0100_0000) & 0xFE00_0000;
+        }
+        if between != 0 || pixels.is_empty() {
+            Self::Blend
+        } else if all >> 24 == 255 {
+            Self::Opaque
+        } else {
+            Self::Cutout
+        }
+    }
+
+    /// Whether a quad of the sprite, sampled through `filter` and tinted
+    /// with an alpha of 255, draws only clear and opaque fragments: what a
+    /// solid batch promises. A linear sampler mixes a cutout's edge texels
+    /// into partial alpha, so only a nearest one qualifies.
+    #[must_use]
+    pub fn solid(self, filter: FilterMode) -> bool {
+        self != Self::Blend && filter == FilterMode::Nearest
+    }
+}
+
+/// The box of `rgba`'s texels that are not clear, `[x, y, width, height]`
+/// in a `width` texels wide RGBA8 image (redo 7.15): what a load measures
+/// into [`SpriteAsset::drawn`]. An image with no such texel, or no pixels,
+/// has an empty box at the origin.
+#[must_use]
+pub fn drawn_box(rgba: &[u8], width: u32) -> [u32; 4] {
+    let width = width.max(1) as usize;
+    let (mut left, mut top, mut right, mut bottom) = (usize::MAX, usize::MAX, 0, 0);
+    for (y, row) in rgba.chunks_exact(width * 4).enumerate() {
+        let texels = row.as_chunks::<4>().0;
+        let Some(first) = texels.iter().position(|texel| texel[3] != 0) else {
+            continue;
+        };
+        let last = texels
+            .iter()
+            .rposition(|texel| texel[3] != 0)
+            .unwrap_or(first);
+        left = left.min(first);
+        right = right.max(last + 1);
+        top = top.min(y);
+        bottom = y + 1;
+    }
+    if top == usize::MAX {
+        return [0; 4];
+    }
+    [
+        left as u32,
+        top as u32,
+        (right - left) as u32,
+        (bottom - top) as u32,
+    ]
+}
+
 /// Loaded sprite metadata; atlas handle may be shared.
 #[derive(Debug, Clone)]
 pub struct SpriteAsset {
@@ -39,9 +124,50 @@ pub struct SpriteAsset {
     /// Named points, `[x, y]` in source pixels (redo 7.10p), from the
     /// manifest's `points`.
     pub points: BTreeMap<String, [f32; 2]>,
+    /// What its alpha channel holds (redo 7.15): [`SpriteAlpha::Blend`]
+    /// until a load or a reload measures its pixels.
+    pub alpha: SpriteAlpha,
+    /// The box of its texels that are not clear, `[x, y, width, height]`
+    /// in source pixels from its own top-left (redo 7.15): the whole sprite
+    /// until a load or a reload measures its pixels ([`drawn_box`]).
+    pub drawn: [u32; 4],
 }
 
 impl SpriteAsset {
+    /// The part of a quad that draws the whole sprite outside which every
+    /// fragment samples a clear texel (redo 7.15), as `(min, max)` fractions
+    /// of the quad across and down: [`Self::drawn`] under the UVs the
+    /// registry holds, which run from the first texel's centre to the
+    /// last's, a texel wider each way under a linear sampler, which mixes
+    /// neighbours. A wholly clear sprite has an empty part. A batch clipped
+    /// to it (the renderer's `SpriteBatch::clip`) draws the same pixels; a
+    /// mirrored quad's part mirrors with it.
+    #[must_use]
+    pub fn drawn_span(&self) -> ([f32; 2], [f32; 2]) {
+        let reach = if self.filter == FilterMode::Linear {
+            1.0
+        } else {
+            0.0
+        };
+        let axis = |start: u32, len: u32, texels: u32| -> (f32, f32) {
+            if len == 0 {
+                return (0.0, 0.0);
+            }
+            if texels <= 1 {
+                return (0.0, 1.0);
+            }
+            let step = (texels - 1) as f32;
+            (
+                ((start as f32 - 0.5 - reach) / step).max(0.0),
+                (((start + len) as f32 - 0.5 + reach) / step).min(1.0),
+            )
+        };
+        let [x, y, width, height] = self.drawn;
+        let (left, right) = axis(x, width, self.width);
+        let (top, bottom) = axis(y, height, self.height);
+        ([left, top], [right, bottom])
+    }
+
     /// The named point `name`, `[x, y]` in source pixels, if the sprite
     /// has it; [`sprite_point`](crate::sprite_point) reads where it is
     /// drawn.
@@ -240,6 +366,8 @@ impl AssetRegistry {
             rect: None,
             anchor: None,
             points: BTreeMap::new(),
+            alpha: SpriteAlpha::Blend,
+            drawn: [0, 0, width, height],
         });
         self.sprite_epoch += 1;
         sprite_id
@@ -278,7 +406,9 @@ impl AssetRegistry {
         self.path_to_sprite_id.get(path).map_or(&[], Vec::as_slice)
     }
 
-    /// Update atlas/UV/dimensions after hot reload.
+    /// Update atlas/UV/dimensions after hot reload. The entry's pixels are
+    /// new, so what was measured of the old ones is dropped: the sprite is
+    /// unmeasured again until the caller measures it, as the loader does.
     pub fn update_sprite_entry(
         &mut self,
         id: &str,
@@ -292,6 +422,9 @@ impl AssetRegistry {
             asset.uv = uv;
             asset.width = width;
             asset.height = height;
+            // The new pixels are unmeasured until the loader says.
+            asset.alpha = SpriteAlpha::Blend;
+            asset.drawn = [0, 0, width, height];
             self.sprite_epoch += 1;
         }
     }
@@ -333,11 +466,39 @@ impl AssetRegistry {
         }
     }
 
+    /// Sets what a registered sprite's alpha channel holds (redo 7.15), as
+    /// the loader measures it from the decoded pixels, at a load and at
+    /// every reload; a game that registers a sprite from pixels of its own
+    /// sets it with [`SpriteAlpha::measure`]. An unregistered ID, or the
+    /// class it already holds, does nothing.
+    pub fn set_sprite_alpha(&mut self, id: &str, alpha: SpriteAlpha) {
+        if let Some(asset) = self.get_sprite_mut(id)
+            && asset.alpha != alpha
+        {
+            asset.alpha = alpha;
+            self.sprite_epoch += 1;
+        }
+    }
+
+    /// Sets the box of a registered sprite's texels that are not clear
+    /// (redo 7.15), as the loader measures it with [`drawn_box`], at a load
+    /// and at every reload. An unregistered ID, or the box it already
+    /// holds, does nothing.
+    pub fn set_sprite_drawn(&mut self, id: &str, drawn: [u32; 4]) {
+        if let Some(asset) = self.get_sprite_mut(id)
+            && asset.drawn != drawn
+        {
+            asset.drawn = drawn;
+            self.sprite_epoch += 1;
+        }
+    }
+
     /// A count that rises whenever a registered sprite changes: on
     /// [`Self::register_sprite`], [`Self::update_sprite_entry`],
     /// [`Self::update_sprite_lit_atlas`], [`Self::set_sprite_nine_slice`],
-    /// [`Self::set_sprite_frame`] and [`Self::set_sprite_points`],
-    /// never on interning. A retained UI paint list repaints when it moved,
+    /// [`Self::set_sprite_frame`], [`Self::set_sprite_points`],
+    /// [`Self::set_sprite_alpha`] and [`Self::set_sprite_drawn`], never on
+    /// interning. A retained UI paint list repaints when it moved,
     /// since a repack may have moved a UV.
     #[must_use]
     pub fn sprite_epoch(&self) -> u64 {

@@ -206,8 +206,11 @@ pub(crate) struct Stimulus {
 pub struct Chemistry {
     slots: Vec<Option<Entry>>,
     free: Vec<usize>,
-    /// A stimulus entry's slot by receiver and stimulus.
-    index: QueueMap<(Receiver, u32), usize>,
+    /// A stimulus entry's slot by its entity receiver and stimulus, in
+    /// buckets of 16 bytes: the queue's hot lookups.
+    index: QueueMap<(Entity, u32), u32>,
+    /// A stimulus entry's slot by its tile cell and stimulus.
+    cell_index: QueueMap<(Cell, u32), usize>,
     /// Each entity receiver's entries.
     counts: QueueMap<Entity, u32>,
     /// A run's take keys, kept so a warm run allocates nothing.
@@ -238,6 +241,10 @@ pub struct Chemistry {
     pub(crate) emitted: Vec<Emission>,
     /// Game seconds to the next light sample, while a light rule is loaded.
     pub(crate) light_left: Option<f32>,
+    /// Tests: the stimuli [`stimulate_entity`](Self::stimulate_entity)
+    /// merged at its hint, without a probe of the index.
+    #[cfg(test)]
+    pub(crate) hinted: u64,
 }
 
 impl Default for Chemistry {
@@ -246,6 +253,7 @@ impl Default for Chemistry {
             slots: Vec::new(),
             free: Vec::new(),
             index: QueueMap::default(),
+            cell_index: QueueMap::default(),
             counts: QueueMap::default(),
             keys: Vec::new(),
             names: Vec::new(),
@@ -261,6 +269,8 @@ impl Default for Chemistry {
             checked: true,
             emitted: Vec::new(),
             light_left: None,
+            #[cfg(test)]
+            hinted: 0,
         }
     }
 }
@@ -389,13 +399,61 @@ impl Chemistry {
         if self.is_held(&receiver) {
             return None;
         }
-        let key = (receiver, id);
-        if let Some(&slot) = self.index.get(&key) {
+        self.merge_or_insert(settings, receiver, id, stimulus, age)
+    }
+
+    /// [`stimulate_slot`](Self::stimulate_slot) on an entity, with the slot
+    /// a caller last saw the pair's entry in, from this run or an earlier
+    /// one. The cut and the hold come first, as there. Then, when `hint`
+    /// still holds a stimulus entry of this receiver and this stimulus, it
+    /// is the pair's one entry, the one the index names, and the stimulus
+    /// merges there without the index's probe; any other hint leaves the
+    /// index to answer. A load rebuilds the queue, so its caller forgets
+    /// its hints then.
+    pub(crate) fn stimulate_entity(
+        &mut self,
+        settings: &Settings,
+        entity: Entity,
+        id: u32,
+        stimulus: Stimulus,
+        age: u64,
+        hint: Option<usize>,
+    ) -> Option<usize> {
+        if stimulus.depth > settings.depth {
+            self.cut += 1;
+            return None;
+        }
+        if self.held.contains(&entity) {
+            return None;
+        }
+        if let Some(slot) = hint
+            && let Some(Some(entry)) = self.slots.get(slot)
+            && entry.stimulus == id
+            && entry.status.is_none()
+            && entry.receiver == Receiver::Entity(entity)
+        {
             self.merge(slot, stimulus);
+            #[cfg(test)]
+            {
+                self.hinted += 1;
+            }
             return Some(slot);
         }
-        let entry = Entry {
-            receiver: key.0.clone(),
+        self.merge_or_insert(settings, Receiver::Entity(entity), id, stimulus, age)
+    }
+
+    /// Merges `stimulus` into the entry the index names for `receiver` and
+    /// `id`, or makes that entry; `None` for one dropped at the bound.
+    fn merge_or_insert(
+        &mut self,
+        settings: &Settings,
+        receiver: Receiver,
+        id: u32,
+        stimulus: Stimulus,
+        age: u64,
+    ) -> Option<usize> {
+        let entry = |receiver| Entry {
+            receiver,
             stimulus: id,
             status: None,
             raw: f64::from(stimulus.amount),
@@ -407,9 +465,33 @@ impl Chemistry {
             age,
             awaiting: false,
         };
-        let slot = self.insert(settings.bound, entry)?;
-        self.index.insert(key, slot);
-        Some(slot)
+        match receiver {
+            Receiver::Entity(entity) => {
+                if let Some(&slot) = self.index.get(&(entity, id)) {
+                    self.merge(slot as usize, stimulus);
+                    return Some(slot as usize);
+                }
+                let slot = self.insert(settings.bound, entry(Receiver::Entity(entity)))?;
+                self.index_entity(entity, id, slot);
+                Some(slot)
+            }
+            Receiver::Cell(cell) => {
+                let key = (cell, id);
+                if let Some(&slot) = self.cell_index.get(&key) {
+                    self.merge(slot, stimulus);
+                    return Some(slot);
+                }
+                let slot = self.insert(settings.bound, entry(Receiver::Cell(key.0.clone())))?;
+                self.cell_index.insert(key, slot);
+                Some(slot)
+            }
+        }
+    }
+
+    /// Names `slot` as the stimulus entry of `entity` and `id`.
+    fn index_entity(&mut self, entity: Entity, id: u32, slot: usize) {
+        let slot = u32::try_from(slot).expect("a queue holds fewer than 2^32 entries");
+        self.index.insert((entity, id), slot);
     }
 
     /// [`stimulate_id`](Self::stimulate_id) on the pair whose entry
@@ -554,7 +636,14 @@ impl Chemistry {
         self.free.push(slot);
         self.pending -= 1;
         if entry.status.is_none() {
-            self.index.remove(&(entry.receiver.clone(), entry.stimulus));
+            match &entry.receiver {
+                Receiver::Entity(entity) => {
+                    self.index.remove(&(*entity, entry.stimulus));
+                }
+                Receiver::Cell(cell) => {
+                    self.cell_index.remove(&(cell.clone(), entry.stimulus));
+                }
+            }
         }
         if let Some(entity) = entry.receiver.entity()
             && let Some(count) = self.counts.get_mut(&entity)
@@ -613,6 +702,61 @@ impl Chemistry {
         let order = order_of(world);
         let mut chosen = std::mem::take(&mut self.keys);
         chosen.clear();
+        // Age leads the order, so an entry younger than the cap's cut-off
+        // age is in no take of `cap`: only the others get a key.
+        let cutoff = self.cutoff_age(cap, run);
+        chosen.extend(self.slots.iter().enumerate().filter_map(|(slot, entry)| {
+            let entry = entry.as_ref()?;
+            (entry.age <= cutoff).then(|| self.key(order, slot, entry))
+        }));
+        if chosen.len() > cap {
+            chosen.select_nth_unstable(cap);
+            chosen.truncate(cap);
+        }
+        chosen.sort_unstable();
+        for (.., slot) in chosen.drain(..) {
+            out.push(self.remove(slot));
+        }
+        self.keys = chosen;
+    }
+
+    /// An age at or before `run` such that the entries queued at it or
+    /// before number at least `cap`, the youngest such age the count below
+    /// can tell; `run` itself when fewer than `cap` wait. Every entry among
+    /// the first `cap` of the take's order is at it or before.
+    fn cutoff_age(&self, cap: usize, run: u64) -> u64 {
+        // The waiting entries by how many runs before `run` they were
+        // queued; the last count holds every older one.
+        const SPAN: usize = 64;
+        let mut counts = [0_usize; SPAN];
+        for entry in self.slots.iter().flatten() {
+            if entry.age <= run {
+                counts[(run - entry.age).min(SPAN as u64 - 1) as usize] += 1;
+            }
+        }
+        let mut older = 0;
+        for behind in (0..SPAN).rev() {
+            older += counts[behind];
+            if older >= cap {
+                return run.saturating_sub(behind as u64);
+            }
+        }
+        run
+    }
+
+    /// Tests: [`take`](Self::take) as it stood, every waiting entry keyed.
+    #[cfg(test)]
+    pub(crate) fn take_keying_every_entry(
+        &mut self,
+        world: &World,
+        cap: usize,
+        run: u64,
+        out: &mut Vec<Entry>,
+    ) {
+        out.clear();
+        let order = order_of(world);
+        let mut chosen = std::mem::take(&mut self.keys);
+        chosen.clear();
         chosen.extend(self.slots.iter().enumerate().filter_map(|(slot, entry)| {
             let entry = entry.as_ref()?;
             (entry.age <= run).then(|| self.key(order, slot, entry))
@@ -626,6 +770,16 @@ impl Chemistry {
             out.push(self.remove(slot));
         }
         self.keys = chosen;
+    }
+
+    /// Tests: each waiting entry with its slot, in slot order.
+    #[cfg(test)]
+    pub(crate) fn slotted(&self) -> Vec<(usize, Entry)> {
+        self.slots
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, entry)| Some((slot, entry.clone()?)))
+            .collect()
     }
 
     /// Counts `count` entries run.
@@ -846,6 +1000,7 @@ impl Chemistry {
     /// and did not.
     fn rebuild(&mut self, resolved: bool) {
         self.index.clear();
+        self.cell_index.clear();
         self.counts.clear();
         self.free.clear();
         self.pending = 0;
@@ -864,11 +1019,17 @@ impl Chemistry {
                 self.pending += 1;
                 continue;
             }
+            let stimulus = entry.stimulus;
+            let entity = entry.receiver.entity();
             if entry.status.is_none() {
-                self.index
-                    .insert((entry.receiver.clone(), entry.stimulus), slot);
+                match entry.receiver.clone() {
+                    Receiver::Entity(entity) => self.index_entity(entity, stimulus, slot),
+                    Receiver::Cell(cell) => {
+                        self.cell_index.insert((cell, stimulus), slot);
+                    }
+                }
             }
-            if let Some(entity) = entry.receiver.entity() {
+            if let Some(entity) = entity {
                 *self.counts.entry(entity).or_insert(0) += 1;
             }
             self.pending += 1;

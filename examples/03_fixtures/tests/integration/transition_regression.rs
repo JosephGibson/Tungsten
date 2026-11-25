@@ -24,6 +24,7 @@ fn capture(fixture: &str, root: &Path) -> PathBuf {
         .env("TUNGSTEN_FIXTURE", "transition")
         .env("TUNGSTEN_TRANSITION_FIXTURE", fixture)
         .env_remove("TUNGSTEN_CAPTURE_DIRECT")
+        .env_remove("TUNGSTEN_RENDER_HDR")
         .env("TUNGSTEN_SMOKE_FRAMES", "8")
         .env("TUNGSTEN_CAPTURE_FRAME", "5")
         .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")

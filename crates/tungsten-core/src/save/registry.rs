@@ -20,6 +20,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::id::SaveId;
+use super::table::{Cells, Flat};
 use crate::ecs::{Entity, World};
 
 /// One migration step: rewrites a value saved at version `from` into
@@ -142,6 +143,8 @@ pub struct SaveOptions<T> {
     refs: Option<RefCodec<T>>,
     capture_as: Option<CaptureAs<T>>,
     to: fn(&T) -> serde_json::Result<Value>,
+    /// The saved form as a table's leaves ([`Flat`]).
+    leaves: fn(&T, &mut Cells<'_>) -> serde_json::Result<()>,
     from: fn(Value) -> serde_json::Result<T>,
 }
 
@@ -149,7 +152,7 @@ impl<T: Serialize + DeserializeOwned + 'static> SaveOptions<T> {
     /// Version 1, no migration, no references, `T`'s own serde form.
     #[must_use]
     pub fn new() -> Self {
-        Self::with_form(to_json::<T>, serde_json::from_value::<T>)
+        Self::with_form(to_json::<T>, leaves_json::<T>, serde_json::from_value::<T>)
     }
 }
 
@@ -169,11 +172,12 @@ impl<T: 'static> SaveOptions<T> {
         F: Serialize + DeserializeOwned + for<'a> From<&'a T>,
         T: From<F>,
     {
-        Self::with_form(to_form::<T, F>, from_form::<T, F>)
+        Self::with_form(to_form::<T, F>, leaves_form::<T, F>, from_form::<T, F>)
     }
 
     fn with_form(
         to: fn(&T) -> serde_json::Result<Value>,
+        leaves: fn(&T, &mut Cells<'_>) -> serde_json::Result<()>,
         from: fn(Value) -> serde_json::Result<T>,
     ) -> Self {
         Self {
@@ -182,6 +186,7 @@ impl<T: 'static> SaveOptions<T> {
             refs: None,
             capture_as: None,
             to,
+            leaves,
             from,
         }
     }
@@ -235,6 +240,17 @@ fn to_form<T, F: Serialize + for<'a> From<&'a T>>(value: &T) -> serde_json::Resu
     serde_json::to_value(F::from(value))
 }
 
+fn leaves_json<T: Serialize>(value: &T, cells: &mut Cells<'_>) -> serde_json::Result<()> {
+    value.serialize(Flat(cells))
+}
+
+fn leaves_form<T, F: Serialize + for<'a> From<&'a T>>(
+    value: &T,
+    cells: &mut Cells<'_>,
+) -> serde_json::Result<()> {
+    F::from(value).serialize(Flat(cells))
+}
+
 fn from_form<T: From<F>, F: DeserializeOwned>(value: Value) -> serde_json::Result<T> {
     serde_json::from_value::<F>(value).map(T::from)
 }
@@ -250,6 +266,13 @@ pub(crate) enum Holder {
 pub(crate) trait Erased {
     fn has(&self, world: &World, at: Holder) -> bool;
     fn to_value(&self, world: &World, at: Holder) -> Option<serde_json::Result<Value>>;
+    /// [`to_value`](Self::to_value)'s value as a table's leaves.
+    fn to_leaves(
+        &self,
+        world: &World,
+        at: Holder,
+        cells: &mut Cells<'_>,
+    ) -> Option<serde_json::Result<()>>;
     fn check(&self, value: Value) -> serde_json::Result<()>;
     fn put(&self, world: &mut World, at: Holder, value: Value) -> serde_json::Result<()>;
     fn remove(&self, world: &mut World, at: Holder);
@@ -266,6 +289,7 @@ pub(crate) trait Erased {
 
 struct Typed<T> {
     to: fn(&T) -> serde_json::Result<Value>,
+    leaves: fn(&T, &mut Cells<'_>) -> serde_json::Result<()>,
     from: fn(Value) -> serde_json::Result<T>,
     refs: Option<RefCodec<T>>,
     capture_as: Option<CaptureAs<T>>,
@@ -310,6 +334,15 @@ impl<T: 'static> Erased for Typed<T> {
 
     fn to_value(&self, world: &World, at: Holder) -> Option<serde_json::Result<Value>> {
         self.read(world, at, self.to)
+    }
+
+    fn to_leaves(
+        &self,
+        world: &World,
+        at: Holder,
+        cells: &mut Cells<'_>,
+    ) -> Option<serde_json::Result<()>> {
+        self.read(world, at, |value| (self.leaves)(value, cells))
     }
 
     fn check(&self, value: Value) -> serde_json::Result<()> {
@@ -437,6 +470,7 @@ impl Kind {
                 steps: options.steps,
                 saved: Rc::new(Typed {
                     to: options.to,
+                    leaves: options.leaves,
                     from: options.from,
                     refs: options.refs,
                     capture_as: options.capture_as,

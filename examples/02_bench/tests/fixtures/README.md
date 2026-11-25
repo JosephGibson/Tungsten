@@ -54,6 +54,16 @@ five knob variants of the preset twice, once through the capture path and
 once with `TUNGSTEN_CAPTURE_DIRECT=1`, and asserts that the two images are
 equal with `tolerance = 0`.
 
+It runs `the_depth_sort_draws_the_painters_image` (`D-297`) too, behind the
+same gate and with no fixture: it captures frame 5 of the preset and of three
+knob variants (the scene alone, MSAA 4, SMAA) under
+`TUNGSTEN_RENDER_DEPTH_SORT=cpu_stable` and again under `gpu_depth`, and
+asserts that each pair is equal with `tolerance = 0`. The preset's sprites
+interleave classes within a z-run over three tile layers, and its generated
+sprites are never measured, so none of its batches is solid: the test holds
+the tested path, and the fixtures' `seams` sheet
+(`the_depth_sort_draws_the_painters_sheet`) the solid batches' order.
+
 The comparison uses `tungsten::render::compare_png` with `tolerance = 2`
 (per-channel delta) and asserts `pixels_above_tolerance == 0`. If the Linux
 Vulkan path jitters at that floor in a future driver update, see `D-047` for
@@ -70,3 +80,24 @@ the agreed fallback (`pixels_above_tolerance < 16`).
 - Commit: `6a61cc2` plus M34 (`D-116`): text draws with the packaged JetBrains Mono 2.211. The previous fixture (`0521a2a0…`) drew the HUD with JetBrains Mono 2.304 installed on this machine, which shadowed the packaged face while system fonts loaded; only the two HUD lines differ (2155 pixels).
 - SHA-256: `969bdf53653edb27761701085236b0b36399ceb782c0ee4427e812d11c453f06`
 - Accepted after two consecutive `just visual` passes (2026-10-04, 22:58:08Z and 22:58:15Z)
+
+## The quarter-base fixture
+
+`gpu-visual-quarter.png` is the reference capture of
+`a_quarter_bloom_base_matches_its_fixture` (`D-301`): the same preset and
+frame at 640x360 under `TUNGSTEN_RENDER_BLOOM_BASE=quarter`, where bloom's
+pyramid starts at a quarter of its target and its threshold reads each
+texel's 4x4 footprint. The default takes that pyramid only above 1440 rows,
+which no other pixel test reaches. Regenerate it as the fixture above, with
+`TUNGSTEN_CAPTURE_RESOLUTION=640x360`, `TUNGSTEN_RENDER_BLOOM_BASE=quarter`
+and its own path. The test also holds the frame within a mean difference of
+9 steps from the half-base frame (5.8 on the reference machine).
+
+- OS: Arch Linux, kernel 7.2.14-arch1-1, X11 session
+- GPU: AMD Radeon 660M (integrated, Ryzen 5 6600H)
+- Driver: Mesa 26.2.6 RADV (`RADV REMBRANDT`), Vulkan API 1.4.354
+- wgpu backend: Vulkan (`WGPU_BACKEND=vulkan`), wgpu 30.0.1
+- Toolchain: rustc 1.98.1, `dev` profile
+- Date: 2026-11-23
+- SHA-256: `cf4a59f393b644c61f0ee32349b64264bf026f33855c3c4703b02b04c3fa3362`
+- Accepted after two consecutive `just visual` passes (2026-11-23), two captures byte-equal, and with `gpu-visual.png` unchanged

@@ -927,7 +927,7 @@ fn steps(world: &mut World, enemy: Entity) {
     ) else {
         return;
     };
-    let frame = state.frame_index;
+    let frame = state.frame_index as usize;
     let walking = TROLL_WALKS
         .iter()
         .any(|walk| state.animation_id.starts_with(walk));

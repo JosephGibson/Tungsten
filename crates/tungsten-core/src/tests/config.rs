@@ -422,6 +422,97 @@ fn system_fonts_default_off_and_parse_on() {
 }
 
 #[test]
+fn light_cap_defaults_to_sixteen_and_takes_one_to_256() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert_eq!(parsed.light_cap, 16);
+    assert_eq!(Config::default().render.light_cap, 16);
+    assert_eq!(crate::lighting::LIGHT_CAP, 16);
+    assert_eq!(crate::lighting::MAX_LIGHT_CAP, 256);
+    let parsed: RenderConfig = serde_json::from_str(r#"{ "light_cap": 64 }"#).unwrap();
+    assert_eq!(parsed.light_cap, 64);
+    for (cap, supported) in [
+        (0, false),
+        (1, true),
+        (16, true),
+        (64, true),
+        (256, true),
+        (257, false),
+    ] {
+        assert_eq!(is_supported_light_cap(cap), supported, "{cap}");
+    }
+
+    let mut config = Config::default();
+    config.apply_light_cap_override("64").unwrap();
+    assert_eq!(config.render.light_cap, 64);
+    config.apply_light_cap_override("1").unwrap();
+    assert_eq!(config.render.light_cap, 1);
+    for bad in ["", "0", "257", "-1", "sixteen", "16.0"] {
+        let err = config.apply_light_cap_override(bad).unwrap_err();
+        match err {
+            ConfigError::InvalidEnvOverride {
+                var,
+                value,
+                expected,
+            } => {
+                assert_eq!(var, RENDER_LIGHT_CAP_ENV);
+                assert_eq!(value, bad);
+                assert_eq!(expected, LIGHT_CAP_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+    assert_eq!(
+        config.render.light_cap, 1,
+        "a refused value changes nothing"
+    );
+}
+
+#[test]
+fn a_light_cap_outside_its_bounds_is_refused_in_a_file_and_defaulted_in_code() {
+    // A file's value outside 1 to 256 fails the load, naming the file and
+    // the field.
+    for bad in ["0", "257", "4096"] {
+        let json = format!(r#"{{"render": {{"light_cap": {bad}}}}}"#);
+        let (path, loaded) = load_json(&format!("light-cap-{bad}"), &json);
+        match loaded.unwrap_err() {
+            ConfigError::InvalidValue {
+                path: file,
+                field,
+                value,
+                expected,
+            } => {
+                assert_eq!(file, path.display().to_string());
+                assert_eq!(field, "render.light_cap");
+                assert_eq!(value, bad);
+                assert_eq!(expected, LIGHT_CAP_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+    for good in [1u32, 16, 17, 256] {
+        let json = format!(r#"{{"render": {{"light_cap": {good}}}}}"#);
+        let (_, loaded) = load_json(&format!("light-cap-{good}"), &json);
+        let config = loaded.unwrap();
+        assert_eq!(config.render.light_cap, good);
+        assert_eq!(config.render.lights(), good as usize);
+    }
+    // A config built in code cannot be refused: `lights` gives the default
+    // for a value no file could hold.
+    let mut render = Config::default().render;
+    for (cap, lights) in [
+        (0, 16),
+        (1, 1),
+        (64, 64),
+        (256, 256),
+        (257, 16),
+        (u32::MAX, 16),
+    ] {
+        render.light_cap = cap;
+        assert_eq!(render.lights(), lights, "light_cap {cap}");
+    }
+}
+
+#[test]
 fn bloom_max_mips_default_is_six() {
     let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
     assert_eq!(parsed.bloom_max_mips, 6);
@@ -460,6 +551,171 @@ fn bloom_max_mips_rejects_zero_and_nine() {
             }
             other => panic!("unexpected error: {other}"),
         }
+    }
+}
+
+#[test]
+fn bloom_base_defaults_to_auto_and_parses_its_three_names() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert_eq!(parsed.bloom_base, BloomBase::Auto);
+    assert_eq!(Config::default().render.bloom_base, BloomBase::Auto);
+    for (name, base) in [
+        ("auto", BloomBase::Auto),
+        ("half", BloomBase::Half),
+        ("quarter", BloomBase::Quarter),
+    ] {
+        let json = format!(r#"{{ "bloom_base": "{name}" }}"#);
+        let parsed: RenderConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.bloom_base, base);
+        assert_eq!(base.as_str(), name);
+        assert_eq!(name.parse(), Ok(base));
+    }
+    assert!(serde_json::from_str::<RenderConfig>(r#"{ "bloom_base": "eighth" }"#).is_err());
+}
+
+#[test]
+fn light_tiles_are_on_by_default_and_take_their_override() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert!(parsed.light_tiles);
+    assert!(Config::default().render.light_tiles);
+    let off: RenderConfig = serde_json::from_str(r#"{ "light_tiles": false }"#).unwrap();
+    assert!(!off.light_tiles);
+
+    let mut config = Config::default();
+    config.apply_light_tiles_override("false").unwrap();
+    assert!(!config.render.light_tiles);
+    config.apply_light_tiles_override("1").unwrap();
+    assert!(config.render.light_tiles);
+    config.apply_light_tiles_override("0").unwrap();
+    assert!(!config.render.light_tiles);
+    config.apply_light_tiles_override("true").unwrap();
+    assert!(config.render.light_tiles);
+    let err = config.apply_light_tiles_override("yes").unwrap_err();
+    assert!(
+        err.to_string().contains("TUNGSTEN_RENDER_LIGHT_TILES"),
+        "{err}"
+    );
+    assert!(config.render.light_tiles, "a refused value changes nothing");
+}
+
+#[test]
+fn post_fuse_is_on_by_default_and_takes_its_override() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert!(parsed.post_fuse);
+    assert!(Config::default().render.post_fuse);
+    let off: RenderConfig = serde_json::from_str(r#"{ "post_fuse": false }"#).unwrap();
+    assert!(!off.post_fuse);
+
+    let mut config = Config::default();
+    config.apply_post_fuse_override("false").unwrap();
+    assert!(!config.render.post_fuse);
+    config.apply_post_fuse_override("1").unwrap();
+    assert!(config.render.post_fuse);
+    config.apply_post_fuse_override("0").unwrap();
+    assert!(!config.render.post_fuse);
+    config.apply_post_fuse_override("true").unwrap();
+    assert!(config.render.post_fuse);
+    let err = config.apply_post_fuse_override("yes").unwrap_err();
+    assert!(
+        err.to_string().contains("TUNGSTEN_RENDER_POST_FUSE"),
+        "{err}"
+    );
+    assert!(config.render.post_fuse, "a refused value changes nothing");
+}
+
+#[test]
+fn hdr_is_off_by_default_and_parses_its_three_names() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert_eq!(parsed.hdr, HdrMode::Off);
+    assert_eq!(Config::default().render.hdr, HdrMode::Off);
+    for (name, mode) in [
+        ("off", HdrMode::Off),
+        ("rg11b10", HdrMode::Rg11b10),
+        ("rgba16f", HdrMode::Rgba16f),
+    ] {
+        let json = format!(r#"{{ "hdr": "{name}" }}"#);
+        let parsed: RenderConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.hdr, mode);
+        assert_eq!(mode.as_str(), name);
+        assert_eq!(name.parse(), Ok(mode));
+        assert_eq!(mode.is_float(), mode != HdrMode::Off);
+    }
+    assert!(serde_json::from_str::<RenderConfig>(r#"{ "hdr": "rgba32f" }"#).is_err());
+    assert!(serde_json::from_str::<RenderConfig>(r#"{ "hdr": true }"#).is_err());
+}
+
+#[test]
+fn hdr_env_override() {
+    let mut config = Config::default();
+    config.apply_hdr_override("rg11b10").unwrap();
+    assert_eq!(config.render.hdr, HdrMode::Rg11b10);
+    config.apply_hdr_override("rgba16f").unwrap();
+    assert_eq!(config.render.hdr, HdrMode::Rgba16f);
+    for bad in ["", "on", "Rgba16f", "rgba16"] {
+        let err = config.apply_hdr_override(bad).unwrap_err();
+        match err {
+            ConfigError::InvalidEnvOverride {
+                var,
+                value,
+                expected,
+            } => {
+                assert_eq!(var, RENDER_HDR_ENV);
+                assert_eq!(value, bad);
+                assert_eq!(expected, HDR_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+    assert_eq!(
+        config.render.hdr,
+        HdrMode::Rgba16f,
+        "a refused value changes nothing"
+    );
+    config.apply_hdr_override("off").unwrap();
+    assert_eq!(config.render.hdr, HdrMode::Off);
+}
+
+#[test]
+fn bloom_base_env_override() {
+    let mut config = Config::default();
+    config.apply_bloom_base_override("half").unwrap();
+    assert_eq!(config.render.bloom_base, BloomBase::Half);
+    config.apply_bloom_base_override("quarter").unwrap();
+    assert_eq!(config.render.bloom_base, BloomBase::Quarter);
+    for bad in ["", "Half", "third", "2"] {
+        let err = config.apply_bloom_base_override(bad).unwrap_err();
+        match err {
+            ConfigError::InvalidEnvOverride {
+                var,
+                value,
+                expected,
+            } => {
+                assert_eq!(var, RENDER_BLOOM_BASE_ENV);
+                assert_eq!(value, bad);
+                assert_eq!(expected, BLOOM_BASE_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+    assert_eq!(
+        config.render.bloom_base,
+        BloomBase::Quarter,
+        "a refused value changes nothing"
+    );
+}
+
+#[test]
+fn bloom_base_halves_once_up_to_1440_rows_and_twice_above() {
+    assert_eq!(BloomBase::AUTO_HALF_ROWS, 1440);
+    for rows in [1, 360, 720, 1080, 1440] {
+        assert_eq!(BloomBase::Auto.halvings(rows), 1, "{rows} rows");
+    }
+    for rows in [1441, 1600, 2160, 4320] {
+        assert_eq!(BloomBase::Auto.halvings(rows), 2, "{rows} rows");
+    }
+    for rows in [1, 1080, 1440, 1441, 2160] {
+        assert_eq!(BloomBase::Half.halvings(rows), 1);
+        assert_eq!(BloomBase::Quarter.halvings(rows), 2);
     }
 }
 
@@ -1251,4 +1507,92 @@ fn a_cell_not_above_zero_fails_the_load() {
         message.starts_with("invalid physics.gravity='[NaN, 0]'"),
         "{message}"
     );
+}
+
+#[test]
+fn the_physics_section_sets_the_steps_workers() {
+    assert_eq!(PhysicsSection::default().workers, 0, "0 is automatic");
+    let (_, loaded) = load_json("physics-workers", r#"{ "physics": { "workers": 4 } }"#);
+    assert_eq!(loaded.unwrap().physics.workers, 4);
+    let (file, loaded) = load_json("physics-workers-65", r#"{ "physics": { "workers": 65 } }"#);
+    match loaded.unwrap_err() {
+        ConfigError::InvalidValue {
+            path,
+            field,
+            value,
+            expected,
+        } => {
+            assert_eq!(field, "physics.workers");
+            assert_eq!(value, "65");
+            assert_eq!(expected, PHYSICS_WORKERS_EXPECTED);
+            assert_eq!(path, file.display().to_string());
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+    let (_, loaded) = load_json("physics-workers-neg", r#"{ "physics": { "workers": -1 } }"#);
+    assert!(matches!(loaded, Err(ConfigError::Parse { .. })));
+}
+
+#[test]
+fn the_physics_section_sets_the_workers_spin() {
+    assert_eq!(
+        PhysicsSection::default().worker_spin_ms,
+        0,
+        "a worker parks unless the game asks"
+    );
+    for (millis, json) in [
+        (3, r#"{ "physics": { "worker_spin_ms": 3 } }"#),
+        (50, r#"{ "physics": { "worker_spin_ms": 50 } }"#),
+    ] {
+        let (_, loaded) = load_json("physics-spin", json);
+        assert_eq!(loaded.unwrap().physics.worker_spin_ms, millis);
+    }
+    let (file, loaded) = load_json(
+        "physics-spin-51",
+        r#"{ "physics": { "worker_spin_ms": 51 } }"#,
+    );
+    match loaded.unwrap_err() {
+        ConfigError::InvalidValue {
+            path,
+            field,
+            value,
+            expected,
+        } => {
+            assert_eq!(field, "physics.worker_spin_ms");
+            assert_eq!(value, "51");
+            assert_eq!(expected, PHYSICS_WORKER_SPIN_EXPECTED);
+            assert_eq!(path, file.display().to_string());
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+    let (_, loaded) = load_json(
+        "physics-spin-neg",
+        r#"{ "physics": { "worker_spin_ms": -1 } }"#,
+    );
+    assert!(matches!(loaded, Err(ConfigError::Parse { .. })));
+}
+
+#[test]
+fn the_physics_workers_variable_overrides_the_file() {
+    let mut config = Config::default();
+    config.physics.workers = 6;
+    config.apply_physics_workers_override("1").unwrap();
+    assert_eq!(config.physics.workers, 1);
+    config.apply_physics_workers_override("0").unwrap();
+    assert_eq!(config.physics.workers, 0);
+    for bad in ["65", "-1", "two", ""] {
+        match config.apply_physics_workers_override(bad).unwrap_err() {
+            ConfigError::InvalidEnvOverride {
+                var,
+                value,
+                expected,
+            } => {
+                assert_eq!(var, PHYSICS_WORKERS_ENV);
+                assert_eq!(value, bad);
+                assert_eq!(expected, PHYSICS_WORKERS_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+    assert_eq!(config.physics.workers, 0, "a refused value changes nothing");
 }

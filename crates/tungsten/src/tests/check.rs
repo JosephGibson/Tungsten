@@ -525,3 +525,32 @@ fn a_prefab_variant_naming_no_sprite_is_a_check_error() {
         "the known variant and the scale pass"
     );
 }
+
+#[test]
+fn check_reports_a_post_effect_whose_shader_is_missing() {
+    let game = Folder::new();
+    game.write("assets/shaders/heat.wgsl", "");
+    let root = game.write(
+        "assets/manifest.json",
+        r#"{
+            "shaders": {"heat": {"path": "shaders/heat.wgsl"}},
+            "post_effects": {"heat": {"shader": "heat"}, "smoke": {"shader": "smoke"}}
+        }"#,
+    );
+    let mut app = game_world();
+    let errors = check_files(app.world_mut(), &[root], &game.0);
+    let report: Vec<String> = errors
+        .iter()
+        .map(|e| format!("{}: {}", e.file.display(), e.message))
+        .collect();
+    assert_eq!(
+        report,
+        ["assets/manifest.json: post effect 'smoke' references unknown shader 'smoke'"]
+    );
+    // The effects are in the registry a game's code reads, as a load
+    // leaves them.
+    let effects = app
+        .world_mut()
+        .resource::<tungsten_core::assets::PostEffectRegistry>();
+    assert!(effects.pass("heat").is_some());
+}

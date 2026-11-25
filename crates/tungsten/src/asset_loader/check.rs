@@ -116,7 +116,8 @@ pub(crate) fn check_files(
     // registered and the themes give.
     check_screens(&manifest, world, &mut errors);
 
-    // 5. Materials and particle meshes, as metadata: no renderer uploads them.
+    // 5. Materials, post effects and particle meshes, as metadata: no
+    // renderer uploads them.
     let mut materials = world
         .remove_resource::<MaterialRegistry>()
         .unwrap_or_default();
@@ -130,6 +131,7 @@ pub(crate) fn check_files(
         );
     }
     world.insert_resource(materials);
+    super::allocate_post_effects(&manifest, world);
     let mut meshes = world
         .remove_resource::<ParticleMeshRegistry>()
         .unwrap_or_default();

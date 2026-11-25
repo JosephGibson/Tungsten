@@ -524,6 +524,87 @@ fn load_manifest_material_shader_missing_is_error() {
 }
 
 #[test]
+fn load_manifest_with_post_effects_resolves_shader_cross_ref() {
+    let tmp = tempdir();
+    write_file(&tmp, "shaders/heat.wgsl");
+    let path = write_manifest(
+        &tmp,
+        r#"{
+            "shaders": {"heat": {"path": "shaders/heat.wgsl"}},
+            "post_effects": {
+                "heat": {"shader": "heat", "uniform_defaults": {"f32s": [0.5, 0.0, 0.0, 0.0]}},
+                "plain": {"shader": "heat"}
+            }
+        }"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    let effect = m.post_effects.get("heat").expect("effect present");
+    assert_eq!(effect.shader, "heat");
+    assert!((effect.uniform_defaults.f32s[0] - 0.5).abs() < 1e-6);
+    assert!(effect.source_manifest.ends_with("manifest.json"));
+    assert_eq!(m.post_effects["plain"].uniform_defaults.f32s, [0.0; 4]);
+    assert!(m.materials.is_empty());
+}
+
+#[test]
+fn load_manifest_post_effect_shader_missing_is_error() {
+    let tmp = tempdir();
+    let path = write_manifest(&tmp, r#"{"post_effects": {"heat": {"shader": "nope"}}}"#);
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "post effect 'heat' references unknown shader 'nope'"
+    );
+    assert!(
+        matches!(err, ManifestError::PostEffectShaderMissing { id, shader } if id == "heat" && shader == "nope")
+    );
+    // `tungsten check` reads past it and names the entry.
+    let (graph, issues) = ResolvedManifest::load_for_check(&[&path], &tmp);
+    assert_eq!(issues.len(), 1, "{:?}", messages(&issues));
+    assert!(
+        matches!(&issues[0].error, ManifestError::PostEffectShaderMissing { id, .. } if id == "heat")
+    );
+    assert_eq!(issues[0].manifest, path);
+    drop(graph);
+}
+
+#[test]
+fn merge_post_effects_checks_shaders_and_duplicates() {
+    let effect = |manifest: &str, shader: &str| ResolvedPostEffect {
+        source_manifest: manifest.into(),
+        shader: shader.into(),
+        uniform_defaults: MaterialUniformDefaults::default(),
+    };
+    // A sibling root's shader resolves.
+    let mut a = ResolvedManifest::default();
+    a.shaders.insert(
+        "heat".into(),
+        ResolvedShader {
+            path: "heat.wgsl".into(),
+        },
+    );
+    let mut b = ResolvedManifest::default();
+    b.post_effects
+        .insert("heat".into(), effect("b.json", "heat"));
+    a.merge(b).unwrap();
+    assert!(a.post_effects.contains_key("heat"));
+    // A shader no root declares does not.
+    let mut c = ResolvedManifest::default();
+    c.post_effects
+        .insert("smoke".into(), effect("c.json", "absent"));
+    let err = a.clone().merge(c).unwrap_err();
+    assert!(
+        matches!(err, ManifestError::PostEffectShaderMissing { id, shader } if id == "smoke" && shader == "absent")
+    );
+    // Two roots may not declare one effect.
+    let mut d = ResolvedManifest::default();
+    d.post_effects
+        .insert("heat".into(), effect("d.json", "heat"));
+    let err = a.merge(d).unwrap_err();
+    assert!(matches!(err, ManifestError::DuplicateId { id } if id == "heat"));
+}
+
+#[test]
 fn merge_material_resolves_shader_from_sibling_manifest() {
     let mut a = ResolvedManifest::default();
     a.shaders.insert(

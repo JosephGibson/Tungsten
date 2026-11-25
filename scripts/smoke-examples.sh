@@ -52,8 +52,9 @@ echo
 # Shortest wall time in milliseconds a passing run may take; 0 means no
 # minimum. Set around a row whose run must not finish early.
 min_run_ms=0
-# The folder a run starts in, and a fixed string a passing run's log must
-# not hold. Set around a row that runs as a game outside the root does.
+# The folder a run starts in, and the fixed strings a passing run's log must
+# not hold, one a line. Set around a row that runs as a game outside the root
+# does, or whose failure the run survives.
 run_in=.
 log_forbids=""
 
@@ -71,7 +72,7 @@ now_ms() {
 # and returns the run's exit status. Without --preserve-status, `timeout`
 # reports 124 when the limit is hit (137 if the SIGKILL grace period also
 # expired). A run that exits 0 in less than min_run_ms, or whose log holds
-# log_forbids, fails with status 1.
+# one of log_forbids' strings, fails with status 1.
 run_row() {
   local label="$1" log_file="$2" pkg="$3"
   shift 3
@@ -86,9 +87,13 @@ run_row() {
     echo "FAIL (${elapsed_ms} ms, expected at least ${min_run_ms} ms)"
     return 1
   fi
-  if [ "$code" -eq 0 ] && [ -n "$log_forbids" ] && grep -qF -- "$log_forbids" "$log_file"; then
-    echo "FAIL (log has '$log_forbids')"
-    return 1
+  if [ "$code" -eq 0 ] && [ -n "$log_forbids" ]; then
+    local found
+    found="$(grep -oF -m1 -- "$log_forbids" "$log_file" | head -n1 || true)"
+    if [ -n "$found" ]; then
+      echo "FAIL (log has '$found')"
+      return 1
+    fi
   fi
   case "$code" in
     0) echo "OK" ;;
@@ -198,7 +203,17 @@ for fixture in empty all; do
   row "fixture=${fixture}" "$log_dir/${fixtures_pkg}-post-${fixture}.log" "$fixtures_pkg" \
     TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE="$fixture"
 done
-end_section "Post-stack passed" "Post-stack failures" 2
+# The fixtures' own post effects (`D-308`): one with an `@fx` section behind a
+# vignette, one without. An effect the manifest lacks, one whose module does
+# not build as a post effect, and a fused pass that does not build each fail
+# the row.
+log_forbids="post effect '"$'\n'"failed to build"
+for fixture in game_tint game_wave; do
+  row "fixture=${fixture}" "$log_dir/${fixtures_pkg}-post-${fixture}.log" "$fixtures_pkg" \
+    TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE="$fixture"
+done
+log_forbids=""
+end_section "Post-stack passed" "Post-stack failures" 4
 
 # M27: post-AA fixture row. Pins TUNGSTEN_POST_STACK_FIXTURE=empty so the SMAA
 # tail is the only added work, then runs once with the High preset.
@@ -215,13 +230,34 @@ row "post_stack=bloom_only bloom_fixture=on" "$log_dir/${fixtures_pkg}-bloom.log
   TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE=bloom_only TUNGSTEN_BLOOM_FIXTURE=on
 end_section "Bloom passed" "Bloom failures" 1
 
+# `render.hdr` (`D-309`): the scene in each float format, under the stack's
+# every effect, and with MSAA's resolve ahead of the frame's tail and SMAA
+# behind it.
+begin_section "HDR scene matrix (pkg: $fixtures_pkg, scenes post and seams)"
+for hdr in rg11b10 rgba16f; do
+  row "hdr=${hdr} post_stack=all" "$log_dir/${fixtures_pkg}-hdr-${hdr}-all.log" "$fixtures_pkg" \
+    TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE=all TUNGSTEN_RENDER_HDR="$hdr"
+  row "hdr=${hdr} post_stack=empty msaa=4 post_aa=smaa_high" "$log_dir/${fixtures_pkg}-hdr-${hdr}-msaa-smaa.log" "$fixtures_pkg" \
+    TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE=empty TUNGSTEN_RENDER_HDR="$hdr" \
+    TUNGSTEN_RENDER_MSAA=4 TUNGSTEN_POST_AA_FIXTURE=smaa_high
+done
+# The seams scene under a float scene and the depth sort: lit sprites, the
+# flash block, a material, tile layers and UI labels over the tail.
+row "hdr=rg11b10 scene=seams depth_sort=gpu_depth" "$log_dir/${fixtures_pkg}-hdr-seams.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=seams TUNGSTEN_RENDER_HDR=rg11b10 TUNGSTEN_RENDER_DEPTH_SORT=gpu_depth
+end_section "HDR passed" "HDR failures" 5
+
 # M29: lighting row over the `lighting` scene. Five lit sprites beside an
 # unlit quad, under warm and cool point lights and a directional fill, take
 # the lit pipeline, the LightUbo upload and the lit/unlit batch keying.
 begin_section "M29 lighting fixture matrix (pkg: $fixtures_pkg, scene=lighting)"
 row "lighting" "$log_dir/${fixtures_pkg}-lighting.log" "$fixtures_pkg" \
   TUNGSTEN_FIXTURE=lighting
-end_section "Lighting passed" "Lighting failures" 1
+# The lights' tiles (`D-310`): the lamp grid under a cap of 64, 41 lights
+# through the binning pass and the buffer of the lights past the block's 16.
+row "lighting=lamps light_cap=64" "$log_dir/${fixtures_pkg}-lighting-lamps.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=lighting TUNGSTEN_LIGHTING_FIXTURE=lamps TUNGSTEN_RENDER_LIGHT_CAP=64
+end_section "Lighting passed" "Lighting failures" 2
 
 # Redo 7.9: seams row over the `seams` scene. A lit sprite and its flipped
 # twin, a flashing lit sprite and an unlit one take the lit pipeline's flash

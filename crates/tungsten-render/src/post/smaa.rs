@@ -1,9 +1,9 @@
 //! M27 SMAA 1x presentation pipeline.
 //!
 //! Three sub-pipelines (edge detect, blend weights, neighborhood blend) plus
-//! the area / search lookup textures and one 256-byte preset UBO. The renderer
-//! frame loop opens each `PassDesc` via `PassRecorder::begin`, then delegates
-//! to the matching `record_*_pass` method here so SMAA never calls
+//! the area / search lookup textures and one 256-byte preset UBO. The frame's
+//! graph declares the three passes; the renderer opens each and delegates to
+//! the matching `record_*_pass` method here, so SMAA never calls
 //! `begin_render_pass` itself.
 //!
 //! Preset switches update the UBO only; they do not rebuild pipelines or LUTs.
@@ -25,17 +25,34 @@ use bytemuck::{Pod, Zeroable};
 use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::config::PostAaMode;
 
+use super::whole_target;
 use crate::counters::{self, Counts};
-use crate::passes::TargetId;
 use crate::post::smaa_luts;
 use crate::shader_hot_reload::build_validated;
-use crate::targets::{RenderTargetPool, SMAA_BLEND_FORMAT, SMAA_EDGES_FORMAT, TargetCache};
+use crate::targets::{SMAA_BLEND_FORMAT, SMAA_EDGES_FORMAT, TargetCache};
 
 /// Stage shader manifest names. Must match `assets/manifest.json` keys and the
 /// pre-seeded ids in `Renderer::new`.
 pub const SMAA_EDGE_SHADER_NAME: &str = "smaa_edge";
 pub const SMAA_BLEND_WEIGHTS_SHADER_NAME: &str = "smaa_blend_weights";
 pub const SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME: &str = "smaa_neighborhood_blend";
+
+/// The three stage shaders with their compiled-in text, which the renderer
+/// seeds its cache with and holds a loaded file against (`D-306`).
+pub(crate) const SMAA_SHADERS: [(&str, &str); 3] = [
+    (
+        SMAA_EDGE_SHADER_NAME,
+        include_str!("../shaders/stock/smaa_edge.wgsl"),
+    ),
+    (
+        SMAA_BLEND_WEIGHTS_SHADER_NAME,
+        include_str!("../shaders/stock/smaa_blend_weights.wgsl"),
+    ),
+    (
+        SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
+        include_str!("../shaders/stock/smaa_neighborhood_blend.wgsl"),
+    ),
+];
 
 /// Shader ids assigned by `Renderer` for the three SMAA stages. Used as a
 /// stable handle for `rebuild_stage_with_module` dispatch.
@@ -223,12 +240,13 @@ pub struct SmaaPipeline {
     counts: Box<Counts>,
     target_format: wgpu::TextureFormat,
     pub shader_ids: SmaaShaderIds,
-    /// Bind groups over the scene targets, keyed on the pool generation and,
-    /// for the two that sample the post stack's output, on which target that
-    /// is.
-    edge_source_bg: TargetCache<(u64, TargetId), wgpu::BindGroup>,
+    /// Bind groups over the frame's pooled textures, each keyed on the
+    /// identity of the texture it samples: the post stack's output through
+    /// its twin view (edge) and its own (neighborhood), the edges and the
+    /// weights.
+    edge_source_bg: TargetCache<u64, wgpu::BindGroup>,
     blend_input_bg: TargetCache<u64, wgpu::BindGroup>,
-    nbh_input_bg: TargetCache<(u64, TargetId), wgpu::BindGroup>,
+    nbh_input_bg: TargetCache<u64, wgpu::BindGroup>,
     nbh_params_bg: TargetCache<u64, wgpu::BindGroup>,
 }
 
@@ -339,12 +357,17 @@ impl SmaaPipeline {
         }
     }
 
-    /// Drops the bind groups that hold views of the scene targets.
-    pub(crate) fn release_target_views(&mut self) {
-        self.edge_source_bg.clear();
-        self.blend_input_bg.clear();
-        self.nbh_input_bg.clear();
-        self.nbh_params_bg.clear();
+    /// Drops the bind groups that hold a view of one of the pooled textures
+    /// `freed`.
+    pub(crate) fn forget_targets(&mut self, freed: &[u64]) {
+        for cache in [
+            &mut self.edge_source_bg,
+            &mut self.blend_input_bg,
+            &mut self.nbh_input_bg,
+            &mut self.nbh_params_bg,
+        ] {
+            cache.clear_if(|id| freed.contains(id));
+        }
     }
 
     /// Repack `SmaaPresetUbo` from the active preset + viewport. Called at
@@ -362,56 +385,53 @@ impl SmaaPipeline {
         }
     }
 
-    /// Record the edge-detection pass into an open render pass. `source` names
-    /// the target `source_view` reads, for the bind-group cache.
-    pub fn record_edge_pass(
+    /// Record the edge-detection pass into an open render pass. `source` is
+    /// the pooled texture the post stack ended on, by its identity and the
+    /// view the edge test reads it through: its non-sRGB twin where it has
+    /// one, so it sees encoded values.
+    pub(crate) fn record_edge_pass(
         &mut self,
         device: &wgpu::Device,
         render_pass: &mut wgpu::RenderPass<'_>,
-        pool: &RenderTargetPool,
-        source: TargetId,
-        source_view: &wgpu::TextureView,
+        source: (u64, &wgpu::TextureView),
     ) {
+        let (source, source_view) = source;
         let layouts = &self.layouts;
         let sampler = &self.linear_sampler;
-        let source_bg = self
-            .edge_source_bg
-            .get_or_build((pool.generation(), source), || {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("smaa_edge_source_bg"),
-                    layout: &layouts.edge_source_bgl,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(source_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(sampler),
-                        },
-                    ],
-                })
-            });
+        let source_bg = self.edge_source_bg.get_or_build(source, || {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("smaa_edge_source_bg"),
+                layout: &layouts.edge_source_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(source_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(sampler),
+                    },
+                ],
+            })
+        });
         render_pass.set_pipeline(&self.edge_pipeline);
         render_pass.set_bind_group(0, &*source_bg, &[]);
         render_pass.set_bind_group(1, &self.edge_params_bg, &[]);
         counters::draw(&self.counts, render_pass, 0..3, 0..1);
     }
 
-    /// Record the blend-weights pass.
-    pub fn record_blend_weights_pass(
+    /// Record the blend-weights pass, which samples the edges texture
+    /// `edges`.
+    pub(crate) fn record_blend_weights_pass(
         &mut self,
         device: &wgpu::Device,
         render_pass: &mut wgpu::RenderPass<'_>,
-        pool: &RenderTargetPool,
+        edges: (u64, &wgpu::TextureView),
     ) {
+        let (edges, edges_view) = edges;
         let layouts = &self.layouts;
         let sampler = &self.linear_sampler;
-        let input_bg = self.blend_input_bg.get_or_build(pool.generation(), || {
-            let edges_view = pool
-                .scene
-                .smaa_edges_view()
-                .expect("blend_weights requires SmaaEdges target");
+        let input_bg = self.blend_input_bg.get_or_build(edges, || {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("smaa_blend_input_bg"),
                 layout: &layouts.blend_input_bgl,
@@ -433,42 +453,39 @@ impl SmaaPipeline {
         counters::draw(&self.counts, render_pass, 0..3, 0..1);
     }
 
-    /// Record the neighborhood-blend pass. `source` names the target
-    /// `source_view` reads, for the bind-group cache.
-    pub fn record_neighborhood_pass(
+    /// Record the neighborhood-blend pass. `source` is the pooled texture
+    /// the post stack ended on, through its own sRGB view: the pass's target
+    /// encodes on store, so the twin would encode the frame twice. `weights`
+    /// is the blend-weights texture.
+    pub(crate) fn record_neighborhood_pass(
         &mut self,
         device: &wgpu::Device,
         render_pass: &mut wgpu::RenderPass<'_>,
-        pool: &RenderTargetPool,
-        source: TargetId,
-        source_view: &wgpu::TextureView,
+        source: (u64, &wgpu::TextureView),
+        weights: (u64, &wgpu::TextureView),
     ) {
+        let (source, source_view) = source;
+        let (weights, blend_view) = weights;
         let layouts = &self.layouts;
         let sampler = &self.linear_sampler;
         let preset_ubo = &self.preset_ubo;
-        let input_bg = self
-            .nbh_input_bg
-            .get_or_build((pool.generation(), source), || {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("smaa_nbh_input_bg"),
-                    layout: &layouts.nbh_input_bgl,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(source_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(sampler),
-                        },
-                    ],
-                })
-            });
-        let params_bg = self.nbh_params_bg.get_or_build(pool.generation(), || {
-            let blend_view = pool
-                .scene
-                .smaa_blend_view()
-                .expect("neighborhood requires SmaaBlend target");
+        let input_bg = self.nbh_input_bg.get_or_build(source, || {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("smaa_nbh_input_bg"),
+                layout: &layouts.nbh_input_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(source_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(sampler),
+                    },
+                ],
+            })
+        });
+        let params_bg = self.nbh_params_bg.get_or_build(weights, || {
             build_nbh_params_bg(
                 device,
                 &layouts.nbh_params_bgl,
@@ -567,11 +584,7 @@ fn build_edge_pipeline(
         fragment: Some(wgpu::FragmentState {
             module,
             entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: SMAA_EDGES_FORMAT,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &[Some(whole_target(SMAA_EDGES_FORMAT))],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
@@ -609,11 +622,7 @@ fn build_blend_pipeline(
         fragment: Some(wgpu::FragmentState {
             module,
             entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: SMAA_BLEND_FORMAT,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &[Some(whole_target(SMAA_BLEND_FORMAT))],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
@@ -652,11 +661,7 @@ fn build_nbh_pipeline(
         fragment: Some(wgpu::FragmentState {
             module,
             entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
-                format,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &[Some(whole_target(format))],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
@@ -670,27 +675,6 @@ fn build_nbh_pipeline(
         multiview_mask: None,
         cache: None,
     })
-}
-
-/// Free fn `PassDesc` builders consumed by the pass-order splice. Edge + blend
-/// clear to transparent so unwritten regions stay zero. Neighborhood loads
-/// (covers the full screen via fullscreen triangle).
-#[must_use]
-pub fn edge_pass_desc() -> crate::passes::PassDesc {
-    crate::passes::PassDesc::new("tungsten_smaa_edge_pass", TargetId::SmaaEdges)
-        .with_clear(wgpu::Color::TRANSPARENT)
-}
-
-#[must_use]
-pub fn blend_weights_pass_desc() -> crate::passes::PassDesc {
-    crate::passes::PassDesc::new("tungsten_smaa_blend_weights_pass", TargetId::SmaaBlend)
-        .with_clear(wgpu::Color::TRANSPARENT)
-}
-
-#[must_use]
-pub fn neighborhood_pass_desc() -> crate::passes::PassDesc {
-    crate::passes::PassDesc::new("tungsten_smaa_neighborhood_pass", TargetId::PresentSource)
-        .with_clear(wgpu::Color::TRANSPARENT)
 }
 
 #[cfg(test)]

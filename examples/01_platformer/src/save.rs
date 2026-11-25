@@ -17,12 +17,15 @@
 //! stones and snowballs), each taking the run's next save ID at its spawn.
 //! The small and bowling balls carry a kept identity, `Saved::kept` of the
 //! run's counter, which the engine's references name, and 01's table holds
-//! them, since a full pit's 12,000 as records would pass the save's bound;
-//! 7.14's prefab table takes them over. Schema 29 makes the run's spawns
-//! records, so `migrate_step` refuses every older save, which reads as an
-//! older version's (`D-204`); schema 30 moves arcane power's `spell_power`
-//! onto the kit's `damage_dealt`, and schema 31 an enemy's `heading` onto
-//! the kit's `facing`, each migrating the schema before.
+//! them, since a full pit's 12,000 as records would pass the save's bound.
+//! They stay 01's table beside the engine's own (`D-295`), which writes
+//! each row's cells whole, a leaf a line in a slot's file, and a lit
+//! ball's statuses as their whole value: several hundred bytes a ball
+//! against the 144 here. Schema 29 makes the run's spawns records, so
+//! `migrate_step` refuses every older save, which reads as an older
+//! version's (`D-204`); schema 30 moves arcane power's `spell_power` onto
+//! the kit's `damage_dealt`, and schema 31 an enemy's `heading` onto the
+//! kit's `facing`, each migrating the schema before.
 //!
 //! A save names another entity by its save ID, never by its entity.
 //! Presentation is not saved: particles, lights, glows, flames, overlays

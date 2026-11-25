@@ -110,3 +110,138 @@ fn kind_name_matches_serde_tag() {
         "god_rays"
     );
 }
+
+/// The pass of effect `id` with every lane zero.
+fn custom(id: u32) -> CustomPost {
+    CustomPost::new(
+        crate::assets::PostEffectId(id),
+        crate::assets::MaterialUniformDefaults::default(),
+    )
+}
+
+#[test]
+fn a_custom_pass_is_written_and_never_read() {
+    // The nineteenth variant holds an ID of the session's (`D-308`). It is
+    // written, so a room built in code that holds one keeps its canonical
+    // form and two such rooms their own hashes; it is never read.
+    let pass = PostPass::Custom(custom(0));
+    assert_eq!(pass.kind_name(), "custom");
+    let written = serde_json::to_value(pass).expect("a custom pass serializes");
+    assert_eq!(written["kind"], "custom");
+    assert_eq!(written["params"]["effect"], 0);
+    let mut other = custom(0);
+    other.set_f32(0, 0.5);
+    assert_ne!(
+        serde_json::to_value(PostPass::Custom(other)).unwrap(),
+        written
+    );
+    assert_ne!(
+        serde_json::to_value(PostPass::Custom(custom(1))).unwrap(),
+        written
+    );
+    // What it wrote does not read back.
+    assert!(serde_json::from_value::<PostPass>(written).is_err());
+    let named = serde_json::from_str::<PostPass>(r#"{"kind": "custom", "params": {"effect": 0}}"#);
+    let refused = named.unwrap_err().to_string();
+    assert!(refused.contains("unknown variant `custom`"), "{refused}");
+    // A room's `post` is a list of passes: one that names `custom` is
+    // refused, where the stock kinds beside it read.
+    let stack = r#"[{"kind": "pixelate", "params": 4.0}, {"kind": "custom", "params": {}}]"#;
+    assert!(serde_json::from_str::<Vec<PostPass>>(stack).is_err());
+    let stock = r#"[{"kind": "pixelate", "params": 4.0}]"#;
+    assert_eq!(
+        serde_json::from_str::<Vec<PostPass>>(stock).unwrap(),
+        [PostPass::Pixelate(4.0)]
+    );
+}
+
+#[test]
+fn a_custom_pass_sets_its_lanes_and_ignores_one_past_the_block() {
+    let mut pass = custom(2);
+    pass.set_vec4(3, [1.0, 2.0, 3.0, 4.0])
+        .set_f32(1, 0.5)
+        .set_i32(0, -7);
+    assert_eq!(pass.vec4[3], [1.0, 2.0, 3.0, 4.0]);
+    assert_eq!((pass.f32s[1], pass.i32s[0]), (0.5, -7));
+    let before = pass;
+    pass.set_vec4(4, [9.0; 4]).set_f32(4, 9.0).set_i32(4, 9);
+    assert_eq!(pass, before);
+    // Its size: the ID and the block's 96 bytes of lanes, which is the
+    // stack's cost a pass, where the largest stock pass took 44 bytes.
+    assert_eq!(std::mem::size_of::<CustomPost>(), 100);
+    assert_eq!(std::mem::size_of::<PostPass>(), 104);
+    assert_eq!(std::mem::size_of::<ToneMonoParams>(), 40);
+}
+
+#[test]
+fn the_registry_builds_a_pass_with_the_manifests_defaults() {
+    use crate::assets::{MaterialUniformDefaults, PostEffectRegistry};
+    use std::path::Path;
+
+    let mut effects = PostEffectRegistry::new();
+    let defaults = MaterialUniformDefaults {
+        vec4: [[0.1, 0.2, 0.3, 1.0], [0.0; 4], [0.0; 4], [0.0; 4]],
+        f32s: [0.5, 0.0, 0.0, 0.0],
+        i32s: [3, 0, 0, 0],
+    };
+    let heat = effects.allocate(
+        "heat",
+        "assets/manifest.json".into(),
+        "heat_shader".into(),
+        defaults,
+    );
+    let ripple = effects.allocate(
+        "ripple",
+        "assets/manifest.json".into(),
+        "ripple".into(),
+        MaterialUniformDefaults::default(),
+    );
+    assert_ne!(heat, ripple);
+    assert_eq!(effects.get("heat"), Some(heat));
+    assert_eq!(effects.name_for_id(heat), Some("heat"));
+    assert_eq!(effects.shader_name_for_id(heat), Some("heat_shader"));
+    assert_eq!(
+        effects.path_for_id(heat),
+        Some(Path::new("assets/manifest.json"))
+    );
+    let pass = effects.pass("heat").expect("a declared effect");
+    assert_eq!(pass.effect, heat);
+    assert_eq!(pass.vec4[0], [0.1, 0.2, 0.3, 1.0]);
+    assert_eq!((pass.f32s, pass.i32s), ([0.5, 0.0, 0.0, 0.0], [3, 0, 0, 0]));
+    assert!(effects.pass("smoke").is_none());
+
+    // A manifest reload: the effect keeps its ID and takes the new shader
+    // and defaults, which the next pass holds; a pass a game already holds
+    // keeps its lanes.
+    let mut held = pass;
+    held.set_f32(0, 0.9);
+    let again = effects.allocate(
+        "heat",
+        "assets/other.json".into(),
+        "heat_v2".into(),
+        MaterialUniformDefaults {
+            f32s: [0.25, 0.0, 0.0, 0.0],
+            ..MaterialUniformDefaults::default()
+        },
+    );
+    assert_eq!(again, heat);
+    assert_eq!(effects.shader_name_for_id(heat), Some("heat_v2"));
+    assert_eq!(
+        effects.path_for_id(heat),
+        Some(Path::new("assets/other.json"))
+    );
+    assert_eq!(
+        effects
+            .defaults_for_id(heat)
+            .map(|defaults| defaults.f32s[0]),
+        Some(0.25)
+    );
+    assert_eq!(
+        effects.pass("heat").expect("a declared effect").f32s[0],
+        0.25
+    );
+    assert_eq!(held.f32s[0], 0.9);
+    let mut names: Vec<&str> = effects.iter().map(|(name, _)| name).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["heat", "ripple"]);
+}

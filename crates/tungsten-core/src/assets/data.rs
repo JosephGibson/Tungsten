@@ -225,6 +225,17 @@ impl DataRegistry {
             .downcast_ref()
     }
 
+    /// The entries of `T`'s kind with their IDs, sorted by ID, read in
+    /// place: what [`ids`](Self::ids) of that kind and [`get`](Self::get)
+    /// give together, a lookup by ID fewer each; none for a type no kind
+    /// holds.
+    pub fn entries<T: 'static>(&self) -> impl Iterator<Item = (&str, &T)> {
+        self.kind_for::<T>()
+            .into_iter()
+            .flat_map(|(_, kind)| kind.entries.iter())
+            .filter_map(|(id, entry)| Some((id.as_str(), entry.value.downcast_ref::<T>()?)))
+    }
+
     /// The IDs of kind `kind`, sorted; none for a kind not registered.
     pub fn ids(&self, kind: &str) -> impl Iterator<Item = &str> {
         self.kind(kind)

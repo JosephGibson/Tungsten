@@ -9,9 +9,9 @@ use std::path::{Path, PathBuf};
 use tungsten_core::assets::manifest::ResolvedSprite;
 use tungsten_core::assets::{
     AtlasPage, FilterMode, PackInput, PackResult, PackedSprite, ResolvedManifest, TextureHandle,
-    UvRect, oversized, pack_shelf,
+    UvRect, drawn_box, oversized, pack_shelf,
 };
-use tungsten_core::{AssetRegistry, World};
+use tungsten_core::{AssetRegistry, SpriteAlpha, World};
 use tungsten_render::Renderer;
 
 use super::LoadTarget;
@@ -68,6 +68,14 @@ pub(super) struct Decoded {
     /// Redo 7.10p: the named points from the manifest entry; empty on a
     /// repack, which keeps the registered ones.
     points: BTreeMap<String, [f32; 2]>,
+    /// Redo 7.15: what its alpha channel holds, measured where it was cut
+    /// from its file, while its pixels are warm; the pack registers it. A
+    /// measure inside the pack reads every sprite's pixels cold and
+    /// lengthens the load's longest slice.
+    alpha: SpriteAlpha,
+    /// Redo 7.15: the box of its texels that are not clear, measured with
+    /// the alpha.
+    drawn: [u32; 4],
 }
 
 impl Decoded {
@@ -201,6 +209,8 @@ pub(super) fn decode_file_sprites(
         path: sprite.path.clone(),
         width: cut.width,
         height: cut.height,
+        alpha: SpriteAlpha::measure(&cut.rgba),
+        drawn: drawn_box(&cut.rgba, cut.width),
         rgba: cut.rgba,
         normal_path: if lit {
             sprite.normal_path.clone()
@@ -534,6 +544,10 @@ fn build_atlas_for_filter(
             src.emissive_path.clone(),
             lit_atlas,
         );
+        // Redo 7.15: what its alpha channel holds, and where, measured at
+        // its decode.
+        registry.set_sprite_alpha(&src.id, src.alpha);
+        registry.set_sprite_drawn(&src.id, src.drawn);
         // M46: the manifest's nine-slice insets, carried onto the asset.
         if src.nine_slice.is_some() {
             registry.set_sprite_nine_slice(&src.id, src.nine_slice);
@@ -767,10 +781,13 @@ pub fn reload_sprite_file(
         if cut.width <= cell.width && cut.height <= cell.height {
             write_in_place(renderer, target.atlas, cell, &cut, had_lit);
             let (uv, width, height) = shrink_entry(cell, *page, cut.width, cut.height);
-            world
+            let registry = world
                 .get_resource_mut::<AssetRegistry>()
-                .expect("AssetRegistry resource missing")
-                .update_sprite_entry(id, target.atlas, uv, width, height);
+                .expect("AssetRegistry resource missing");
+            registry.update_sprite_entry(id, target.atlas, uv, width, height);
+            // The new pixels' alpha, measured again (redo 7.15).
+            registry.set_sprite_alpha(id, SpriteAlpha::measure(&cut.rgba));
+            registry.set_sprite_drawn(id, drawn_box(&cut.rgba, cut.width));
             log::info!(
                 "Hot-reloaded sprite '{id}' ({}x{}, {:?}) in-place",
                 cut.width,
@@ -945,6 +962,8 @@ pub fn rebuild_atlas_for_filter(
             path,
             width: cut.width,
             height: cut.height,
+            alpha: SpriteAlpha::measure(&cut.rgba),
+            drawn: drawn_box(&cut.rgba, cut.width),
             rgba: cut.rgba,
             normal_path: if lit { normal_path } else { None },
             emissive_path: if lit { emissive_path } else { None },
@@ -1005,6 +1024,8 @@ pub fn rebuild_atlas_for_filter(
                 src.width,
                 src.height,
             );
+            registry.set_sprite_alpha(&src.id, src.alpha);
+            registry.set_sprite_drawn(&src.id, src.drawn);
             // Rebuild lit-atlas marker after a repack.
             let lit_atlas = if src.normal_rgba.is_some() {
                 Some(new_handles[packed.page as usize])
