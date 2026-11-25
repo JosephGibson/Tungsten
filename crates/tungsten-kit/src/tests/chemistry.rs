@@ -3785,6 +3785,15 @@ fn grid_queries(world: &World, points: &[Vec2], seed: u64) -> (bool, usize, usiz
 #[test]
 fn the_grid_sorts_by_save_order_as_its_stable_sort_did() {
     for seed in [5_u64, 41, 977] {
+        // A World that keeps no save order: by entity index.
+        let (plain, _) = grid_world(seed, 400, Vec2::ZERO, 900.0);
+        assert!(!crate::foundation::saved::saving(&plain));
+        let mut grid = grid::Grid::default();
+        grid.build(&plain);
+        let built: Vec<Entity> = (0..400_u32).map(|at| grid.get(at).entity).collect();
+        let mut by_index = built.clone();
+        by_index.sort_by_key(|entity| entity.id());
+        assert_eq!(built, by_index, "seed {seed}: by index");
         let (mut world, _) = grid_world(seed, 400, Vec2::ZERO, 900.0);
         // Saves on, then about half the candidates saved under IDs taken in
         // a shuffled order, and two pairs sharing an ID, whose tie the

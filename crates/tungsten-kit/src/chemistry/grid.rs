@@ -7,7 +7,7 @@ use tungsten_core::physics::{Collider, Position, Shape};
 use tungsten_core::{Entity, Transform, World};
 
 use crate::damage::health::Health;
-use crate::foundation::saved::order_of;
+use crate::foundation::saved::{order_of, saving};
 use crate::foundation::tags::Tags;
 
 /// A cell's side, in px.
@@ -273,20 +273,27 @@ impl Grid {
                 });
             }
         }
-        // In save order, each key read once: a saved entity's is a lookup,
-        // and the sort compares often. The place breaks a tie, so the
-        // unstable sort gives the stable sort's order with no buffer.
+        // In save order. While the World saves, each key read once: a saved
+        // entity's is a lookup, and the sort compares often; the place breaks
+        // a tie, so the unstable sort gives the stable sort's order with no
+        // buffer. Else a key is the entity's index, read for free and never
+        // shared, so the candidates sort in place.
         let order = order_of(world);
-        self.keyed.clear();
-        self.keyed.extend(
+        if saving(world) {
+            self.keyed.clear();
+            self.keyed.extend(
+                self.candidates
+                    .drain(..)
+                    .enumerate()
+                    .map(|(at, candidate)| (order.key(candidate.entity), at, candidate)),
+            );
+            self.keyed.sort_unstable_by_key(|&(key, at, _)| (key, at));
             self.candidates
-                .drain(..)
-                .enumerate()
-                .map(|(at, candidate)| (order.key(candidate.entity), at, candidate)),
-        );
-        self.keyed.sort_unstable_by_key(|&(key, at, _)| (key, at));
-        self.candidates
-            .extend(self.keyed.drain(..).map(|(_, _, candidate)| candidate));
+                .extend(self.keyed.drain(..).map(|(_, _, candidate)| candidate));
+        } else {
+            self.candidates
+                .sort_unstable_by_key(|candidate| order.key(candidate.entity));
+        }
         // The candidates' keys, and whether each is the last build's: the
         // cells are `(key, candidate)` sorted, so they stand while every
         // candidate keeps its key.
