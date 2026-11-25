@@ -477,7 +477,131 @@ struct Item {
 /// A step's bodies and targets, binned once by their centres' cells.
 struct Bin {
     items: Vec<Item>,
-    cells: HashMap<(i32, i32), Vec<usize>>,
+    cells: BinCells,
+}
+
+/// A directory may cover this many cells an item, and 64 more; past it the
+/// bin maps its cells as it always did.
+const DIRECTORY_CELLS: u64 = 4;
+
+/// The bin's items by their cells. While the occupied cells' box is small,
+/// a directory over it, row by row and then column by column, each cell's
+/// items in the order the query found them, which is the order the map
+/// gives a query; else that map.
+enum BinCells {
+    Directory {
+        /// The box's first column and row, and its columns and rows.
+        column: i32,
+        row: i32,
+        columns: i32,
+        rows: i32,
+        /// By row, then column, where each cell's items end among the items
+        /// that follow: so a cell's items start where the cell before it
+        /// ends. Then the items, cell by cell. One list, so the cells take no
+        /// more room than the map.
+        cells: Vec<u32>,
+    },
+    Map(HashMap<(i32, i32), Vec<usize>>),
+}
+
+impl BinCells {
+    /// The cells of `items`: one pass to count each cell's items, one to
+    /// lay them out in item order.
+    fn of(items: &[Item]) -> Self {
+        // The box from a first pass, each cell taken again where it is
+        // needed, so the map's path allocates what the map alone did.
+        let mut keys = items.iter().map(|item| cell_of(item.centre));
+        let Some(first) = keys.next() else {
+            return Self::Map(HashMap::new());
+        };
+        let (mut low, mut high) = (first, first);
+        for (x, y) in keys {
+            low = (low.0.min(x), low.1.min(y));
+            high = (high.0.max(x), high.1.max(y));
+        }
+        let columns = (i64::from(high.0) - i64::from(low.0) + 1).unsigned_abs();
+        let rows = (i64::from(high.1) - i64::from(low.1) + 1).unsigned_abs();
+        let slots = columns.saturating_mul(rows);
+        if slots > DIRECTORY_CELLS * items.len() as u64 + 64 {
+            let mut cells: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+            for (index, item) in items.iter().enumerate() {
+                cells.entry(cell_of(item.centre)).or_default().push(index);
+            }
+            return Self::Map(cells);
+        }
+        // Within the box every offset fits: it holds few cells.
+        let (columns, rows) = (columns as i32, rows as i32);
+        let slot = |item: &Item| {
+            let (x, y) = cell_of(item.centre);
+            ((y - low.1) * columns + (x - low.0)) as usize
+        };
+        let slots = slots as usize;
+        let mut cells = vec![0_u32; slots + items.len()];
+        for item in items {
+            cells[slot(item)] += 1;
+        }
+        // Each cell's count becomes its start, then its end as its items go in.
+        let mut start = 0;
+        for at in &mut cells[..slots] {
+            let count = *at;
+            *at = start;
+            start += count;
+        }
+        for (index, item) in items.iter().enumerate() {
+            let at = slot(item);
+            let place = cells[at];
+            cells[slots + place as usize] = index as u32;
+            cells[at] = place + 1;
+        }
+        Self::Directory {
+            column: low.0,
+            row: low.1,
+            columns,
+            rows,
+            cells,
+        }
+    }
+
+    /// Visits the items of every cell from `min` to `max`, rows outer and
+    /// columns inner, each cell's in item order.
+    fn visit(&self, min: (i32, i32), max: (i32, i32), mut each: impl FnMut(usize)) {
+        match self {
+            Self::Map(cells) => {
+                for y in min.1..=max.1 {
+                    for x in min.0..=max.0 {
+                        for &index in cells.get(&(x, y)).into_iter().flatten() {
+                            each(index);
+                        }
+                    }
+                }
+            }
+            Self::Directory {
+                column,
+                row,
+                columns,
+                rows,
+                cells,
+            } => {
+                // A cell outside the box holds nothing.
+                let (x0, x1) = (min.0.max(*column), max.0.min(column + columns - 1));
+                let (y0, y1) = (min.1.max(*row), max.1.min(row + rows - 1));
+                if x0 > x1 {
+                    return;
+                }
+                let slots = (columns * rows) as usize;
+                for y in y0..=y1 {
+                    let base = ((y - row) * columns) as usize;
+                    let (first, last) =
+                        (base + (x0 - column) as usize, base + (x1 - column) as usize);
+                    let from = if first == 0 { 0 } else { cells[first - 1] };
+                    let to = cells[last];
+                    for &index in &cells[slots + from as usize..slots + to as usize] {
+                        each(index as usize);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn cell_of(at: Vec2) -> (i32, i32) {
@@ -534,10 +658,12 @@ impl Bin {
                 what,
             });
         }
-        let mut cells: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
-        for (index, item) in items.iter().enumerate() {
-            cells.entry(cell_of(item.centre)).or_default().push(index);
-        }
+        Self::of(items)
+    }
+
+    /// The bin of `items`, binned by their cells.
+    fn of(items: Vec<Item>) -> Self {
+        let cells = BinCells::of(&items);
         Self { items, cells }
     }
 
@@ -547,20 +673,16 @@ impl Bin {
         let span = Vec2::splat(reach + LARGEST_HALF);
         let (min, max) = (cell_of(at - span), cell_of(at + span));
         let mut found = Vec::new();
-        for y in min.1..=max.1 {
-            for x in min.0..=max.0 {
-                for &index in self.cells.get(&(x, y)).into_iter().flatten() {
-                    let item = self.items[index];
-                    if !world.is_alive(item.entity) {
-                        continue;
-                    }
-                    let distance = surface_distance(at, item.centre, item.shape);
-                    if distance <= reach {
-                        found.push((item, distance));
-                    }
-                }
+        self.cells.visit(min, max, |index| {
+            let item = self.items[index];
+            if !world.is_alive(item.entity) {
+                return;
             }
-        }
+            let distance = surface_distance(at, item.centre, item.shape);
+            if distance <= reach {
+                found.push((item, distance));
+            }
+        });
         found.sort_by_key(|(item, _)| item.id);
         found
     }
@@ -780,4 +902,123 @@ fn steam(
     }
     spawn_burst(world, "ex10_steam_burst", at);
     audio::play(world, Sound::Steamed, at);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A seeded draw.
+    fn draw(stream: &mut u64) -> u64 {
+        *stream = stream.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = *stream;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    /// A draw in `[0, 1)`.
+    fn unit(stream: &mut u64) -> f32 {
+        (draw(stream) >> 40) as f32 / (1_u64 << 24) as f32
+    }
+
+    /// `near` as the bin answered it before its directory: through a map of
+    /// its cells, rows outer and columns inner.
+    fn near_by_map(bin: &Bin, world: &World, at: Vec2, reach: f32) -> Vec<(Item, f32)> {
+        let mut cells: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+        for (index, item) in bin.items.iter().enumerate() {
+            cells.entry(cell_of(item.centre)).or_default().push(index);
+        }
+        let span = Vec2::splat(reach + LARGEST_HALF);
+        let (min, max) = (cell_of(at - span), cell_of(at + span));
+        let mut found = Vec::new();
+        for y in min.1..=max.1 {
+            for x in min.0..=max.0 {
+                for &index in cells.get(&(x, y)).into_iter().flatten() {
+                    let item = bin.items[index];
+                    if !world.is_alive(item.entity) {
+                        continue;
+                    }
+                    let distance = surface_distance(at, item.centre, item.shape);
+                    if distance <= reach {
+                        found.push((item, distance));
+                    }
+                }
+            }
+        }
+        found.sort_by_key(|(item, _)| item.id);
+        found
+    }
+
+    /// What a find is, to compare: its entity, save ID and distance's bits.
+    fn keyed(found: &[(Item, f32)]) -> Vec<(Entity, u64, u32)> {
+        found
+            .iter()
+            .map(|(item, distance)| (item.entity, item.id, distance.to_bits()))
+            .collect()
+    }
+
+    #[test]
+    fn the_bins_directory_finds_what_its_map_did() {
+        // Seeds without and with far outliers: a directory, then the map.
+        for (seed, outliers) in [(7_u64, false), (99, false), (4242, true)] {
+            let mut world = World::new();
+            let mut stream = seed;
+            let mut items = Vec::new();
+            for at in 0..900_u32 {
+                let entity = world.spawn();
+                let mut centre = Vec2::new(
+                    3000.0 + 1600.0 * unit(&mut stream),
+                    2300.0 + 2100.0 * unit(&mut stream),
+                );
+                if outliers && at % 150 == 0 {
+                    centre = Vec2::new(-90_000.0, 70_000.0 * unit(&mut stream));
+                }
+                let shape = if at % 3 == 0 {
+                    Shape::Aabb {
+                        half_extents: Vec2::new(5.0 + 55.0 * unit(&mut stream), 8.0),
+                    }
+                } else {
+                    Shape::Circle { radius: 7.5 }
+                };
+                // Save IDs with ties, which the stable sort leaves in visit order.
+                let id = draw(&mut stream) % 400;
+                items.push(Item {
+                    entity,
+                    centre,
+                    shape,
+                    id,
+                    what: What::SmallBall,
+                });
+            }
+            for item in items.iter().step_by(41) {
+                world.despawn(item.entity);
+            }
+            let bin = Bin::of(items);
+            assert_eq!(
+                matches!(bin.cells, BinCells::Map(_)),
+                outliers,
+                "seed {seed}: the cells' form"
+            );
+            let mut hits = 0;
+            for _ in 0..300 {
+                let at = Vec2::new(
+                    2900.0 + 1800.0 * unit(&mut stream),
+                    2200.0 + 2300.0 * unit(&mut stream),
+                );
+                let reach = 10.0 + 200.0 * unit(&mut stream);
+                let found = bin.near(&world, at, reach);
+                hits += found.len();
+                assert_eq!(
+                    keyed(&found),
+                    keyed(&near_by_map(&bin, &world, at, reach)),
+                    "seed {seed} at {at} reach {reach}"
+                );
+            }
+            assert!(
+                hits > 1000,
+                "seed {seed}: the queries found things ({hits})"
+            );
+        }
+    }
 }
