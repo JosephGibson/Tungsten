@@ -283,7 +283,7 @@ Before each step, `just preflight docs/plans/agent-guidance.md --step N`, readin
 
 ## 7. Critique
 
-Round 1: gpt-6-astra through Codex, 2026-11-25, at `d188da18` with this plan uncommitted; `critique: model gpt-6-astra, effort xhigh, context 872000, mode repo (output cap 4000), 348.6 s, tokens in 719154 (cached 647680), out 11116 (reasoning 6825), commands 21, output 343 KB (largest 83.2 KB), usage 5h 0% → 19%, week 28% → 31%`. Run on `gpt-6-astra` at once, since the critic's default, `gpt-6.2-astra`, has been refused on this account with no model call since 2026-11-18.
+Round 1: gpt-6-astra through Codex, 2026-11-25, at `d188da18` with this plan uncommitted; `critique: model gpt-6-astra, effort xhigh, context 872000, mode repo (output cap 4000), 348.6 s, tokens in 719154 (cached 647680), out 11116 (reasoning 6825), commands 21, output 343 KB (largest 83.2 KB), usage 5h 0% → 19%, week 28% → 31%`. Run on `gpt-6-astra` at once: the critic's default, `gpt-6.2-astra`, was refused on this account with no model call on 2026-11-18 and 11-19, and this session did not retry it.
 
 | # | Finding | Checked against | Verdict | Change or reason |
 | --- | --- | --- | --- | --- |
