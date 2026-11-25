@@ -5,7 +5,7 @@ How Claude Code and Codex pick up this repo's instructions, skills and search fi
 ## Instructions
 
 - `AGENTS.md` is the only instruction body. `CLAUDE.md` contains just `@AGENTS.md`, so both tools read the same text. Keep `@` imports out of `AGENTS.md`: Codex doesn't document expanding them.
-- Scoped rules: `crates/tungsten-render/AGENTS.md`, with a matching one-line `CLAUDE.md` import. `templates/basic/AGENTS.md` and its `CLAUDE.md` are the rules of a game made from the template, which `tungsten new` copies; `just ctx` holds them to 12,288 bytes and 100 lines (`D-183`), and they load when a session works in the template.
+- Scoped rules: `crates/tungsten-render/AGENTS.md`, with a matching one-line `CLAUDE.md` import. `templates/basic/AGENTS.md` and its `CLAUDE.md` are the rules of a game made from the template, which `tungsten new` copies; `just ctx` holds them to 13,312 bytes and 100 lines (`D-183`) and checks the paths of their index, and they load when a session works in the template. [Games made from the template](#games-made-from-the-template) covers what a game's agents get.
 - **Codex** reads one instruction file per directory from the repo root to the launch directory (`AGENTS.override.md`, then `AGENTS.md`); the combined default budget is 32 KiB. A root launch doesn't preload nested files, so the root `AGENTS.md` tells agents to read the render file before editing there.
 - **Claude Code:** the [current official guidance](https://code.claude.com/docs/en/memory#agentsmd) (consulted 2026-10-12) documents native `AGENTS.md` support from 2.1.277. With a project `CLAUDE.md` present, the default still uses it and its imports; even the mode that reads both files deduplicates an imported `AGENTS.md`. Keep the one-line compatibility imports for older or unsupported sessions. This newer behavior is documented, not locally re-probed.
 - **Local probe**, Claude Code 2.1.311 (2026-10-29, [the checks below](#verifying-a-client)), agreeing with 2.1.110's (2026-09-25):
@@ -45,6 +45,35 @@ codex exec --sandbox read-only 'Without tools, list the AGENTS.md files you were
 ```
 
 Model self-reports can be wrong about duplication. For a firm answer, compare `claude -p --output-format json` usage across directories that contain canary files. Last verified 2026-10-29 with Claude Code 2.1.311 (results under [Instructions](#instructions)) and Codex CLI 0.160.0, which listed the root `AGENTS.md` from the root, and the root and render files from `crates/tungsten-render/`; rerun both checks after a client upgrade.
+
+## Games made from the template
+
+What `tungsten new` gives a game's agents, decided by 7.16 from 7.13g's evaluation (26 fresh agents' reads and 94 seams) and a survey of how clients and other projects guide agents.
+
+- **What ships:** `AGENTS.md`, the game's rules and the kit's catalogue, always loaded, and `CLAUDE.md`, its one-line import; `README.md` and `tools/README.md` for people and agents alike. No skills, no copied docs, no client configuration: a skill copied into the game goes stale once the game moves to a newer engine, and measured skill use is uneven (a docs skill never invoked in 56 % of one framework's evaluated cases, <https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals>).
+- **How each client loads it:** Claude Code loads the game's `CLAUDE.md` and so `AGENTS.md` through its import, and every `CLAUDE.md` in the folders above, so a game lives outside other repositories (<https://code.claude.com/docs/en/memory.md>). Codex reads one `AGENTS.md` a folder from the game's Git root down to its working folder, 32 KiB in all by default (<https://learn.chatgpt.com/docs/agent-configuration/agents-md.md>). Other clients that read `AGENTS.md` are listed at <https://agents.md/>.
+- **Budgets:** `just ctx` holds `templates/basic/AGENTS.md` to 13,312 bytes and 100 lines.
+
+### The index of the engine's files
+
+- `AGENTS.md`'s section `## The engine's files` sends agents to the engine's own repository in Cargo's checkout, which `cargo metadata` names (the `tungsten` package's `manifest_path`) at the revision `Cargo.lock` pins, so what they read matches the engine the game builds against, offline, and follows the pin when the game upgrades. In the evaluation every engine line a template copy's agent read came by a local path its harness handed it, which a real game's agents lack; the guide had been named only on GitHub.
+- It names the guide and `docs/levels.md` with the way to read them a section at a time, and the kit listing by search, because a whole read past a client's limit arrives cut: Claude Code shows a 2,000-character preview of a shell result past about 30,000 characters (<https://code.claude.com/docs/en/tools-reference.md>), and the evaluation's agents never read the saved rest.
+- `just ctx` checks that each engine path the section names exists in this repository, the tree a game's checkout holds.
+
+### Where a fix goes
+
+A guidance fix lands where the agent was looking when it needed the answer, by the kind of answer: a command's message when a command it ran could have printed it; a line in the template's `AGENTS.md` when one line answers every task; the section of the doc it was reading (the guide, `docs/levels.md`, 01's README or tools guide) when the answer belongs to one kind of task; the item's own doc (its rustdoc, a kit field's description) when it was reading that item; and a rewording in place, naming the case that misled, when it had read the line and gone another way. A fix for one workspace's agents lands on that workspace's read path: 01's agents read 01's README, tools guide and rustdoc, and a template copy's agents read `AGENTS.md`, the guide and the `api/` listings. In 7.13g's two passes, fixes held where they landed on the reader's path and recurred where they landed off it or too narrowly worded.
+
+### Verifying a copy
+
+Make a copy with `tungsten new` outside any repository, then, from its folder:
+
+```bash
+claude -p 'Without tools, list the instruction files and skills loaded into your context.'
+codex exec --sandbox read-only 'Without tools, list the AGENTS.md files and skills you were given.'
+```
+
+Both should name the copy's `AGENTS.md` (Claude through `CLAUDE.md`). Then follow the index as it reads: `cargo metadata --format-version 1` names `crates/tungsten/Cargo.toml` in Cargo's checkout at the pinned revision, whose root holds `docs/getting-started.md`.
 
 ## Local check tiers
 

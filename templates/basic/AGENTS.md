@@ -38,7 +38,6 @@ Rules for this game's repository; `CLAUDE.md` imports this file.
 - Reactions: react in data through `cues` and the `cue_rules` data kind before writing a system: an action list per event (`damaged_part`, `damaged`, `killed`, `zone_entered`, `cooldown_elapsed`, `hit`, `healed`, `picked_up`, `expired`, `effect_applied`, `effect_expired`, `ability_used`, `ability_refused`, `ability_ready`, `ability_held`, `ability_released`, `culled`, `level_up`, `jumped`, `air_jumped`, `jump_refused`, `landed`, `arrived`, `departed`, or a game event from `CuesOnEvent`), whose `roll` draws a `loot_tables` entry, `effect` applies an `effects` entry and `ability` uses or refills an ability, on the subject or the other entity. A reaction past a rule's filters is Rust.
 - Data: declare game stats in the `stats` data kind and tags in `assets/data/tags.json`, the manifest's `data.tags`; a prefab or zone filter naming an undeclared tag fails the load.
 - Phases: a game system that belongs with the kit's joins a phase: `ensure_phases(schedule)`, then `Phase::Move.join(system(..))` in `fixed_update`, or `Phase::Present.join(..)` in `post_update`; a `post_update` system that moves a parent runs before `tungsten::kit::TRANSFORM_PROPAGATE_LATE`, and one that reads a child's position after it.
-- The cookbook, in the engine repository at `Cargo.toml`'s tag: `crates/tungsten/tests/fixtures/kit/` and `api/tungsten-kit-components.txt` (every field). The engine's own, `rigid_body` (with `layers` and `mask`), `particle_emitter`, `tilemap` and the rest, are in the rustdoc of `tungsten::core::component_registry`.
 
 ## Rules
 
@@ -53,7 +52,7 @@ Rules for this game's repository; `CLAUDE.md` imports this file.
 - Keep what a run spawned by its handles, read with `world.get`, as the sample's `SampleRun` does: a replaced state's entities are despawned at the frame's end, so a query in that frame still sees them.
 - Before a commit: `cargo test`, `cargo clippy --all-targets -- -D warnings` and `tungsten check`.
 
-## Engine documentation
+## The engine's files
 
-- The API: `cargo doc -p tungsten -p tungsten-core -p tungsten-kit --no-deps --open`.
-- The getting-started guide: `docs/getting-started.md` at the engine tag in `Cargo.toml`, on <https://github.com/JosephGibson/Tungsten>.
+- Cargo keeps the engine's repository on disk at the version this game builds against: `cargo metadata --format-version 1`, filtered as it is long, names the `tungsten` package's `manifest_path`, `<root>/crates/tungsten/Cargo.toml`, and the root follows `Cargo.lock`'s pin. Read the engine's files there, not on GitHub.
+- In it: the guide, `docs/getting-started.md`, and `docs/levels.md`, a section at a time (`rg -n '^#'` lists the headings), as a whole read past the client's limit arrives cut; `docs/assets.md`, every asset format; `api/tungsten-kit-components.txt`, every kit field at this version, by search (`rg -n '^component <name>'`); the cookbook, `crates/tungsten/tests/fixtures/kit/`. The engine's own components, `rigid_body` (with `layers` and `mask`), `particle_emitter`, `tilemap` and the rest, are in the rustdoc of `tungsten::core::component_registry`: `cargo doc -p tungsten -p tungsten-core -p tungsten-kit --no-deps --open`.

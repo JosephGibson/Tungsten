@@ -23,9 +23,13 @@ BUDGETS = {
     "AGENTS.md": (6144, 200),
     "crates/tungsten-render/AGENTS.md": (4096, 200),
     "docs/LLM_INDEX.md": (12288, None),
-    # Every game's agent reads it at the start of each session (D-183).
-    "templates/basic/AGENTS.md": (12288, 100),
+    # Every game's agent reads it at the start of each session (D-183, with
+    # 7.16's index of the engine's files).
+    "templates/basic/AGENTS.md": (13312, 100),
 }
+# The template's index of the engine's files, in Cargo's checkout at the game's
+# version: each path it names must exist in this repository.
+TEMPLATE_INDEX = ("templates/basic/AGENTS.md", "## The engine's files")
 IMPORT_FILES = ["CLAUDE.md", "crates/tungsten-render/CLAUDE.md", "templates/basic/CLAUDE.md"]
 LINK_FILES = [
     "AGENTS.md",
@@ -87,6 +91,28 @@ def check_index_paths(root: Path, errors: list) -> None:
             continue
         if not (root / rel).exists():
             errors.append(f"{INDEX}: path `{token}` does not resolve ({rel})")
+
+
+def check_template_index(root: Path, errors: list) -> None:
+    """Each engine path the template's index names resolves in this tree,
+    which is the checkout a game's Cargo keeps at its version."""
+    rel, heading = TEMPLATE_INDEX
+    text = (root / rel).read_text(encoding="utf-8")
+    start = text.find("\n" + heading + "\n")
+    if start < 0:
+        errors.append(f"{rel}: missing its index section {heading!r}")
+        return
+    body = text[start + len(heading) + 2:]
+    end = body.find("\n## ")
+    body = body if end < 0 else body[:end]
+    for token in CODE_RE.findall(body):
+        if not PATHLIKE_RE.search(token) or any(c in token for c in "*{}") or token.startswith("<") and "/" not in token:
+            continue
+        path = token.removeprefix("<root>/")
+        if "<" in path or ">" in path:
+            continue
+        if not (root / path).exists():
+            errors.append(f"{rel}: its index names `{token}`, which is not in the engine's tree")
 
 
 def frontmatter(text: str):
@@ -162,6 +188,8 @@ def check(root: Path) -> list:
             errors.append(f"{rel}: missing")
     if (root / INDEX).is_file():
         check_index_paths(root, errors)
+    if (root / TEMPLATE_INDEX[0]).is_file():
+        check_template_index(root, errors)
     check_skills(root, errors)
     return errors
 
@@ -197,7 +225,7 @@ def self_test() -> int:
         "docs/DECISION_INDEX.md": "# Decisions\n",
         "docs/agent-setup.md": "[rules](../AGENTS.md)\n",
         "docs/plans/README.md": "# Plans\n",
-        "templates/basic/AGENTS.md": "# Game rules\n",
+        "templates/basic/AGENTS.md": "# Game rules\n\n## The engine's files\n\n- `<root>/docs/LLM_INDEX.md` and `docs/agent-setup.md`.\n",
         "templates/basic/CLAUDE.md": IMPORT_ONLY,
         f"{SKILLS}/demo/SKILL.md": "---\nname: demo\ndescription: Demo skill.\n---\n[rules](../../../AGENTS.md)\n",
     }
@@ -206,8 +234,13 @@ def self_test() -> int:
         "oversize AGENTS.md": lambda r: (r / "AGENTS.md").write_text(ok + "x" * 7000),
         "too many lines": lambda r: (r / "AGENTS.md").write_text(ok + "\n" * 200),
         "oversize index": lambda r: (r / INDEX).write_text(files[INDEX] + "x" * 12288),
-        "oversize template rules": lambda r: (r / "templates/basic/AGENTS.md").write_text("x" * 12289),
-        "template rules too long": lambda r: (r / "templates/basic/AGENTS.md").write_text("-\n" * 100),
+        "oversize template rules": lambda r: (r / "templates/basic/AGENTS.md").write_text(
+            files["templates/basic/AGENTS.md"] + "x" * 13312),
+        "template rules too long": lambda r: (r / "templates/basic/AGENTS.md").write_text(
+            files["templates/basic/AGENTS.md"] + "-\n" * 100),
+        "template index missing": lambda r: (r / "templates/basic/AGENTS.md").write_text("# Game rules\n"),
+        "template index path gone": lambda r: (r / "templates/basic/AGENTS.md").write_text(
+            "# Game rules\n\n## The engine's files\n\n- `docs/gone.md`\n"),
         "broken link": lambda r: (r / "docs/agent-setup.md").write_text("[gone](missing.md)\n"),
         "broken index path": lambda r: (r / INDEX).write_text("`core/nope.rs`\n"),
         "CLAUDE.md with body": lambda r: (r / "CLAUDE.md").write_text(IMPORT_ONLY + "extra\n"),
