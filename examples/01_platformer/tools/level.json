@@ -10409,13 +10409,6 @@
       "name": "hollow wisp f",
       "x": 275.5,
       "y": 54.5
-    },
-    {
-      "kind": "beetle",
-      "name": "cut top beetle",
-      "x": 285.5,
-      "y": 43.046875,
-      "leash": 2.5
     }
   ],
   "pickups": [
