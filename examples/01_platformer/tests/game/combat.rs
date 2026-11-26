@@ -2,8 +2,9 @@
 //! half again on every type; the ladders' statuses on the dummy and the
 //! player; the missile's blast on the dummy, sparing the player; the damage
 //! numbers in their types' colours, a crit's at once and larger in yellow,
-//! a type's ticks merged, all following the Damage numbers option; the
-//! blood a blow spills; and steam from cold a burning target is immune to.
+//! a type's ticks merged, all following the Damage numbers option, and
+//! "Immune" where an immunity drops a part; the blood a blow spills; and
+//! steam from cold a burning target is immune to.
 
 use example_01_platformer::features::combat::{CRIT_CHANCE, Hit, Kind};
 use example_01_platformer::features::enemies;
@@ -574,6 +575,38 @@ fn numbers_follow_the_damage_numbers_option() {
     );
     let back = floated(&mut harness, 3);
     assert_eq!(back.len(), 1, "on again: {back:?}");
+}
+
+#[test]
+fn a_fire_hit_on_a_wisp_floats_one_immune_and_no_number() {
+    let (mut harness, _, _) = watched();
+    let wisp = foe(&mut harness, EnemyKind::Wisp, 200.0);
+    harness.step(1);
+    let fire = type_colour("damage.fire");
+    // A fire blow, its part dropped: the words alone, in fire's colour.
+    assert!(Hit::new(wisp, [(Kind::Fire, 10.0)]).queue(harness.world_mut()));
+    let blow = floated(&mut harness, 60);
+    assert_eq!(blow.len(), 1, "{blow:?}");
+    let (_, (text, _, rgb)) = &blow[0];
+    assert!(text == "Immune" && near(*rgb, fire), "{blow:?}");
+    // A flamethrower's stream, a fire part every 0.1 s for a second: one
+    // label, its repeats merged.
+    let mut stream = Vec::new();
+    for frame in 0..60 {
+        if frame % 6 == 0 {
+            assert!(Hit::new(wisp, [(Kind::Fire, 3.0)]).queue(harness.world_mut()));
+        }
+        stream.extend(floated(&mut harness, 1));
+    }
+    let texts: Vec<&str> = stream.iter().map(|(_, label)| label.0.as_str()).collect();
+    assert_eq!(texts, ["Immune"], "{stream:?}");
+    // A mixed blow: the number for what landed, the words for the fire.
+    harness.step(60);
+    let mixed = Hit::new(wisp, [(Kind::Physical, 5.0), (Kind::Fire, 4.0)]);
+    assert!(mixed.queue(harness.world_mut()));
+    let both = floated(&mut harness, 3);
+    let texts: Vec<&str> = both.iter().map(|(_, label)| label.0.as_str()).collect();
+    assert_eq!(texts, ["5", "Immune"], "{both:?}");
 }
 
 /// Adds to `seen` the bursts of the particle config `name` now alive, by
