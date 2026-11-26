@@ -174,8 +174,8 @@ RULES = (
     {"id": "R7", "name": "register-rows",
      "when": ({"name": r"(?:S|P[78]|PA)-\d+|K\d+"},),
      "files": ({"computed": "row_lines"},),
-     "reason": "phase 7's tables hold each register row a step lands or moves",
-     "stop": "ui-pass step 16 (departure): docs/plans/phase-7.md:222, the S-162 row"},
+     "reason": "the redo's §3 Phase 8 rows name each register row by ID; a step that moves one rewrites both rows",
+     "stop": "ui-pass step 16 (departure): phase 7's S-162 row, which the redo's 8.1 row holds since phase 7's close"},
     {"id": "R8", "name": "domain-state",
      "when": ({"new_file": r"crates/tungsten-kit/src/(?!tests/)[^/]+/[^/]+\.rs"},),
      "files": ({"computed": "domain_siblings"},),
@@ -1347,8 +1347,9 @@ def c_row_lines(view, ctx):
     ids = sorted({n for n in view.all_names if kind_of(n) == "id"})
     if not ids:
         return
-    regex = re.compile(r"^\|\s*(" + "|".join(map(re.escape, ids)) + r")\s*\|")
-    for rel in ctx.corpus.match("docs/plans/phase-7.md"):
+    # Phase 8's rows name each register row by ID since phase 7's tables closed.
+    regex = re.compile(r"^\|\s*8\.\d+\s*\|.*?(?<![\w-])(" + "|".join(map(re.escape, ids)) + r")(?![\w-])")
+    for rel in ctx.corpus.match("docs/plans/roadmap-redo.md"):
         for n, line in enumerate(ctx.corpus.lines(rel) or [], 1):
             match = regex.search(line)
             if match:
@@ -1731,7 +1732,7 @@ def json_report(plan_rel, root, step, output, names, fired, pins, report):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("plan", type=Path, help="the plan file, e.g. docs/plans/phase-7.md")
+    parser.add_argument("plan", type=Path, help="the plan file, e.g. docs/plans/<topic>.md")
     parser.add_argument("--step", type=int, help="that step's names, rules and its own list only")
     parser.add_argument("--root", type=Path, default=ROOT, help="the tree to search (default: this repository)")
     parser.add_argument("--json", action="store_true", help="the hits with each one's source, for the back-tester")
