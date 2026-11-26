@@ -80,3 +80,68 @@ fn the_capture_error_is_returned_once() {
     assert!(capture.finish(1).is_some());
     assert!(capture.finish(1).is_none());
 }
+
+/// A fresh folder of its own under the system's temp folder.
+fn tempdir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("tungsten_capture_{}_{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn two_captures_of_one_path_keep_the_written_file() {
+    let dir = tempdir("one_path");
+    let a = dir.join("a.png");
+    std::fs::write(&a, b"png bytes").unwrap();
+    let mut capture = Capture::empty();
+    capture.add(5, a.clone());
+    capture.add(5, a.clone());
+    capture.frame_rendered(
+        5,
+        RenderOutcome::Presented {
+            capture: Some(Ok(a.clone())),
+        },
+    );
+    let outcomes = capture.take_outcomes();
+    assert_eq!(
+        std::fs::read(&a).unwrap(),
+        b"png bytes",
+        "two captures of one path on one frame: the written file keeps its bytes"
+    );
+    assert_eq!(outcomes.len(), 2, "{outcomes:#?}");
+    assert!(
+        outcomes.iter().all(|outcome| outcome.error.is_none()),
+        "two captures of one path on one frame: both written, {outcomes:#?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_second_capture_of_a_frame_makes_its_folder() {
+    let dir = tempdir("folder");
+    let first = dir.join("a").join("first.png");
+    std::fs::create_dir_all(first.parent().unwrap()).unwrap();
+    std::fs::write(&first, b"png bytes").unwrap();
+    let second = dir.join("b").join("second.png");
+    let mut capture = Capture::empty();
+    capture.add(5, first.clone());
+    capture.add(5, second.clone());
+    capture.frame_rendered(
+        5,
+        RenderOutcome::Presented {
+            capture: Some(Ok(first.clone())),
+        },
+    );
+    let outcomes = capture.take_outcomes();
+    assert!(
+        outcomes.iter().all(|outcome| outcome.error.is_none()),
+        "a second capture of a frame into a folder not made yet: {outcomes:#?}"
+    );
+    assert_eq!(
+        std::fs::read(&second).ok().as_deref(),
+        Some(&b"png bytes"[..]),
+        "a second capture of a frame into a folder not made yet: the copy"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -1805,9 +1805,8 @@ impl App {
                 continue;
             }
 
-            let ext = canon.extension().and_then(|e| e.to_str()).unwrap_or("");
-            match ext {
-                "png" | "jpg" | "jpeg" => {
+            match reload_kind(&canon) {
+                Some(ReloadKind::Image) => {
                     // Redo 7.9: every sprite on the file, a sheet's frames
                     // from one decode.
                     let registered = self
@@ -1828,8 +1827,8 @@ impl App {
                 }
                 // Themes, animations, particle configs, prefabs and data
                 // entries, by the paths their loaders recorded (M46, M61).
-                "json" => json_paths.push(canon),
-                "ttf" | "otf" => {
+                Some(ReloadKind::Json) => json_paths.push(canon),
+                Some(ReloadKind::Font) => {
                     let id = self
                         .world
                         .get_resource::<FontRegistry>()
@@ -1843,10 +1842,10 @@ impl App {
                     }
                 }
                 // Redo 7.9: a sound decodes again; the audio restarts below.
-                "wav" | "ogg" | "mp3" | "aac" | "m4a" => {
+                Some(ReloadKind::Sound) => {
                     asset_loader::reload_sound(&canon, &mut self.world);
                 }
-                "tmj" => {
+                Some(ReloadKind::Tilemap) => {
                     let id = self
                         .world
                         .get_resource::<TilemapRegistry>()
@@ -1862,7 +1861,7 @@ impl App {
                         );
                     }
                 }
-                "wgsl" => {
+                Some(ReloadKind::Shader) => {
                     let id = self.world.get_resource::<ShaderRegistry>().and_then(|reg| {
                         reg.id_for_path(&canon)
                             .and_then(|sid| reg.name_for_id(sid).map(ToString::to_string))
@@ -1877,7 +1876,7 @@ impl App {
                         log::debug!("Hot reload: no shader registered for '{}'", canon.display());
                     }
                 }
-                _ => {}
+                None => {}
             }
         }
         if !json_paths.is_empty() {
@@ -3201,6 +3200,32 @@ fn is_reload_root(canon: &Path, reload_roots: &[PathBuf]) -> bool {
         .any(|root| root.canonicalize().unwrap_or_else(|_| root.clone()) == canon)
 }
 
+/// What a changed asset file reloads as, by its extension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReloadKind {
+    Image,
+    Json,
+    Font,
+    Sound,
+    Tilemap,
+    Shader,
+}
+
+/// The kind a changed file at `path` reloads as, by its extension in any
+/// case (`hero.PNG` as `hero.png`); `None` for any other.
+fn reload_kind(path: &Path) -> Option<ReloadKind> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" | "jpg" | "jpeg" => ReloadKind::Image,
+        "json" => ReloadKind::Json,
+        "ttf" | "otf" => ReloadKind::Font,
+        "wav" | "ogg" | "mp3" | "aac" | "m4a" => ReloadKind::Sound,
+        "tmj" => ReloadKind::Tilemap,
+        "wgsl" => ReloadKind::Shader,
+        _ => return None,
+    })
+}
+
 /// True when the canonical path `canon` names the action map's own file,
 /// not just any file called `input.json` (`D-123`).
 fn is_action_map(canon: &Path, input_map_path: &Path) -> bool {
@@ -3210,13 +3235,6 @@ fn is_action_map(canon: &Path, input_map_path: &Path) -> bool {
         == canon
 }
 
-/// Simulated seconds for a frame that starts `elapsed` after the previous
-/// one.
-///
-/// Smoke mode (`TUNGSTEN_SMOKE_FRAMES` set) pins dt to 60 Hz so physics,
-/// particles, tweens and scene animation produce frame-accurate deterministic
-/// output. Wall-clock dt varies with CPU load and makes visual-regression
-/// captures drift between runs on the same binary. The capture path used by
 /// Whether `input` is a press, not an OS repeat, of a key or button in
 /// `bindings`.
 pub(crate) fn presses(bindings: &[Binding], input: RawInput) -> bool {
@@ -3236,6 +3254,13 @@ pub(crate) fn presses(bindings: &[Binding], input: RawInput) -> bool {
     }
 }
 
+/// Simulated seconds for a frame that starts `elapsed` after the previous
+/// one.
+///
+/// Smoke mode (`TUNGSTEN_SMOKE_FRAMES` set) pins dt to 60 Hz so physics,
+/// particles, tweens and scene animation produce frame-accurate deterministic
+/// output. Wall-clock dt varies with CPU load and makes visual-regression
+/// captures drift between runs on the same binary. The capture path used by
 /// `visual_regression.rs` (smoke frames + capture frame env vars) is the
 /// canonical consumer. A normal frame gets the elapsed time, capped at
 /// [`MAX_DT_SECS`].
@@ -3344,9 +3369,6 @@ fn log_perf_line(
     );
 }
 
-/// Per-system companion to the `frame:` perf line, in registration order.
-/// Whitespace and `=` in names become `_` so `scripts/perf_stats.py` can
-/// split `name=ms` tokens on whitespace.
 /// Writes the frame's `timed`-th system timing over the entry a frame
 /// before left there, rewriting its name only where it differs, and pushes
 /// one past the end (debug-pass): a warm frame allocates nothing.
@@ -3364,6 +3386,9 @@ fn write_timing(timings: &mut Vec<(String, f32)>, timed: &mut usize, name: &str,
     *timed += 1;
 }
 
+/// Per-system companion to the `frame:` perf line, in registration order.
+/// Whitespace and `=` in names become `_` so `scripts/perf_stats.py` can
+/// split `name=ms` tokens on whitespace.
 fn format_perf_systems_line(system_timings: &[(String, f32)]) -> String {
     format_perf_named_timings("systems:", system_timings)
 }
@@ -3401,7 +3426,6 @@ fn format_perf_physics_line(buffers: &PhysicsBuffers) -> String {
     )
 }
 
-/// `TUNGSTEN_CHECK`, set and not empty: the report file of a check run.
 /// The path variable `name` names, when it is set and not empty: the check
 /// or describe file, a script and its report.
 fn env_path(env: Env<'_>, name: &str) -> Option<PathBuf> {
@@ -3417,8 +3441,6 @@ fn smoke_frames(env: Env<'_>) -> Option<u32> {
         .filter(|n| *n > 0)
 }
 
-/// A `logging.level` set in code that names no level; `Config::load`
-/// rejects the same value read from the file (`D-119`).
 /// `Time` with the `time` section's step, bound and interpolation; the
 /// section is validated first, so the setters do not panic.
 fn time_from_config(config: &TimeConfig) -> Time {
@@ -3429,6 +3451,8 @@ fn time_from_config(config: &TimeConfig) -> Time {
     time
 }
 
+/// A `logging.level` set in code that names no level; `Config::load`
+/// rejects the same value read from the file (`D-119`).
 fn invalid_logging_level(level: &str) -> Option<ConfigError> {
     level
         .parse::<LevelFilter>()

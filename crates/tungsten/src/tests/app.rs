@@ -418,6 +418,21 @@ fn an_edit_to_any_root_manifest_routes_to_the_manifest_reload() {
 }
 
 #[test]
+fn hot_reload_kinds_ignore_extension_case() {
+    for ext in ["png", "jpg", "json", "ttf", "wav", "tmj", "wgsl"] {
+        let lower = super::reload_kind(&Path::new("a").join(format!("hero.{ext}")));
+        let upper = format!("hero.{}", ext.to_ascii_uppercase());
+        assert!(lower.is_some(), "a `.{ext}` file reloads");
+        assert_eq!(
+            super::reload_kind(&Path::new("a").join(&upper)),
+            lower,
+            "`{upper}` reloads as a `.{ext}` file does"
+        );
+    }
+    assert_eq!(super::reload_kind(Path::new("a/notes.txt")), None);
+}
+
+#[test]
 fn only_the_pinned_input_json_reloads_as_the_action_map() {
     let dir = std::env::temp_dir().join(format!("tungsten_action_map_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
