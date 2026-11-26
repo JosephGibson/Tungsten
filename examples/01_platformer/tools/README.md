@@ -896,6 +896,7 @@ a spray's loop and the pour stop over 0.08 seconds.
 | `ex10_thunder_snap_sfx` | `thunder_snap.wav` | A bolt landing, under the thunder: a bright snap, a zip falling in pitch, a buzzing sizzle |
 | `ex10_ice_crack_sfx` | `ice_crack.wav` | A thaw: a creak under strain, a sharp crack with a glassy ring, meltwater drips |
 | `ex10_ball_thud_sfx` | `ball_thud.wav` | A bowling ball landing hard: a low thump under a hollow resin thock and a rattle |
+| `ex10_bowling_strike_sfx` | `bowling_strike.wav` | A bowling ball striking an enemy at 800 px/s or more, in its thud's place, through the `ball_struck` rule: the resin thock and a woody crack, a crash of maple pins thinning out as they scatter, a low rumble of them rolling |
 | `ex10_gun_click_sfx` | `gun_click.wav` | The trigger with no round or during a reload: the hammer's light click |
 | `ex10_gun_rack_sfx` | `gun_rack.wav` | A reload begun on R: the magazine let go and the slide racked, two clacks and a scrape |
 | `ex10_flame_end_sfx` | `flame_end.wav` | The flamethrower let go: the roar dropping into a soft puff, last crackles |

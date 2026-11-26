@@ -650,6 +650,22 @@
     ]
   },
   {
+    "on": "ball_struck",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_bowling_strike_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
+  },
+  {
     "on": "dry_fired",
     "filter": {
       "all": [

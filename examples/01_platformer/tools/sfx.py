@@ -1659,6 +1659,54 @@ def ball_thud():
     return finish(samples, fade_in=0.0005, fade_out=0.05)
 
 
+def bowling_strike():
+    """A bowling ball striking a foe, in place of its thud: the heavy resin
+    thock and a bright woody crack, then a strike's crash of maple pins, a
+    dense clatter of knocks thinning out as they scatter, and a low rumble
+    of the pins rolling away."""
+    duration = 0.8
+    noise, rumble_noise, scatter = Noise(0xB57A), Noise(0xB57B), Noise(0xB57C)
+    crack_high, body_low, body_high, rumble_low = LowPass(), LowPass(), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        phase += math.tau * glide(118, 56, min(1.0, t / 0.11)) / RATE
+        thump = 1.15 * math.sin(phase) * min(1.0, t / 0.0015) * math.exp(-t / 0.085)
+        crack = (n - crack_high(n, 2600)) * 1.7 * math.exp(-t / 0.006)
+        thock = (body_low(n, 2000) - body_high(n, 520)) * 1.5 * math.exp(-t / 0.016)
+        hollow = sum(math.sin(math.tau * f * t) * w * math.exp(-t / d)
+                     for f, w, d in ((310, .32, .07), (498, .18, .05), (747, .08, .035)))
+        r = rumble_noise()
+        rumble = rumble_low(r, 260) * 1.8 * math.exp(-max(0.0, t - .05) / .22) * min(1.0, t / .05)
+        samples.append(thump + crack + thock + hollow + rumble)
+
+    def knock(freq, level, seed):
+        """One pin knocking: a click and three inharmonic wooden modes."""
+        click_noise, click_high = Noise(seed), LowPass()
+        voice = []
+        for i in range(int(0.09 * RATE)):
+            t = i / RATE
+            c = click_noise()
+            click = (c - click_high(c, 3000)) * .5 * math.exp(-t / 0.0018)
+            ring = sum(math.sin(math.tau * freq * ratio * t) * weight * math.exp(-t / decay)
+                       for ratio, weight, decay in ((1.0, .55, .024), (2.41, .27, .014), (4.27, .12, .008)))
+            voice.append(level * (click + ring))
+        return voice
+
+    # The pins: knocks dense at the strike, sparser as they scatter, the
+    # last few lower as pins fall to the deck.
+    at, k = 0.008, 0
+    while at < 0.62:
+        u = abs(scatter())
+        freq = (820 + 900 * u) if at < 0.3 else (300 + 420 * u)
+        level = (0.5 + 0.35 * abs(scatter())) * math.exp(-at / 0.2)
+        place(samples, int(at * RATE), knock(freq, level, 0xB580 + k))
+        at += 0.006 + 0.04 * abs(scatter()) * (1 + 6 * at)
+        k += 1
+    return finish([math.tanh(1.25 * s) for s in samples], fade_in=0.0005, fade_out=0.08)
+
+
 def gun_click():
     """A dry fire: the hammer's light metallic click on an empty chamber."""
     noise, high = Noise(0xC11C), LowPass()
@@ -2742,6 +2790,7 @@ SOUNDS = {
     'thunder_snap.wav': thunder_snap,
     'ice_crack.wav': ice_crack,
     'ball_thud.wav': ball_thud,
+    'bowling_strike.wav': bowling_strike,
     'gun_click.wav': gun_click,
     'gun_rack.wav': gun_rack,
     'flame_end.wav': flame_end,

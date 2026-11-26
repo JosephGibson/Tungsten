@@ -2236,6 +2236,11 @@
       "path": "sounds/bound.wav",
       "volume": 0.4
     },
+    "ex10_bowling_strike_sfx": {
+      "looping": false,
+      "path": "sounds/bowling_strike.wav",
+      "volume": 0.5
+    },
     "ex10_corroded_sfx": {
       "looping": false,
       "path": "sounds/corroded.wav",
