@@ -18,7 +18,7 @@ use tungsten_core::{
 };
 
 use crate::damage::effects::{EFFECTS, Effect, EffectApplied, EffectExpired, EffectRequest};
-use crate::damage::health::{Damaged, DamagedPart, start_flash};
+use crate::damage::health::{Damaged, DamagedPart, ImmunePart, start_flash};
 use crate::damage::kinds::{DamageKinds, DamageTypeTable, check_type, label_style, merge_types};
 use crate::damage::pipeline::Healed;
 use crate::foundation::describe::{
@@ -47,7 +47,7 @@ use crate::present::character::{CLIPS_FORM, CharacterAnimator, Clips, check_clip
 use crate::present::facing::Facing;
 use crate::present::labels::{
     CritLabel, LABEL_TICK, LabelDef, LabelStyle, LabelStyleDef, LiveLabels, PartLabel, TickLabel,
-    float_label, float_owned, label_tick,
+    Words, float_label, float_words, label_tick,
 };
 use crate::react::counters::{Counters, Flags};
 use crate::react::level::LevelUp;
@@ -63,6 +63,7 @@ const CUE_RULES: &str = "cue_rules";
 
 /// The kit's cue events, in the order the cue system reads them.
 pub(crate) const DAMAGED_PART: &str = "damaged_part";
+pub(crate) const IMMUNE_PART: &str = "immune_part";
 pub(crate) const DAMAGED: &str = "damaged";
 pub(crate) const KILLED: &str = "killed";
 pub(crate) const ZONE_ENTERED: &str = "zone_entered";
@@ -96,8 +97,9 @@ const ABILITY_EVENTS: [&str; 5] = [
     ABILITY_HELD,
     ABILITY_RELEASED,
 ];
-const KIT_EVENTS: [&str; 24] = [
+const KIT_EVENTS: [&str; 25] = [
     DAMAGED_PART,
+    IMMUNE_PART,
     DAMAGED,
     KILLED,
     ZONE_ENTERED,
@@ -137,7 +139,10 @@ fn valid_event(name: &str) -> bool {
 /// An entity's reactions: for each event about it, a list of
 /// [`CueAction`]s that [`CuesPlugin`]'s system runs in order, in the fixed
 /// step the event is read. The events are the kit's `damaged_part` (one per
-/// part of a hit, before the hit's own), `damaged` and `killed` (after its
+/// part of a hit, before the hit's own), `immune_part` (one per part an
+/// immunity dropped, [`ImmunePart`](crate::ImmunePart), its amount before
+/// the resistances, after the step's `damaged_part`s), `damaged` and
+/// `killed` (after its
 /// `damaged`; the hit's source is the other), `zone_entered`
 /// (the zone is the subject, the entrant the other), `cooldown_elapsed`,
 /// `hit` (the hitting entity is the subject, the target the other),
@@ -296,7 +301,7 @@ impl Cues {
 /// | shake | `{ "shake": 0.3 }`, camera trauma added, or `{ "shake": { "trauma": 0.3, "near": 100, "far": 500 } }`, whole within `near` of the [`CueListener`] and falling to none at `far` |
 /// | squash | `{ "squash": "on_hit" }`, the subject's squash trigger |
 /// | flash | `{ "flash": {} }`, the subject's [`HitFlash`](crate::HitFlash) |
-/// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label; on `damaged_part`, `{ "label": {} }` floats it in its type's style, `merge`, `ticks` and `crit` grouping a target's numbers ([`type_label`](CueAction::type_label)) |
+/// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label; on `damaged_part` and `immune_part`, `{ "label": {} }` floats it in its type's style, `merge`, `ticks` and `crit` grouping a target's numbers, `text` floating words in its place and `offset` moving it ([`type_label`](CueAction::type_label)) |
 /// | roll | `{ "roll": "slime_drops" }`, a `loot_tables` entry or the [`WeightedTable`] in place: each prefab drawn spawned at the event's position from the subject |
 /// | burst | `{ "burst": "sparks" }`, or `{ "burst": { "particles": "gore", "key": true } }`, a one-off particle burst ([`burst`](crate::burst)) under the [`BurstBudget`](crate::BurstBudget) |
 /// | effect | `{ "effect": "burning" }`, or `{ "effect": { "id": "burning", "target": "other" } }`, an `effects` entry or the [`Effect`] in place under `id`, queued on the subject from the event's other entity, or on the other from the subject |
@@ -360,9 +365,11 @@ pub(crate) enum ActionKind {
     },
     Squash(SquashTrigger),
     Flash,
-    /// `None`: a `damaged_part`'s amount in its type's style.
+    /// `None`: a `damaged_part`'s or an `immune_part`'s amount in its type's
+    /// style.
     Label(Option<LabelStyle>),
-    /// A `damaged_part`'s amount in its type's style, grouped.
+    /// A `damaged_part`'s or an `immune_part`'s amount in its type's style,
+    /// grouped, or a text label's words.
     PartLabel(Box<PartLabel>),
     /// A table's draws at its place, each prefab's centre on it when
     /// `centred`.
@@ -977,12 +984,13 @@ impl CueAction {
         Self::of(ActionKind::Label(Some(style)))
     }
 
-    /// Floats a `damaged_part` occurrence's amount at its position in its
-    /// part's type's style: the `label_style` of the deepest damage type
-    /// among its kinds, the first by name at one depth, from that type's
-    /// `damage_types` entry or its nearest ancestor's that sets one. A part
-    /// whose types set none floats nothing, and the trace says so. Data form
-    /// `{ "label": {} }`; the load refuses it on any other event.
+    /// Floats a `damaged_part` or `immune_part` occurrence's amount at its
+    /// position in its part's type's style: the `label_style` of the
+    /// deepest damage type among its kinds, the first by name at one depth,
+    /// from that type's `damage_types` entry or its nearest ancestor's that
+    /// sets one. A part whose types set none floats nothing, and the trace
+    /// says so. Data form `{ "label": {} }`; the load refuses it on any
+    /// other event.
     ///
     /// Three fields group a target's numbers, each optional: `merge`, the
     /// seconds a target's parts of a type sum over, its first plain part
@@ -996,6 +1004,15 @@ impl CueAction {
     /// crit sums, then the parts that float at once, then the sums whose
     /// window closed. Open sums are presentation, unsaved, aged on the fixed
     /// step; without the fields each part floats alone.
+    ///
+    /// Two more fields, each optional: `text`, words floated in place of
+    /// the amount, which takes `merge` but neither `ticks` nor `crit`: a
+    /// target's first part of a type floats them at once and opens a
+    /// window, which each repeat within it of the last holds open and which
+    /// floats nothing at its close, so a stream of parts floats one label
+    /// (an "Immune" where an immunity drops a part); and `offset`, `[x, y]`
+    /// UI units right and down off the event's point that the label floats
+    /// from, so words sit apart from a number of the same hit.
     ///
     /// # Examples
     ///
@@ -2439,6 +2456,7 @@ impl Default for CueEventNames {
         Self(
             [
                 (DAMAGED_PART, true, true, true),
+                (IMMUNE_PART, true, true, true),
                 (DAMAGED, true, true, true),
                 (KILLED, true, true, true),
                 (ZONE_ENTERED, false, true, false),
@@ -3312,7 +3330,7 @@ pub(crate) fn check_world_cue(cue: &WorldCueActions, world: &World) -> Result<()
 /// Checks `actions`, run for `event`, against the World: each prefab,
 /// sound, loot table and effect ID and an inline table's prefabs or
 /// effect's fields, a `label` on an event with an amount and a style-less
-/// one on `damaged_part` only, and a `target: other` on an event with
+/// one on `damaged_part` and `immune_part` only, and a `target: other` on an event with
 /// another entity; `field` names the list.
 fn check_actions(
     world: &World,
@@ -3362,7 +3380,9 @@ fn check_actions(
                     event.name,
                 ));
             }
-            ActionKind::Label(None) | ActionKind::PartLabel(_) if event.name != DAMAGED_PART => {
+            ActionKind::Label(None) | ActionKind::PartLabel(_)
+                if event.name != DAMAGED_PART && event.name != IMMUNE_PART =>
+            {
                 return Err(MissingAsset::new(
                     at,
                     "cue event with a damage type's label style",
@@ -3416,7 +3436,8 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// and [`LABEL_TICK`] in the present phase.
 ///
 /// Each fixed step, the cue system reads its sources, each once through an
-/// `EventCursor`: [`DamagedPart`] (`damaged_part`), [`Damaged`] (a
+/// `EventCursor`: [`DamagedPart`] (`damaged_part`),
+/// [`ImmunePart`](crate::ImmunePart) (`immune_part`), [`Damaged`] (a
 /// `damaged` occurrence, then a `killed` one for a kill), [`ZoneEntered`],
 /// [`CooldownElapsed`],
 /// [`Struck`](crate::Struck) (`hit`), [`Healed`](crate::Healed),
@@ -3435,8 +3456,8 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// every
 /// occurrence's entity cues, then every occurrence's matching rules (rules
 /// in entry-ID order, then file order); each list in its written order, so
-/// in each pass every `damaged_part` runs before the step's `damaged` and
-/// `killed`. A rule matches on its event, its tag filter over the subject's
+/// in each pass every `damaged_part`, then every `immune_part`, runs before
+/// the step's `damaged` and `killed`. A rule matches on its event, its tag filter over the subject's
 /// [`Tags`](crate::Tags) and its `kind` filter over the occurrence's
 /// [`DamageKinds`](crate::DamageKinds). `counter` and `flag` apply at once, `prefab` and
 /// `roll` spawns queue as they are met, a `roll` drawing from the
@@ -3448,8 +3469,8 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 ///
 /// A `cue_rules` entry is a list of rules,
 /// `[{ "on": "killed", "filter": { "all": ["team.enemy"] }, "do": [{ "counter": { "name": "kills", "add": 1, "target": "game" } }] }]`,
-/// `filter` everything by default. On `damaged`, `killed` and
-/// `damaged_part`, a rule's `kind`, `{ "all": [..], "any": [..], "none": [..] }`
+/// `filter` everything by default. On `damaged`, `killed`, `damaged_part`
+/// and `immune_part`, a rule's `kind`, `{ "all": [..], "any": [..], "none": [..] }`
 /// of declared damage types or their ancestors, read as a tag filter reads
 /// tags, passes the occurrences whose damage kinds match it (a kill's are
 /// its hit's); everything by default, and an untyped occurrence passes only
@@ -3691,6 +3712,7 @@ const SWEEP_EVERY: f64 = 1.0;
 #[derive(Default)]
 struct Reactor {
     parts: EventCursor<DamagedPart>,
+    immune: EventCursor<ImmunePart>,
     damaged: EventCursor<Damaged>,
     /// The late pass's occurrences: the cues the step's own actions and
     /// world cues pushed.
@@ -3726,8 +3748,9 @@ struct Reactor {
     sums: HashMap<(usize, Entity, DamageKinds, bool), OpenSum>,
     /// The step's crit sums, floated at its end in the order they opened.
     crits: Vec<OpenSum>,
-    /// The step's parts that float on their own, floated after its crits.
-    fresh: Vec<(LabelStyle, Vec2, f32)>,
+    /// The step's parts that float on their own, floated after its crits:
+    /// each one's style, point, offset and words.
+    fresh: Vec<(LabelStyle, Vec2, Vec2, Words)>,
     /// The sums whose window closed this step, floated last, in the order
     /// they opened.
     closing: Vec<OpenSum>,
@@ -3769,8 +3792,8 @@ struct GroupChoice {
 }
 
 /// A part label's sum while it is open: its label and target, the sum and
-/// how many parts made it, where it floats, the seconds left, its style and
-/// when it opened.
+/// how many parts made it, where it floats, the seconds left, its style,
+/// when it opened and its offset. A text label's window sums nothing.
 struct OpenSum {
     label: usize,
     subject: Entity,
@@ -3780,6 +3803,8 @@ struct OpenSum {
     left: f32,
     style: LabelStyle,
     order: u64,
+    /// UI units off its point it floats from: its label's `offset`.
+    offset: Vec2,
 }
 
 /// Seconds a part label's window may end early by and still close, against
@@ -3891,14 +3916,16 @@ impl Reactor {
         // then the parts that float on their own, then the sums whose
         // window closed.
         for open in self.crits.drain(..) {
-            float_owned(world, open.style, open.position, open.sum);
+            let words = Words::Amount(open.sum);
+            float_words(world, open.style, open.position, open.offset, words);
         }
-        for (style, at, amount) in self.fresh.drain(..) {
-            float_owned(world, style, at, amount);
+        for (style, at, offset, words) in self.fresh.drain(..) {
+            float_words(world, style, at, offset, words);
         }
         for open in self.closing.drain(..) {
             if open.parts > 0 {
-                float_owned(world, open.style, open.position, open.sum);
+                let words = Words::Amount(open.sum);
+                float_words(world, open.style, open.position, open.offset, words);
             }
         }
         for entity in self.despawns.drain(..) {
@@ -4621,6 +4648,10 @@ impl Reactor {
     /// type's `style`: a crit into its target's crit sum for the step; a
     /// tick into its own sum at the tick size; a plain part at once when it
     /// opens a window, else into the window's sum; each alone without one.
+    /// A text label floats its words at once when it opens a window, and a
+    /// repeat within the window holds it open and floats nothing; each part
+    /// floats them without one. Each floats its label's offset off the
+    /// point.
     fn part_label(
         &mut self,
         world: &mut World,
@@ -4631,6 +4662,38 @@ impl Reactor {
     ) {
         let id = std::ptr::from_ref(label) as usize;
         let subject = occurrence.subject;
+        let offset = label.offset.map_or(Vec2::ZERO, Vec2::from);
+        if let Some(text) = &label.text {
+            let key = (id, subject, occurrence.kinds, false);
+            if let (Some(open), Some(window)) = (self.sums.get_mut(&key), label.merge) {
+                open.left = window;
+                open.position = occurrence.position;
+                return;
+            }
+            let words = Words::Text(text.clone());
+            let Some(window) = label.merge else {
+                self.fresh.push((style, occurrence.position, offset, words));
+                return;
+            };
+            self.fresh
+                .push((style.clone(), occurrence.position, offset, words));
+            self.opened += 1;
+            self.sums.insert(
+                key,
+                OpenSum {
+                    label: id,
+                    subject,
+                    sum: 0.0,
+                    parts: 0,
+                    position: occurrence.position,
+                    left: window,
+                    style,
+                    order: self.opened,
+                    offset,
+                },
+            );
+            return;
+        }
         if occurrence.has(CRIT)
             && let Some(crit) = label.crit
         {
@@ -4652,6 +4715,7 @@ impl Reactor {
                     left: 0.0,
                     style: style.with_size(crit.size).with_color(crit.color),
                     order: 0,
+                    offset,
                 }),
             }
             return;
@@ -4665,7 +4729,8 @@ impl Reactor {
             _ => style,
         };
         let Some(window) = label.merge else {
-            self.fresh.push((style, occurrence.position, amount));
+            self.fresh
+                .push((style, occurrence.position, offset, Words::Amount(amount)));
             return;
         };
         let key = (id, subject, occurrence.kinds, tick);
@@ -4681,8 +4746,9 @@ impl Reactor {
         let (sum, parts) = if tick && !first {
             (amount, 1)
         } else {
+            let words = Words::Amount(amount);
             self.fresh
-                .push((style.clone(), occurrence.position, amount));
+                .push((style.clone(), occurrence.position, offset, words));
             (0.0, 0)
         };
         self.opened += 1;
@@ -4697,6 +4763,7 @@ impl Reactor {
                 left: window,
                 style,
                 order: self.opened,
+                offset,
             },
         );
     }
@@ -4720,6 +4787,7 @@ impl Reactor {
     fn read(&mut self, world: &mut World) {
         let Self {
             parts,
+            immune,
             damaged,
             zones,
             cooldowns,
@@ -4747,6 +4815,20 @@ impl Reactor {
                     kinds: event.kinds,
                     bits: damage_bits(event.periodic, event.crit),
                     ..Occurrence::new(DAMAGED_PART, event.entity, position)
+                });
+            }
+        }
+        if let Some(queue) = world.get_resource::<EventQueue<ImmunePart>>() {
+            for event in immune.read(queue) {
+                let position = event
+                    .position
+                    .unwrap_or_else(|| body_point(world, event.entity));
+                occurrences.push(Occurrence {
+                    amount: Some(event.amount),
+                    other: event.source,
+                    kinds: event.kinds,
+                    bits: damage_bits(event.periodic, event.crit),
+                    ..Occurrence::new(IMMUNE_PART, event.entity, position)
                 });
             }
         }
@@ -5075,7 +5157,7 @@ fn describe_cues(world: &mut World) {
             .field(FieldDescription::new(
                 "label",
                 FieldType::Shape("label_action"),
-                "the event's amount floated at its position in a `label_style`; on `damaged_part`, without a font, in its type's, grouped by `merge`, `ticks` and `crit`",
+                "the event's amount floated at its position in a `label_style`; on `damaged_part` and `immune_part`, without a font, in its type's, grouped by `merge`, `ticks` and `crit`, or its `text` in the amount's place",
             ))
             .field(FieldDescription::new(
                 "roll",
@@ -5409,13 +5491,13 @@ fn describe_cues(world: &mut World) {
         .roundtrip(round_trip::<LabelStyleDef>),
         ComponentDescription::new(
             "label_action",
-            "A `label` action: a `label_style` that names its font, or on `damaged_part` none, its part's type's style, which the grouping fields take.",
+            "A `label` action: a `label_style` that names its font, or on `damaged_part` and `immune_part` none, its part's type's style, which the grouping fields, `text` and `offset` take.",
         )
         .field(
             FieldDescription::new(
                 "font",
                 FieldType::Text,
-                "a manifest font face, and with it a `label_style`'s other fields; without it, a `damaged_part`'s type's style",
+                "a manifest font face, and with it a `label_style`'s other fields; without it, a `damaged_part`'s or `immune_part`'s type's style",
             )
             .default("null"),
         )
@@ -5426,7 +5508,7 @@ fn describe_cues(world: &mut World) {
                     min: Bound::Exclusive(0.0),
                     max: Bound::Open,
                 },
-                "seconds a target's parts of a type sum over: the first plain part floats at once, the rest as one sum when the window closes; without it each part floats alone",
+                "seconds a target's parts of a type sum over: the first plain part floats at once, the rest as one sum when the window closes; without it each part floats alone; a text label's window floats nothing at its close and each repeat holds it open",
             )
             .default("null"),
         )
@@ -5443,6 +5525,22 @@ fn describe_cues(world: &mut World) {
                 "crit",
                 FieldType::Shape("label_crit"),
                 "a step's crit parts on a target floated at once as one sum",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "text",
+                FieldType::Text,
+                "words floated in the amount's place, with `merge` but neither `ticks` nor `crit`: a target's first part of a type at once, its repeats none while each comes within the window of the last",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "offset",
+                FieldType::Vec2,
+                "UI units right and down off the event's point the label floats from",
             )
             .default("null"),
         )
@@ -5623,7 +5721,7 @@ fn describe_cues(world: &mut World) {
             FieldDescription::new(
                 "kind",
                 FieldType::Filter,
-                "the occurrences it runs for by their damage kinds, each a declared damage type or an ancestor of one; `damaged`, `killed` and `damaged_part` only",
+                "the occurrences it runs for by their damage kinds, each a declared damage type or an ancestor of one; `damaged`, `killed`, `damaged_part` and `immune_part` only",
             )
             .default("{}"),
         )
@@ -5631,7 +5729,7 @@ fn describe_cues(world: &mut World) {
             FieldDescription::new(
                 "periodic",
                 FieldType::Bool,
-                "`true` passes a periodic request's tick, `false` a blow; `damaged`, `killed` and `damaged_part` only",
+                "`true` passes a periodic request's tick, `false` a blow; `damaged`, `killed`, `damaged_part` and `immune_part` only",
             )
             .default("null"),
         )

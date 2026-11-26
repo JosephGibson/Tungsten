@@ -596,8 +596,10 @@ impl DamagedPart {
 /// fire-proof creature). A part of 0, a part a factor above 0 brings to
 /// nothing, and a target that takes no hits (gone, dead or, unless the
 /// request is periodic, inside its window) send none; nothing else of the
-/// hit happens for it, and it is no cue event. Build one with
-/// [`ImmunePart::new`].
+/// hit happens for it. The cue system reads it as `immune_part`, where a
+/// rule's type label can float words such as "Immune" in its number's
+/// place ([`CueAction::type_label`](crate::CueAction::type_label)). Build
+/// one with [`ImmunePart::new`].
 ///
 /// # Examples
 ///

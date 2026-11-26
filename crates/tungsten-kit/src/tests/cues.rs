@@ -2086,6 +2086,123 @@ fn a_grouped_label_is_checked_as_a_type_label_with_its_ticks_kind_declared() {
     assert!(unknown.contains("ticks.kind.all.0"), "{unknown}");
 }
 
+// The owner's notes of 2026-11-25: `immune_part` and a text label.
+
+/// A fire-proof target whose `immune_part` cue is the type label `label`
+/// and whose `damaged_part` cue floats each part's number.
+fn fireproof(world: &mut World, label: &Value) -> Entity {
+    let text: CueAction = serde_json::from_value(json!({ "label": label })).unwrap();
+    world.spawn_with((
+        crate::Health::new(1000.0),
+        crate::Resist::new().with_factor("elemental.fire", 0.0),
+        Cues::new()
+            .on("immune_part", [text])
+            .on("damaged_part", [CueAction::type_label()]),
+    ))
+}
+
+/// Every label floated so far, in float order, as text, colour and offset:
+/// a frame of no time drawn, so none ages or rises.
+fn floated_off(world: &mut World, schedule: &mut Schedule) -> Vec<(String, [u8; 4], Vec2)> {
+    world.resource_mut::<Time>().advance_frame(0.0);
+    schedule.run_stage(tungsten_core::Stage::PostUpdate, world, |_, _| {});
+    world
+        .resource_mut::<tungsten_core::WorldLabels>()
+        .drain()
+        .map(|label| (label.text, label.color, label.offset))
+        .collect()
+}
+
+#[test]
+fn an_immune_part_floats_a_text_label_once_while_its_repeats_keep_coming() {
+    let (mut world, mut schedule) = typed_running(styled());
+    let label = json!({ "text": "Immune", "merge": 0.25, "offset": [0, -18] });
+    let wisp = fireproof(&mut world, &label);
+    let immune = ("Immune".to_string(), RED, Vec2::new(0.0, -18.0));
+    // The first dropped part floats the words at once, in fire's style,
+    // off the point; no number floats.
+    hit(&mut world, wisp, &[(4.0, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    let mut so_far = vec![immune.clone()];
+    assert_eq!(floated_off(&mut world, &mut schedule), so_far);
+    // A stream, a part every 0.1 s for a second: the one label still.
+    for step in 1..=60 {
+        if step % 6 == 0 {
+            hit(&mut world, wisp, &[(3.0, &["elemental.fire"])]);
+        }
+        typed_step(&mut world, &mut schedule);
+        assert_eq!(
+            floated_off(&mut world, &mut schedule),
+            so_far,
+            "step {step}: held open"
+        );
+    }
+    // Past the window after the last repeat, the next opens anew.
+    for _ in 0..16 {
+        typed_step(&mut world, &mut schedule);
+    }
+    assert_eq!(floated_off(&mut world, &mut schedule), so_far);
+    hit(&mut world, wisp, &[(3.0, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    so_far.push(immune);
+    assert_eq!(floated_off(&mut world, &mut schedule), so_far);
+}
+
+#[test]
+fn a_mixed_hit_floats_the_number_that_landed_and_the_words_for_the_dropped_part() {
+    let (mut world, mut schedule) = typed_running(styled());
+    let wisp = fireproof(&mut world, &json!({ "text": "Immune", "offset": [0, -18] }));
+    hit(
+        &mut world,
+        wisp,
+        &[(5.0, &["elemental.cold"]), (4.0, &["elemental.fire"])],
+    );
+    typed_step(&mut world, &mut schedule);
+    let immune = ("Immune".to_string(), RED, Vec2::new(0.0, -18.0));
+    let mut so_far = vec![("5".to_string(), BLUE, Vec2::ZERO), immune.clone()];
+    assert_eq!(
+        floated_off(&mut world, &mut schedule),
+        so_far,
+        "the number, then the words: immune_part after damaged_part"
+    );
+    // Without a window each dropped part floats its own.
+    hit(&mut world, wisp, &[(4.0, &["elemental.fire"])]);
+    hit(&mut world, wisp, &[(2.0, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    so_far.extend([immune.clone(), immune]);
+    assert_eq!(floated_off(&mut world, &mut schedule), so_far);
+}
+
+#[test]
+fn a_text_label_is_a_type_labels_with_no_ticks_crit_or_empty_words() {
+    let world = typed_rig();
+    let text = json!({ "text": "Immune", "merge": 0.25, "offset": [0, -18] });
+    for event in ["immune_part", "damaged_part"] {
+        check(&world, &json!({ event: [{ "label": text }] })).unwrap();
+    }
+    assert!(check(&world, &json!({ "hit": [{ "label": text }] })).is_err());
+    for refused in [
+        json!({ "font": "sans", "text": "Immune" }),
+        json!({ "text": "Immune", "ticks": { "size": 10 } }),
+        json!({ "text": "Immune", "crit": { "size": 24, "color": [1, 1, 0, 1] } }),
+        json!({ "text": "" }),
+        json!({ "offset": [0, "up"] }),
+    ] {
+        assert!(
+            serde_json::from_value::<CueAction>(json!({ "label": refused })).is_err(),
+            "{refused}"
+        );
+    }
+    // Its data round-trips.
+    let action: CueAction = serde_json::from_value(json!({ "label": text })).unwrap();
+    assert_eq!(
+        serde_json::to_value(&action).unwrap(),
+        json!({ "label": {
+        "text": "Immune", "merge": 0.25, "offset": [0.0, -18.0]
+    } })
+    );
+}
+
 /// 7.10p's rule filters and limits, and `CueEvent::of`.
 mod filters {
     use super::*;

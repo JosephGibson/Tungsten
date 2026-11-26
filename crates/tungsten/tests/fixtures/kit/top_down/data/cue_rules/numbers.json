@@ -25,5 +25,26 @@
         }
       }
     ]
+  },
+  {
+    "on": "immune_part",
+    "filter": {
+      "all": [
+        "numbered"
+      ]
+    },
+    "periodic": false,
+    "do": [
+      {
+        "label": {
+          "text": "Immune",
+          "merge": 0.25,
+          "offset": [
+            0,
+            -18
+          ]
+        }
+      }
+    ]
   }
 ]

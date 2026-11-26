@@ -1935,6 +1935,68 @@ fn a_numbered_targets_numbers_merge_tick_and_crit_by_its_cue_rule() {
     }
 }
 
+#[test]
+fn a_fire_proof_targets_dropped_parts_float_one_immune_beside_its_number() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // `numbers.json`'s `immune_part` rule: "Immune" in fire's style, 18
+        // UI units up, its blows' repeats merged while each comes within
+        // 0.25 s of the last.
+        let target = harness.world_mut().spawn_with((
+            Health::new(1000.0),
+            Tags::new(["numbered"]),
+            crate::kit::Resist::new().with_factor("elemental.fire", 0.0),
+        ));
+        harness.step(1);
+        let part = |amount: f32, kind: &str| DamagePart::new(amount).with_tags(Tags::new([kind]));
+        // A blow of cold and fire, then fire every 0.1 s to a second: a
+        // flamethrower's stream on it.
+        // Each label's birth, a frame drawing one more of its words than
+        // the frame before: its words and where it first draws.
+        let mut fresh: Vec<(String, [f32; 2])> = Vec::new();
+        let mut before: Vec<String> = Vec::new();
+        let mut next = 0.0;
+        for frame in 0..frames_for(1.5, dt) {
+            let t = frame as f32 * dt;
+            if t + 1e-4 >= next && t < 1.0 {
+                let mut parts = vec![part(3.0, "elemental.fire")];
+                if frame == 0 {
+                    parts.insert(0, part(5.0, "elemental.cold"));
+                }
+                DamageRequest::from_parts(target, parts)
+                    .with_position(Vec2::new(40.0, 20.0))
+                    .queue(harness.world_mut());
+                next += 0.1;
+            }
+            harness.step(1);
+            let runs = &harness.draw().unwrap().world_labels;
+            for (i, run) in runs.iter().enumerate() {
+                // The newest of its words float last: the runs past the
+                // count the frame before are born now.
+                let earlier = runs[..i]
+                    .iter()
+                    .filter(|r| r.content == run.content)
+                    .count();
+                let was = before.iter().filter(|text| **text == run.content).count();
+                if earlier >= was {
+                    fresh.push((run.content.clone(), run.position));
+                }
+            }
+            before = runs.iter().map(|run| run.content.clone()).collect();
+        }
+        let texts: Vec<&str> = fresh.iter().map(|(text, _)| text.as_str()).collect();
+        assert_eq!(
+            texts,
+            ["5", "Immune"],
+            "dt {dt}: the cold's number and one label for the stream's dropped fire"
+        );
+        assert!(
+            fresh[1].1[1] < fresh[0].1[1] && fresh[1].1[0] == fresh[0].1[0],
+            "dt {dt}: the words over the number: {fresh:?}"
+        );
+    }
+}
+
 // M75: a guard saved mid-swing: its state machine, its sword's activation,
 // its spiked shield's touches and its mover's turn, the targets named again
 // after the load by the game's own IDs.
