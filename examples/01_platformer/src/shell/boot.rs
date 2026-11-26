@@ -450,9 +450,6 @@ fn rgba([r, g, b]: [u8; 3], alpha: f32) -> [u8; 4] {
     [r, g, b, (alpha.clamp(0.0, 1.0) * 255.0).round() as u8]
 }
 
-/// A sprite's tint: the sprite shader multiplies its linear texels by the
-/// tint as it is, so an sRGB colour is decoded first; its alpha rounds up,
-/// so a glow's faint outer layers still draw.
 /// A rect of the linear `color` from the disc's solid middle.
 fn solid(position: [f32; 2], size: [f32; 2], color: [u8; 4]) -> SpriteInstance {
     let mut sprite = SpriteInstance::whole(position, size, 0.0, color);
@@ -461,6 +458,9 @@ fn solid(position: [f32; 2], size: [f32; 2], color: [u8; 4]) -> SpriteInstance {
     sprite
 }
 
+/// A sprite's tint: the sprite shader multiplies its linear texels by the
+/// tint as it is, so an sRGB colour is decoded first; its alpha rounds up,
+/// so a glow's faint outer layers still draw.
 fn tint(color: [u8; 3], alpha: f32) -> [u8; 4] {
     let decode = |c: u8| {
         let c = f32::from(c) / 255.0;

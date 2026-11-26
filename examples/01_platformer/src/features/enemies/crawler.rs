@@ -156,9 +156,9 @@ fn hold(world: &mut World, crawler: Entity) {
 /// Backs `crawler` out of its fear (V20): facing the player, it runs
 /// straight away from the light's centre at [`RETREAT_PACE`] of its run;
 /// stopped behind by a wall or a ledge, it stands, cornered, its touch
-/// hurting as ever. Its scare shows throughout, its first step sounding
-/// [`Sound::CrawlerRetreated`] with a puff of frost breath; in the air it
-/// keeps its run.
+/// hurting as ever. Its scare shows throughout, its first step puffing
+/// frost breath with a hiss, its `retreating` effect's cue rule; in the
+/// air it keeps its run.
 pub fn retreat(world: &mut World, crawler: Entity) {
     let (Some((light, _)), Some(at)) = (fear(world), centre(world, crawler)) else {
         return;
