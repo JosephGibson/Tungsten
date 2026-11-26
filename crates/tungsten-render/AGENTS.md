@@ -5,7 +5,7 @@ Rules over the root `AGENTS.md`; the `tungsten-wgpu` skill adds more.
 ## Shaders (`D-057`, narrows `D-023`)
 
 - Runtime shaders are manifest-tracked assets under `assets/shaders/`, loaded through `ShaderRegistry` + `ShaderModuleCache`.
-- Mirrors: `src/shaders/stock/**` ↔ `assets/shaders/stock/**` stay byte-equal; edit both copies together. The loader skips a reload when bytes match the compiled-in source. `sprite.wgsl` and `lit_sprite.wgsl` exist only in `assets/shaders/`, which the renderer compiles in. `quad`, `debug_line`, `mesh_particle`, `ui` and `present_blit` are internal, not manifest-tracked.
+- Mirrors: `src/shaders/stock/**` ↔ `assets/shaders/stock/**` stay byte-equal; edit both copies together. The loader skips a reload when bytes match the compiled-in source. `sprite.wgsl` and `lit_sprite.wgsl` exist only in `assets/shaders/`, which the renderer compiles in. Every other `.wgsl` under `src/`, outside `stock/`, is internal, not manifest-tracked.
 - Body edits use the umbrella watcher and Naga validation; signature/layout changes rebuild. Pipeline coverage and manifest-add limits are in [the reload matrix](../../DESIGN.md#hot-reload--m9).
 - LYGIA helpers under `stock/lygia/` keep their MIT headers.
 

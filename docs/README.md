@@ -24,7 +24,7 @@ Start with the document that owns the fact you need. Code and executable checks 
 | Asset types, manifest sections and coverage exceptions | [Assets](assets.md) |
 | Rooms, `tungsten level`, a script's level steps and the level editor | [Levels](levels.md) |
 | Font inventory and registered IDs | [Fonts](../assets/fonts/README.md) |
-| Test fixture provenance | [GPU fixtures](../examples/02_bench/tests/fixtures/README.md), [audio fixtures](../crates/tungsten-core/tests/fixtures/audio/README.md) |
+| Test fixture provenance | [GPU fixtures](../examples/02_bench/tests/fixtures/README.md), [UI fixtures](../examples/03_fixtures/tools/README.md), [audio fixtures](../crates/tungsten-core/tests/fixtures/audio/README.md) |
 | Dated releases and historical paths | [Changelog](../CHANGELOG.md) |
 
 For large docs, locate a heading with `rg -n '^#{1,3} ' <file>` and read the relevant section. Check current source before applying an old benchmark result or proposed API. Keep operational rules in AGENTS, rationale in decisions, and execution steps in active plans; skills route to those sources instead of copying their tables.

@@ -11,7 +11,7 @@ Rules for this game's repository; `CLAUDE.md` imports this file.
 - `src/sample/` is the demo: a new game deletes it, with `tests/game/sample.rs`, writes its own gameplay and points the seam at it. The shell's tests that read the sample follow the new gameplay.
 - Each feature lives in `src/features/<name>/`: `mod.rs` holds its `Plugin` (none with nothing to register: then its spawn functions, which the state that runs it calls), its `GameState` and constants, `components.rs` its components and resources, `systems.rs` its systems. `game.rs` only adds the feature plugins. A component two features share goes in `src/shared.rs`. A feature plugin registers its own prefab components, data kinds and systems, as a kit item does.
 - In the template itself, `src/shell/` stays within 2,900 lines of code and `src/` within 3,400 (`tokei`, `D-199`). `tools/` scripts make its sounds, sprites and icon, which `build.rs` links.
-- `tests/game/` holds the tests, one module a part: `sample`, `shell`, `saves`, `settings`, `keys`, `boot`, `fit` (every screen at six windows and scale extremes), `screens` and `visual` (the title's pixels, behind `TUNGSTEN_VISUAL_REGRESSION=1`).
+- `tests/game/` holds the tests, one module a part: `sample`, `shell`, `saves`, `settings`, `keys`, `boot`, `fit` (every screen at six windows and scale extremes), `screens`, `script` (the game's script hooks) and `visual` (the title's pixels, behind `TUNGSTEN_VISUAL_REGRESSION=1`).
 - `tungsten check` loads every file the game reads; `tungsten package` makes the players' archive in `dist/`.
 
 ## Saves and options

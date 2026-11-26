@@ -10,7 +10,7 @@ Read [renderer AGENTS.md](../../../crates/tungsten-render/AGENTS.md) first; it o
 ## Stack
 
 - Native `wgpu` plus hand-written WGSL. No Three.js, TSL, GLSL or HLSL.
-- Entry points: [renderer.rs](../../../crates/tungsten-render/src/renderer.rs) and [lib.rs](../../../crates/tungsten-render/src/lib.rs). Pipelines live in `sprite.rs`, `lit_sprite.rs`, `quad.rs`, `ui.rs`, `text/gpu.rs`, `material.rs`, `debug_line.rs`, `mesh_particle.rs` and `post/`.
+- Entry points: [renderer.rs](../../../crates/tungsten-render/src/renderer.rs) and [lib.rs](../../../crates/tungsten-render/src/lib.rs). Pipelines live in `sprite.rs`, `lit_sprite.rs`, `lighting.rs` (the `light_tiles` compute pass), `quad.rs`, `ui.rs`, `text/gpu.rs`, `material.rs`, `debug_line.rs`, `mesh_particle.rs`, `post/` and `renderer.rs` (the present blit).
 
 ## Core/render seam (D-007, D-016, D-018)
 

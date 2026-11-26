@@ -19,7 +19,7 @@ Run from the repo root. `just --list` lists wrappers for the raw commands; [vali
 
 ## Tests
 
-[Validation](docs/validation.md) owns the detailed change-to-check matrix and targeted edit-loop commands. `just checks [PATH…]` prints recommendations; with no paths it reads Git changes including untracked files (`--base REF` includes committed work). It runs no checks. Finish substantial work with `just check`; milestone and release requirements still apply.
+[Validation](docs/validation.md) owns the detailed change-to-check matrix and targeted edit-loop commands. `just checks [PATH…]` prints recommendations; with no paths it reads Git changes including untracked files (`--base REF` includes committed work). It runs no checks. Finish substantial work with `just check`; plan and release requirements still apply.
 
 GPU smoke and pixel comparisons stay local. A CPU test run without `TUNGSTEN_VISUAL_REGRESSION=1` skips pixel comparisons; report them as not run.
 
@@ -63,4 +63,4 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 
 ## Not doing
 
-CI is CPU-only and informational (`D-070`; releases: `D-232`); GPU, audio and perf checks stay local. No `LEARNINGS.md`, no PR process beyond the release PR (`D-079`), no asset preprocessing. Add a scoped `AGENTS.md` only where a directory has unique rules.
+CI is CPU-only and informational (`D-070`; releases: `D-232`); GPU, audio and perf checks stay local. No `LEARNINGS.md`, no PR process beyond the release PR (`D-227`), no asset preprocessing. Add a scoped `AGENTS.md` only where a directory has unique rules.

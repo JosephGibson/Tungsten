@@ -59,7 +59,7 @@ same gate and with no fixture: it captures frame 5 of the preset and of three
 knob variants (the scene alone, MSAA 4, SMAA) under
 `TUNGSTEN_RENDER_DEPTH_SORT=cpu_stable` and again under `gpu_depth`, and
 asserts that each pair is equal with `tolerance = 0`. The preset's sprites
-interleave classes within a z-run over three tile layers, and its generated
+interleave classes within each of its three z layers, over one tile layer, and its generated
 sprites are never measured, so none of its batches is solid: the test holds
 the tested path, and the fixtures' `seams` sheet
 (`the_depth_sort_draws_the_painters_sheet`) the solid batches' order.
@@ -77,7 +77,7 @@ the agreed fallback (`pixels_above_tolerance < 16`).
 - wgpu backend: Vulkan (`WGPU_BACKEND=vulkan`), wgpu 30.0.1
 - Toolchain: rustc 1.98.1, `dev` profile
 - Date: 2026-10-04
-- Commit: `6a61cc2` plus M34 (`D-116`): text draws with the packaged JetBrains Mono 2.211. The previous fixture (`0521a2a0…`) drew the HUD with JetBrains Mono 2.304 installed on this machine, which shadowed the packaged face while system fonts loaded; only the two HUD lines differ (2155 pixels).
+- Commit: `6a61cc2` plus M34 (`D-116`): text draws with the packaged JetBrains Mono 2.211.
 - SHA-256: `969bdf53653edb27761701085236b0b36399ceb782c0ee4427e812d11c453f06`
 - Accepted after two consecutive `just visual` passes (2026-10-04, 22:58:08Z and 22:58:15Z)
 

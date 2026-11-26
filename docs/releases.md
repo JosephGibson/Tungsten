@@ -45,7 +45,7 @@ Start at the repo root on the version branch `0.NN`, named for the next minor, w
    just release-preflight X.Y.Z --repo JosephGibson/Tungsten
    ```
 
-The tag names the tested release commit. A tag is fixed once its GitHub Release exists: never move or force-push it. Through 0.109 squash merges left the tags off `main`'s history; from 0.110 they sit on it.
+The tag names the tested release commit. A tag is fixed once its GitHub Release exists: never move or force-push it.
 
 ## Reference
 
@@ -127,7 +127,7 @@ A crate is used under the first alternative of its license expression, in the or
 - **No license text matches an alternative** (a new crate, or a version without license files): fetch the upstream license file at the crate's version tag, or at the commit in the package's `.cargo_vcs_info.json`, into `licenses/<crate>/`, and add a `texts` entry to [`licenses/clarifications.json`](../licenses/clarifications.json) with the crate's `version` and the file's `source` URL. Never write a license text from memory.
 - **Checked at another version:** a clarified crate moved to another version. Check upstream again, refresh its files and update `version`.
 - **Font files with neither a bundled entry nor a review:** read whether the crate's sources compile a font in (`include_bytes!`). If one does, add a `bundled` entry with the font's license text, its copyright as the font's name table or upstream gives it, the source and the version, as `sctk-adwaita`'s Cantarell has. If none does, add a `fonts_reviewed` note saying what the fonts serve.
-- **An embedded work's file is missing:** `EMBEDDED_WORKS` in `scripts/release.py` lists the third-party works the engine compiles in, each with its license file (SMAA's lookup textures and shaders). Add a row when engine code embeds another one.
+- **An embedded work's file is missing:** `EMBEDDED_WORKS` in `scripts/release.py` lists the third-party works the engine compiles in, each with its license file (SMAA's lookup textures and shaders, and the engine font's JetBrains Mono faces). Add a row when engine code embeds another one.
 
 The font guard covers font files only. After a dependency change, check the new or updated crates' sources for other data they compile in under another license than their own (`include_bytes!` or `include_str!` outside tests and doc comments), and add each as a `bundled` entry.
 
@@ -155,9 +155,9 @@ Current `gh release create` with assets creates a draft, uploads assets, then pu
 
 ### Handoff and next branch
 
-End the task with the agent's push done and the owner's block, after a short report: version/tag, the checks run and their results, anything not checked (platforms, GPU) and what the commands will do. Then the next prompt, labelled as [tungsten-next's reply](../.claude/skills/tungsten-next/SKILL.md) labels it: `**New session** (repo root) · Opus 5.5 · <max | xhigh> · <route> · <reason>`, then the prompt in a `text` block, then its NoMachine line. Take the model and effort from the [operating rules' tiers](operating-rules.md#tiers) (`D-151`), never from memory. After the tag push, report the tagged commit SHA, run ID/result, release URL and archive/checksum verification. For preparation-only work, report requested/current versions, whether a cut occurred, checks and the remaining steps.
+End the task with the agent's push done and the owner's block, after a short report: version/tag, the checks run and their results, anything not checked (platforms, GPU) and what the commands will do. Then the next prompt in the shape of [tungsten-next's reply](../.claude/skills/tungsten-next/SKILL.md), its label line, `text` block and NoMachine line, the model and effort from the [operating rules' tiers](operating-rules.md#tiers) (`D-151`), never from memory. After the tag push, report the tagged commit SHA, run ID/result, release URL and archive/checksum verification. For preparation-only work, report requested/current versions, whether a cut occurred, checks and the remaining steps.
 
-The owner's block starts the next branch from the version branch (`git switch -c 0.<NN+1> 0.NN`, `git push -u origin 0.<NN+1>`), before the merge, so the next session starts at once; `main` then gains only merges of branches it already holds, which preflight admits at the next release. A branch made from a local branch tracks nothing until `-u` gives it its own upstream, so a plain push never reaches `main`, which only the release pull request changes. Preflight prints a note in place of those commands when the next branch already exists: inspect its history before integrating; never reset it automatically. The release pull request is the only one the procedure needs; preserve existing authorization.
+The owner's block starts the next branch from the version branch (`git switch -c 0.<NN+1> 0.NN`, `git push -u origin 0.<NN+1>`), before the merge (step 5). A branch made from a local branch tracks nothing until `-u` gives it its own upstream, so a plain push never reaches `main`, which only the release pull request changes. Preflight prints a note in place of those commands when the next branch already exists: inspect its history before integrating; never reset it automatically. The release pull request is the only one the procedure needs; preserve existing authorization.
 
 ### Tool sources
 

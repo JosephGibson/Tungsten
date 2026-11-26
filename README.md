@@ -8,32 +8,17 @@ Hand-rolled ECS with archetypal storage, deferred command buffers, and typed eve
 
 ## Documents
 
-| File | Use |
-| --- | --- |
-| [`docs/README.md`](docs/README.md) | Documentation map, canonical sources and targeted reading |
-| [`docs/getting-started.md`](docs/getting-started.md) | Making a game from the template, `templates/basic`, in a repository of its own |
-| [`DESIGN.md`](DESIGN.md) | Architecture, stack, subsystem detail |
-| [`AGENTS.md`](AGENTS.md) | Repo rules, commands, test layers, task workflow |
-| [`DECISIONS.md`](DECISIONS.md) | Non-obvious decisions and rationale (`D-NNN`) |
-| [`docs/DECISION_INDEX.md`](docs/DECISION_INDEX.md) | One-line decision summaries; find the relevant rationale without loading the full log |
-| [`CLAUDE.md`](CLAUDE.md) | Imports `AGENTS.md` for Claude Code |
-| [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) | On-demand task → source-path map for coding agents |
-| [`docs/agent-setup.md`](docs/agent-setup.md) | How Claude Code and Codex load instructions, skills and search filters |
-| [`docs/plans/README.md`](docs/plans/README.md) | Session-plan storage rules and milestone plan naming convention |
-| [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md) | Profiling workflow: capture rules, compare verdicts, capacity search |
-| [`docs/perf/benchmarks.md`](docs/perf/benchmarks.md) | The six benchmarks, their knobs, owned metrics and calibrated defaults |
-| [`docs/releases.md`](docs/releases.md) | Internal release preparation, checks, Git handoff and recovery |
-| [`CHANGELOG.md`](CHANGELOG.md) | Versioned change history |
+The [documentation map](docs/README.md) names the document that owns each kind of fact, from the architecture and the repository's rules to the release procedure, and how to read a large one.
 
 ## Quick Start
 
-Rust 1.98.1 is pinned in `rust-toolchain.toml`; rustup installs it on first use. The shared checks use [`just`](https://just.systems), `cargo-deny`, Python 3.12+, Bash and ShellCheck (the smoke scripts also need `jq` and GNU `timeout`):
+Rust 1.98.1 is pinned in `rust-toolchain.toml`; rustup installs it on first use. The shared checks use [`just`](https://just.systems), `cargo-deny`, Python 3.12+, Bash, ShellCheck and actionlint (the smoke scripts also need `jq` and GNU `timeout`):
 
 ```bash
-cargo install --locked just@1.58.0 cargo-deny@0.20.2   # ShellCheck 0.11.0: see .github/workflows/ci.yml
+cargo install --locked just@1.58.0 cargo-deny@0.20.2   # ShellCheck 0.11.0, actionlint 1.7.12: see .github/workflows/ci.yml
 just quick                              # fmt, context, repository QA, cargo check
 just check                              # fmt check, clippy -D warnings, tests
-just script-test                        # script regressions and ShellCheck
+just script-test                        # script regressions, ShellCheck and actionlint
 cargo test --workspace                  # raw equivalent of the test step
 cargo build --workspace
 cd examples/01_platformer && cargo run   # a platformer sandbox on the template
