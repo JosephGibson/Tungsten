@@ -52,17 +52,45 @@ fn target_cache_rebuilds_only_when_its_key_moves() {
 
 #[test]
 fn bloom_mip_count_clamps_to_viewport_size() {
-    // 1080p tall enough for the requested 6 mips at half-res start.
-    assert_eq!(bloom_mip_count_for_size(1920, 1080, 6), 6);
-    // 64x64 viewport: floor(log2(64)) = 6, minus 1 = 5 mip ceiling.
-    assert_eq!(bloom_mip_count_for_size(64, 64, 6), 5);
-    // Tiny viewport: floor must not underflow.
-    assert_eq!(bloom_mip_count_for_size(2, 2, 6), 1);
-    assert_eq!(bloom_mip_count_for_size(1, 1, 6), 1);
-    // max_mips = 0 still yields at least 1.
-    assert_eq!(bloom_mip_count_for_size(1024, 1024, 0), 1);
-    // Larger pyramids respect the viewport ceiling.
-    assert_eq!(bloom_mip_count_for_size(1024, 1024, 8), 8);
+    for (case, width, height, max_mips, want) in [
+        (
+            "1080p is tall enough for 6 mips at a half-res start",
+            1920,
+            1080,
+            6,
+            6,
+        ),
+        (
+            "64x64: floor(log2(64)) = 6, minus 1, a 5-mip ceiling",
+            64,
+            64,
+            6,
+            5,
+        ),
+        ("a 2x2 viewport never underflows", 2, 2, 6, 1),
+        ("a 1x1 viewport never underflows", 1, 1, 6, 1),
+        ("max_mips 0 still yields one", 1024, 1024, 0, 1),
+        (
+            "plenty of headroom caps at max_mips, not at the viewport",
+            1024,
+            1024,
+            6,
+            6,
+        ),
+        (
+            "a larger pyramid respects the viewport's ceiling",
+            1024,
+            1024,
+            8,
+            8,
+        ),
+    ] {
+        assert_eq!(
+            bloom_mip_count_for_size(width, height, max_mips),
+            want,
+            "{case}: {width}x{height}, max {max_mips}"
+        );
+    }
 }
 
 #[test]

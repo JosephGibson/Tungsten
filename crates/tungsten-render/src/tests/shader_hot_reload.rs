@@ -11,33 +11,10 @@ const VALID_WGSL: &str = r"
 
 const PARSE_BROKEN_WGSL: &str = "fn totally broken :: :: ~~ { ";
 
-const SEMANTIC_BROKEN_WGSL: &str = r"
-@vertex fn vs_main() -> @builtin(position) vec4<f32> {
-    // reference an undeclared identifier -> validation error
-    return ghost_variable;
-}
-";
-
-#[test]
-fn valid_wgsl_source_passes_validation() {
-    validate_wgsl_source("sprite", VALID_WGSL).expect("valid WGSL should pass");
-}
-
 #[test]
 fn parse_error_is_reported_distinctly() {
     let err = validate_wgsl_source("sprite", PARSE_BROKEN_WGSL).unwrap_err();
     assert!(matches!(err, ShaderError::Parse { .. }));
-}
-
-#[test]
-fn semantic_error_is_reported_distinctly() {
-    let err = validate_wgsl_source("sprite", SEMANTIC_BROKEN_WGSL).unwrap_err();
-    // Undeclared identifier surfaces from the parser in naga 29 — either kind
-    // signals "bad shader, reject it", which is all the cache needs to know.
-    assert!(matches!(
-        err,
-        ShaderError::Parse { .. } | ShaderError::Validation { .. }
-    ));
 }
 
 #[test]

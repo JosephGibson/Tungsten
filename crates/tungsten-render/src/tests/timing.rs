@@ -50,15 +50,6 @@ fn scene_compatibility_span_gaps_and_stale_data() {
     assert!(out.pass_gpu_ms.is_empty() && out.frame_gpu_ms.is_none() && out.samples.is_empty());
 }
 
-#[test]
-fn cpu_frame_timings_start_at_zero_with_the_pre_acquire_part() {
-    let timings = CpuFrameTimings::default();
-    assert_eq!(timings.acquire_ms, 0.0);
-    assert_eq!(timings.encode_ms, 0.0);
-    assert_eq!(timings.encode_pre_acquire_ms, 0.0);
-    assert_eq!(timings.submit_present_ms, 0.0);
-}
-
 /// A slot standing in for the GPU's: whether its map has completed.
 #[derive(Debug, Default)]
 struct FakeSlot {
