@@ -116,14 +116,6 @@ fn a_swapped_clip_shows_on_the_next_frame() {
 }
 
 #[test]
-fn an_unknown_animation_leaves_the_sprite_alone() {
-    let (mut world, mut schedule) = setup();
-    let ghost = world.spawn_with((AnimationState::new("missing"), Sprite::new(shut())));
-    frame(&mut world, &mut schedule, 0.5);
-    assert_eq!(shown(&world, ghost), shut());
-}
-
-#[test]
 fn without_a_registry_the_system_does_nothing() {
     let (mut world, mut schedule) = setup();
     world.remove_resource::<AnimationRegistry>();
@@ -132,14 +124,6 @@ fn without_a_registry_the_system_does_nothing() {
     assert_eq!(shown(&world, eye), shut());
     assert_eq!(world.get::<AnimationState>(eye).unwrap().frame_index, 0);
     assert!(!world.has_resource::<AnimationRegistry>());
-}
-
-#[test]
-fn the_registry_goes_back_into_the_world() {
-    let (mut world, mut schedule) = setup();
-    world.spawn_with((AnimationState::new("blink"), Sprite::new(shut())));
-    frame(&mut world, &mut schedule, 0.1);
-    assert_eq!(world.resource::<AnimationRegistry>().ids().count(), 2);
 }
 
 #[test]

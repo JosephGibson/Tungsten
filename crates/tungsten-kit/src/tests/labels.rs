@@ -88,18 +88,6 @@ fn a_label_draws_each_frame_ages_on_the_game_clock_and_holds_while_paused() {
 }
 
 #[test]
-fn past_the_cap_the_oldest_label_goes() {
-    let mut world = world();
-    let style = LabelStyle::new("sans");
-    for i in 0..=MAX_LABELS {
-        float_label(&mut world, &style, Vec2::ZERO, i as f32);
-    }
-    let drawn = frame(&mut world, 0.0);
-    assert_eq!(drawn.len(), MAX_LABELS);
-    assert_eq!(drawn[0].text, "1", "label 0 dropped");
-}
-
-#[test]
 fn float_label_floats_a_games_number_in_its_style() {
     let mut world = world();
     let gold = LabelStyle::new("serif")

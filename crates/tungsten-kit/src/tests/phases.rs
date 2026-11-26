@@ -205,28 +205,6 @@ fn joining_without_the_anchors_fails_to_resolve() {
     assert!(schedule.resolve().is_err());
 }
 
-#[test]
-fn the_phases_name_their_anchors_and_stages() {
-    assert_eq!(
-        Phase::ALL.map(Phase::name),
-        [
-            KIT_TICK,
-            KIT_INTENT,
-            KIT_MOVE,
-            KIT_OVERLAP,
-            KIT_RESOLVE,
-            KIT_REACT,
-            KIT_PRESENT
-        ]
-    );
-    assert!(
-        Phase::ALL[..6]
-            .iter()
-            .all(|phase| phase.stage() == Stage::FixedUpdate)
-    );
-    assert_eq!(Phase::Present.stage(), Stage::PostUpdate);
-}
-
 /// A plugin's build, for the edge table.
 type Build = fn(&mut Schedule, &mut World);
 
@@ -372,6 +350,28 @@ const OVERLAP_EDGES: [(&str, Build, &str, Build); 23] = [
         |s, w| LifetimePlugin.build(s, w),
     ),
 ];
+
+#[test]
+fn the_phases_name_their_anchors_and_stages() {
+    assert_eq!(
+        Phase::ALL.map(Phase::name),
+        [
+            KIT_TICK,
+            KIT_INTENT,
+            KIT_MOVE,
+            KIT_OVERLAP,
+            KIT_RESOLVE,
+            KIT_REACT,
+            KIT_PRESENT
+        ]
+    );
+    assert!(
+        Phase::ALL[..6]
+            .iter()
+            .all(|phase| phase.stage() == Stage::FixedUpdate)
+    );
+    assert_eq!(Phase::Present.stage(), Stage::PostUpdate);
+}
 
 #[test]
 fn each_overlap_edge_holds_with_its_two_plugins_alone_in_either_order() {

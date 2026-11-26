@@ -155,15 +155,24 @@ fn a_region_with_a_nan_panics() {
 }
 
 #[test]
-#[should_panic(expected = "negative or not finite")]
-fn a_negative_margin_panics() {
-    let _ = DespawnOutside::view(-1.0);
-}
-
-#[test]
-#[should_panic(expected = "negative or not finite")]
-fn an_infinite_margin_panics() {
-    let _ = DespawnOutside::view(f32::INFINITY);
+fn a_bad_view_margin_panics() {
+    for (case, margin) in [
+        ("a negative margin", -1.0),
+        ("an infinite margin", f32::INFINITY),
+    ] {
+        let Err(payload) = std::panic::catch_unwind(|| DespawnOutside::view(margin)) else {
+            panic!("{case}: DespawnOutside::view({margin}) took it");
+        };
+        let message = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| payload.downcast_ref::<&str>().copied())
+            .unwrap_or_default();
+        assert!(
+            message.contains("negative or not finite"),
+            "{case}: panicked with {message:?}"
+        );
+    }
 }
 
 #[test]

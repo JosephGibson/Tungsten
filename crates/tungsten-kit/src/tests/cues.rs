@@ -430,22 +430,33 @@ fn a_listener_hears_in_full_within_full_then_falls_to_silence_at_silent() {
     assert_eq!(listener.gain(Vec2::NAN), 0.0);
 }
 
-#[test]
-#[should_panic(expected = "0 <= full < silent")]
-fn a_listener_whose_full_reaches_its_silent_panics() {
-    let _ = CueListener::new(300.0, 300.0);
+/// The message `f` panics with; a failure naming `case` when it does not panic.
+fn panic_message(case: &str, f: impl FnOnce() + std::panic::UnwindSafe) -> String {
+    let Err(payload) = std::panic::catch_unwind(f) else {
+        panic!("{case}: no panic");
+    };
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| (*s).to_string()))
+        .unwrap_or_default()
 }
 
 #[test]
-#[should_panic(expected = "0 <= full < silent")]
-fn a_listener_with_a_negative_distance_panics() {
-    let _ = CueListener::new(-1.0, 300.0);
-}
-
-#[test]
-#[should_panic(expected = "0 <= full < silent")]
-fn a_listener_with_a_nan_distance_panics() {
-    let _ = CueListener::new(100.0, f32::NAN);
+fn a_listener_with_bad_distances_panics() {
+    for (case, full, silent) in [
+        ("full reaching silent", 300.0, 300.0),
+        ("a negative full", -1.0, 300.0),
+        ("a NaN silent", 100.0, f32::NAN),
+    ] {
+        let message = panic_message(case, || {
+            let _ = CueListener::new(full, silent);
+        });
+        assert!(
+            message.contains("0 <= full < silent"),
+            "{case}: panicked with {message:?}"
+        );
+    }
 }
 
 #[test]
@@ -607,17 +618,20 @@ fn a_game_event_registers_its_queue_and_its_name_for_cues() {
 }
 
 #[test]
-#[should_panic(expected = "is one of the kit's cue events")]
-fn a_game_event_named_as_the_kits_panics() {
-    let (mut world, mut schedule) = rig();
-    CuesOnEvent::<Looted>::new("killed", looted).build(&mut schedule, &mut world);
-}
-
-#[test]
-#[should_panic(expected = "is one of the kit's cue events")]
-fn a_game_event_named_as_one_of_cs_panics() {
-    let (mut world, mut schedule) = rig();
-    CuesOnEvent::<Looted>::new("picked_up", looted).build(&mut schedule, &mut world);
+fn a_game_event_named_as_a_kit_event_panics() {
+    for (case, name) in [
+        ("the kit's own `killed`", "killed"),
+        ("C's `picked_up`", "picked_up"),
+    ] {
+        let message = panic_message(case, || {
+            let (mut world, mut schedule) = rig();
+            CuesOnEvent::<Looted>::new(name, looted).build(&mut schedule, &mut world);
+        });
+        assert!(
+            message.contains("is one of the kit's cue events"),
+            "{case}: panicked with {message:?}"
+        );
+    }
 }
 
 #[test]
