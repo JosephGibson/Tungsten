@@ -124,6 +124,13 @@ fn validate(cfg: &BenchConfig) -> anyhow::Result<()> {
         cfg.int("moves"),
         cfg.int("bodies")
     );
+    // The cells `Cave::new` picks from, inside the walls and over the floor.
+    let cells = (cfg.int("width") - 2) * (cfg.int("height") - i64::from(FLOOR) - 1);
+    anyhow::ensure!(
+        cfg.int("paints") <= cells,
+        "rooms: `paints` ({}) paints at most the cave's {cells} open cells",
+        cfg.int("paints")
+    );
     Ok(())
 }
 

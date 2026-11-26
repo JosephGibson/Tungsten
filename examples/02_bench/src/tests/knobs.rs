@@ -134,6 +134,21 @@ fn validation_errors_name_the_knob_and_range() {
 }
 
 #[test]
+fn rooms_refuses_paints_past_its_cells() {
+    // The min preset's 40 x 24 cave paints among 38 x 19 = 722 cells.
+    let rooms = &crate::rooms::BENCH;
+    let text = resolve(rooms, Some("min"), None, Some("paints=723"))
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(
+        text.contains("`paints` (723)") && text.contains("722"),
+        "rooms' min preset with paints=723: {text:?}"
+    );
+    assert!(resolve(rooms, Some("min"), None, Some("paints=722")).is_ok());
+}
+
+#[test]
 fn next_bench_visits_every_bench_and_wraps() {
     let mut name = crate::BENCHES[0].name;
     let mut seen = Vec::new();
