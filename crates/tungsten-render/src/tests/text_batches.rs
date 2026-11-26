@@ -215,6 +215,36 @@ fn labels_count_as_a_batch() {
     );
 }
 
+#[test]
+fn copy_runs_copies_outline_and_shadow() {
+    use tungsten_core::text::{TextOutline, TextShadow};
+
+    let plain = WorldLabelRun {
+        content: "a".to_string(),
+        ..WorldLabelRun::default()
+    };
+    let styled = WorldLabelRun {
+        content: "b".to_string(),
+        outline: Some(TextOutline::new([0, 0, 0, 255], 1.5)),
+        shadow: Some(TextShadow::new([0, 0, 0, 128], Vec2::new(1.0, 2.0))),
+        ..WorldLabelRun::default()
+    };
+    // A label at an index the last frame held is the new label whole,
+    // either way round.
+    for (last, now) in [(&plain, &styled), (&styled, &plain)] {
+        let mut dst = Vec::new();
+        copy_runs(&mut dst, std::slice::from_ref(last));
+        copy_runs(&mut dst, std::slice::from_ref(now));
+        assert_eq!(
+            dst,
+            std::slice::from_ref(now),
+            "label {:?} kept at the index label {:?} held",
+            now.content,
+            last.content
+        );
+    }
+}
+
 // ---- signatures and the book ----
 
 #[test]
@@ -402,6 +432,40 @@ fn text_bounds_are_the_box_intersected_with_the_clip() {
         "an empty intersection collapses, never inverts"
     );
     assert_eq!(outside.bottom, outside.top);
+}
+
+#[test]
+fn text_bounds_take_any_clip_without_overflow() {
+    // A clip whose far edge passes i32::MAX, as a hand-built paint list can
+    // hold: the bounds as an edge at i32::MAX would give them.
+    let cases = [
+        (
+            rect(0.0, 0.0, 10.0, 10.0),
+            clip(100, 0, i32::MAX, 100),
+            (100, 0, 100, 10),
+        ),
+        (
+            rect(10.0, 20.0, 5.0, 5.0),
+            clip(0, 0, i32::MAX, i32::MAX),
+            (10, 20, 15, 25),
+        ),
+        (
+            rect(10.0, 20.0, 5.0, 5.0),
+            clip(5, 5, i32::MAX, i32::MAX),
+            (10, 20, 15, 25),
+        ),
+    ];
+    for (rect, clip, want) in cases {
+        let bounds = std::panic::catch_unwind(|| text_bounds(rect, clip));
+        let Ok(bounds) = bounds else {
+            panic!("text_bounds({rect:?}, {clip:?}) overflows");
+        };
+        assert_eq!(
+            (bounds.left, bounds.top, bounds.right, bounds.bottom),
+            want,
+            "text_bounds({rect:?}, {clip:?})"
+        );
+    }
 }
 
 #[test]

@@ -210,12 +210,13 @@ pub(crate) fn batch_signature(
 
 /// The bounds a text command draws inside: its box intersected with its clip,
 /// under the rounding rule's floor and ceil, so an unwrapped line never
-/// leaves the box the partition rule reasons about (M46 critique 2.3).
+/// leaves the box the partition rule reasons about (M46 critique 2.3). The
+/// clip's far edges saturate, so no field values overflow.
 pub(crate) fn text_bounds(rect: Rect, clip: ClipRect) -> TextBounds {
     let left = (rect.min.x.floor() as i32).max(clip.x);
     let top = (rect.min.y.floor() as i32).max(clip.y);
-    let right = (rect.max.x.ceil() as i32).min(clip.x + clip.width);
-    let bottom = (rect.max.y.ceil() as i32).min(clip.y + clip.height);
+    let right = (rect.max.x.ceil() as i32).min(clip.x.saturating_add(clip.width));
+    let bottom = (rect.max.y.ceil() as i32).min(clip.y.saturating_add(clip.height));
     TextBounds {
         left,
         top,
@@ -752,18 +753,33 @@ impl TextPipeline {
     }
 }
 
-/// Copies `src` into `dst`, reusing `dst`'s strings for the runs both hold.
+/// Copies `src` into `dst`, reusing `dst`'s strings for the runs both hold;
+/// every field is named, so one added later cannot be left stale.
 fn copy_runs(dst: &mut Vec<WorldLabelRun>, src: &[WorldLabelRun]) {
     dst.truncate(src.len());
     for (to, from) in dst.iter_mut().zip(src) {
-        to.content.clone_from(&from.content);
-        to.font_id.clone_from(&from.font_id);
-        to.font_size = from.font_size;
-        to.line_height = from.line_height;
-        to.position = from.position;
-        to.pivot = from.pivot;
-        to.scale = from.scale;
-        to.color = from.color;
+        let WorldLabelRun {
+            content,
+            font_id,
+            font_size,
+            line_height,
+            position,
+            pivot,
+            scale,
+            color,
+            outline,
+            shadow,
+        } = from;
+        to.content.clone_from(content);
+        to.font_id.clone_from(font_id);
+        to.font_size = *font_size;
+        to.line_height = *line_height;
+        to.position = *position;
+        to.pivot = *pivot;
+        to.scale = *scale;
+        to.color = *color;
+        to.outline = *outline;
+        to.shadow = *shadow;
     }
     let kept = dst.len();
     dst.extend_from_slice(&src[kept..]);
