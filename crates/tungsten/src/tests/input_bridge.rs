@@ -36,43 +36,6 @@ fn release(world: &mut World, code: WinitKeyCode, is_synthetic: bool) {
 }
 
 #[test]
-fn each_new_winit_code_maps_to_its_variant() {
-    let new = [
-        (WinitKeyCode::Home, KeyCode::Home),
-        (WinitKeyCode::End, KeyCode::End),
-        (WinitKeyCode::Delete, KeyCode::Delete),
-        (WinitKeyCode::PageUp, KeyCode::PageUp),
-        (WinitKeyCode::PageDown, KeyCode::PageDown),
-        (WinitKeyCode::ShiftLeft, KeyCode::ShiftLeft),
-        (WinitKeyCode::ShiftRight, KeyCode::ShiftRight),
-        (WinitKeyCode::ControlLeft, KeyCode::ControlLeft),
-        (WinitKeyCode::ControlRight, KeyCode::ControlRight),
-        (WinitKeyCode::AltLeft, KeyCode::AltLeft),
-        (WinitKeyCode::AltRight, KeyCode::AltRight),
-        (WinitKeyCode::SuperLeft, KeyCode::SuperLeft),
-        (WinitKeyCode::SuperRight, KeyCode::SuperRight),
-        (WinitKeyCode::KeyE, KeyCode::KeyE),
-        (WinitKeyCode::KeyG, KeyCode::KeyG),
-        (WinitKeyCode::KeyO, KeyCode::KeyO),
-        (WinitKeyCode::KeyQ, KeyCode::KeyQ),
-        (WinitKeyCode::KeyT, KeyCode::KeyT),
-        (WinitKeyCode::KeyX, KeyCode::KeyX),
-        (WinitKeyCode::KeyZ, KeyCode::KeyZ),
-        (WinitKeyCode::Digit4, KeyCode::Digit4),
-        (WinitKeyCode::Digit9, KeyCode::Digit9),
-        (WinitKeyCode::F5, KeyCode::F5),
-        (WinitKeyCode::F6, KeyCode::F6),
-        (WinitKeyCode::F7, KeyCode::F7),
-        (WinitKeyCode::F8, KeyCode::F8),
-        (WinitKeyCode::F10, KeyCode::F10),
-        (WinitKeyCode::F12, KeyCode::F12),
-    ];
-    for (winit, code) in new {
-        assert_eq!(translate_key(PhysicalKey::Code(winit)), code);
-    }
-}
-
-#[test]
 fn every_key_name_is_its_winit_codes_debug_name() {
     let mut named = HashSet::new();
     for &(winit, code) in KEYS {

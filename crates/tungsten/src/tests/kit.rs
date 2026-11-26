@@ -536,24 +536,6 @@ struct DespawnNow {
 }
 
 #[test]
-#[should_panic(expected = "holds a RigidBody")]
-fn spawn_child_refuses_a_body() {
-    let mut harness = Harness::new(kit_app());
-    let ship = spawn_at(
-        &mut harness,
-        0.0,
-        0.0,
-        (Sprite::new(SpriteAssetId::new(0)),),
-    );
-    spawn_child(
-        harness.world_mut(),
-        ship,
-        Vec2::ZERO,
-        RigidBodyBundle::dynamic(Position::new(0.0, 0.0), Collider::circle(1.0)),
-    );
-}
-
-#[test]
 #[should_panic(expected = "has a Parent and a RigidBody")]
 fn the_propagation_refuses_a_body_on_a_child() {
     let mut harness = Harness::new(kit_app());

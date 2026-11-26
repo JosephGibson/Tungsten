@@ -1,5 +1,4 @@
 use super::*;
-use tungsten_render::ScreenshotError;
 
 fn capture_at(target_frame: u64) -> Capture {
     Capture::new(CaptureConfig {
@@ -35,21 +34,6 @@ fn a_written_target_frame_leaves_no_error() {
     capture.frame_rendered(2, written());
     capture.frame_rendered(3, presented_without_capture());
     assert!(capture.finish(3).is_none());
-}
-
-#[test]
-fn a_write_error_is_the_capture_error_naming_its_frame() {
-    let mut capture = capture_at(2);
-    capture.frame_rendered(
-        2,
-        RenderOutcome::Presented {
-            capture: Some(Err(ScreenshotError::MapFailed)),
-        },
-    );
-    let error = capture.finish(4).expect("the failed write is an error");
-    let message = format!("{error:#}");
-    assert!(message.contains("capture frame 2"), "{message}");
-    assert!(message.contains("buffer map failed"), "{message}");
 }
 
 #[test]

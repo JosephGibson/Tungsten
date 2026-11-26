@@ -63,72 +63,61 @@ fn spawn_squasher(world: &mut World, scale: Vec2, on: SquashTrigger) -> Entity {
 }
 
 #[test]
-fn shake_tick_accumulates_events_in_one_frame() {
-    let mut world = make_world(0.0);
-    world.insert_resource(CameraController::default());
-    send_shake(&mut world, 0.2);
-    send_shake(&mut world, 0.3);
+fn shake_tick_sums_a_frames_events_up_to_one() {
+    // a tolerance of 0 keeps the saturated case exact
+    for (case, adds, want, tolerance) in [
+        ("0.2 + 0.3", [0.2, 0.3], 0.5, 1e-6),
+        ("0.9 + 0.9, held at one", [0.9, 0.9], 1.0, 0.0),
+    ] {
+        let mut world = make_world(0.0);
+        world.insert_resource(CameraController::default());
+        for add in adds {
+            send_shake(&mut world, add);
+        }
 
-    shake_tick_system(&mut world);
+        shake_tick_system(&mut world);
 
-    let trauma = world
-        .get_resource::<CameraController>()
-        .unwrap()
-        .shake_trauma;
-    assert!((trauma - 0.5).abs() <= 1e-6, "trauma={trauma}");
-}
-
-#[test]
-fn shake_tick_saturates_at_one() {
-    let mut world = make_world(0.0);
-    world.insert_resource(CameraController::default());
-    send_shake(&mut world, 0.9);
-    send_shake(&mut world, 0.9);
-
-    shake_tick_system(&mut world);
-
-    assert_eq!(
-        world
+        let trauma = world
             .get_resource::<CameraController>()
             .unwrap()
-            .shake_trauma,
-        1.0
-    );
+            .shake_trauma;
+        assert!(
+            (trauma - want).abs() <= tolerance,
+            "{case}: trauma={trauma}"
+        );
+    }
 }
 
 #[test]
-fn shake_tick_decays_by_decay_times_dt() {
-    let mut world = make_world(0.1);
-    let mut controller = CameraController::default();
-    controller.shake_decay = 2.0;
-    controller.shake_trauma = 1.0;
-    world.insert_resource(controller);
+fn shake_tick_decays_by_decay_times_dt_to_zero() {
+    // a tolerance of 0 keeps the floored case exact; `None` keeps the default decay
+    for (case, dt, decay, trauma, want, tolerance) in [
+        ("decay 2, trauma 1, dt 0.1", 0.1, Some(2.0), 1.0, 0.8, 1e-6),
+        (
+            "the default decay, trauma 0.2, dt 1, floored",
+            1.0,
+            None,
+            0.2,
+            0.0,
+            0.0,
+        ),
+    ] {
+        let mut world = make_world(dt);
+        let mut controller = CameraController::default();
+        if let Some(decay) = decay {
+            controller.shake_decay = decay;
+        }
+        controller.shake_trauma = trauma;
+        world.insert_resource(controller);
 
-    shake_tick_system(&mut world);
+        shake_tick_system(&mut world);
 
-    let trauma = world
-        .get_resource::<CameraController>()
-        .unwrap()
-        .shake_trauma;
-    assert!((trauma - 0.8).abs() <= 1e-6, "trauma={trauma}");
-}
-
-#[test]
-fn shake_tick_floors_trauma_at_zero() {
-    let mut world = make_world(1.0);
-    let mut controller = CameraController::default();
-    controller.shake_trauma = 0.2;
-    world.insert_resource(controller);
-
-    shake_tick_system(&mut world);
-
-    assert_eq!(
-        world
+        let got = world
             .get_resource::<CameraController>()
             .unwrap()
-            .shake_trauma,
-        0.0
-    );
+            .shake_trauma;
+        assert!((got - want).abs() <= tolerance, "{case}: trauma={got}");
+    }
 }
 
 #[test]

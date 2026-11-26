@@ -96,35 +96,51 @@ fn assert_close(actual: f32, expected: f32) {
 }
 
 #[test]
-fn prepare_pcm_upmixes_mono_to_stereo() {
-    let data = SoundData {
-        samples: vec![0.5, 0.6, 0.7],
-        sample_rate: 44100,
-        channels: 1,
-    };
-    assert_eq!(prepare_pcm(&data, 44100), [0.5, 0.5, 0.6, 0.6, 0.7, 0.7]);
-}
-
-#[test]
-fn prepare_pcm_passes_stereo_through_at_its_rate() {
-    let data = SoundData {
-        samples: vec![0.1, 0.2, 0.3, 0.4],
-        sample_rate: 44100,
-        channels: 2,
-    };
-    assert_eq!(prepare_pcm(&data, 44100), [0.1, 0.2, 0.3, 0.4]);
-}
-
-#[test]
-fn prepare_pcm_takes_a_wider_sources_first_two_channels() {
-    let data = SoundData {
-        samples: vec![0.1, 0.2, 9.0, 9.0, 0.3, 0.4, 9.0, 9.0],
-        sample_rate: 48_000,
-        channels: 4,
-    };
-    assert_eq!(prepare_pcm(&data, 48_000), [0.1, 0.2, 0.3, 0.4]);
-    // Resampled to half the rate: one frame in two.
-    assert_eq!(prepare_pcm(&data, 24_000), [0.1, 0.2]);
+fn prepare_pcm_gives_stereo_at_the_device_rate() {
+    let stereo = vec![0.1, 0.2, 0.3, 0.4];
+    let four = vec![0.1, 0.2, 9.0, 9.0, 0.3, 0.4, 9.0, 9.0];
+    for (case, samples, channels, rate, device, want) in [
+        (
+            "mono: each sample doubled",
+            vec![0.5, 0.6, 0.7],
+            1,
+            44100,
+            44100,
+            vec![0.5, 0.5, 0.6, 0.6, 0.7, 0.7],
+        ),
+        (
+            "stereo: passed through at its rate",
+            stereo.clone(),
+            2,
+            44100,
+            44100,
+            stereo,
+        ),
+        (
+            "four channels: the first two",
+            four.clone(),
+            4,
+            48_000,
+            48_000,
+            vec![0.1, 0.2, 0.3, 0.4],
+        ),
+        // resampled to half the rate: one frame in two
+        (
+            "four channels at half the rate",
+            four,
+            4,
+            48_000,
+            24_000,
+            vec![0.1, 0.2],
+        ),
+    ] {
+        let data = SoundData {
+            samples,
+            sample_rate: rate,
+            channels,
+        };
+        assert_eq!(prepare_pcm(&data, device), want, "{case}");
+    }
 }
 
 #[test]

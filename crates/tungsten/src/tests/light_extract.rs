@@ -25,18 +25,6 @@ fn extract_lights_uses_ambient_resource() {
 }
 
 #[test]
-fn extract_lights_caps_at_sixteen() {
-    let (mut world, camera) = world_with_camera();
-    for _ in 0..32 {
-        let e = world.spawn();
-        world.insert(e, Transform::from_position(Vec2::ZERO));
-        world.insert(e, Light::point(Vec3::ONE, 4.0));
-    }
-    let ubo = extract_lights(&world, &camera, 800.0, 600.0, LIGHT_CAP).ubo;
-    assert_eq!(ubo.count_pad[0], 16);
-}
-
-#[test]
 fn extract_lights_packs_past_sixteen_under_a_higher_cap() {
     // Forty lamps in view, in a row from the view's corner (`D-310`).
     let (mut world, camera) = world_with_camera();

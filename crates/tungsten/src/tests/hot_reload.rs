@@ -26,70 +26,52 @@ fn touch(path: &Path) {
 }
 
 #[test]
-fn accept_extra_file_matches_exact_path() {
-    let dir = tempdir();
-    let input_json = dir.join("input.json");
-    touch(&input_json);
-
-    let mut extras = HashSet::new();
-    extras.insert(canonical_or_clone(&input_json));
-    let roots: Vec<PathBuf> = Vec::new();
-
-    assert!(accept_path(&input_json, &roots, &extras));
-}
-
-#[test]
-fn accept_recursive_root_matches_nested_file() {
-    let dir = tempdir();
-    let assets = dir.join("assets");
-    fs::create_dir_all(&assets).unwrap();
-    let nested = assets.join("sprites").join("hero.png");
-    touch(&nested);
-
-    let roots = vec![canonical_or_clone(&assets)];
-    let extras = HashSet::new();
-
-    assert!(
-        accept_path(&nested, &roots, &extras),
-        "files under a recursive root must be accepted"
-    );
-}
-
-#[test]
-fn reject_sibling_file_in_extra_file_parent() {
-    // Extra-file watch is exact, not parent-wide.
+fn accept_path_takes_an_extra_file_exactly_and_a_root_recursively() {
+    // An extra-file watch is exact, not parent-wide; a recursive root match is directional.
     let dir = tempdir();
     let input_json = dir.join("input.json");
     let tungsten_json = dir.join("tungsten.json");
-    touch(&input_json);
-    touch(&tungsten_json);
-
-    let mut extras = HashSet::new();
-    extras.insert(canonical_or_clone(&input_json));
-    let roots: Vec<PathBuf> = Vec::new();
-
-    assert!(
-        !accept_path(&tungsten_json, &roots, &extras),
-        "sibling of an extra-file entry must be filtered out"
-    );
-}
-
-#[test]
-fn reject_parent_directory_of_recursive_root() {
-    // Recursive root match is directional.
-    let dir = tempdir();
     let assets = dir.join("assets");
     fs::create_dir_all(&assets).unwrap();
+    let nested = assets.join("sprites").join("hero.png");
     let outside = dir.join("other.txt");
-    touch(&outside);
-
-    let roots = vec![canonical_or_clone(&assets)];
-    let extras = HashSet::new();
-
-    assert!(
-        !accept_path(&outside, &roots, &extras),
-        "a sibling of the watched root must not match"
-    );
+    for path in [&input_json, &tungsten_json, &nested, &outside] {
+        touch(path);
+    }
+    let extra = HashSet::from([canonical_or_clone(&input_json)]);
+    let root = vec![canonical_or_clone(&assets)];
+    for (case, path, roots, extras, accepted) in [
+        (
+            "the extra file itself",
+            &input_json,
+            Vec::new(),
+            extra.clone(),
+            true,
+        ),
+        (
+            "a file nested under a recursive root",
+            &nested,
+            root.clone(),
+            HashSet::new(),
+            true,
+        ),
+        (
+            "a sibling of an extra file",
+            &tungsten_json,
+            Vec::new(),
+            extra.clone(),
+            false,
+        ),
+        (
+            "a sibling of the watched root",
+            &outside,
+            root.clone(),
+            HashSet::new(),
+            false,
+        ),
+    ] {
+        assert_eq!(accept_path(path, &roots, &extras), accepted, "{case}");
+    }
 }
 
 #[test]

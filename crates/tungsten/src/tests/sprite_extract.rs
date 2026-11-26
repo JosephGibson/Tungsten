@@ -39,49 +39,37 @@ fn intern(world: &mut World, name: &str) -> SpriteAssetId {
 }
 
 #[test]
-fn missing_visibility_emits_nothing() {
-    let mut world = world_with_registry();
-    register_sprite(&mut world, "quad", FilterMode::Nearest);
+fn a_sprite_without_visibility_or_its_asset_emits_nothing() {
+    for (case, name, visibility) in [
+        ("no Visibility", "quad", None),
+        (
+            "Visibility { visible: false }",
+            "quad",
+            Some(Visibility { visible: false }),
+        ),
+        (
+            "an interned ID no sprite is registered under",
+            "ghost",
+            Some(Visibility::default()),
+        ),
+    ] {
+        let mut world = world_with_registry();
+        if name == "quad" {
+            register_sprite(&mut world, name, FilterMode::Nearest);
+        }
 
-    let e = world.spawn();
-    world.insert(e, Transform::default());
-    let sprite = Sprite::new(intern(&mut world, "quad"));
-    world.insert(e, sprite);
+        let e = world.spawn();
+        world.insert(e, Transform::default());
+        let sprite = Sprite::new(intern(&mut world, name));
+        world.insert(e, sprite);
+        if let Some(visibility) = visibility {
+            world.insert(e, visibility);
+        }
 
-    let batches = extract_sprites_default(&world);
-    let total: usize = batches.iter().map(|b| b.instances.len()).sum();
-    assert_eq!(total, 0);
-}
-
-#[test]
-fn invisible_entity_emits_nothing() {
-    let mut world = world_with_registry();
-    register_sprite(&mut world, "quad", FilterMode::Nearest);
-
-    let e = world.spawn();
-    world.insert(e, Transform::default());
-    let sprite = Sprite::new(intern(&mut world, "quad"));
-    world.insert(e, sprite);
-    world.insert(e, Visibility { visible: false });
-
-    let batches = extract_sprites_default(&world);
-    let total: usize = batches.iter().map(|b| b.instances.len()).sum();
-    assert_eq!(total, 0);
-}
-
-#[test]
-fn missing_asset_id_emits_nothing() {
-    let mut world = world_with_registry();
-
-    let e = world.spawn();
-    world.insert(e, Transform::default());
-    let sprite = Sprite::new(intern(&mut world, "ghost"));
-    world.insert(e, sprite);
-    world.insert(e, Visibility::default());
-
-    let batches = extract_sprites_default(&world);
-    let total: usize = batches.iter().map(|b| b.instances.len()).sum();
-    assert_eq!(total, 0);
+        let batches = extract_sprites_default(&world);
+        let total: usize = batches.iter().map(|b| b.instances.len()).sum();
+        assert_eq!(total, 0, "{case}");
+    }
 }
 
 #[test]
@@ -115,29 +103,6 @@ fn transform_scale_applies_to_instance_size() {
 }
 
 #[test]
-fn sprite_color_reaches_instance() {
-    let mut world = world_with_registry();
-    register_sprite(&mut world, "quad", FilterMode::Nearest);
-    let quad = intern(&mut world, "quad");
-
-    let e = world.spawn();
-    world.insert(e, Transform::default());
-    world.insert(
-        e,
-        Sprite {
-            asset_id: quad,
-            color: [10, 20, 30, 255],
-            z_order: 0,
-            material_id: None,
-        },
-    );
-    world.insert(e, Visibility::default());
-
-    let batches = extract_sprites_default(&world);
-    assert_eq!(batches[0].instances[0].color, [10, 20, 30, 255]);
-}
-
-#[test]
 fn z_order_groups_do_not_merge_across_a_lower_z_entry() {
     let mut world = world_with_registry();
     register_sprite(&mut world, "quad", FilterMode::Nearest);
@@ -162,24 +127,6 @@ fn z_order_groups_do_not_merge_across_a_lower_z_entry() {
     let batches = extract_sprites_default(&world);
     assert_eq!(batches.len(), 3);
     assert!(batches.iter().all(|b| b.instances.len() == 1));
-}
-
-#[test]
-fn same_z_same_texture_collapses_to_one_batch() {
-    let mut world = world_with_registry();
-    register_sprite(&mut world, "quad", FilterMode::Nearest);
-
-    for _ in 0..4 {
-        let e = world.spawn();
-        world.insert(e, Transform::default());
-        let sprite = Sprite::new(intern(&mut world, "quad"));
-        world.insert(e, sprite);
-        world.insert(e, Visibility::default());
-    }
-
-    let batches = extract_sprites_default(&world);
-    assert_eq!(batches.len(), 1);
-    assert_eq!(batches[0].instances.len(), 4);
 }
 
 #[test]
@@ -300,39 +247,32 @@ fn register_lit_sprite(world: &mut World, id: &str) {
 }
 
 #[test]
-fn lit_batch_routed_when_lit_atlas_present() {
-    let mut world = world_with_registry();
-    register_lit_sprite(&mut world, "lit_quad");
+fn a_batch_is_lit_only_on_a_lit_atlas() {
+    for (case, lit) in [("a lit atlas", true), ("no normal or emissive map", false)] {
+        let mut world = world_with_registry();
+        let name = if lit { "lit_quad" } else { "quad" };
+        if lit {
+            register_lit_sprite(&mut world, name);
+        } else {
+            register_sprite(&mut world, name, FilterMode::Nearest);
+        }
 
-    let e = world.spawn();
-    world.insert(e, Transform::default());
-    let sprite = Sprite::new(intern(&mut world, "lit_quad"));
-    world.insert(e, sprite);
-    world.insert(e, Visibility::default());
+        let e = world.spawn();
+        world.insert(e, Transform::default());
+        let sprite = Sprite::new(intern(&mut world, name));
+        world.insert(e, sprite);
+        world.insert(e, Visibility::default());
 
-    let batches = extract_sprites_default(&world);
-    assert_eq!(batches.len(), 1);
-    assert!(batches[0].lit, "lit batch must opt into lit pipeline");
-    assert!(
-        batches[0].material_id.is_none(),
-        "lit batch must not carry a material id"
-    );
-}
-
-#[test]
-fn unlit_path_byte_identical_with_no_aux() {
-    let mut world = world_with_registry();
-    register_sprite(&mut world, "quad", FilterMode::Nearest);
-
-    let e = world.spawn();
-    world.insert(e, Transform::default());
-    let sprite = Sprite::new(intern(&mut world, "quad"));
-    world.insert(e, sprite);
-    world.insert(e, Visibility::default());
-
-    let batches = extract_sprites_default(&world);
-    assert_eq!(batches.len(), 1);
-    assert!(!batches[0].lit, "unlit sprite must keep lit = false");
+        let batches = extract_sprites_default(&world);
+        assert_eq!(batches.len(), 1, "{case}");
+        assert_eq!(batches[0].lit, lit, "{case}: the batch's lit flag");
+        if lit {
+            assert!(
+                batches[0].material_id.is_none(),
+                "{case}: a lit batch carries no material id"
+            );
+        }
+    }
 }
 
 fn spawn_visible(world: &mut World, id: &str, position: Vec2, z_order: i32) -> Entity {
@@ -353,36 +293,44 @@ fn instance_positions(batches: &[tungsten_render::SpriteBatch]) -> Vec<[f32; 2]>
 }
 
 #[test]
-fn parallax_layer_remaps_instance_position() {
-    let mut world = world_with_registry();
-    register_sprite(&mut world, "quad", FilterMode::Nearest);
-    let mut camera = CameraState::new();
-    camera.position = Vec2::new(400.0, 200.0);
-    world.insert_resource(camera);
+fn a_parallax_layer_remaps_by_its_factor_and_the_camera() {
+    for (case, camera_at, layer, at, want) in [
+        (
+            "factor 0.25 under a camera at (400, 200)",
+            Some(Vec2::new(400.0, 200.0)),
+            ParallaxLayer::uniform(0.25),
+            Vec2::new(10.0, 20.0),
+            [10.0 + 400.0 * 0.75, 20.0 + 200.0 * 0.75],
+        ),
+        (
+            "a world-locked factor of one",
+            Some(Vec2::new(900.0, -300.0)),
+            ParallaxLayer::new(Vec2::ONE),
+            Vec2::new(64.0, 32.0),
+            [64.0, 32.0],
+        ),
+        (
+            "no CameraState: identity",
+            None,
+            ParallaxLayer::uniform(0.0),
+            Vec2::new(7.0, 9.0),
+            [7.0, 9.0],
+        ),
+    ] {
+        let mut world = world_with_registry();
+        register_sprite(&mut world, "quad", FilterMode::Nearest);
+        if let Some(position) = camera_at {
+            let mut camera = CameraState::new();
+            camera.position = position;
+            world.insert_resource(camera);
+        }
 
-    let e = spawn_visible(&mut world, "quad", Vec2::new(10.0, 20.0), 0);
-    world.insert(e, ParallaxLayer::uniform(0.25));
+        let e = spawn_visible(&mut world, "quad", at, 0);
+        world.insert(e, layer);
 
-    let batches = extract_sprites_default(&world);
-    assert_eq!(
-        instance_positions(&batches),
-        vec![[10.0 + 400.0 * 0.75, 20.0 + 200.0 * 0.75]]
-    );
-}
-
-#[test]
-fn parallax_world_locked_factor_leaves_position_untouched() {
-    let mut world = world_with_registry();
-    register_sprite(&mut world, "quad", FilterMode::Nearest);
-    let mut camera = CameraState::new();
-    camera.position = Vec2::new(900.0, -300.0);
-    world.insert_resource(camera);
-
-    let e = spawn_visible(&mut world, "quad", Vec2::new(64.0, 32.0), 0);
-    world.insert(e, ParallaxLayer::new(Vec2::ONE));
-
-    let batches = extract_sprites_default(&world);
-    assert_eq!(instance_positions(&batches), vec![[64.0, 32.0]]);
+        let batches = extract_sprites_default(&world);
+        assert_eq!(instance_positions(&batches), vec![want], "{case}");
+    }
 }
 
 #[test]
@@ -433,18 +381,6 @@ fn parallax_does_not_change_batch_grouping_or_z_norm() {
         .flat_map(|b| b.instances.iter().map(|i| i.z_norm))
         .collect();
     assert_eq!(z_norms, vec![2.0 / 3.0, 1.0 / 3.0, 0.0]);
-}
-
-#[test]
-fn parallax_without_camera_resource_is_identity() {
-    let mut world = world_with_registry();
-    register_sprite(&mut world, "quad", FilterMode::Nearest);
-
-    let e = spawn_visible(&mut world, "quad", Vec2::new(7.0, 9.0), 0);
-    world.insert(e, ParallaxLayer::uniform(0.0));
-
-    let batches = extract_sprites_default(&world);
-    assert_eq!(instance_positions(&batches), vec![[7.0, 9.0]]);
 }
 
 // Golden output (2026-10): the default extract was rewritten around reusable

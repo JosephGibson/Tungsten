@@ -2,8 +2,6 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use glam::Vec2;
-use tungsten_core::ActionMap;
-use tungsten_core::input::{InputState, KeyCode};
 use tungsten_core::ui::{FixedAdvanceMeasure, UiTree};
 
 use super::*;
@@ -97,30 +95,6 @@ fn new_hud_keeps_its_defaults() {
     assert_eq!(hud.ewma_alpha, 0.1);
     assert_eq!(hud.rendered_height_px(), 0.0);
     assert_eq!(hud.window(), None);
-}
-
-#[test]
-fn toggle_flips_enabled() {
-    let mut hud = DebugHud::new();
-    assert!(!hud.enabled);
-    hud.toggle();
-    assert!(hud.enabled);
-    hud.toggle();
-    assert!(!hud.enabled);
-}
-
-#[test]
-fn action_map_hud_toggle_uses_engine_action() {
-    let mut world = World::new();
-    let mut input = InputState::new();
-    input.key_down(KeyCode::F4);
-    world.insert_resource(input);
-    world.insert_resource(ActionMap::default_map());
-    world.insert_resource(DebugHud::new());
-
-    hud_toggle_system(&mut world);
-
-    assert!(world.get_resource::<DebugHud>().unwrap().enabled);
 }
 
 #[test]

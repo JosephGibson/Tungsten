@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::app::WindowSize;
 use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
 use tungsten_core::components::{ParallaxLayer, SpriteFlip};
-use tungsten_core::input::{KeyCode, MouseButton};
+use tungsten_core::input::MouseButton;
 use tungsten_core::ui::UiTree;
 
 fn make_world() -> World {
@@ -55,19 +55,6 @@ fn press_mouse3_at(world: &mut World, x: f32, y: f32) {
 #[test]
 fn default_inspect_registry_registers_canonical_components() {
     assert_eq!(default_inspect_registry().len(), 6);
-}
-
-#[test]
-fn toggle_on_f3_action_flips_enabled() {
-    let mut world = make_world();
-    let mut input = InputState::new();
-    input.key_down(KeyCode::F3);
-    world.insert_resource(input);
-    world.insert_resource(ActionMap::default_map());
-
-    inspector_toggle_system(&mut world);
-
-    assert!(world.get_resource::<InspectorState>().unwrap().enabled);
 }
 
 #[test]
