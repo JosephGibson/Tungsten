@@ -1840,6 +1840,23 @@ fn an_unknown_base_sprite_fails_the_load() {
 }
 
 #[test]
+fn an_unknown_sprite_hints_an_interned_name() {
+    // The headless load interns the manifest's sprite names and registers
+    // none; the check accepts an interned name, so the hint reads them too.
+    let mut world = world();
+    world.resource_mut::<AssetRegistry>().intern_sprite("crate");
+    let file = PrefabFile::new(Some(r#"{ "sprite": { "asset_id": "crat" } }"#));
+    let err = PrefabData::load(&file.path, &world).unwrap_err();
+    assert!(
+        err.to_string()
+            .ends_with("sprite.asset_id: unknown sprite ID `crat`; did you mean `crate`?"),
+        "an interned-only sprite is the nearest name: {err}"
+    );
+    let file = PrefabFile::new(Some(r#"{ "sprite": { "asset_id": "crate" } }"#));
+    assert!(PrefabData::load(&file.path, &world).is_ok());
+}
+
+#[test]
 fn take_id_and_the_flush_count_on_one_counter() {
     use crate::save::{SaveId, SaveState, Saved, name, take_id};
 

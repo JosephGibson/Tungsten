@@ -257,6 +257,9 @@ impl Behind {
         }
         let mut queue = lock(&self.shared.state);
         if queue.dead {
+            // The slot's older staged save, if any, is no longer its
+            // newest: the flush drops it and reads go to the slot's file.
+            queue.pending.remove(slot);
             drop(queue);
             return Ok(staged.commit(&mut RealOps)?);
         }

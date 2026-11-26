@@ -1200,7 +1200,8 @@ fn layer_draw_of(layer: &TiledLayer, kind: LayerKind) -> Result<LayerDraw, Strin
 /// Tiled's `#rrggbb` (opaque) or `#aarrggbb` as RGBA bytes.
 fn tiled_color(text: &str) -> Option<[u8; 4]> {
     let hex = text.strip_prefix('#')?;
-    if !(hex.len() == 6 || hex.len() == 8) || !hex.is_ascii() {
+    // Hex digits alone: `from_str_radix` would take a pair's leading `+`.
+    if !(hex.len() == 6 || hex.len() == 8) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     let byte = |at: usize| u8::from_str_radix(&hex[at..at + 2], 16).ok();

@@ -912,9 +912,31 @@ impl Room {
     ) -> Result<Vec<(u32, u32)>, RoomError> {
         self.layer_index("layer", layer)?;
         let listed: Vec<(u32, u32)> = match (rect, cells) {
-            (Some([x, y, w, h]), None) => (y..y.saturating_add(h))
-                .flat_map(|row| (x..x.saturating_add(w)).map(move |col| (col, row)))
-                .collect(),
+            (Some([x, y, w, h]), None) => {
+                if w == 0 || h == 0 {
+                    return Ok(Vec::new());
+                }
+                let [cols, rows] = self.size;
+                let (right, bottom) = (x.saturating_add(w), y.saturating_add(h));
+                // The first cell past the room in row order, as a listing
+                // finds it, found first: a rect far past the room is not listed.
+                let past = if x >= cols || y >= rows {
+                    Some((x, y))
+                } else if right > cols {
+                    Some((cols, y))
+                } else {
+                    (bottom > rows).then_some((x, rows))
+                };
+                if let Some((col, row)) = past {
+                    return Err(RoomError::new(
+                        "rect",
+                        format!("cell ({col}, {row}) is past the room's {}", self.extent()),
+                    ));
+                }
+                (y..bottom)
+                    .flat_map(|row| (x..right).map(move |col| (col, row)))
+                    .collect()
+            }
             (None, Some(cells)) => cells.iter().map(|&[col, row]| (col, row)).collect(),
             _ => {
                 return Err(RoomError::new("", "a paint gives one of `rect` or `cells`"));
@@ -1072,12 +1094,12 @@ fn move_to(id: &str, at: [f32; 2]) -> RoomCommand {
     })
 }
 
-/// The `set` that puts `old` back at `set`'s path.
-fn set_back(set: &SetCommand, old: Value) -> RoomCommand {
+/// The `set` that undoes `set`: `old` put back at the path [`edit`] gave.
+fn set_back(set: &SetCommand, (path, old): (String, Value)) -> RoomCommand {
     RoomCommand::Set(SetCommand {
         id: set.id.clone(),
         layer: set.layer.clone(),
-        path: set.path.clone(),
+        path,
         value: old,
     })
 }
@@ -1140,7 +1162,8 @@ fn shape_anchor(shape: &RoomShape) -> [u32; 2] {
 /// room's top or left.
 fn shift_shape(shape: &mut RoomShape, dx: i64, dy: i64) -> Result<(), String> {
     let shift = |value: &mut u32, by: i64| -> Result<(), String> {
-        let moved = i64::from(*value) + by;
+        // Saturated, so an offset past `i64::MAX` leaves the room too.
+        let moved = i64::from(*value).saturating_add(by);
         *value = u32::try_from(moved)
             .map_err(|_| format!("the shape would leave the room ({moved} is past its edge)"))?;
         Ok(())
@@ -1162,14 +1185,16 @@ fn shift_shape(shape: &mut RoomShape, dx: i64, dy: i64) -> Result<(), String> {
 }
 
 /// Sets `value` at the dotted `path` of `model` through its JSON, `null`
-/// removing the field; returns the old value (`null` when absent). With
-/// `overrides`, `set.<key>` names one key of `set` whole.
+/// removing the field; returns the path and value that undo it: `path` and
+/// its old value (`null` when absent), or `null` at the first parent the
+/// set created, so the undo takes that parent away too. With `overrides`,
+/// `set.<key>` names one key of `set` whole.
 fn edit<T: Serialize + serde::de::DeserializeOwned>(
     model: &mut T,
     path: &str,
     value: &Value,
     overrides: bool,
-) -> Result<Value, RoomError> {
+) -> Result<(String, Value), RoomError> {
     let mut json = serde_json::to_value(&*model)
         .map_err(|e| RoomError::new("path", format!("the model does not write: {e}")))?;
     let segments: Vec<&str> = match path.strip_prefix("set.") {
@@ -1183,14 +1208,18 @@ fn edit<T: Serialize + serde::de::DeserializeOwned>(
         ));
     }
     let (last, parents) = segments.split_last().expect("split yields one");
+    let mut created = None;
     let mut target = &mut json;
-    for segment in parents {
+    for (depth, segment) in parents.iter().enumerate() {
         let Value::Object(fields) = target else {
             return Err(RoomError::new(
                 "path",
                 format!("`{path}` steps into a value that is not an object"),
             ));
         };
+        if created.is_none() && !fields.contains_key(*segment) {
+            created = Some(segments[..=depth].join("."));
+        }
         target = fields
             .entry((*segment).to_owned())
             .or_insert_with(|| Value::Object(Map::new()));
@@ -1217,7 +1246,10 @@ fn edit<T: Serialize + serde::de::DeserializeOwned>(
             },
         )
     })?;
-    Ok(old)
+    Ok(match created {
+        Some(parent) => (parent, Value::Null),
+        None => (path.to_owned(), old),
+    })
 }
 
 /// One applied batch and the batch that undoes it.

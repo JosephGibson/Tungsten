@@ -794,10 +794,24 @@ pub fn select<'v>(value: &'v Value, path: Option<&str>) -> Result<&'v Value, Str
     }
 }
 
+/// Two JSON numbers by value: two integers exactly, whatever their size,
+/// and a float with either through `f64`.
+fn number_order(x: &serde_json::Number, y: &serde_json::Number) -> Option<Ordering> {
+    let integer = |n: &serde_json::Number| {
+        n.as_i64()
+            .map(i128::from)
+            .or_else(|| n.as_u64().map(i128::from))
+    };
+    match (integer(x), integer(y)) {
+        (Some(x), Some(y)) => Some(x.cmp(&y)),
+        _ => x.as_f64()?.partial_cmp(&y.as_f64()?),
+    }
+}
+
 /// `==` on JSON values, numbers compared by value.
 fn values_equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
-        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
+        (Value::Number(x), Value::Number(y)) => number_order(x, y) == Some(Ordering::Equal),
         (Value::Array(x), Value::Array(y)) => {
             x.len() == y.len() && x.iter().zip(y).all(|(x, y)| values_equal(x, y))
         }
@@ -812,7 +826,7 @@ fn values_equal(a: &Value, b: &Value) -> bool {
 
 fn order(a: &Value, b: &Value) -> Option<Ordering> {
     match (a, b) {
-        (Value::Number(x), Value::Number(y)) => x.as_f64()?.partial_cmp(&y.as_f64()?),
+        (Value::Number(x), Value::Number(y)) => number_order(x, y),
         (Value::String(x), Value::String(y)) => Some(x.cmp(y)),
         _ => None,
     }
@@ -1479,7 +1493,8 @@ impl Default for ScriptHooks {
 }
 
 impl ScriptHooks {
-    /// The core probes: `frame`, `entities`, `count`, `camera` and `place`.
+    /// The core probes: `frame`, `entities`, `count`, `camera`, `place` and
+    /// `room`.
     #[must_use]
     pub fn new() -> Self {
         let mut hooks = Self {

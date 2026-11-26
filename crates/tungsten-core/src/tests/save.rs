@@ -1093,6 +1093,54 @@ fn a_writer_that_dies_leaves_its_queue_to_the_flush_and_later_saves_commit_at_on
 }
 
 #[test]
+fn a_save_made_after_the_writer_dies_supersedes_the_slots_staged_save() {
+    let (syncing, in_sync) = mpsc::channel();
+    let (release, sync_gate) = mpsc::channel();
+    let slots = behind(HeldOps {
+        syncing: Some(syncing),
+        sync_gate: Some(sync_gate),
+        panic_sync: true,
+        ..HeldOps::free()
+    });
+    let old = Progress {
+        level: 1,
+        name: "old".into(),
+    };
+    slots.save("a", &progress()).unwrap();
+    in_sync.recv_timeout(HELD).expect("the writer syncs `a`");
+    // `b`'s save is staged behind the one the writer holds.
+    slots.save("b", &old).unwrap();
+
+    // The writer unwinds inside `a`'s sync and leaves `b`'s save staged.
+    release.send(()).unwrap();
+    let start = std::time::Instant::now();
+    while !lock(&slots.behind.as_ref().unwrap().shared.state).dead {
+        assert!(start.elapsed() < HELD, "the writer dies inside `a`'s sync");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+
+    // A newer save of `b`, committed where it is made, takes the staged
+    // one's place.
+    slots.save("b", &progress()).unwrap();
+    assert_eq!(
+        slots.load::<Progress>("b").unwrap(),
+        progress(),
+        "a load after the in-place save reads it, not the older staged save"
+    );
+    slots.flush().unwrap();
+    assert_eq!(
+        slots.load::<Progress>("b").unwrap(),
+        progress(),
+        "the flush does not rename the older staged save over the newer"
+    );
+    assert_eq!(
+        files(&slots),
+        ["b.json"],
+        "the older save's temp file is gone, and `a`'s was lost with it"
+    );
+}
+
+#[test]
 fn the_slots_keep_their_auto_traits_with_a_writer_inside() {
     fn auto<T: Send + Sync + std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
     auto::<SaveSlots>();

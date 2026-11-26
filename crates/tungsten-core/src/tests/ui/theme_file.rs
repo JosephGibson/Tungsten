@@ -192,8 +192,11 @@ fn colours_are_rrggbb_or_rrggbbaa() {
         "#",
         "#ff00ff00ff",
         "#ééé",
+        // `from_str_radix` takes a leading `+`; the schema's pattern does not.
+        "#+f+f+f",
+        "#+0+0+0+0",
     ] {
-        let err = parse_color(bad).unwrap_err();
+        let err = parse_color(bad).expect_err(bad);
         assert!(err.contains(bad), "{bad}: {err}");
     }
     let err =

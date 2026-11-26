@@ -185,7 +185,11 @@ impl PrefabData {
                     .is_none_or(|sprites| sprites.sprite_id(name).is_none())
                     .then(|| {
                         let hint = sprites.and_then(|sprites| {
-                            let mut names: Vec<&str> = sprites.sprite_names().collect();
+                            // Every interned name, as `sprite_id` accepts:
+                            // a headless load interns and registers none.
+                            let mut names: Vec<&str> = (0..)
+                                .map_while(|index| sprites.sprite_name(SpriteAssetId::new(index)))
+                                .collect();
                             names.sort_unstable();
                             data::nearest(name, names.into_iter())
                         });

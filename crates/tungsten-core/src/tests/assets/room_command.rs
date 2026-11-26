@@ -285,6 +285,59 @@ fn painting_null_removes_overrides() {
 }
 
 #[test]
+fn a_paint_rect_far_past_the_room_fails_without_listing_it() {
+    let (tileset, layers) = world();
+    let context = RoomContext {
+        room: "cave",
+        tileset: &tileset,
+        layers: &layers,
+        prefabs: &PREFABS,
+    };
+    // Each fails naming the first cell past the room in row order, as a
+    // listing of its cells finds it. The first two would list 2^32 cells a
+    // row: one allocation of 34 GB before any check.
+    let max = u32::MAX;
+    for (rect, cell) in [
+        ([0, 0, max, max], "(40, 0)"),
+        ([45, 30, max, max], "(45, 30)"),
+        ([0, 0, 41, 1], "(40, 0)"),
+        ([39, 2, 1, 100], "(39, 24)"),
+    ] {
+        for (verb, command) in [
+            (
+                "paint",
+                json!({ "paint": { "layer": "art", "rect": rect, "tile": "plank" } }),
+            ),
+            (
+                "erase",
+                json!({ "erase": { "layer": "art", "rect": rect } }),
+            ),
+        ] {
+            let mut room = cave();
+            let err = room
+                .apply(&batch(&json!([command])), &context)
+                .expect_err(&command.to_string());
+            assert_eq!(
+                err.to_string(),
+                format!(
+                    "commands[0].{verb}.rect: cell {cell} is past the room's 40 \u{d7} 24 cells"
+                ),
+                "{command}"
+            );
+        }
+    }
+    // A rect of no cells lists none and passes, whatever its place.
+    let mut room = cave();
+    let before = room.to_canonical();
+    room.apply(
+        &batch(&json!([{ "erase": { "layer": "art", "rect": [99, 99, 0, max] } }])),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(room.to_canonical(), before);
+}
+
+#[test]
 fn place_refuses_an_unknown_prefab_with_the_nearest_id() {
     let (tileset, layers) = world();
     let context = RoomContext {
@@ -425,6 +478,61 @@ fn the_journal_undoes_and_redoes_in_order_and_keeps_64() {
     assert_eq!(ball(&room), x(5));
     assert_eq!(journal.undo_len("cave"), 0);
     assert_eq!(journal.redo_len("cave"), RoomJournal::LIMIT);
+}
+
+#[test]
+fn a_shape_moved_past_any_room_fails_cleanly() {
+    let (tileset, layers) = world();
+    let context = RoomContext {
+        room: "cave",
+        tileset: &tileset,
+        layers: &layers,
+        prefabs: &PREFABS,
+    };
+    // A whole offset past `i64::MAX` once cast: `floor`'s y is 20, `pit`'s
+    // x is 36.
+    for command in [
+        json!({ "move": { "id": "floor", "by": [0, 1e19] } }),
+        json!({ "move": { "id": "floor", "to": [0, 1e19] } }),
+        json!({ "duplicate": { "id": "pit", "as": "pit_2", "by": [1e19, 0] } }),
+    ] {
+        let mut room = cave();
+        let before = room.clone();
+        let err = room
+            .apply(&batch(&json!([command])), &context)
+            .expect_err(&command.to_string());
+        assert!(
+            err.to_string().contains("the shape would leave the room"),
+            "{command}: {err}"
+        );
+        assert_eq!(room, before, "{command} changes nothing");
+    }
+}
+
+#[test]
+fn a_set_that_creates_its_parent_undoes_byte_for_byte() {
+    let (tileset, layers) = world();
+    let context = RoomContext {
+        room: "cave",
+        tileset: &tileset,
+        layers: &layers,
+        prefabs: &PREFABS,
+    };
+    // The fixture has no `budget` and `ball_1` no overrides: each set makes
+    // its parent, and its inverse takes that away again.
+    for command in [
+        json!({ "set": { "path": "budget.lights", "value": 4 } }),
+        json!({ "set": { "path": "budget.objects", "value": null } }),
+        json!({ "set": { "id": "ball_1", "path": "set.rigid_body.shape.radius", "value": 5 } }),
+    ] {
+        let mut room = cave();
+        let before = room.to_canonical();
+        let inverse = room.apply(&batch(&json!([command])), &context).unwrap();
+        let text = serde_json::to_string(&inverse).unwrap();
+        room.apply(&RoomCommand::parse_batch(&text).unwrap(), &context)
+            .unwrap();
+        assert_eq!(room.to_canonical(), before, "{command}'s inverse: {text}");
+    }
 }
 
 #[test]
