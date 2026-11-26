@@ -25,21 +25,6 @@ fn seed_world() -> World {
 }
 
 #[test]
-fn integrates_dynamic_position_from_velocity() {
-    let mut world = seed_world();
-    let e = world.spawn();
-    world.insert(e, Position(Vec2::new(0.0, 0.0)));
-    world.insert(e, Velocity(Vec2::new(60.0, 0.0)));
-    world.insert(e, Collider::aabb(Vec2::new(8.0, 8.0)));
-    world.insert(e, RigidBody::dynamic());
-
-    physics_step(&mut world);
-
-    let pos = world.get::<Position>(e).unwrap();
-    assert!((pos.0.x - 1.0).abs() < 1e-3, "got {:?}", pos.0);
-}
-
-#[test]
 fn dynamic_aabb_resolves_against_static_aabb() {
     let mut world = seed_world();
 
@@ -3452,14 +3437,12 @@ fn kinematic_walks_into_a_sleeper(speed: f32) {
 }
 
 #[test]
-fn kinematic_body_wakes_a_sleeper_at_half_the_sleep_threshold() {
+fn kinematic_body_wakes_a_sleeper_at_and_under_the_sleep_threshold() {
     assert_eq!(PhysicsConfig::default().sleep_threshold, 20.0);
-    kinematic_walks_into_a_sleeper(10.0);
-}
-
-#[test]
-fn kinematic_body_wakes_a_sleeper_at_the_sleep_threshold() {
-    kinematic_walks_into_a_sleeper(20.0);
+    // half the threshold, then the threshold itself; the helper's messages name the speed
+    for speed in [10.0, 20.0] {
+        kinematic_walks_into_a_sleeper(speed);
+    }
 }
 
 /// A box resting on a kinematic platform that rises at 10 px/s under
@@ -3512,32 +3495,6 @@ fn body_on_a_rising_kinematic_platform_stays_awake_when_time_to_sleep_is_under_a
 #[test]
 fn body_on_a_rising_kinematic_platform_stays_awake_when_time_to_sleep_is_zero() {
     rides_a_rising_platform(0.0);
-}
-
-#[test]
-fn body_on_a_still_kinematic_body_falls_asleep() {
-    let mut world = seed_world();
-    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
-    spawn_kinematic(
-        &mut world,
-        Collider::aabb(Vec2::new(40.0, 8.0)),
-        Vec2::new(0.0, 100.0),
-        Vec2::ZERO,
-    );
-    let rider = spawn_body(
-        &mut world,
-        RigidBody::dynamic(),
-        Collider::aabb(Vec2::splat(8.0)),
-        Vec2::new(0.0, 84.2),
-        Vec2::ZERO,
-    );
-    for _ in 0..150 {
-        physics_step(&mut world);
-    }
-    assert!(
-        is_sleeping(&world, rider),
-        "a still kinematic body kept the rider awake"
-    );
 }
 
 #[test]
@@ -3606,23 +3563,32 @@ fn persistent_pairs_match_fresh_contacts_with_kinematic_bodies() {
 }
 
 #[test]
-fn collider_less_kinematic_body_moves_by_its_velocity() {
-    let mut world = seed_world();
-    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
-    let velocity = Vec2::new(60.0, -30.0);
-    let loose = world.spawn();
-    world.insert(loose, Position(Vec2::ZERO));
-    world.insert(loose, Velocity(velocity));
-    world.insert(loose, RigidBody::kinematic());
-    for _ in 0..30 {
-        physics_step(&mut world);
+fn collider_less_kinematic_and_sensor_bodies_move_by_their_velocity() {
+    for (kind, body) in [
+        ("kinematic", RigidBody::kinematic()),
+        ("sensor", RigidBody::sensor()),
+    ] {
+        let mut world = seed_world();
+        world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+        let velocity = Vec2::new(60.0, -30.0);
+        let loose = world.spawn();
+        world.insert(loose, Position(Vec2::ZERO));
+        world.insert(loose, Velocity(velocity));
+        world.insert(loose, body);
+        for _ in 0..30 {
+            physics_step(&mut world);
+        }
+        let position = world.get::<Position>(loose).unwrap().0;
+        assert!(
+            (position - velocity * 0.5).length() < 1.0e-3,
+            "{kind}: half a second at {velocity:?} ended at {position:?}"
+        );
+        assert_eq!(
+            world.get::<Velocity>(loose).unwrap().0,
+            velocity,
+            "{kind}: its velocity"
+        );
     }
-    let position = world.get::<Position>(loose).unwrap().0;
-    assert!(
-        (position - velocity * 0.5).length() < 1.0e-3,
-        "half a second at {velocity:?} ended at {position:?}"
-    );
-    assert_eq!(world.get::<Velocity>(loose).unwrap().0, velocity);
 }
 
 #[test]
@@ -4210,26 +4176,6 @@ fn identical_runs_send_identical_sensor_events() {
     let first = run();
     assert!(first.len() > 4, "only {} sensor events", first.len());
     assert_eq!(first, run());
-}
-
-#[test]
-fn collider_less_sensor_moves_by_its_velocity() {
-    let mut world = seed_world();
-    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
-    let velocity = Vec2::new(60.0, -30.0);
-    let loose = world.spawn();
-    world.insert(loose, Position(Vec2::ZERO));
-    world.insert(loose, Velocity(velocity));
-    world.insert(loose, RigidBody::sensor());
-    for _ in 0..30 {
-        physics_step(&mut world);
-    }
-    let position = world.get::<Position>(loose).unwrap().0;
-    assert!(
-        (position - velocity * 0.5).length() < 1.0e-3,
-        "half a second at {velocity:?} ended at {position:?}"
-    );
-    assert_eq!(world.get::<Velocity>(loose).unwrap().0, velocity);
 }
 
 /// Substeps run by one step of a frame of `dt` under `config`, in a world

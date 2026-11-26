@@ -34,42 +34,32 @@ fn test_anim() -> AnimationData {
 }
 
 #[test]
-fn animation_advances_frames() {
+fn an_advance_moves_by_the_frames_its_time_covers() {
     let mut registry = AnimationRegistry::new();
     registry.insert("walk".into(), test_anim());
-
-    let mut state = AnimationState::new("walk");
-    assert_eq!(state.current_sprite(&registry), Some(walk(0)));
-
-    let new = state.advance(150.0, &registry);
-    assert_eq!(new, Some(walk(1)));
-    assert_eq!(state.frame_index, 1);
-}
-
-#[test]
-fn no_change_within_frame() {
-    let mut registry = AnimationRegistry::new();
-    registry.insert("walk".into(), test_anim());
-
-    let mut state = AnimationState::new("walk");
-    let new = state.advance(50.0, &registry);
-    assert_eq!(new, None);
-    assert_eq!(state.frame_index, 0);
-}
-
-#[test]
-fn looping_animation_wraps() {
-    let mut registry = AnimationRegistry::new();
-    registry.insert("walk".into(), test_anim());
-
-    let mut state = AnimationState::new("walk");
-    state.frame_index = 3;
-    state.accumulated_ms = 0.0;
-
-    let new = state.advance(150.0, &registry);
-    assert_eq!(new, Some(walk(0)));
-    assert_eq!(state.frame_index, 0);
-    assert!(!state.finished);
+    // four 100 ms looping frames; each case starts at `start` with nothing accumulated
+    for (case, start, dt, sprite, frame) in [
+        ("within a frame", 0, 50.0, None, 0),
+        ("one frame", 0, 150.0, Some(walk(1)), 1),
+        ("two frames", 0, 250.0, Some(walk(2)), 2),
+        ("a loop wraps", 3, 150.0, Some(walk(0)), 0),
+    ] {
+        let mut state = AnimationState::new("walk");
+        state.frame_index = start;
+        state.accumulated_ms = 0.0;
+        assert_eq!(
+            state.current_sprite(&registry),
+            Some(walk(start)),
+            "{case}: the start"
+        );
+        assert_eq!(
+            state.advance(dt, &registry),
+            sprite,
+            "{case}: the sprite the advance returns"
+        );
+        assert_eq!(state.frame_index, frame, "{case}: the frame");
+        assert!(!state.finished, "{case}: a looping clip never finishes");
+    }
 }
 
 #[test]
@@ -87,17 +77,6 @@ fn non_looping_animation_finishes() {
     assert_eq!(state.frame_index, 3);
     assert!(state.finished);
     assert_eq!(new, None);
-}
-
-#[test]
-fn skip_multiple_frames() {
-    let mut registry = AnimationRegistry::new();
-    registry.insert("walk".into(), test_anim());
-
-    let mut state = AnimationState::new("walk");
-    let new = state.advance(250.0, &registry);
-    assert_eq!(new, Some(walk(2)));
-    assert_eq!(state.frame_index, 2);
 }
 
 #[test]

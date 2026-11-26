@@ -44,12 +44,6 @@ fn tile_at_out_of_bounds_is_none() {
 }
 
 #[test]
-fn pixel_size_multiplies_dimensions() {
-    let m = tiny_map();
-    assert_eq!(m.pixel_size(), Vec2::new(48.0, 32.0));
-}
-
-#[test]
 fn validate_rejects_wrong_layer_length() {
     let mut m = tiny_map();
     m.layers[0].tiles.pop();

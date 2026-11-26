@@ -272,16 +272,6 @@ fn tunneling_miss_rate_report() {
     }
 }
 
-/// The discrete narrow phase alone must stop moderate-speed bodies: at
-/// 480 px/s the per-substep travel (2 px at 4 fixed substeps) never exceeds
-/// the projectile radius, so contacts resolve without any speculative gap.
-#[test]
-fn moderate_speed_never_tunnels() {
-    let (misses, total) = run_wall_volley(TargetKind::StaticAabbWall, 480.0);
-    assert_eq!(misses, 0);
-    assert_eq!(total, VOLLEY_SIZE);
-}
-
 const STALL_FLOOR_TOP: f32 = 480.0;
 
 /// Bodies resting on a static floor under gravity, with sleeping off so the

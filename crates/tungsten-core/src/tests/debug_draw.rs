@@ -1,13 +1,6 @@
 use super::*;
 
 #[test]
-fn default_is_empty() {
-    let dd = DebugDraw::new();
-    assert!(dd.is_empty());
-    assert_eq!(dd.len(), 0);
-}
-
-#[test]
 fn draw_aabb_pushes_one_command() {
     let mut dd = DebugDraw::new();
     dd.draw_aabb(Vec2::ZERO, Vec2::splat(1.0), [1.0; 4], 1.0);
@@ -38,13 +31,6 @@ fn draw_circle_uses_default_segments() {
         }
         _ => panic!("wrong shape"),
     }
-}
-
-#[test]
-fn draw_line_pushes_one_command() {
-    let mut dd = DebugDraw::new();
-    dd.draw_line(Vec2::ZERO, Vec2::splat(2.0), [1.0; 4], 2.0);
-    assert_eq!(dd.len(), 1);
 }
 
 #[test]

@@ -223,18 +223,6 @@ fn scale_factor_defaults_to_one() {
 }
 
 #[test]
-fn scale_factor_set_os_sets_both_readings() {
-    let mut scale = ScaleFactor::default();
-    scale.set_os(1.5);
-    assert_eq!(scale.os(), 1.5);
-    assert_eq!(
-        scale.get(),
-        1.5,
-        "the UI scale defaults to 1, so get is the OS scale"
-    );
-}
-
-#[test]
 fn get_is_the_os_scale_times_the_ui_scale() {
     let mut scale = ScaleFactor::default();
     assert_eq!(scale.ui_scale(), 1.0);

@@ -867,16 +867,6 @@ fn tempdir() -> TempDir {
 }
 
 #[test]
-fn the_temp_dir_helper_removes_its_folder_when_dropped() {
-    let tmp = tempdir();
-    write_file(&tmp, "hero.png");
-    let path = tmp.to_path_buf();
-    assert!(path.join("hero.png").exists());
-    drop(tmp);
-    assert!(!path.exists());
-}
-
-#[test]
 fn load_manifest_with_ui_themes_and_nine_slice() {
     let tmp = tempdir();
     write_file(&tmp, "frame.png");

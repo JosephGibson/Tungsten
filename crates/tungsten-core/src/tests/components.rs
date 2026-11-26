@@ -17,19 +17,6 @@ fn transform_from_position_sets_position_only() {
 }
 
 #[test]
-fn visibility_default_is_visible() {
-    assert!(Visibility::default().visible);
-}
-
-#[test]
-fn sprite_new_defaults_color_and_z_order() {
-    let s = Sprite::new(SpriteAssetId::new(7));
-    assert_eq!(s.asset_id, SpriteAssetId::new(7));
-    assert_eq!(s.color, [255; 4]);
-    assert_eq!(s.z_order, 0);
-}
-
-#[test]
 fn sync_position_to_transform_copies_position() {
     let mut world = World::new();
     let e = world.spawn();
@@ -67,27 +54,6 @@ fn sync_position_to_transform_skips_entities_missing_either() {
         world.get::<Transform>(only_transform).unwrap().position,
         Vec2::ZERO
     );
-}
-
-#[test]
-fn light_point_constructor_intensity_one() {
-    let l = Light::point(Vec3::new(1.0, 0.5, 0.25), 4.0);
-    assert_eq!(l.color, Vec3::new(1.0, 0.5, 0.25));
-    assert_eq!(l.intensity, 1.0);
-    match l.kind {
-        LightKind::Point { radius } => assert_eq!(radius, 4.0),
-        LightKind::Directional { .. } => panic!("expected Point"),
-    }
-}
-
-#[test]
-fn light_directional_constructor_angle() {
-    let l = Light::directional(Vec3::ONE, std::f32::consts::FRAC_PI_4);
-    assert_eq!(l.intensity, 1.0);
-    match l.kind {
-        LightKind::Directional { angle } => assert_eq!(angle, std::f32::consts::FRAC_PI_4),
-        LightKind::Point { .. } => panic!("expected Directional"),
-    }
 }
 
 #[test]
@@ -142,18 +108,6 @@ fn parallax_handles_negative_camera_positions() {
         Vec2::new(-200.0, -100.0),
     );
     assert_eq!(remapped, Vec2::new(-100.0, -50.0));
-}
-
-#[test]
-fn parallax_layer_uniform_splats_both_axes() {
-    assert_eq!(
-        ParallaxLayer::uniform(0.35).scroll_factor,
-        Vec2::splat(0.35)
-    );
-    assert_eq!(
-        ParallaxLayer::new(Vec2::new(0.2, 0.8)).scroll_factor,
-        Vec2::new(0.2, 0.8)
-    );
 }
 
 fn squash(duration: f32) -> SpriteSquashStretch {

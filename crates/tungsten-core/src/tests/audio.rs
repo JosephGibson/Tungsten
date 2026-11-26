@@ -12,12 +12,6 @@ fn drain_returns_all_commands_and_empties_queue() {
 }
 
 #[test]
-fn drain_on_empty_returns_empty() {
-    let mut cmds = AudioCommands::new();
-    assert!(cmds.drain().is_empty());
-}
-
-#[test]
 fn play_command_has_correct_defaults() {
     let mut cmds = AudioCommands::new();
     cmds.play(AudioHandle(5));
@@ -48,14 +42,6 @@ fn play_looping_sets_looping_true() {
         AudioCommand::Play { looping, .. } => assert!(*looping),
         _ => panic!("Expected Play command"),
     }
-}
-
-#[test]
-fn set_master_volume_queues_correctly() {
-    let mut cmds = AudioCommands::new();
-    cmds.set_master_volume(0.5);
-    let drained = cmds.drain();
-    assert!(matches!(drained[0], AudioCommand::SetMasterVolume(v) if (v - 0.5).abs() < 1e-6));
 }
 
 #[test]

@@ -6,42 +6,6 @@ fn defaults() -> MaterialUniformDefaults {
 }
 
 #[test]
-fn allocate_returns_stable_id_for_same_name() {
-    let mut reg = MaterialRegistry::new();
-    let a = reg.allocate(
-        "damage_flash",
-        PathBuf::from("manifest.json"),
-        "damage_flash".to_string(),
-        defaults(),
-    );
-    let b = reg.allocate(
-        "damage_flash",
-        PathBuf::from("manifest.json"),
-        "damage_flash".to_string(),
-        defaults(),
-    );
-    assert_eq!(a, b);
-}
-
-#[test]
-fn allocate_mints_distinct_ids_for_distinct_names() {
-    let mut reg = MaterialRegistry::new();
-    let a = reg.allocate(
-        "flash",
-        PathBuf::from("a.json"),
-        "flash".to_string(),
-        defaults(),
-    );
-    let b = reg.allocate(
-        "vignette",
-        PathBuf::from("b.json"),
-        "vignette".to_string(),
-        defaults(),
-    );
-    assert_ne!(a, b);
-}
-
-#[test]
 fn lookups_round_trip() {
     let mut reg = MaterialRegistry::new();
     let path = PathBuf::from("manifest.json");

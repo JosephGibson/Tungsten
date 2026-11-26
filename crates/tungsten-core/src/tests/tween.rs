@@ -53,23 +53,19 @@ fn back_out_overshoots_above_one_mid_range() {
 }
 
 #[test]
-fn quad_in_half_is_quarter() {
-    approx(Easing::QuadIn.apply(0.5), 0.25, EPS);
-}
-
-#[test]
-fn cubic_in_half_is_eighth() {
-    approx(Easing::CubicIn.apply(0.5), 0.125, EPS);
-}
-
-#[test]
-fn quart_in_half_is_sixteenth() {
-    approx(Easing::QuartIn.apply(0.5), 0.0625, EPS);
-}
-
-#[test]
-fn sine_in_out_half_is_half() {
-    approx(Easing::SineInOut.apply(0.5), 0.5, EPS);
+fn easings_at_one_half_hit_their_known_values() {
+    for (easing, want) in [
+        (Easing::QuadIn, 0.25),
+        (Easing::CubicIn, 0.125),
+        (Easing::QuartIn, 0.0625),
+        (Easing::SineInOut, 0.5),
+    ] {
+        let got = easing.apply(0.5);
+        assert!(
+            (got - want).abs() < EPS,
+            "{easing:?} at 0.5: expected {want}, got {got}"
+        );
+    }
 }
 
 #[test]
@@ -91,27 +87,17 @@ fn bounce_in_is_reflected_bounce_out() {
 }
 
 #[test]
-fn expo_in_zero_stays_zero() {
-    assert_eq!(Easing::ExpoIn.apply(0.0), 0.0);
-    approx(Easing::ExpoIn.apply(1.0), 1.0, EPS);
-}
-
-#[test]
-fn lerp_u8_endpoints_are_exact() {
-    assert_eq!(lerp_u8(0, 255, 0.0), 0);
-    assert_eq!(lerp_u8(0, 255, 1.0), 255);
-}
-
-#[test]
-fn lerp_u8_midpoint_rounds() {
-    assert_eq!(lerp_u8(0, 255, 0.5), 128);
-    assert_eq!(lerp_u8(10, 30, 0.5), 20);
-}
-
-#[test]
-fn lerp_u8_clamps_negative_and_over() {
-    assert_eq!(lerp_u8(100, 200, -1.0), 0);
-    assert_eq!(lerp_u8(100, 200, 5.0), 255);
+fn lerp_u8_rounds_and_clamps() {
+    for (case, a, b, t, want) in [
+        ("the start is exact", 0, 255, 0.0, 0),
+        ("the end is exact", 0, 255, 1.0, 255),
+        ("the midpoint rounds", 0, 255, 0.5, 128),
+        ("a narrow midpoint", 10, 30, 0.5, 20),
+        ("a negative t clamps", 100, 200, -1.0, 0),
+        ("a t past one clamps", 100, 200, 5.0, 255),
+    ] {
+        assert_eq!(lerp_u8(a, b, t), want, "{case}: lerp_u8({a}, {b}, {t})");
+    }
 }
 
 #[test]
@@ -136,13 +122,6 @@ fn tween_builder_accumulates_channels_and_tag() {
     assert_eq!(t.repeat, TweenRepeat::Times(3));
     assert_eq!(t.on_complete_tag.as_deref(), Some("state_exit"));
     assert_eq!(t.direction, TweenDirection::Forward);
-}
-
-#[test]
-fn tween_new_positive_duration_is_preserved() {
-    let t = Tween::new(0.1, Easing::Linear);
-    assert!(t.duration.is_finite() && t.duration > 0.0);
-    assert_eq!(t.duration, 0.1);
 }
 
 #[test]

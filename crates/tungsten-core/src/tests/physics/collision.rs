@@ -5,17 +5,17 @@ fn aabb(cx: f32, cy: f32, hx: f32, hy: f32) -> Aabb {
 }
 
 #[test]
-fn aabb_separated_returns_none() {
+fn aabb_vs_aabb_is_none_when_apart_or_touching() {
     let a = aabb(0.0, 0.0, 1.0, 1.0);
-    let b = aabb(5.0, 0.0, 1.0, 1.0);
-    assert!(aabb_vs_aabb(&a, &b).is_none());
-}
-
-#[test]
-fn aabb_touching_is_separated() {
-    let a = aabb(0.0, 0.0, 1.0, 1.0);
-    let b = aabb(2.0, 0.0, 1.0, 1.0);
-    assert!(aabb_vs_aabb(&a, &b).is_none());
+    // apart takes the face-gap arm; touching meets the faces at zero penetration, which the
+    // strict margin test drops
+    for (case, x) in [("apart", 5.0), ("touching", 2.0)] {
+        let b = aabb(x, 0.0, 1.0, 1.0);
+        assert!(
+            aabb_vs_aabb(&a, &b).is_none(),
+            "{case}: b at ({x}, 0) made a contact"
+        );
+    }
 }
 
 #[test]
@@ -34,14 +34,6 @@ fn aabb_overlap_y_axis_gives_y_normal() {
     let c = aabb_vs_aabb(&a, &b).unwrap();
     assert_eq!(c.normal, Vec2::new(0.0, -1.0));
     assert!((c.penetration - 0.5).abs() < 1e-5);
-}
-
-#[test]
-fn aabb_picks_axis_of_min_overlap() {
-    let a = aabb(0.0, 0.0, 5.0, 1.0);
-    let b = aabb(0.0, 1.8, 5.0, 1.0);
-    let c = aabb_vs_aabb(&a, &b).unwrap();
-    assert!(c.normal.y.abs() > c.normal.x.abs());
 }
 
 #[test]

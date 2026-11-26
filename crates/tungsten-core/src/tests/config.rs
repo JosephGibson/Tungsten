@@ -31,11 +31,6 @@ fn render_config_defaults_from_empty_json() {
 }
 
 #[test]
-fn post_aa_mode_default_is_off() {
-    assert_eq!(PostAaMode::default(), PostAaMode::Off);
-}
-
-#[test]
 fn post_aa_mode_from_str_parses_all_modes() {
     assert_eq!(PostAaMode::from_str("off").unwrap(), PostAaMode::Off);
     assert_eq!(

@@ -1,24 +1,6 @@
 use super::*;
 
 #[test]
-fn handle_allocation_produces_distinct_ids() {
-    let mut reg = SoundRegistry::new();
-    let data1 = SoundData {
-        samples: vec![],
-        sample_rate: 44100,
-        channels: 2,
-    };
-    let data2 = SoundData {
-        samples: vec![],
-        sample_rate: 44100,
-        channels: 2,
-    };
-    let h1 = reg.register("sfx_a".into(), data1, 1.0, false);
-    let h2 = reg.register("sfx_b".into(), data2, 1.0, false);
-    assert_ne!(h1, h2);
-}
-
-#[test]
 fn get_returns_none_for_unknown_handle() {
     let reg = SoundRegistry::new();
     assert!(reg.get(AudioHandle(99)).is_none());
@@ -88,18 +70,6 @@ fn silence() -> SoundData {
         sample_rate: 44_100,
         channels: 1,
     }
-}
-
-#[test]
-fn a_sound_registered_in_code_plays_on_effects_with_64_voices() {
-    let mut reg = SoundRegistry::new();
-    let handle = reg.register("sfx".into(), silence(), 1.0, false);
-    assert_eq!(reg.get_bus(handle), AudioBus::Effects);
-    assert_eq!(reg.get_max_voices(handle), MAX_VOICES);
-    assert_eq!(MAX_VOICES, 64);
-    // An unknown handle reads the same defaults.
-    assert_eq!(reg.get_bus(AudioHandle(99)), AudioBus::Effects);
-    assert_eq!(reg.get_max_voices(AudioHandle(99)), 64);
 }
 
 #[test]

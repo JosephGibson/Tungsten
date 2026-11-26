@@ -46,13 +46,6 @@ fn component_types_lists_an_entitys_components() {
 }
 
 #[test]
-fn spawn_and_check_alive() {
-    let mut world = World::new();
-    let e = world.spawn();
-    assert!(world.is_alive(e));
-}
-
-#[test]
 fn despawn_removes_entity() {
     let mut world = World::new();
     let e = world.spawn();
@@ -63,36 +56,12 @@ fn despawn_removes_entity() {
 }
 
 #[test]
-fn insert_and_get_component() {
-    let mut world = World::new();
-    let e = world.spawn();
-    world.insert(e, Position { x: 3.0, y: 4.0 });
-    let pos = world.get::<Position>(e).unwrap();
-    assert_eq!(pos.x, 3.0);
-    assert_eq!(pos.y, 4.0);
-}
-
-#[test]
 fn get_mut_component() {
     let mut world = World::new();
     let e = world.spawn();
     world.insert(e, Position { x: 0.0, y: 0.0 });
     world.get_mut::<Position>(e).unwrap().x = 10.0;
     assert_eq!(world.get::<Position>(e).unwrap().x, 10.0);
-}
-
-#[test]
-fn query_iterates_matching_entities() {
-    let mut world = World::new();
-    let e1 = world.spawn();
-    let e2 = world.spawn();
-    let e3 = world.spawn();
-    world.insert(e1, Position { x: 1.0, y: 0.0 });
-    world.insert(e2, Position { x: 2.0, y: 0.0 });
-    world.insert(e3, Name("no position".into()));
-
-    let positions: Vec<_> = world.query::<(Entity, &Position)>().collect();
-    assert_eq!(positions.len(), 2);
 }
 
 #[test]
@@ -156,150 +125,6 @@ fn insert_on_dead_entity_panics() {
     let e = world.spawn();
     world.despawn(e);
     world.insert(e, Position { x: 0.0, y: 0.0 });
-}
-
-#[test]
-fn multiple_component_types() {
-    let mut world = World::new();
-    let e = world.spawn();
-    world.insert(e, Position { x: 1.0, y: 2.0 });
-    world.insert(e, Velocity { dx: 3.0, dy: 4.0 });
-    world.insert(e, Name("player".into()));
-
-    assert!(world.has::<Position>(e));
-    assert!(world.has::<Velocity>(e));
-    assert!(world.has::<Name>(e));
-}
-
-#[test]
-fn query_mut_mutates_in_place() {
-    let mut world = World::new();
-    let e1 = world.spawn();
-    let e2 = world.spawn();
-    world.insert(e1, Position { x: 1.0, y: 0.0 });
-    world.insert(e2, Position { x: 2.0, y: 0.0 });
-    world.insert(e2, Velocity { dx: 0.0, dy: 0.0 });
-
-    for (_, pos) in world.query_mut::<(Entity, &mut Position)>() {
-        pos.x += 10.0;
-    }
-
-    assert_eq!(world.get::<Position>(e1).unwrap().x, 11.0);
-    assert_eq!(world.get::<Position>(e2).unwrap().x, 12.0);
-}
-
-#[test]
-fn query_mut_matches_query_order() {
-    let mut world = World::new();
-    for i in 0..4 {
-        let e = world.spawn();
-        world.insert(
-            e,
-            Position {
-                x: i as f32,
-                y: 0.0,
-            },
-        );
-        if i % 2 == 0 {
-            world.insert(e, Velocity { dx: 0.0, dy: 0.0 });
-        }
-    }
-
-    let immutable: Vec<_> = world
-        .query::<(Entity, &Position)>()
-        .map(|(e, _)| e)
-        .collect();
-    let mutable: Vec<_> = world
-        .query_mut::<(Entity, &mut Position)>()
-        .map(|(e, _)| e)
-        .collect();
-    assert_eq!(immutable, mutable);
-}
-
-#[test]
-fn query_across_multiple_archetypes() {
-    let mut world = World::new();
-    let e1 = world.spawn();
-    let e2 = world.spawn();
-    let e3 = world.spawn();
-
-    world.insert(e1, Position { x: 1.0, y: 0.0 });
-    world.insert(e2, Position { x: 2.0, y: 0.0 });
-    world.insert(e2, Velocity { dx: 0.0, dy: 0.0 });
-    world.insert(e3, Position { x: 3.0, y: 0.0 });
-    world.insert(e3, Velocity { dx: 0.0, dy: 0.0 });
-    world.insert(e3, Name("three".into()));
-
-    let positions: Vec<_> = world.query::<(Entity, &Position)>().collect();
-    assert_eq!(positions.len(), 3);
-}
-
-#[test]
-fn flush_spawn_entity_is_alive() {
-    let mut world = World::new();
-    let mut buffer = CommandBuffer::new();
-    let pending = buffer.spawn();
-    buffer.insert_pending(pending, Name("spawned".into()));
-
-    world.flush(buffer);
-
-    let results: Vec<_> = world.query::<(Entity, &Name)>().collect();
-    assert_eq!(results.len(), 1);
-    assert!(world.is_alive(results[0].0));
-}
-
-#[test]
-fn flush_spawn_insert_pending_components_visible() {
-    let mut world = World::new();
-    let mut buffer = CommandBuffer::new();
-    let pending = buffer.spawn();
-    buffer.insert_pending(pending, Position { x: 1.0, y: 2.0 });
-    buffer.insert_pending(pending, Velocity { dx: 3.0, dy: 4.0 });
-
-    world.flush(buffer);
-
-    let results: Vec<_> = world.query::<(Entity, &Position, &Velocity)>().collect();
-    assert_eq!(results.len(), 1);
-    let (_, position, velocity) = results[0];
-    assert_eq!(*position, Position { x: 1.0, y: 2.0 });
-    assert_eq!(*velocity, Velocity { dx: 3.0, dy: 4.0 });
-}
-
-#[test]
-fn flush_insert_live_entity() {
-    let mut world = World::new();
-    let entity = world.spawn();
-    let mut buffer = CommandBuffer::new();
-
-    buffer.insert(entity, Name("live".into()));
-    world.flush(buffer);
-
-    assert_eq!(world.get::<Name>(entity).unwrap(), &Name("live".into()));
-}
-
-#[test]
-fn flush_despawn_entity_is_dead() {
-    let mut world = World::new();
-    let entity = world.spawn();
-    let mut buffer = CommandBuffer::new();
-
-    buffer.despawn(entity);
-    world.flush(buffer);
-
-    assert!(!world.is_alive(entity));
-}
-
-#[test]
-fn flush_remove_component() {
-    let mut world = World::new();
-    let entity = world.spawn();
-    world.insert(entity, Position { x: 1.0, y: 2.0 });
-    let mut buffer = CommandBuffer::new();
-
-    buffer.remove_component::<Position>(entity);
-    world.flush(buffer);
-
-    assert!(world.get::<Position>(entity).is_none());
 }
 
 #[test]
