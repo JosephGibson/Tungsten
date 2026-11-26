@@ -1,6 +1,6 @@
 //! `piles`: bodies under friction on 16 px tiles, in two rows by its `mode`.
 //! It owns `physics_step`'s friction, rolling and slope-tile costs (phase
-//! 7's piles, `docs/plans/phase-7.md` §2.6).
+//! 7's piles, `docs/perf/benchmarks.md`'s `friction` and `slopes`).
 //!
 //! `friction` (row `friction`): boxes and spinning circles under friction
 //! and rolling resistance fill a bin of tiles, stirred by kinematic paddles

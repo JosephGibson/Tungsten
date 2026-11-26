@@ -18,7 +18,7 @@ Two games designed on paper, without code, to find what the engine, kit and temp
   3. The registers (§4), the genre check (§5) and the questions they raise (§6). Done.
   4. A fresh-context verifier on every citation (§7). Done.
   5. The owner reads the designs and answers or accepts §6's questions; `/critique` on the build sheets is optional.
-  6. The transition session and 7.7 take §4's rows: Phase 7's into 7.7's plan, Phase 8's into 8.1, 8.2 and 8.3. 7.13 and 8.5 take the weekly tasks as evaluation tasks; 9.1 takes the stress rows.
+  6. The transition session and 7.7 take §4's rows: Phase 7's into 7.7's plan, Phase 8's into 8.1, 8.2 and 8.3. 7.13 and 8.6 take the weekly tasks as evaluation tasks; 9.1 takes the stress rows. Done 2026-10-29 in the Phase 7 plan (§2.2, §2.3, §2.6); at its close (2026-11-26, its last content at `baaecc20`) the open Phase 8 rows went into the [roadmap redo](roadmap-redo.md)'s §3 rows by ID.
 - **done-when:**
   - Every "data only" and "game Rust" verdict cites an item in `api/*.txt` or the components snapshot, and every gap names a search that finds nothing; §7's verifier report confirms or fixes every citation.
   - The genre registers (§4) are written, each row tagged by design.
@@ -140,7 +140,7 @@ Every asset family runs through §6's asset sessions: a brief, an Opus session g
 
 ### Five weekly agent tasks
 
-The tasks a developer would hand an agent in a normal week, for 7.13's and 8.5's evaluations. Each names the rows it runs into today.
+The tasks a developer would hand an agent in a normal week, for 7.13's and 8.6's evaluations. Each names the rows it runs into today.
 
 1. **A new NPC.** "Add Maren the net-mender: a prefab and a schedule (the Docks by day, the tavern at dusk, home at night), 30 lines with two gated on trust 3 and the `nets_torn` flag, three portraits, and a side quest, *Mend the Nets*, in three stages." Done when a scripted run talks to her at 10:00 and at 19:00 and finishes the quest, and `tungsten check` passes. Runs into LW4, LW6, LW11 and the portraits' art.
 2. **A new item.** "Add an oilskin hood for the lantern slot: 40 shillings at the chandlery from day 4, halving the wetness the lantern's flame takes." Done when it is bought, equipped and shown in a test to keep the lantern lit twice as long at fog intensity 4. Runs into LW8, LW9, LW15 and LW16.
