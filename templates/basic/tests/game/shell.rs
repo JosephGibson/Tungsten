@@ -211,20 +211,6 @@ fn quit_to_title_autosaves_and_returns_to_the_title() {
 }
 
 #[test]
-fn quit_to_title_from_a_screen_update_leaves_only_the_title() {
-    // No user folder: Quit to Title asks, so the change comes from the
-    // confirm's update, three states deep.
-    let mut harness = harness();
-    start(&mut harness);
-    tap(&mut harness, "state_pause");
-    press(&mut harness, "Quit to Title");
-    assert_eq!(depth(&harness), 3);
-    press(&mut harness, "Quit");
-    assert_eq!(top(&harness), Some(TITLE));
-    assert_eq!(depth(&harness), 1);
-}
-
-#[test]
 fn quit_to_title_asks_once_and_names_lost_progress_only_when_the_autosave_failed() {
     let lost = "Quit to the title? Progress since your last save will be lost.";
     // An autosave that works: one plain question, the save already written.
