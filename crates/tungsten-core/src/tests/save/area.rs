@@ -468,6 +468,75 @@ fn an_edit_names_its_tile_so_a_tile_added_before_it_restores_the_same_one() {
     );
 }
 
+/// Map `east`'s instance named `east_map` in area `north`: the area's
+/// second map, its tiles saved with the area's.
+fn name_east_into_north(world: &mut World) {
+    let instance = world.spawn_with((TilemapInstance::new("east", Vec2::new(400.0, 0.0)),));
+    name(world, instance, Some("north"), "east_map").unwrap();
+}
+
+#[test]
+fn an_areas_tiles_on_a_map_the_world_lacks_are_dropped_and_the_rest_restores() {
+    let mut a = world();
+    a.spawn_area("north", [0.0, 0.0]).unwrap();
+    name_east_into_north(&mut a);
+    assert!(maps(&mut a).set_tile("north", WALLS, 2, 1, MOSS));
+    assert!(maps(&mut a).set_tile("east", WALLS, 3, 1, MOSS));
+    set_health(&mut a, "n_bat", 3.0);
+    let saved = capture_world(&a).unwrap();
+    let tiles = &value(&saved)["areas"]["north"]["tiles"];
+    assert!(
+        tiles.get("north").is_some() && tiles.get("east").is_some(),
+        "both maps' edits saved in the area: {tiles}"
+    );
+
+    let no_registry = || {
+        let mut b = world();
+        b.remove_resource::<TilemapRegistry>();
+        let bat = b.spawn_with((Health { current: 10.0 },));
+        name(&mut b, bat, Some("north"), "n_bat").unwrap();
+        name_east_into_north(&mut b);
+        b
+    };
+    let east_unregistered = || {
+        let mut b = world();
+        maps(&mut b).remove("east").unwrap();
+        b.spawn_area("north", [0.0, 0.0]).unwrap();
+        name_east_into_north(&mut b);
+        b
+    };
+    // (case, the World restored into, the line, `north`'s edited cell after)
+    let cases = [
+        (
+            "no tilemap registry",
+            no_registry as fn() -> World,
+            "area `north`'s tiles: the World has no tilemap registry",
+            None,
+        ),
+        (
+            "map `east` not registered, sorting before `north`",
+            east_unregistered,
+            "area `north`'s map `east`: not registered",
+            Some(MOSS),
+        ),
+    ];
+    for (case, setup, line, north_cell) in cases {
+        let mut b = setup();
+        let report = restore_world(&mut b, &saved, &(Scene,)).unwrap();
+        assert_eq!(report.dropped, [line], "{case}: one line, not an error");
+        let cell = b
+            .get_resource::<TilemapRegistry>()
+            .and_then(|maps| maps.get("north"))
+            .and_then(|map| map.tile_at(WALLS, 2, 1));
+        assert_eq!(cell, north_cell, "{case}: the known map's edit applies");
+        assert_eq!(
+            health(&b, "n_bat"),
+            3.0,
+            "{case}: the area's objects restore"
+        );
+    }
+}
+
 #[test]
 fn a_new_runs_area_spawns_on_the_map_as_loaded() {
     let mut world = world();
@@ -509,6 +578,62 @@ fn an_unnamed_classed_object_spawns_unsaved() {
         world.spawn_area("north", [0.0, 0.0]),
         Err(AreaError::Name { .. })
     ));
+}
+
+#[test]
+fn an_areas_shared_or_clashing_object_names_refuse_it_before_any_change() {
+    // A pair `SaveId::authored` maps to one ID (room_generate.rs's search).
+    let (a, b) = ("clash_a.jnzvero", "clash_b.xysfyis");
+    assert_eq!(SaveId::authored(a), SaveId::authored(b));
+    let taken = |name: &str| NameError::Taken { name: name.into() };
+    let clash = NameError::Clash {
+        name: b.into(),
+        other: a.into(),
+    };
+    // (case, map `cave`'s object names, a name given before and its holder
+    // despawned, the refusal)
+    let cases: [(&str, &[&str], Option<&str>, NameError); 3] = [
+        (
+            "two objects of one name",
+            &["bat_1", "", "bat_1"],
+            None,
+            taken("bat_1"),
+        ),
+        ("two objects of one ID", &[a, b], None, clash.clone()),
+        (
+            "an object whose ID a dead entity's name keeps",
+            &[b],
+            Some(a),
+            clash,
+        ),
+    ];
+    for (case, names, held, want) in cases {
+        let mut world = world();
+        if let Some(held) = held {
+            let holder = world.spawn();
+            name(&mut world, holder, None, held).unwrap();
+            world.despawn(holder);
+        }
+        let objects = (1..)
+            .zip(names)
+            .map(|(id, name)| object(id, name, [16.0 * id as f32, 16.0]))
+            .collect();
+        maps(&mut world).insert("cave".into(), map(objects));
+        let before = world.entity_count();
+        match world.spawn_area("cave", [0.0, 0.0]) {
+            Err(AreaError::Name { map, source }) => {
+                assert_eq!((map.as_str(), source), ("cave", want), "{case}");
+            }
+            other => panic!("{case}: {other:?}"),
+        }
+        assert_eq!(world.entity_count(), before, "{case}: nothing spawned");
+        assert!(
+            !world
+                .get_resource::<SaveState>()
+                .is_some_and(|state| state.loaded.contains_key("cave")),
+            "{case}: the area is not loaded"
+        );
+    }
 }
 
 /// `world` with room `cave`: two bats on a grid with no layers.
