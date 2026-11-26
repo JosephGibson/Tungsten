@@ -158,6 +158,11 @@ fn admit(world: &mut World, particles: &str, key: bool) -> Option<(AssetId<Parti
     if !world.has_resource::<BurstBudget>() {
         world.insert_resource(BurstBudget::default());
     }
+    // Looked up first: a burst of an unknown config spawns nothing, so it
+    // takes no burst's slot.
+    let config = world
+        .get_resource::<ParticleConfigRegistry>()?
+        .id_for_name(particles)?;
     let cap = world.resource::<BurstBudget>().cap;
     if counted(world) >= cap {
         if !key {
@@ -175,9 +180,6 @@ fn admit(world: &mut World, particles: &str, key: bool) -> Option<(AssetId<Parti
             state.drained = true;
         }
     }
-    let config = world
-        .get_resource::<ParticleConfigRegistry>()?
-        .id_for_name(particles)?;
     let budget = world.resource_mut::<BurstBudget>();
     budget.spawned = budget.spawned.wrapping_add(1);
     Some((config, budget.spawned))

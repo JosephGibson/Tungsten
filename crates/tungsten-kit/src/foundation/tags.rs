@@ -501,9 +501,11 @@ pub(crate) fn check_declared(world: &World, field: &str, name: &str) -> Result<(
 /// name declares its dotted ancestors. The kit declares its own: a hit's
 /// tracks (`delivery.hit`, `delivery.dot`), its state tags
 /// (`delivery.pierced`, `delivery.forked`, `delivery.chained`,
-/// `delivery.repeated`) and its sides (`side.front`, `side.rear`). A scene component or a filter that
-/// names an undeclared tag fails the load, naming the field and the tag, so
-/// a misspelt tag never matches nothing in silence.
+/// `delivery.repeated`), its sides (`side.front`, `side.rear`) and the
+/// chemistry stimuli (`stimulus.impact`, `stimulus.light`,
+/// `stimulus.blast`). A scene component or a filter that names an
+/// undeclared tag fails the load, naming the field and the tag, so a
+/// misspelt tag never matches nothing in silence.
 ///
 /// # Examples
 ///

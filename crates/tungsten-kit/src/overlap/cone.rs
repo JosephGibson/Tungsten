@@ -504,6 +504,10 @@ fn cast(
         .map(|i| {
             let angle = if cone.rays == 1 {
                 0.0
+            } else if cone.half_angle >= 180.0 {
+                // A whole circle's edges are one direction: the last ray
+                // stops a step short of the first.
+                -half + 2.0 * half * i as f32 / cone.rays as f32
             } else {
                 -half + 2.0 * half * i as f32 / (cone.rays - 1) as f32
             };

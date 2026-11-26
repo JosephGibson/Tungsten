@@ -216,6 +216,38 @@ fn the_view_logs_only_the_entries_pushed_while_it_is_on() {
     );
 }
 
+#[test]
+fn a_clear_logs_the_entries_pushed_after_it() {
+    use crate::foundation::trace::{TraceKind, trace};
+
+    for (before, after) in [(3, 2), (2, 5)] {
+        let (mut world, _) = rig();
+        world.resource_mut::<KitDebug>().set_enabled(true);
+        let slime = world.spawn();
+        let despawn = || TraceKind::Despawn { by: "cues" };
+        let mut logged = 0;
+        for _ in 0..before {
+            trace(&mut world, slime, despawn);
+        }
+        log_trace(&world, &mut logged);
+        world.resource_mut::<KitTrace>().clear();
+        for _ in 0..after {
+            trace(&mut world, slime, despawn);
+        }
+        assert_eq!(
+            world.resource::<KitTrace>().since(logged).count(),
+            after,
+            "{before} logged, a clear, {after} pushed: all {after} are new"
+        );
+        log_trace(&world, &mut logged);
+        assert_eq!(
+            world.resource::<KitTrace>().since(logged).count(),
+            0,
+            "{before} logged, a clear, {after} pushed: each logged once"
+        );
+    }
+}
+
 /// The rig with the action `shapes` bound to F3 and an input to press it.
 fn keyed_rig() -> (World, Schedule) {
     use tungsten_core::{ActionMap, Binding, InputState, KeyCode};

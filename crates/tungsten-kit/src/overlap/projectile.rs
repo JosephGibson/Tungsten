@@ -1214,6 +1214,11 @@ impl ProjectileRunner {
     ) -> Option<f32> {
         self.hits.clear();
         let hitbox = world.get::<Hitbox>(entity)?;
+        // An off hitbox hits nothing; its walls, range and seconds still end
+        // it.
+        if !hitbox.is_on() {
+            return None;
+        }
         let (min, max) = sweep.bounds();
         grid.candidates(min, max, &mut self.candidates);
         for &index in &self.candidates {

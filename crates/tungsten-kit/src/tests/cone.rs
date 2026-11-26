@@ -93,6 +93,48 @@ fn enemies() -> TagFilter {
 }
 
 #[test]
+fn a_full_circle_spaces_its_rays_round_it() {
+    let mut world = World::new();
+    let user = world.spawn();
+    let fan = |half_angle: f32, rays: u32| -> Vec<Vec2> {
+        let cone = Cone::new(100.0, half_angle, 1.0).with_rays(rays);
+        cast(&world, user, Vec2::ZERO, Vec2::X, &cone)
+            .into_iter()
+            .map(|(along, _)| along)
+            .collect()
+    };
+    // A whole circle's edges are one direction: its rays go round it, each
+    // a turn's share from the last, none twice.
+    for rays in [3, 4, 8] {
+        let along = fan(180.0, rays);
+        let share = std::f32::consts::TAU / rays as f32;
+        for (i, &ray) in along.iter().enumerate() {
+            let next = along[(i + 1) % along.len()];
+            assert!(
+                (ray.angle_to(next) - share).abs() < 1e-4,
+                "{rays} rays round a circle: ray {i} at {ray} and the next at {next}"
+            );
+        }
+    }
+    // Four: a cross from straight back, round through the direction.
+    let cross = fan(180.0, 4);
+    for (ray, want) in cross
+        .iter()
+        .zip([Vec2::NEG_X, Vec2::NEG_Y, Vec2::X, Vec2::Y])
+    {
+        assert!(
+            ray.distance(want) < 1e-4,
+            "4 rays round a circle: {cross:?}"
+        );
+    }
+    // A narrower cone keeps both its edges.
+    let along = fan(90.0, 3);
+    for (ray, want) in along.iter().zip([Vec2::NEG_Y, Vec2::X, Vec2::Y]) {
+        assert!(ray.distance(want) < 1e-4, "±90 of 3 rays: {along:?}");
+    }
+}
+
+#[test]
 fn the_rays_hit_what_they_reach_once_and_stop_at_a_wall() {
     let (mut world, mut schedule) = rig();
     let spray = user(

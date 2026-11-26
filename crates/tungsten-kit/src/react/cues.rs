@@ -159,8 +159,9 @@ fn valid_event(name: &str) -> bool {
 /// refused, with its reason), `ability_ready` (the step its counting makes
 /// it ready), `ability_held` and `ability_released` (a held trigger's slot
 /// going down and up), each about its user, a [`Cap`](crate::Cap)'s `culled`
-/// (about the instance it ended), and each name a game's [`CuesOnEvent`]
-/// registers.
+/// (about the instance it ended), a [`PathFollower`](crate::PathFollower)'s
+/// `arrived` and `departed` (as it reaches an end and leaves it), and each
+/// name a game's [`CuesOnEvent`] registers.
 ///
 /// Scene name `cues`:
 /// `{ "damaged": [{ "flash": {} }], "killed": [{ "prefab": "puff" }, { "despawn": {} }] }`;
@@ -3450,8 +3451,9 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// [`PlatformerController`](crate::PlatformerController)s' `jumped`,
 /// `air_jumped`, `jump_refused` and `landed` from a list the controller's
 /// system fills, no event queue, then the abilities' `ability_refused`,
-/// `ability_ready`, `ability_held` and `ability_released` from a list the
-/// abilities fill, each pushed only when named, then each [`CuesOnEvent`] in build order,
+/// `ability_ready`, `ability_held` and `ability_released`, the caps'
+/// `culled` and the paths' `arrived` and `departed` from a list they fill,
+/// each pushed only when named, then each [`CuesOnEvent`] in build order,
 /// each queue in send order, and last the step's [`WorldCue`]s. It runs
 /// every
 /// occurrence's entity cues, then every occurrence's matching rules (rules

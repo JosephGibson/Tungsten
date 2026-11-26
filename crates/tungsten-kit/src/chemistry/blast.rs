@@ -859,7 +859,9 @@ fn set_off(
             else {
                 continue;
             };
-            if let Some(credit) = credit {
+            // Checked as each hit is built: a credit dead by its Health, or
+            // killed by an earlier hit, credits nobody.
+            if let Some(credit) = credit.filter(|&credit| credits(world, credit)) {
                 request = request.with_source(credit);
             }
             request = request.with_depth(depth);

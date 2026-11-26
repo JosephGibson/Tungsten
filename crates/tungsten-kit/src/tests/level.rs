@@ -113,6 +113,26 @@ fn two_levels_in_one_step_from_one_count_and_the_top_holds() {
 }
 
 #[test]
+fn a_level_above_its_curves_top_holds() {
+    let (mut world, mut schedule) = rig();
+    // A save at level 5 of a curve since cut to a top of 2.
+    let above: Level =
+        serde_json::from_value(json!({ "counter": "xp", "curve": [[1, 0], [2, 10]], "level": 5 }))
+            .unwrap();
+    let hero = world.spawn_with((above, Counters::new().with("xp", 100)));
+    assert_eq!(world.get::<Level>(hero).unwrap().top(), 2);
+    let stepped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        step(&mut world, &mut schedule);
+    }));
+    assert!(
+        stepped.is_ok(),
+        "a level of 5 above its curve's top of 2 panics in its tick"
+    );
+    assert_eq!(level_of(&world, hero), 5, "it holds");
+    assert_eq!(ups(&world), [] as [u32; 0], "and climbs nothing");
+}
+
+#[test]
 fn twenty_levels_climb_sixteen_in_the_first_step_and_four_in_the_next() {
     let (mut world, mut schedule) = rig();
     // Level n needs n − 1 counts, up to level 50.

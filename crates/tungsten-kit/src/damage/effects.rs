@@ -36,7 +36,7 @@ use crate::foundation::inspect::register_rows_with;
 use crate::foundation::lines::Line;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::saved::order_of;
-use crate::foundation::stats::{Modifier, STATS_APPLY, Stats};
+use crate::foundation::stats::{Modifier, STATS_APPLY, Stats, check_at_use};
 use crate::foundation::tags::{TagFilter, Tags, check_declared, valid_tag};
 use crate::foundation::trace::{TraceKind, trace};
 use crate::foundation::{non_negative, optional_non_negative, optional_positive};
@@ -623,7 +623,8 @@ impl Effect {
     ///
     /// # Panics
     ///
-    /// When `stat` is not `[a-z][a-z0-9_]*`.
+    /// When `stat` is not `[a-z][a-z0-9_]*`, or a line on a stat spent at
+    /// a use waits for the hit.
     #[must_use]
     #[track_caller]
     pub fn with_line(mut self, stat: &str, line: Line) -> Self {
@@ -631,6 +632,9 @@ impl Effect {
             valid_stat(stat),
             "Effect::with_line: `{stat}` is not a stat name (`[a-z][a-z0-9_]*`)"
         );
+        if let Err(error) = check_at_use(stat, line.scope()) {
+            panic!("Effect::with_line: {error}");
+        }
         self.modifiers.push((stat.to_owned(), line));
         self
     }
@@ -1656,6 +1660,8 @@ impl TryFrom<StatModifierFields> for StatModifierDef {
             ));
         }
         let line = Line::from_parts(fields.modifier, fields.with, fields.holder, fields.against)?;
+        // What `Stats::add_line` would panic on at the hit.
+        check_at_use(&fields.stat, line.scope())?;
         Ok(Self::of(fields.stat, &line))
     }
 }

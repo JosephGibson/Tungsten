@@ -3806,6 +3806,57 @@ fn a_blast_passes_the_dead() {
     assert_eq!(lost(&world, going), 0.0);
 }
 
+// The QA pass: a blast's credit checked as each hit is built.
+
+#[test]
+fn a_blast_credits_no_dead_credit() {
+    let bang = Blast::new(60.0)
+        .with_damage(5.0)
+        .with_far(1.0)
+        .landing_now();
+    let at = |x: f32| Transform::from_position(Vec2::new(x, 0.0));
+    let source_on = |world: &World, target: Entity| {
+        world
+            .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+            .iter()
+            .filter(|hit| hit.entity == target)
+            .last()
+            .map(|hit| hit.source)
+    };
+    // A thrower out of reach, alive, then dead by its Health (still in the
+    // World): the beast's hit credits it alive alone.
+    for dies in [false, true] {
+        let (mut world, _) = rig();
+        let thrower = world.spawn_with((Health::new(1.0), at(-200.0)));
+        let beast = world.spawn_with((Health::new(100.0), at(30.0)));
+        if dies {
+            crate::kill(&mut world, thrower);
+        }
+        blast(&mut world, Vec2::ZERO, &bang, Some(thrower), None);
+        let want = if dies { None } else { Some(thrower) };
+        assert_eq!(
+            source_on(&world, beast),
+            Some(want),
+            "a thrower that dies {dies}"
+        );
+    }
+    // A credit its own hit kills, ahead of the beast in save order: the
+    // beast's hit, built after, credits nobody.
+    let (mut world, _) = rig();
+    let keg = world.spawn_with((Health::new(1.0), at(-30.0)));
+    let beast = world.spawn_with((Health::new(100.0), at(30.0)));
+    blast(&mut world, Vec2::ZERO, &bang, Some(keg), None);
+    assert!(
+        world.get::<Health>(keg).unwrap().is_dead(),
+        "its hit kills it"
+    );
+    assert_eq!(
+        source_on(&world, beast),
+        Some(None),
+        "a credit an earlier hit killed"
+    );
+}
+
 // The receiver grid's directory, packed centres and squared test (phase 7's
 // C2), against the grid's query as it stood (`Grid::within_by_search`).
 
