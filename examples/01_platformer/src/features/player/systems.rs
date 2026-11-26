@@ -19,12 +19,12 @@ use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::components::{Lantern, LanternAnchors, Moves, Player, Shown, StaffGlow};
 use super::{
-    FLARE_CORE, FLARE_LIGHT, FLARE_RADIUS, GUTTER_PUFF, JUMP_SPEED, LAND_SECS, RELIGHT_MANA,
-    SHOVE_BESIDE, SHOVE_HEAD, SHOVE_OVER, SHOVE_SIDE, STAFF_LIGHT, STUCK_BY, ZOOM_MAX, ZOOM_MIN,
-    ZOOM_STEP,
+    FLARE_CORE, FLARE_LIGHT, FLARE_RADIUS, GUTTER_PUFF, GUTTER_SECS, JUMP_SPEED, KINDLE_FROM,
+    KINDLE_PEAK, KINDLE_RISE, KINDLE_SECS, LAND_SECS, RELIGHT_MANA, SHOVE_BESIDE, SHOVE_HEAD,
+    SHOVE_OVER, SHOVE_SIDE, STAFF_LIGHT, STUCK_BY, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::level::components::{Glow, Zoom};
+use crate::features::level::components::{Glow, GlowTail, Zoom};
 use crate::features::tomes;
 use crate::shared::{body_centre, just_pressed, spawn_burst};
 
@@ -452,24 +452,53 @@ fn show(world: &mut World, player: Entity, state: AnimationState, registry: &Ani
 }
 
 /// `player_lantern`, in the present phase before the level's glows: the
-/// staff light's glow sits on the orb of the frame shown, and goes dark
-/// while the light is off or guttered out, or the player is dead; while a
-/// spell's flare runs its halo, core and light swell from the prefab's
+/// staff light's glow sits on the orb of the frame shown. Lit, it kindles
+/// as it lights ([`kindle`]); guttered out for want of mana it fades and
+/// sputters out over [`GUTTER_SECS`] ([`gutter`]); turned off, or the player
+/// dead, it goes dark at once. A spawn or a load kindles nothing. While a
+/// spell's flare runs its halo, core and lights swell from the prefab's
 /// glow ([`FLARE_RADIUS`], [`FLARE_CORE`], [`FLARE_LIGHT`]), its reach the
 /// prefab's throughout, and after it they are the prefab's again.
+/// Presentation, on the frame's game time: a pause holds it.
 pub fn lantern(world: &mut World) {
     let Some(player) = player(world) else {
         return;
     };
-    let on = world.get::<Lantern>(player).is_some_and(Lantern::lit);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
+    let lantern = world.get::<Lantern>(player).copied().unwrap_or_default();
+    let lit = lantern.lit();
     let dead = world.get::<Health>(player).is_some_and(Health::is_dead);
     let anchor = anchor(world, player);
-    let flaring = world
-        .get::<Moves>(player)
-        .is_some_and(|moves| moves.glow > 0.0);
     let base = world.get::<StaffGlow>(player).map(|staff| staff.0);
+    let Some(moves) = world.get_mut::<Moves>(player) else {
+        return;
+    };
+    let flaring = moves.glow > 0.0;
+    match (moves.was_lit.replace(lit), lit) {
+        (None, _) => moves.kindled = KINDLE_SECS,
+        (Some(false), true) => {
+            moves.kindled = 0.0;
+            moves.guttering = None;
+        }
+        (Some(true), false) if lantern.guttered => moves.guttering = Some(0.0),
+        _ => {}
+    }
+    if !lantern.on || dead {
+        moves.guttering = None;
+    }
+    moves.kindled += dt;
+    moves.guttering = moves
+        .guttering
+        .map(|seconds| seconds + dt)
+        .filter(|&seconds| seconds < GUTTER_SECS);
+    let (shown, envelope) = match (lit, moves.guttering) {
+        _ if dead => (false, 1.0),
+        (true, _) => (true, kindle(moves.kindled)),
+        (false, Some(seconds)) => (true, gutter(seconds)),
+        (false, None) => (false, 1.0),
+    };
     if let Some(glow) = world.get_mut::<Glow>(player) {
-        glow.hidden = !on || dead;
+        glow.hidden = !shown;
         if let Some(anchor) = anchor {
             glow.offset = anchor;
         }
@@ -479,12 +508,43 @@ pub fn lantern(world: &mut World) {
             } else {
                 (1.0, 1.0, 1.0)
             };
-            glow.radius = base.radius * radius;
-            glow.core = base.core * core;
-            glow.light = base.light * light;
+            glow.radius = base.radius * radius * envelope;
+            glow.core = base.core * core * envelope;
+            glow.light = base.light * light * envelope;
             glow.reach = Some(base.reach());
+            glow.tail = base.tail.map(|tail| GlowTail {
+                light: tail.light * light * envelope,
+                ..tail
+            });
         }
     }
+}
+
+/// The staff light's kindling flare `seconds` after it lit, a share of the
+/// prefab's glow: from [`KINDLE_FROM`] up to [`KINDLE_PEAK`] over the first
+/// [`KINDLE_RISE`] of [`KINDLE_SECS`], easing out, then back to 1, easing
+/// in and out; 1 after.
+#[must_use]
+pub fn kindle(seconds: f32) -> f32 {
+    let u = (seconds / KINDLE_SECS).clamp(0.0, 1.0);
+    if u < KINDLE_RISE {
+        let v = u / KINDLE_RISE;
+        KINDLE_FROM + (KINDLE_PEAK - KINDLE_FROM) * (1.0 - (1.0 - v) * (1.0 - v))
+    } else {
+        let v = (u - KINDLE_RISE) / (1.0 - KINDLE_RISE);
+        KINDLE_PEAK + (1.0 - KINDLE_PEAK) * v * v * (3.0 - 2.0 * v)
+    }
+}
+
+/// The staff light's fade `seconds` after it guttered out, a share of the
+/// prefab's glow: falling to nothing over [`GUTTER_SECS`] as the square of
+/// the time left, sputtering deeper as it dies.
+#[must_use]
+pub fn gutter(seconds: f32) -> f32 {
+    let u = (seconds / GUTTER_SECS).clamp(0.0, 1.0);
+    let left = 1.0 - u;
+    let sputter = 1.0 - 0.45 * u * (std::f32::consts::TAU * 7.5 * seconds).sin().abs();
+    left * left * sputter
 }
 
 /// Where the staff's orb sits in `player`'s frame now, from its sprite's
