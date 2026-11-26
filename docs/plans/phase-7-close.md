@@ -1,6 +1,6 @@
-# Phase 7's close (phase 7, Step 17) — draft
+# Phase 7's close (phase 7, Step 17) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Close Phase 7 as [the Phase 7 plan](phase-7.md)'s Step 17 says: carry its §2.3's 37 open rows into the [roadmap redo](roadmap-redo.md)'s §3 Phase 8 rows by ID (21 are not there yet), with P8-6's note; point every record that cites the plan, or names its tables as a disposition's home, at the redo or at the plan's last commit; close its follow-up F1; keep preflight's R7 reading rows once its source is gone; then, the tests passing and example 01 running, delete the plan and this one with their citations, `phase-7` out of Now and `phase-8` in.
 - **non-goals:**
   - The [genre jam](genre-jam.md)'s triage: its 14 untriaged rows stay the owner's (`D-150`); the close records that the steps 13 of them were proposed for have closed, and moves none (Q3).
@@ -212,6 +212,7 @@ Round 2: the same reviewer at xhigh, 2026-11-25, reading the plan with this sect
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-26 | passed | Before the edits, at `e7919631`: `base` → `baaecc20`; `open` → exit 0; `terminal` → exit 0, 300 rows; `later` → nothing printed, 22 rows; `levers` → nothing printed, 2 rows; `items` → exit 0, 12 rows; `carry` printed A4's 21 of 37 (PA-12, PA-13, S-162 for 8.1; PA-14, PA-15, PA-16, S-6 for 8.2; S-8, S-11, S-22, S-61, S-69 for 8.3; PA-3, PA-4, PA-9, PA-17 to PA-22 for 8.7), `step17` the same 21, `note` 0. After §2.1: `carry` → nothing printed, 37 rows; `step17` → nothing printed; `note` → 1; `kept` → `cmp` exit 0, 24 lines each; `rg -q 'phase-7\.md' docs/plans/roadmap-redo.md; test $? -eq 1` → exit 0; `just repo-check` → exit 0, `Repository QA: 0 error(s), 36 note(s)`, the Follow-ups' deleted-record citations among the notes (`D-314`) | `docs/plans/roadmap-redo.md`, this file |
 
 ## Follow-ups
 
