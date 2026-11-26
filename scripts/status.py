@@ -2,7 +2,7 @@
 """Where Tungsten stands, derived from the tree (`just status`; the tungsten-next skill reads it).
 
 Read-only and offline: origin/* are local refs as of the last fetch. Standard library only.
-Six sections: git, tree, sessions, frozen records, ROADMAP.md's Now and Next, active plans.
+Five sections: git, tree, sessions, ROADMAP.md's Now and Next, active plans.
 Sessions read Linux's /proc and print `unavailable` without it.
 """
 
@@ -18,8 +18,9 @@ PROC = Path("/proc")
 LIVE = 180
 SHOWN = 30
 FINAL_TAG = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
-FROZEN_BANNER = r"Frozen [0-9-]+ \(`?D-215"
 CELL = re.compile(r"(?<!\\)\|")
+# The deleted records' folders (D-314), left out of the plans section.
+HISTORICAL = ("1.0", "archive")
 
 
 def git(root, *args):
@@ -170,25 +171,6 @@ def sessions_section(root):
     return out
 
 
-def frozen_section(root):
-    out = ["== frozen records (a banner naming D-215; not edited again)"]
-    d215 = git(root, "log", "--format=%h", "-1", "-S## D-215 ", "--", "DECISIONS.md")
-    out.append(f"D-215 in HEAD: {d215 or 'no'}")
-    hits = 0
-    files = git(root, "grep", "-lE", FROZEN_BANNER, "--", "docs", ":!docs/plans/archive")
-    for name in (files or "").splitlines():
-        tree = (git(root, "status", "--short", "--", name) or "")[:2].strip()
-        commits = (git(root, "log", "--format=%h", f"{d215}..HEAD", "--", name) or "").split() if d215 else []
-        if not tree and not commits:
-            continue
-        hits += 1
-        out.append(f"{name}:" + (f" tree {tree}" if tree else "")
-                   + (f" · commits since D-215: {' '.join(commits)}" if commits else ""))
-    if not hits:
-        out.append("no edits since D-215")
-    return out
-
-
 def roadmap_section(root):
     out = ["== ROADMAP.md"]
     try:
@@ -251,10 +233,10 @@ def evidence_rows(text):
 
 
 def plans_section(root):
-    out = ["== plans (active, outside the frozen 1.0 folder)"]
+    out = ["== plans (active)"]
     folder = root / "docs" / "plans"
     files = sorted(folder.glob("*.md")) + sorted(
-        path for path in folder.glob("*/*.md") if path.parent.name not in ("1.0", "archive"))
+        path for path in folder.glob("*/*.md") if path.parent.name not in HISTORICAL)
     files = [path for path in files if path.name != "README.md"]
     for path in files:
         text = path.read_text()
@@ -276,7 +258,7 @@ def report(root, now=None):
     root = Path(root).resolve()
     now = time.time() if now is None else now
     sections = (git_section(root, now), tree_section(root, now), sessions_section(root),
-                frozen_section(root), roadmap_section(root), plans_section(root))
+                roadmap_section(root), plans_section(root))
     return "\n".join(line for section in sections for line in section)
 
 

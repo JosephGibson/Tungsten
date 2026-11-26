@@ -16,8 +16,8 @@ Capture provenance and hardware-check rules stand (`D-070`, `D-095`). Every rout
 
 ## Naming
 
-- Plans: `descriptive-topic.md`. Milestone numbers ended at M85 (`D-215`); the archive keeps the `phaseN-milestone-NN-short-topic.md` names.
-- Program folders: plans that serve one goal may share `docs/plans/<program>/`, with a README that maps its files, as [`1.0/`](1.0/README.md) does. Header rules apply to every file there except the README, and `just repo-check` reads them one folder deep.
+- Plans: `descriptive-topic.md`. Milestone numbers ended at M85 (`D-215`).
+- Program folders: plans that serve one goal may share `docs/plans/<program>/`, with a README that maps its files. Header rules apply to every file there except the README, and `just repo-check` reads them one folder deep.
 
 ## Contents
 
@@ -40,10 +40,8 @@ Capture provenance and hardware-check rules stand (`D-070`, `D-095`). Every rout
 
 - Update `status` when work finishes; don't leave a finished plan `in progress`.
 - Keep one active plan per thread of work: delete or rename obsolete ones.
-- A plan is deleted when done, abandoned or replaced, with its citations removed in the same commit, since `just repo-check` fails on a cited plan that is gone ([operating rules](../operating-rules.md#plans)). Its open findings move first to known issues or ROADMAP.md's Later. `docs/plans/archive/` keeps the plans archived before H1 (`D-215`); agents never read it.
+- A plan is deleted when done, abandoned or replaced, with its citations removed in the same commit, since `just repo-check` fails on a cited plan that is gone ([operating rules](../operating-rules.md#plans)). Its open findings move first to known issues or ROADMAP.md's Later. The plans archived before H1 and the frozen 1.0 records were deleted on 2026-11-26 (`D-314`); `just history <path>` reads one at their last commit.
 
 `just repo-check` validates active headers and flags completed plans left here. An old date alone does not make an in-progress plan stale: review its remaining checks against code and owner/platform dependencies before deleting it. An audit can be complete with unresolved findings; retain still-relevant findings in a maintained follow-up document before deleting it.
 
-Never inspect the archive to discover files. Owner-directed retirement can preserve an unfinished plan as a historical snapshot; archived proposals do not authorize new work. Leave immutable decision text and dated release evidence intact, with historical-path guidance in the indexes.
-
-Phase 4 is complete; its roadmap is archived as `docs/plans/archive/phase4.md`.
+A deleted plan's proposals authorize no new work. Leave immutable decision text and dated release evidence intact: their citations of deleted plans read as notes.

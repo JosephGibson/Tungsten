@@ -3,8 +3,8 @@
 
 Prints repo-byte totals for the root and render instruction sets. They are file
 sizes, not token counts and not total session context (client system prompts,
-user settings and memory are excluded). Never reads or walks
-docs/plans/archive/. Standard library only.
+user settings and memory are excluded). Links into the deleted records'
+folders (docs/plans/archive/, docs/plans/1.0/; D-314) are left unresolved. Standard library only.
 
 Usage: check-agent-context.py [--root DIR] [--self-test]
 """
@@ -16,7 +16,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-ARCHIVE = "docs/plans/archive"
+# The deleted records' folders (D-314), whose last commit keeps them.
+HISTORICAL = ("docs/plans/archive", "docs/plans/1.0")
 IMPORT_ONLY = "@AGENTS.md\n"
 # path -> (max bytes, max lines or None); lines must stay below the limit.
 BUDGETS = {
@@ -57,7 +58,7 @@ PATHLIKE_RE = re.compile(r"/|\.(md|json|rs|wgsl|toml|sh|py)$")
 
 def in_archive(rel: str) -> bool:
     rel = rel.rstrip("/")
-    return rel == ARCHIVE or rel.startswith(ARCHIVE + "/")
+    return any(rel == h or rel.startswith(h + "/") for h in HISTORICAL)
 
 
 def check_links(root: Path, doc: str, base_dir: str, errors: list) -> None:

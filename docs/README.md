@@ -14,7 +14,7 @@ Start with the document that owns the fact you need. Code and executable checks 
 | Current architecture and reload support | [Design](../DESIGN.md) |
 | Design rationale | [Decision index](DECISION_INDEX.md), then one `D-NNN` section of [DECISIONS](../DECISIONS.md) |
 | Open findings, recorded limits and follow-ups | [Known issues](known-issues.md) |
-| Plan headers, lifecycle and archival | [Plan rules](plans/README.md) |
+| Plan headers and lifecycle | [Plan rules](plans/README.md) |
 | Agent discovery, skills and filters | [Agent setup](agent-setup.md) |
 | Performance capture and comparison rules | [Profiling workflow](perf/profiling-workflow.md) |
 | Workloads, knobs, dated numbers and performance proposals | [Benchmarks](perf/benchmarks.md) |
@@ -29,6 +29,6 @@ Start with the document that owns the fact you need. Code and executable checks 
 
 For large docs, locate a heading with `rg -n '^#{1,3} ' <file>` and read the relevant section. Check current source before applying an old benchmark result or proposed API. Keep operational rules in AGENTS, rationale in decisions, and execution steps in active plans; skills route to those sources instead of copying their tables.
 
-Completed or retired plans live under `docs/plans/archive/` with their original basenames. Historical `docs/plans/<name>.md` references may therefore name their former locations. Agents never read, search or list the archive.
+Plans are deleted when done. The plans archive and the frozen 1.0 records were deleted on 2026-11-26 (`D-314`); a historical `docs/plans/…` citation names a plan or record that `just history <path>` reads at their last commit.
 
-After documentation changes, run `just ctx`, `just repo-check` and `git diff --check`; substantial work also finishes with `just check`. The checker covers maintained docs and active program documents one folder deep, including local destinations and Markdown fragments; archive targets stay unread. Check other touched local links/anchors and external URLs separately.
+After documentation changes, run `just ctx`, `just repo-check` and `git diff --check`; substantial work also finishes with `just check`. The checker covers maintained docs and active program documents one folder deep, including local destinations and Markdown fragments; a link into a deleted record is a note. Check other touched local links/anchors and external URLs separately.

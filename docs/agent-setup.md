@@ -22,10 +22,10 @@ How Claude Code and Codex pick up this repo's instructions, skills and search fi
 
 ## Search filters
 
-- `.ignore` hides the archive, build and perf outputs from ripgrep-based tools (rg, fd, Claude Grep/Glob, Codex tools that use those search programs). `.gitignore` covers Git and build noise.
+- `.ignore` hides build and perf outputs and the API snapshots from ripgrep-based tools (rg, fd, Claude Grep/Glob, Codex tools that use those search programs). `.gitignore` covers Git and build noise.
 - Claude's Glob ignores `.gitignore` unless `CLAUDE_CODE_GLOB_NO_IGNORE=false`, which `.claude/settings.json` sets. Grep already honors `.gitignore` and `.ignore`.
 - `.claudeignore` was removed: 2.1.110's Grep didn't honor it in a controlled test.
-- Filters aren't access boundaries. The archive rule is enforced for Claude by a project `Read(./docs/plans/archive/**)` deny, which a scratch-project test confirmed for launches at the project root (subdirectory launches weren't verified). For everything else it's the `AGENTS.md` hard rule. Never bypass filters with `rg -uu`.
+- Filters aren't access boundaries; never bypass them with `rg -uu`.
 
 ## Permissions, sandbox and trust
 
@@ -81,9 +81,9 @@ Run from the repository root with Rust, just, Python 3.12+, Bash, ShellCheck and
 
 `just quick` combines format/context/repository QA and workspace type checking. It is broader than a targeted edit-loop test and does not replace final `just check` or applicable hardware checks. `just ci` mirrors the informational CPU CI sequence; `just --list` and [justfile](../justfile) describe the recipes, including `level-check`, `physics-release`, API and template checks. Pixel tests skipped by a CPU run are **not run**, as the [evidence rules](validation.md#evidence-and-hardware-boundaries) explain.
 
-`just repo-check` checks asset coverage, active plan headers, maintained docs and active program documents one folder deep (including their README maps), local inline/reference destinations and Markdown fragments, decision IDs, plan citations, agent configuration, and `ROADMAP.md`'s sections, Now's one to three items and one-line items. Archive targets are notes and never probed, and so are a frozen record's dead links and fragments (`D-215`); fenced Markdown examples and the plan skeleton's future-location links are not active-document navigation. Version/changelog/DESIGN consistency and Rust manifest/index tests run afterward. Other Markdown and external URLs need separate review. In-progress plans are review notes; dates do not establish abandonment. Missing citations fail; historical changelog/decision citations and script-test fixtures remain exempt.
+`just repo-check` checks asset coverage, active plan headers, maintained docs and active program documents one folder deep (including their README maps), local inline/reference destinations and Markdown fragments, decision IDs, plan citations, agent configuration, and `ROADMAP.md`'s sections, Now's one to three items and one-line items. Links and citations into the deleted records' folders (`docs/plans/archive/`, `docs/plans/1.0/`, `D-314`) are notes, never probed; fenced Markdown examples and the plan skeleton's future-location links are not active-document navigation. Version/changelog/DESIGN consistency and Rust manifest/index tests run afterward. Other Markdown and external URLs need separate review. In-progress plans are review notes; dates do not establish abandonment. Missing citations fail; historical changelog/decision citations and script-test fixtures remain exempt.
 
-The checker is read-only and standard-library-only; it never traverses the plan archive, follows directory symlinks during enumeration, guesses asset IDs or edits manifests. Asset coverage exceptions are listed in [assets](assets.md#coverage-exceptions); a new one needs a scoped checker review.
+The checker is read-only and standard-library-only; it never follows directory symlinks during enumeration, guesses asset IDs or edits manifests. Asset coverage exceptions are listed in [assets](assets.md#coverage-exceptions); a new one needs a scoped checker review.
 
 API snapshots use the pinned toolchain and `cargo-public-api` 0.52.0 (`cargo install --locked cargo-public-api@0.52.0`, `D-107`). Unused-dependency review uses `cargo shear --locked` (`cargo install --locked cargo-shear`); the test modules included with `#[path]` are listed under its `ignored-paths` in `Cargo.toml`. These tools stay local. Release preflight additionally needs Git, authenticated gh and network; use [the release guide](releases.md#ordinary-release) for its read-only inspection and the owner's block.
 

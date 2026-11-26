@@ -179,7 +179,7 @@ This list was the paper designs' prediction; 7.6's registers (`paper-designs.md`
 | 9.4 | Quality | Rustdoc until `missing_docs` is clean, rustdoc examples, a pinned fixture per format (O2 as changed in §2) |
 | 9.5 | Docs and platforms | The rewrite's R6 triage, with 7.16's guidance; W9b's final pass on the getting-started guide; W7b's platform tiers in the README (criteria Q3) |
 | 9.6 | Tests | The rewrite's R7 crush on the settled API |
-| 9.7 | Records | The rewrite's R8: the old records deleted and the tree tagged (R-Q11) |
+| 9.7 | Records | The rewrite's R8: the old records deleted and the tree tagged (R-Q11); done 2026-11-26 ahead of its place, by the QA pass (`D-314`): `docs/plans/1.0/` and `docs/plans/archive/` deleted, their last commit `2f0ffeb0` tagged `old-records` and read by `just history` |
 | 9.8 | Release candidates, then 1.0 | On H2's release script (R3): C3, the release checklist (revised at adoption) run on each candidate; W9c's crates.io only if criteria Q2 says so |
 
 Throughout Phases 7 and 8, each system ships its agent surface (§8) in the step that builds it, and each art or sound need runs through §6, at max.

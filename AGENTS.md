@@ -10,8 +10,7 @@ Native Rust 2D game engine: `winit` + `wgpu` + `glam` + hand-rolled ECS + manife
 
 - Start here; open only the files the task touches. [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) maps tasks to files; open it before a broad search.
 - Rationale: matching rows in [`docs/DECISION_INDEX.md`](docs/DECISION_INDEX.md), then `rg -n 'D-0NN' DECISIONS.md`. Never read `DECISIONS.md`, `DESIGN.md` or `CHANGELOG.md` whole: `rg -n '^#' <file>`, then read one section.
-- **Never read, search or glob `docs/plans/archive/`** (done or abandoned plans). `.ignore` filters it; never bypass that with `rg -uu`.
-- Status: [`ROADMAP.md`](ROADMAP.md); the plan to 1.0: [the roadmap redo](docs/plans/roadmap-redo.md); how work runs: [operating rules](docs/operating-rules.md) (`D-215`). The 1.0 register, `roadmap.json` and the 1.0 README's fields are frozen.
+- Status: [`ROADMAP.md`](ROADMAP.md); the plan to 1.0: [the roadmap redo](docs/plans/roadmap-redo.md); how work runs: [operating rules](docs/operating-rules.md) (`D-215`). The 1.0 records and the plans archive are deleted (`D-314`); `just history <path>` reads one.
 - [Doc map](docs/README.md): canonical sources. Plans follow [`docs/plans/README.md`](docs/plans/README.md); client setup is in [`docs/agent-setup.md`](docs/agent-setup.md).
 
 ## Commands

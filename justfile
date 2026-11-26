@@ -121,9 +121,13 @@ checks *args:
 preflight plan *args:
     python3 -B scripts/preflight.py "$@"
 
-# Where the tree stands, read-only and offline: git and the newest tag, the tree, other sessions, frozen-record edits, ROADMAP.md's Now and Next, active plans.
+# Where the tree stands, read-only and offline: git and the newest tag, the tree, other sessions, ROADMAP.md's Now and Next, active plans.
 status:
     python3 -B scripts/status.py
+
+# A deleted record (the plans archive, the frozen 1.0 records) at its last commit, which the owner tags old-records (D-314).
+history path:
+    git show "old-records:$1"
 
 # `tungsten new`'s game outside the repository: checked, built, tested, smoke-run and packaged there, then seeded errors (D-123, D-183); a release check. GPU; free-space floor first.
 template-check:

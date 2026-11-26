@@ -7,7 +7,7 @@ How work is picked, planned, committed and released from H1 on (`D-215`, the [ro
 - [`ROADMAP.md`](../ROADMAP.md) is the only status record: Now, Next and Later, one line per item. It replaced the register, `roadmap.json`, the roadmap page and the 1.0 README's owned fields, which grew a row, a stop and a field per change and drifted from each other.
 - Now holds one to three items; `just repo-check` refuses more, since a long Now is a waterfall again.
 - The commit that starts or finishes an item updates `ROADMAP.md`, so status never lags the tree.
-- `just status` ([`scripts/status.py`](../scripts/status.py)) derives the rest from the tree: the newest tag and the commits since it, the tree, other sessions, frozen-record edits, Now and Next, and each active plan's last evidence row. Status read by hand drifted from the tree.
+- `just status` ([`scripts/status.py`](../scripts/status.py)) derives the rest from the tree: the newest tag and the commits since it, the tree, other sessions, Now and Next, and each active plan's last evidence row. Status read by hand drifted from the tree.
 - Items keep their IDs (`e01tomes`); milestone numbers ended with the register at M85.
 
 ## Habits
@@ -32,7 +32,7 @@ The owner's answer of 2026-10-23: toward agile by a gradient, the 1.0 batch plan
 
 - History stops growing per change: no register rows, catalog stops, roadmap-page syncs or decision amendments per change. A release's changelog section is written from its commits at the cut.
 - Maintained docs are corrected in the same commit as the change that makes them wrong: `DESIGN.md`, the [LLM index](LLM_INDEX.md), `README.md`, [assets](assets.md), [validation](validation.md), [known issues](known-issues.md) and the template's docs. A doc left wrong misleads the next agent's first read.
-- Frozen records carry a one-line banner naming what replaced them and are not edited again; step 9.7 deletes them. `check_plans` refuses a finished status outside the archive, so they keep their status under the banner.
+- The frozen 1.0 records and the plans archive were deleted on 2026-11-26, ahead of step 9.7 (`D-314`): their last commit, tagged `old-records`, keeps them for `just history <path>`, and the citations history keeps of them read as notes. Kept unread in the tree, they cost a banner rule, a read deny, an ignore line and a status section.
 
 ## Plans
 

@@ -214,3 +214,5 @@ Round 2: the same reviewer at xhigh, 2026-11-25, reading the plan with this sect
 | --- | --- | --- | --- | --- |
 
 ## Follow-ups
+
+- 2026-11-26, the QA pass (`D-314`): `docs/plans/1.0/` and `docs/plans/archive/` are deleted by its records commit, their last content at `2f0ffeb0`. This plan's files keep their citations of them as notes, for Step 1's recheck: `phase-7.md:25` (`example-01-feedback.md`); `roadmap-redo.md:17`, `:31`, `:33` and `:43` (the 1.0 records and the Phase 7 rewrite), its 9.7 row now reading done; `seam-register.md:19`, `:95`, `:133`, `:295`, `:454` and `:455`; `genre-jam.md:11`, `:84` and `:104`; `paper-designs.md:170`–`:355` (its `backlog-1.x.md` and `example-01-feedback.md` evidence); and `scripts/preflight.py:16`, `:33` and `:328`, which skip the deleted archive.

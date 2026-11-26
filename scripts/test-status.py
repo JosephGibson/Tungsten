@@ -86,10 +86,10 @@ class Status(unittest.TestCase):
         end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("== ")), len(lines))
         return lines[start + 1:end]
 
-    def test_six_sections_in_order(self):
+    def test_five_sections_in_order(self):
         heads = [line for line in self.report() if line.startswith("== ")]
         self.assertEqual([head.split()[1] for head in heads],
-                         ["git", "tree", "sessions", "frozen", "ROADMAP.md", "plans"])
+                         ["git", "tree", "sessions", "ROADMAP.md", "plans"])
 
     def test_commits_since_the_newest_final_tag_on_head(self):
         self.write("a.txt", "a\n")
@@ -121,10 +121,11 @@ class Status(unittest.TestCase):
         self.assertIn("- `gamma`: waits.", roadmap)
         self.assertNotIn("- `delta`: someday.", roadmap)
 
-    def test_a_plans_rows_and_the_frozen_folder_left_out(self):
+    def test_a_plans_rows_and_the_deleted_records_folders_left_out(self):
         self.write("docs/plans/a-plan.md", PLAN)
         self.write("docs/plans/README.md", "# Plans\n")
         self.write("docs/plans/1.0/old.md", PLAN)
+        self.write("docs/plans/archive/old.md", PLAN)
         self.write("docs/plans/list-plan.md", "- **status:** draft\n- **ordered steps:**\n  1. One.\n    - a detail\n"
                    "  2. Two.\n- **done-when:** it works\n")
         self.commit("docs: plans")
@@ -132,20 +133,6 @@ class Status(unittest.TestCase):
             "docs/plans/a-plan.md: in progress · steps: 3 · evidence rows: 2 · last: step 2, skipped, a check failed",
             "docs/plans/list-plan.md: draft · steps: 2 · evidence rows: 0",
         ])
-
-    def test_a_frozen_record_edited_after_the_d215_commit(self):
-        banner = "**Frozen 2026-10-25 (`D-215`):** ROADMAP.md replaces this.\n"
-        self.write("docs/plans/1.0/register.md", banner + "Rows.\n")
-        self.write("docs/plans/1.0/catalog.md", banner + "Stops.\n")
-        self.write("DECISIONS.md", "# Decisions\n\n## D-215 — Operating rules\n")
-        self.commit("docs: freeze the records (D-215)")
-        self.assertIn("no edits since D-215", self.section("frozen"))
-        self.write("docs/plans/1.0/register.md", banner + "Rows, and a new one.\n")
-        edit = self.commit("docs: a register row")
-        self.write("docs/plans/1.0/register.md", banner + "Rows, and two.\n")
-        frozen = self.section("frozen")
-        self.assertIn(f"docs/plans/1.0/register.md: tree M · commits since D-215: {edit}", frozen)
-        self.assertFalse(any(line.startswith("docs/plans/1.0/catalog.md") for line in frozen))
 
     def test_a_dirty_file_and_its_age(self):
         self.write("ROADMAP.md", ROADMAP + "\n- `epsilon`: new.\n")
