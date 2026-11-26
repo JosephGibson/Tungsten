@@ -198,8 +198,8 @@ fn impact_cue(impact: &Impact) -> Option<CueEvent> {
 /// and the flames, pulses and ice shells drawn after the sprites.
 pub struct ElementsPlugin;
 
-/// The bowling balls' strikes, between the kit's impact damage and the
-/// balls' thuds.
+/// The bowling balls' strikes, between the fire's contacts and the balls'
+/// thuds, after the kit's impact damage.
 pub const STRIKES: &str = "ball_strikes";
 
 /// The overlap systems the cascades' run follows.
@@ -233,6 +233,19 @@ impl Plugin for ElementsPlugin {
                 .capture_as(cascade::cascades_saved),
         );
         ensure_phases(schedule);
+        // Between the fire's contacts and the balls' thuds, after the kit's
+        // impact damage, whose hits it reads; added first, so the resolve
+        // keeps the thuds' place before the crushes and the bodies'
+        // impacts, the first of them over the step's contacts.
+        world.insert_resource(components::Strikes::default());
+        let mut struck = EventCursor::new();
+        let strikes = system(STRIKES, move |world: &mut World| {
+            systems::ball_strikes(world, &mut struck);
+        })
+        .after(IMPACT_DAMAGE)
+        .after(CONTACTS[0])
+        .before(CONTACTS[1]);
+        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(strikes));
         let fixed = [
             Phase::Overlap.join(system(CONTACTS[0], systems::fire_contacts)),
             Phase::Overlap.join(system(CONTACTS[1], systems::ball_impacts)),
@@ -245,16 +258,6 @@ impl Plugin for ElementsPlugin {
         for desc in fixed {
             schedule.add(Stage::FixedUpdate, desc);
         }
-        // Between the kit's impact damage, whose hits it reads, and the
-        // balls' thuds, which a strike's contact spares.
-        world.insert_resource(components::Strikes::default());
-        let mut struck = EventCursor::new();
-        let strikes = system(STRIKES, move |world: &mut World| {
-            systems::ball_strikes(world, &mut struck);
-        })
-        .after(IMPACT_DAMAGE)
-        .before(CONTACTS[1]);
-        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(strikes));
         let mut run = system("cascade_run", cascade::run)
             .after(PROJECTILE_TICK)
             .after("missile_ends");
