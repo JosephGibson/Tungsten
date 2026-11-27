@@ -39,14 +39,14 @@ use crate::testing::Harness;
 /// `post_update` with `DefaultPlugins`, then `KitPlugins::set()`, the sound
 /// plugin, the trigger zone and the state machine: the present phase after
 /// the late propagation and before the camera.
-const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, effect_look, burst_cleanup, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, effect_look_late, kit_debug_draw, hit_sound, camera_update";
+const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, effect_look, burst_cleanup, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, effect_look_late, interact_prompt, kit_debug_draw, hit_sound, camera_update";
 
 /// `fixed_update` with the same plugins: the six fixed phases around
 /// `physics_step`, each member in its registration order but where an edge
 /// orders it: the impact record before the movers, the hit items and the
 /// impacts before the corrections, the magnet before the speed limit, the
 /// kit's despawn after the cues.
-const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, chemistry_tick, kit_intent, action_input, aim, ability_tick, phases, kit_move, impact_record, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, impact_damage, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, chemistry, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step";
+const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, chemistry_tick, kit_intent, action_input, aim, ability_tick, interact, phases, kit_move, impact_record, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, impact_damage, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, chemistry, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step";
 
 /// The event the sound plugin plays.
 struct Hit;

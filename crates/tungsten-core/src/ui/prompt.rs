@@ -103,6 +103,37 @@ fn chosen(bindings: &[Binding], pad: bool) -> Option<Binding> {
         .copied()
 }
 
+/// Whether the device kind or any action's bindings moved since `parts`
+/// were last resolved for `last_pad`.
+fn parts_stale(parts: &[Part], last_pad: Option<bool>, map: Option<&ActionMap>, pad: bool) -> bool {
+    last_pad != Some(pad)
+        || parts.iter().any(|part| match part {
+            Part::Action { name, seen, .. } => bindings_of(map, name) != seen.as_slice(),
+            Part::Literal(_) => false,
+        })
+}
+
+/// Rebuilds `parts`' text against `map` and the device kind into `text`,
+/// which it clears first.
+fn resolve_parts(parts: &mut [Part], map: Option<&ActionMap>, pad: bool, text: &mut String) {
+    text.clear();
+    for part in parts {
+        match part {
+            Part::Literal(literal) => text.push_str(literal),
+            Part::Action { name, short, seen } => {
+                let bindings = bindings_of(map, name);
+                seen.clear();
+                seen.extend_from_slice(bindings);
+                match chosen(bindings, pad) {
+                    Some(binding) if *short => text.push_str(&binding.short_label()),
+                    Some(binding) => text.push_str(&binding.label()),
+                    None => text.push_str(UNBOUND),
+                }
+            }
+        }
+    }
+}
+
 impl Prompt {
     fn new(label: WidgetId, template: &str) -> Self {
         Self {
@@ -126,33 +157,53 @@ impl Prompt {
     /// Whether the device kind or any action's bindings moved since the
     /// last resolution.
     fn stale(&self, map: Option<&ActionMap>, pad: bool) -> bool {
-        self.pad != Some(pad)
-            || self.parts.iter().any(|part| match part {
-                Part::Action { name, seen, .. } => bindings_of(map, name) != seen.as_slice(),
-                Part::Literal(_) => false,
-            })
+        parts_stale(&self.parts, self.pad, map, pad)
     }
 
     /// Rebuilds the text against `map` and the device kind.
     fn resolve(&mut self, map: Option<&ActionMap>, pad: bool) -> String {
         self.pad = Some(pad);
         let mut text = String::new();
-        for part in &mut self.parts {
-            match part {
-                Part::Literal(literal) => text.push_str(literal),
-                Part::Action { name, short, seen } => {
-                    let bindings = bindings_of(map, name);
-                    seen.clear();
-                    seen.extend_from_slice(bindings);
-                    match chosen(bindings, pad) {
-                        Some(binding) if *short => text.push_str(&binding.short_label()),
-                        Some(binding) => text.push_str(&binding.label()),
-                        None => text.push_str(UNBOUND),
-                    }
-                }
-            }
-        }
+        resolve_parts(&mut self.parts, map, pad, &mut text);
         text
+    }
+}
+
+/// A prompt's text outside a tree (redo 8.1): a template with the
+/// placeholders [`UiTree::set_prompt`] reads, resolved on demand for a
+/// world label or any text a game draws itself. [`Self::text`] rebuilds
+/// only when the device kind or a named action's bindings moved since the
+/// last call, so an unchanged prompt costs slice compares and allocates
+/// nothing.
+#[derive(Debug, Clone)]
+pub struct PromptText {
+    parts: Vec<Part>,
+    /// Whether the last resolution read pad bindings; `None` before the
+    /// first.
+    pad: Option<bool>,
+    text: String,
+}
+
+impl PromptText {
+    /// A prompt over `template`, unresolved until the first [`Self::text`].
+    #[must_use]
+    pub fn new(template: &str) -> Self {
+        Self {
+            parts: parse(template),
+            pad: None,
+            text: String::new(),
+        }
+    }
+
+    /// The text for `device` against `map` (none reads every action as
+    /// unbound), rebuilt only when stale.
+    pub fn text(&mut self, map: Option<&ActionMap>, device: InputDevice) -> &str {
+        let pad = device == InputDevice::Gamepad;
+        if parts_stale(&self.parts, self.pad, map, pad) {
+            self.pad = Some(pad);
+            resolve_parts(&mut self.parts, map, pad, &mut self.text);
+        }
+        &self.text
     }
 }
 

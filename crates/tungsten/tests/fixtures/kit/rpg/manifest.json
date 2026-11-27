@@ -110,6 +110,15 @@
     },
     "vista": {
       "path": "prefabs/vista.json"
+    },
+    "keeper": {
+      "path": "prefabs/keeper.json"
+    },
+    "lamp_post": {
+      "path": "prefabs/lamp_post.json"
+    },
+    "night_warden": {
+      "path": "prefabs/night_warden.json"
     }
   },
   "data": {

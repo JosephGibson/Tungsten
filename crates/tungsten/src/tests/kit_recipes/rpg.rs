@@ -11,19 +11,20 @@
 //! switched off and on, gold that blinks faster as it goes, a rat den
 //! whose first rat comes at once, a crate warden, who carries a ward crate
 //! at its side as it turns and lobs it onto a mark, and a fogling whose
-//! health bar waits for a hurt.
+//! health bar waits for a hurt; 8.1's night warden, who talks to the
+//! keeper in reach and lights the lamp post once.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
 use tungsten_core::{CameraController, CameraState, Entity, Sprite};
 
 use super::{
-    DTS, body_at, drawn_at, frames_for, point_of, recipe, register_sprite, spawn, tagged,
+    DTS, body_at, drawn_at, frames_for, point_of, recipe, register_sprite, spawn, tagged, teleport,
     traced_steps,
 };
 use crate::kit::{
-    Abilities, Cooldown, Counters, Effects, Flags, Health, Hit, KitPlugins, KitRng, Level, Source,
-    Tags, TopDownMover, damage,
+    Abilities, Cooldown, Counters, Effects, Flags, Health, Hit, Interactor, KitPlugins, KitRng,
+    Level, Source, Tags, TopDownMover, damage,
 };
 use crate::testing::Harness;
 
@@ -1030,5 +1031,73 @@ fn the_lookout_raises_the_vista_and_a_kill_releases_it() {
         harness.step(2);
         assert!(!live(&harness), "dt {dt}: released");
         assert_eq!(winner(&harness), Some(wayfarer), "dt {dt}: back");
+    }
+}
+
+/// The interactable `interactor` would use now.
+fn focus_of(harness: &Harness, interactor: Entity) -> Option<Entity> {
+    harness
+        .world()
+        .get::<Interactor>(interactor)
+        .unwrap()
+        .focus()
+}
+
+#[test]
+fn the_night_warden_talks_to_the_keeper_only_in_reach() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "night_warden", [64.0, 64.0]);
+        let keeper = spawn(&mut harness, "keeper", [160.0, 64.0]);
+        harness.tap_action("interact");
+        assert_eq!(
+            focus_of(&harness, warden),
+            None,
+            "dt {dt}: 96 px off, reach 40"
+        );
+        assert!(traced_steps(&harness, keeper, "interacted").is_empty());
+
+        teleport(&mut harness, warden, Vec2::new(128.0, 64.0));
+        harness.step(1);
+        assert_eq!(
+            focus_of(&harness, warden),
+            Some(keeper),
+            "dt {dt}: 32 px off"
+        );
+        harness.tap_action("interact");
+        assert_eq!(
+            traced_steps(&harness, keeper, "interacted").len(),
+            1,
+            "dt {dt}: once a press"
+        );
+        harness.step(2);
+        assert_eq!(traced_steps(&harness, keeper, "interacted").len(), 1);
+    }
+}
+
+#[test]
+fn the_lamp_post_offers_light_until_its_flag_is_set() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "night_warden", [64.0, 64.0]);
+        let post = spawn(&mut harness, "lamp_post", [84.0, 64.0]);
+        harness.step(1);
+        assert_eq!(focus_of(&harness, warden), Some(post), "dt {dt}");
+        harness.tap_action("interact");
+        assert!(
+            harness.world().resource::<Flags>().has("lamp.lit"),
+            "dt {dt}"
+        );
+        assert_eq!(
+            focus_of(&harness, warden),
+            None,
+            "dt {dt}: lit, no longer offered"
+        );
+        harness.tap_action("interact");
+        assert_eq!(
+            traced_steps(&harness, post, "interacted").len(),
+            1,
+            "dt {dt}"
+        );
     }
 }

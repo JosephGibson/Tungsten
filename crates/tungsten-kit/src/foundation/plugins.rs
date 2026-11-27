@@ -33,6 +33,7 @@ use crate::motion::wrap::WrapPlugin;
 use crate::overlap::contact::ContactDamagePlugin;
 use crate::overlap::hit::HitPlugin;
 use crate::overlap::impact::ImpactDamagePlugin;
+use crate::overlap::interact::InteractPlugin;
 use crate::overlap::pickup::PickupPlugin;
 use crate::overlap::projectile::ProjectilePlugin;
 use crate::overlap::zone::ZonePlugin;
@@ -88,7 +89,8 @@ impl KitPlugins {
     /// wrap, stay in view, aim, facing, the character animator, depth sort,
     /// the hit shapes, contact damage, projectiles, pickups, impact damage,
     /// effects, looks by tags, health bars, particle bursts, chemistry,
-    /// abilities, levels, caps and the debug drawing, in that order.
+    /// abilities, levels, caps, the interactor and the debug drawing, in that
+    /// order.
     #[must_use]
     pub fn set() -> PluginSet {
         PluginSet::new()
@@ -138,6 +140,7 @@ impl KitPlugins {
             .with(AbilitiesPlugin)
             .with(LevelPlugin)
             .with(CapPlugin)
+            .with(InteractPlugin)
             .with(KitDebugPlugin)
     }
 }

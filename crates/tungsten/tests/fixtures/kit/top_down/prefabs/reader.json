@@ -1,0 +1,23 @@
+{
+  "tag": "reader",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "top_down_mover": {
+      "speed": 120
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ],
+      "slots": {
+        "interact": "interact"
+      }
+    },
+    "interactor": {}
+  }
+}

@@ -15355,6 +15355,21 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::UiDeb
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::UiDebug
 pub fn tungsten_core::ui::paint::to_physical(tungsten_core::ui::geometry::Rect, f32) -> tungsten_core::ui::paint::ClipRect
 pub mod tungsten_core::ui::prompt
+pub struct tungsten_core::ui::prompt::PromptText
+impl tungsten_core::ui::prompt::PromptText
+pub fn tungsten_core::ui::prompt::PromptText::new(&str) -> Self
+pub fn tungsten_core::ui::prompt::PromptText::text(&mut self, core::option::Option<&tungsten_core::input::action_map::ActionMap>, tungsten_core::ui::route::InputDevice) -> &str
+impl core::clone::Clone for tungsten_core::ui::prompt::PromptText
+pub fn tungsten_core::ui::prompt::PromptText::clone(&self) -> tungsten_core::ui::prompt::PromptText
+impl core::fmt::Debug for tungsten_core::ui::prompt::PromptText
+pub fn tungsten_core::ui::prompt::PromptText::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::prompt::PromptText
+impl core::marker::Send for tungsten_core::ui::prompt::PromptText
+impl core::marker::Sync for tungsten_core::ui::prompt::PromptText
+impl core::marker::Unpin for tungsten_core::ui::prompt::PromptText
+impl core::marker::UnsafeUnpin for tungsten_core::ui::prompt::PromptText
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::prompt::PromptText
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::prompt::PromptText
 pub mod tungsten_core::ui::route
 #[non_exhaustive] pub enum tungsten_core::ui::route::InputDevice
 pub tungsten_core::ui::route::InputDevice::Gamepad
@@ -17789,6 +17804,21 @@ impl core::marker::Unpin for tungsten_core::ui::node::PointerSprite
 impl core::marker::UnsafeUnpin for tungsten_core::ui::node::PointerSprite
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::PointerSprite
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::PointerSprite
+pub struct tungsten_core::ui::PromptText
+impl tungsten_core::ui::prompt::PromptText
+pub fn tungsten_core::ui::prompt::PromptText::new(&str) -> Self
+pub fn tungsten_core::ui::prompt::PromptText::text(&mut self, core::option::Option<&tungsten_core::input::action_map::ActionMap>, tungsten_core::ui::route::InputDevice) -> &str
+impl core::clone::Clone for tungsten_core::ui::prompt::PromptText
+pub fn tungsten_core::ui::prompt::PromptText::clone(&self) -> tungsten_core::ui::prompt::PromptText
+impl core::fmt::Debug for tungsten_core::ui::prompt::PromptText
+pub fn tungsten_core::ui::prompt::PromptText::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::prompt::PromptText
+impl core::marker::Send for tungsten_core::ui::prompt::PromptText
+impl core::marker::Sync for tungsten_core::ui::prompt::PromptText
+impl core::marker::Unpin for tungsten_core::ui::prompt::PromptText
+impl core::marker::UnsafeUnpin for tungsten_core::ui::prompt::PromptText
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::prompt::PromptText
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::prompt::PromptText
 pub struct tungsten_core::ui::RadiusTokens
 pub tungsten_core::ui::RadiusTokens::lg: f32
 pub tungsten_core::ui::RadiusTokens::md: f32

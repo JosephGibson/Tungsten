@@ -56,6 +56,7 @@ fn declare_actions(app: &mut App) {
         ("attack", KeyCode::KeyJ),
         ("dash", KeyCode::ShiftLeft),
         ("fire", KeyCode::KeyZ),
+        ("interact", KeyCode::KeyE),
     ] {
         actions.replace_bindings(action, vec![Binding::Key { code }]);
     }

@@ -1039,6 +1039,17 @@ impl<'de> Visitor<'de> for StatEntryVisitor {
     }
 }
 
+/// The load's check of a stat a kit item reads by name, such as a story
+/// condition's (redo 8.1): a well-known or declared stat passes, else the
+/// [`MissingAsset`] of kind `stat` at `field`.
+pub(crate) fn check_stat(world: &World, field: &str, stat: &str) -> Result<(), MissingAsset> {
+    if bounds_of(world, stat).is_some() {
+        Ok(())
+    } else {
+        Err(MissingAsset::new(field, "stat", stat))
+    }
+}
+
 /// `stat`'s bounds: a well-known stat's, else the first declaration found,
 /// the build's and then the `stats` entries' in ID order; `None` for an
 /// undeclared stat.

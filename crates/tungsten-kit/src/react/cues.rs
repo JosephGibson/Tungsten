@@ -38,6 +38,7 @@ use crate::lifecycle::cooldown::CooldownElapsed;
 use crate::lifecycle::ended::{Despawning, mark_despawning};
 use crate::motion::drive::prefab_centre;
 use crate::overlap::hit::{Struck, optional_offset};
+use crate::overlap::interact::Interacted;
 use crate::overlap::pickup::PickedUp;
 use crate::overlap::projectile::ProjectileExpired;
 use crate::overlap::zone::ZoneEntered;
@@ -87,6 +88,7 @@ pub(crate) const ABILITY_RELEASED: &str = "ability_released";
 pub(crate) const CULLED: &str = "culled";
 pub(crate) const ARRIVED: &str = "arrived";
 pub(crate) const DEPARTED: &str = "departed";
+pub(crate) const INTERACTED: &str = "interacted";
 /// A [`WorldCue`]'s occurrence: no subject, so no entity or rule names it.
 const WORLD_CUE: &str = "world_cue";
 /// The cue events about an ability, whose occurrences carry its name.
@@ -97,7 +99,7 @@ const ABILITY_EVENTS: [&str; 5] = [
     ABILITY_HELD,
     ABILITY_RELEASED,
 ];
-const KIT_EVENTS: [&str; 25] = [
+const KIT_EVENTS: [&str; 26] = [
     DAMAGED_PART,
     IMMUNE_PART,
     DAMAGED,
@@ -123,6 +125,7 @@ const KIT_EVENTS: [&str; 25] = [
     CULLED,
     ARRIVED,
     DEPARTED,
+    INTERACTED,
 ];
 
 /// The squash triggers' data names, as a scene's `squash_stretch` writes
@@ -160,8 +163,10 @@ fn valid_event(name: &str) -> bool {
 /// it ready), `ability_held` and `ability_released` (a held trigger's slot
 /// going down and up), each about its user, a [`Cap`](crate::Cap)'s `culled`
 /// (about the instance it ended), a [`PathFollower`](crate::PathFollower)'s
-/// `arrived` and `departed` (as it reaches an end and leaves it), and each
-/// name a game's [`CuesOnEvent`] registers.
+/// `arrived` and `departed` (as it reaches an end and leaves it), an
+/// [`Interactable`](crate::Interactable)'s `interacted` (the interactor the
+/// other, at the interactable's centre), and each name a game's
+/// [`CuesOnEvent`] registers.
 ///
 /// Scene name `cues`:
 /// `{ "damaged": [{ "flash": {} }], "killed": [{ "prefab": "puff" }, { "despawn": {} }] }`;
@@ -2481,6 +2486,7 @@ impl Default for CueEventNames {
                 (CULLED, false, false, false),
                 (ARRIVED, false, false, false),
                 (DEPARTED, false, false, false),
+                (INTERACTED, false, true, false),
             ]
             .into_iter()
             .map(|(name, amount, other, kinds)| EventInfo {
@@ -3453,7 +3459,8 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// system fills, no event queue, then the abilities' `ability_refused`,
 /// `ability_ready`, `ability_held` and `ability_released`, the caps'
 /// `culled` and the paths' `arrived` and `departed` from a list they fill,
-/// each pushed only when named, then each [`CuesOnEvent`] in build order,
+/// each pushed only when named, then [`Interacted`]
+/// (`interacted`), then each [`CuesOnEvent`] in build order,
 /// each queue in send order, and last the step's [`WorldCue`]s. It runs
 /// every
 /// occurrence's entity cues, then every occurrence's matching rules (rules
@@ -3729,6 +3736,7 @@ struct Reactor {
     effects_expired: EventCursor<EffectExpired>,
     abilities_used: EventCursor<AbilityUsed>,
     level_ups: EventCursor<LevelUp>,
+    interacted: EventCursor<Interacted>,
     occurrences: Vec<Occurrence>,
     /// The rules that match one occurrence, with their names.
     matched: Vec<(String, Arc<[CueAction]>)>,
@@ -4801,6 +4809,7 @@ impl Reactor {
             effects_expired,
             abilities_used,
             level_ups,
+            interacted,
             occurrences,
             effect_ids,
             effect_count,
@@ -4956,6 +4965,12 @@ impl Reactor {
             }));
         }
         read_kit_cues(world, effect_ids, effect_count, occurrences);
+        if let Some(queue) = world.get_resource::<EventQueue<Interacted>>() {
+            occurrences.extend(interacted.read(queue).map(|event| Occurrence {
+                other: Some(event.interactor),
+                ..Occurrence::new(INTERACTED, event.interactable, event.position)
+            }));
+        }
         if let Some(mut sources) = world.remove_resource::<CueSources>() {
             for source in &mut sources.0 {
                 source.read(world, occurrences);

@@ -1,0 +1,13 @@
+{
+  "tag": "keeper",
+  "components": {
+    "interactable": {
+      "verb": "Talk",
+      "who": {
+        "all": [
+          "team.player"
+        ]
+      }
+    }
+  }
+}

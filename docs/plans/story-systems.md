@@ -1,6 +1,6 @@
-# Story systems (8.1's first plan, `story-systems`) — draft
+# Story systems (8.1's first plan, `story-systems`) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Land the story half of redo 8.1 (phase 8's first step), the first of its three plans (§2.1): a condition vocabulary for data; an interactor and an `interactable`, with a prompt from the action's binding and an `interacted` cue event (P7-3); speakers and conversations as data kinds, which the load holds to reachability, speaker and reference checks with field paths, and a runner whose node and choice lists are cue actions applied at once, started by a `dialogue` cue action (P8-1); text revealed without relayout and a dialogue box on 7.17's widgets and 7.20's screen files, with a `say` cue action for barks (P8-1); quests on holders and on the game, with stages, objectives on the conditions, rewards and a journal on a screen file (P8-2); typed text from the window's characters and a text field (P8-5, IME later). Recipes in the `rpg` and `top_down` fixtures, one sketch in `examples/03_fixtures`, one benchmark row, `story`.
 - **non-goals:**
   - 8.1's other rows, which its two later plans take (§2.1): items, inventory and shops with drag and drop, equipment as statuses, rolled lines and ground labels (P8-3, PA-12, PA-13), the grid layout (S-162), tooltips and popups, images in screen files; cutscenes and timelines (P8-4), the world clock and schedules (P8-6), loading between areas (P8-7), the cone light (P8-17).
@@ -385,6 +385,7 @@ Round 2, xhigh, the plan read without §7 and the log (`--from sed`), with a foc
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-11-27 | passed | core `a_prompt_text_resolves_outside_a_tree_and_rebuilds_only_when_stale` `1 passed`; kit's 8 named tests `8 passed`; the 3 recipes `3 passed`; `cargo test -p tungsten-kit --lib` `1095 passed` (components 52, kinds 11, shapes 94, probed 67, enum variants 99 → 109, numeric fields 192 → 199, cue events 26, `UNSAVED_COMPONENTS` 23); `kit_recipes:: kit_tests:: saves_tests::` `291 passed`; coverage `rg -c` → `2`; `^component ` → `52`, `^shape ` → `94`; `just repo-check` exit 0 with the template's `AGENTS.md` naming `interactable`, `interactor`, `interacted`; template `186 passed`, `sample::the_schedule_matches_the_snapshot ... ok`; `git diff --quiet` on the template's sources and assets, `examples` and `determinism.rs` → 0; fmt, `just lint`, `just ctx`, `just api-check` → 0; 01 `guards::` `2 passed`, guards diff → 0; `kit_recipes::determinism::` `1 passed`. Deviations: the stat condition also takes no bound (holds while the target has the stat), since describe's numeric probe sets one bound beside the sample's; the prompt reads the slot's action from `ActionInput`'s data form, whose slots are private in `intent/action_input.rs`, outside the step's list; `interact` orders `after_if_present(action_input)`, so a World without `ActionInputPlugin` builds; describe's one-of probe gained a list value; `tests/saved.rs` and `tests/cues.rs` needed no change (their counts derive). | `crates/tungsten-kit/src/story/condition.rs`, `crates/tungsten-kit/src/overlap/interact.rs` |
 
 ## Follow-ups
 

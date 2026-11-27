@@ -34,7 +34,7 @@
 //! credited to its brawler, a stone bolt ending at a rolling ball, and a
 //! crystal on a dynamic body drawn in by the ranger's magnet; 7.13c's foes
 //! and cues' ogre, whose kill's key burst takes a full budget's oldest
-//! cosmetic slot.
+//! cosmetic slot; 8.1's reader, who takes the nearer of two notices.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -51,8 +51,8 @@ use super::{
 use crate::kit::{
     Abilities, Aim, CharacterAnimator, ContactDamage, ContactTouch, Conversion, CooldownElapsed,
     Counters, DamagePart, DamageRequest, Damaged, DamagedPart, EffectInstance, EffectRequest,
-    Effects, Facing, Health, Hit, HitFlash, HitShape, Hitbox, Hurtbox, KitPlugins, KitRng,
-    Knockback, LabelStyle, Level, Line, LinearMotion, Modifier, Penetration, Phase,
+    Effects, Facing, Health, Hit, HitFlash, HitShape, Hitbox, Hurtbox, Interactor, KitPlugins,
+    KitRng, Knockback, LabelStyle, Level, Line, LinearMotion, Modifier, Penetration, Phase,
     ProjectileExpired, Read, Shield, Source, StateMachine, StateMachinePlugin, Stats, Steering,
     Struck, TagFilter, TagSet, Tags, TopDownMover, TraceKind, WorldSource, WorldSources,
     ZoneEntered, damage, float_label, knock_back,
@@ -3678,5 +3678,40 @@ fn a_kill_past_a_full_budget_takes_the_oldest_cosmetic_slot() {
             .filter(|burst| burst.counted)
             .count();
         assert_eq!(counted, 2, "dt {dt}: the budget's two");
+    }
+}
+
+#[test]
+fn a_reader_takes_the_nearer_of_two_notices() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let reader = spawn(&mut harness, "reader", [100.0, 100.0]);
+        let far = spawn(&mut harness, "notice", [150.0, 100.0]);
+        let near = spawn(&mut harness, "notice", [100.0, 70.0]);
+        let focus = |harness: &Harness| harness.world().get::<Interactor>(reader).unwrap().focus();
+        harness.step(1);
+        assert_eq!(
+            focus(&harness),
+            Some(near),
+            "dt {dt}: 30 px against 50, each within 48 + 8"
+        );
+        harness.tap_action("interact");
+        assert_eq!(
+            traced_steps(&harness, near, "interacted").len(),
+            1,
+            "dt {dt}"
+        );
+        assert!(
+            traced_steps(&harness, far, "interacted").is_empty(),
+            "dt {dt}"
+        );
+
+        teleport(&mut harness, reader, Vec2::new(140.0, 100.0));
+        harness.step(1);
+        assert_eq!(
+            focus(&harness),
+            Some(far),
+            "dt {dt}: the far one now nearer"
+        );
     }
 }

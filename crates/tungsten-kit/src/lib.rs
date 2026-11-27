@@ -244,6 +244,7 @@ mod motion;
 mod overlap;
 mod present;
 mod react;
+mod story;
 mod transform;
 
 pub use chemistry::blast::{Blast, blast};
@@ -328,6 +329,9 @@ pub use overlap::hit::{HIT_GRID, HITBOX_TICK, HitPlugin, HitShape, Hitbox, Hurtb
 pub use overlap::impact::{
     IMPACT_DAMAGE, IMPACT_RECORD, ImpactDamage, ImpactDamagePlugin, Impacted, step_velocity,
 };
+pub use overlap::interact::{
+    INTERACT, INTERACT_PROMPT, InteractPlugin, Interactable, Interacted, Interactor,
+};
 pub use overlap::pickup::{PICKUP_MAGNET, PICKUP_TICK, PickedUp, Pickup, PickupPlugin};
 pub use overlap::projectile::{
     PROJECTILE_TICK, Projectile, ProjectileBounced, ProjectileExpired, ProjectilePassed,
@@ -359,6 +363,7 @@ pub use react::cues::{CUES, CueAction, CueEvent, CueListener, Cues, CuesOnEvent,
 pub use react::level::{LEVEL_TICK, Level, LevelPlugin, LevelUp, Offer, Offers};
 pub use react::loot::WeightedTable;
 pub use react::world_cues::WorldCue;
+pub use story::condition::Condition;
 pub use transform::hierarchy::{
     Children, HierarchyPlugin, LocalOffset, Parent, TRANSFORM_PROPAGATE, TRANSFORM_PROPAGATE_LATE,
     despawn_recursive, spawn_child,

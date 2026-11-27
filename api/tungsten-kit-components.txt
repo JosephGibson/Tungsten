@@ -112,6 +112,7 @@ component cues: The entity's reactions: for each event about it, actions run in 
   field culled: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field arrived: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field departed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field interacted: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   events: ShakeEvent, SquashEvent
   genres: platformer, top_down, rpg, shooter
   sample: {}
@@ -216,6 +217,24 @@ component impact_damage: Hurts what its body ends a step touching by their closi
   field scale: f32 (>= 0) = 1.0 — what its hits' amount is multiplied by after the floor, a thrower's factor; 0 leaves it inert
   events: Impacted
   genres: platformer, top_down
+  sample: {}
+component interactable: Something an interactor in reach uses with a press, its prompt the verb after the binding.
+  field verb: text — the prompt's word after the binding: `Talk`, `Read`
+  field radius: f32 (>= 0) = 0.0 — px added to an interactor's reach
+  field offset: [x, y] = [0.0, -16.0] — the prompt's shift in UI units off its centre, y down
+  field who: tag filter = {} — the interactors whose tags pass; the load checks its tags
+  field when: shape condition = null — offered only while it holds, the interactable the subject, the interactor the other
+  events: Interacted
+  genres: top_down, rpg
+  sample: { "verb": "Talk" }
+component interactor: Whoever interacts: a press of its intent slot uses the nearest interactable in reach.
+  field slot: text = "interact" — the intent slot it presses
+  field reach: f32 (>= 0) = 48.0 — px from its centre to an interactable's, plus that one's radius
+  field font: text = "engine_mono" — the prompt's face or family ID
+  field size: f32 (> 0) = 14.0 — the prompt's size in UI units
+  field color: [r, g, b, a] = [1.0, 1.0, 1.0, 1.0] — the prompt's linear colour
+  events: Interacted
+  genres: top_down, rpg
   sample: {}
 component knockback: How the entity takes a push from `knock_back`: a push that falls to 0 over its seconds.
   field seconds: f32 (> 0) = 0.2 — seconds of game time a push lasts, and a platformer's input stays locked
@@ -516,6 +535,16 @@ shape clip_rule: A clip shown over the motion state's while the entity's tags pa
   field motion: one of idle | move | rise | fall = null — the motion state it needs
   field clip: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out, or by the aim with `side: aim`, a one-shot keeping its first frame's aim; or { aim: [..] }, two or more drawn facing right from straight down to straight up; or { aim: { right, left, from } }, a strip a side whose frame nearest the aim holds, from straight down or with `from: up` from straight up, `right` flipped when `left` is left out — what it shows; the load checks each ID
   sample: { "motion": "move", "clip": "hero_run" }
+shape condition: A test of the World: one form, no expressions; a target absent or dead holds none.
+  exactly one of its fields
+  field flag: shape flag_condition — the target has the flag; a name alone reads as `{ "name": .. }`
+  field counter: shape counter_condition — the target's count, 0 when it holds none, lies in the bounds
+  field stat: shape stat_condition — the target has the stat and it lies in the bounds; the load checks the stat
+  field tags: shape tags_condition — the target's tags pass the filter; the load checks its tags
+  field all: list of shape condition — every one holds: 1 to 32, nested at most 8 deep
+  field any: list of shape condition — at least one holds: 1 to 32, nested at most 8 deep
+  field not: shape condition — the inner fails
+  sample: { "flag": "door.open" }
 shape conduct_payload: A strike on the use's target that jumps on, one receiver a step, from its last receiver to the nearest live receiver within reach, not yet struck, weaker each jump, each jump sending `Conducted`; an immune or stopping receiver ends it unstruck, or struck with `stop_struck`; each strike a blast's hit, in its context, its preparation run before its crit.
   field damage: f32 (>= 0) — the first strike's damage, a request from the user at the receiver's centre, on a receiver with live health alone
   field tags: list of tag = [] — the damage's types; a receiver whose `resist` factor for them is 0 ends it; the load checks each
@@ -556,6 +585,12 @@ shape counter_action: A counter added to or set: exactly one of `add` and `set`.
   field set: i64 = null — the new count
   field target: one of self | other | game = "self" — the subject's counters, the other entity's or the game's
   sample: { "name": "kills", "add": 1 }
+shape counter_condition: A count within inclusive bounds: one or both of `min` and `max`.
+  field name: text — the counter: dotted, undeclared
+  field min: i64 = null — the least count that holds
+  field max: i64 = null — the greatest count that holds
+  field target: one of self | other | game = "self" — the subject's counters, the other entity's or the game's
+  sample: { "name": "trust", "min": 3 }
 shape cue_action: One reaction to an event.
   exactly one of its fields
   field prefab: shape prefab_action — spawned at the event's position from the subject, or its centre there; an ID alone reads as `{ "id": .. }`
@@ -676,6 +711,10 @@ shape flag_action: A flag set or cleared.
   field set: bool = true — set when true, cleared when false
   field target: one of self | other | game = "self" — the subject's flags, the other entity's or the game's
   sample: { "name": "has_key" }
+shape flag_condition: A flag the target has.
+  field name: text — the flag: dotted, undeclared
+  field target: one of self | other | game = "self" — the subject's flags, the other entity's or the game's
+  sample: { "name": "door.open" }
 shape flash_action: The subject's hit flash started, as a hit starts it.
   sample: {}
 shape hit_shape: A circle or a box, placed at its entity's point plus its item's offset.
@@ -898,6 +937,12 @@ shape stat_bounds: A game stat's clamp.
   field min: f32 = null — the least value; none when left out
   field max: f32 = null — the greatest value, at least `min`; none when left out
   sample: {}
+shape stat_condition: A stat the target has, within inclusive finite bounds when given.
+  field name: text — the stat: well known or declared; the load checks it
+  field min: f32 = null — the least value that holds
+  field max: f32 = null — the greatest value that holds
+  field target: one of self | other = "self" — the subject or the other entity
+  sample: { "name": "vigour" }
 shape stat_modifier: A modifier on one of the target's stats.
   field stat: text — the stat, `[a-z][a-z0-9_]*`; a target without it takes nothing, unless the line is scoped
   field modifier: shape modifier — the change; `add` and `pct` scale with the effect's factor; a scoped line may not override
@@ -914,6 +959,12 @@ shape tag_look: A look shown while the holder's tags pass `when`, whole or growi
   field look: shape look — its tint, overlay, glow and particles, at the look's share; a light or a sound is refused
   field grow: f32 (>= 0) = 0.0 — seconds of game time shown over which its share rises from 0 to 1; whole at once at 0
   sample: { "when": { "all": ["status.burning"] }, "look": {} }
+shape tags_condition: A tag filter the target's tags pass.
+  field all: list of tag = [] — every one of these
+  field any: list of tag = [] — at least one of these, when any are given
+  field none: list of tag = [] — none of these
+  field target: one of self | other = "self" — the subject or the other entity
+  sample: { "all": ["team.player"] }
 shape target: What an item follows, circles, steers toward or aims at, resolved again each step.
   exactly one of its fields
   field source: {} — the entity's `Source`: the origin of the spawn chain it came from

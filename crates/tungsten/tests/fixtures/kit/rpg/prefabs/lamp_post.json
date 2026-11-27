@@ -1,0 +1,30 @@
+{
+  "tag": "lamp_post",
+  "components": {
+    "interactable": {
+      "verb": "Light",
+      "offset": [
+        0,
+        -24
+      ],
+      "when": {
+        "not": {
+          "flag": {
+            "name": "lamp.lit",
+            "target": "game"
+          }
+        }
+      }
+    },
+    "cues": {
+      "interacted": [
+        {
+          "flag": {
+            "name": "lamp.lit",
+            "target": "game"
+          }
+        }
+      ]
+    }
+  }
+}

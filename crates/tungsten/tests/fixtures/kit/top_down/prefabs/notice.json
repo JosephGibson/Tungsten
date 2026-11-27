@@ -1,0 +1,9 @@
+{
+  "tag": "notice",
+  "components": {
+    "interactable": {
+      "verb": "Read",
+      "radius": 8
+    }
+  }
+}

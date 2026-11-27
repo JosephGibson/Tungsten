@@ -172,3 +172,39 @@ fn a_short_placeholder_follows_the_last_device() {
         "an empty or open one is literal"
     );
 }
+
+#[test]
+fn a_prompt_text_resolves_outside_a_tree_and_rebuilds_only_when_stale() {
+    let mut prompt = PromptText::new("{action:interact} Talk");
+    let mut bindings = map(&[("interact", vec![KEY_K, PAD_A])]);
+    assert_eq!(
+        prompt.text(Some(&bindings), InputDevice::Keyboard),
+        "K Talk"
+    );
+    assert!(
+        !parts_stale(&prompt.parts, prompt.pad, Some(&bindings), false),
+        "fresh once resolved"
+    );
+    let at = prompt.text.as_ptr();
+    let capacity = prompt.text.capacity();
+    for device in [InputDevice::Keyboard, InputDevice::Pointer] {
+        assert_eq!(prompt.text(Some(&bindings), device), "K Talk", "{device:?}");
+    }
+    assert_eq!(
+        (prompt.text.as_ptr(), prompt.text.capacity()),
+        (at, capacity),
+        "an unchanged prompt keeps its buffer"
+    );
+    assert_eq!(prompt.text(Some(&bindings), InputDevice::Gamepad), "A Talk");
+    bindings.replace_bindings("interact", vec![SPACE]);
+    assert_eq!(
+        prompt.text(Some(&bindings), InputDevice::Gamepad),
+        "Space Talk",
+        "no pad binding: the first of any"
+    );
+    assert_eq!(prompt.text(None, InputDevice::Keyboard), "Unbound Talk");
+    assert_eq!(
+        PromptText::new("plain").text(None, InputDevice::Gamepad),
+        "plain"
+    );
+}

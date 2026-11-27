@@ -224,6 +224,12 @@
     },
     "flashing_ogre": {
       "path": "prefabs/flashing_ogre.json"
+    },
+    "notice": {
+      "path": "prefabs/notice.json"
+    },
+    "reader": {
+      "path": "prefabs/reader.json"
     }
   },
   "data": {

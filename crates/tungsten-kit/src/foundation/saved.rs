@@ -15,6 +15,8 @@ use tungsten_core::{Entity, World};
 const RULE: &str = "rule data a prefab gives";
 /// Presentation, which a load restarts.
 const PRESENTATION: &str = "presentation, which a load restarts";
+/// An interactor's: its settings a prefab gives, its focus found again.
+const FOCUS: &str = "rule data a prefab gives; its focus is found again each step";
 /// The hierarchy's: its children come back from their parent's fresh spawn.
 const HIERARCHY: &str = "the hierarchy: children come back from their parent's fresh spawn";
 
@@ -36,6 +38,8 @@ pub const UNSAVED_COMPONENTS: &[(&str, &str)] = &[
     ("health_bar", PRESENTATION),
     ("hit_flash", PRESENTATION),
     ("hurtbox", RULE),
+    ("interactable", RULE),
+    ("interactor", FOCUS),
     ("looks", PRESENTATION),
     ("penetration", RULE),
     ("spawn_children", HIERARCHY),
