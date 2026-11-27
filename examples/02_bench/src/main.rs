@@ -28,6 +28,7 @@ mod piles;
 mod rooms;
 mod saves;
 mod spread;
+mod story;
 mod terrain;
 #[cfg(test)]
 mod tests;
@@ -56,6 +57,7 @@ const BENCHES: &[&Bench] = &[
     &rooms::BENCH,
     &generate::BENCH,
     &blast::BENCH,
+    &story::BENCH,
 ];
 
 fn main() -> anyhow::Result<()> {

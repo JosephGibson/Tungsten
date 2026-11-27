@@ -6,7 +6,7 @@ The rows `just perf` measures (`D-078` as redo 7.3 amends it), each owning one c
 just perf list                                   # every row, its kind and repeats
 just perf run ecs                                # one capture
 just perf sitting --quick                        # the working tree against the last tag, CPU rows, informational
-cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the thirteen benchmarks
+cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the fourteen benchmarks
 TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 ```
 
@@ -14,7 +14,7 @@ TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 
 ## Harness
 
-- **Two kinds of row.** The thirteen benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
+- **Two kinds of row.** The fourteen benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
 - **The bench binary.** `main.rs` resolves the configuration (`knobs.rs`: preset, then scale, then overrides, then validation) and builds the app through `bench_app`, which the counter guards build alike. `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's knobs and presets as JSON and `=config` the resolved configuration, before a window opens. `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays. In an interactive run Tab relaunches the binary on the next benchmark, keeping the preset when it has it.
 - **Determinism.** Every random choice comes from `Pcg32::seeded(seed)` and dt is pinned, so one build replays one workload. No rendered text depends on wall-clock time. A capture's runs share a digest over the window's `physics:` and `bench:` lines.
 - **Assets.** `gen.rs` generates every bench texture under `bench_` IDs through a `TextureSink`: the renderer uploads them, and the counter guards' headless sink hands out the harness's handles and uploads nothing, so both register the same sprites, pages and batch keys. The bench's only asset files are `examples/02_bench/assets/manifest.json` and the `bench_heavy` shader and material it lists, which `gpu` loads after the root manifest; `boot` writes its own, seeded, under `target/bench-boot/`.
@@ -319,6 +319,25 @@ Owns `physics_step` over a dense pile's sleep, wake and blasts, with no game sys
 - **Guards:** `bench.bodies constant` and `bench.escaped <= 0`.
 - **Reference machine**, 2026-11-24, after the CPU threads pass (the same close sitting, `perf-runs/20261124T233225Z-sitting/`): `physics_step` p50 14.12 → 12.21 and 14.14 → 12.21 ms, p95 21.96 → 18.44 and 21.94 → 18.40, p99 25.23 → 21.01 and 25.07 → 20.99; `update` p95 22.03 → 18.51 and 22.01 → 18.49. By the pass's batches, each step against the last on kept binaries: the pair loop consuming the narrow phase as it runs −1.61 ms p50, a repair's walks and removal on the pool −0.39 p50 and −1.54 p95. At one worker every owned metric `unchanged` (`perf-runs/20261125T000810Z-sitting/`). A profile-guided build read `physics_step` 1.5 % slower (the levers' PGO line).
 
+## `story`
+
+Owns the story systems over a field of NPCs (8.1's first plan): `interact` (each walker's focus among the interactables in reach, and its presses), `interact_prompt` (a world label over each focus), `say_tick` (the live barks) and `quest_tick` (each holder's active stages, their objectives and their rewards). Warm-up 60 frames. Module: `story.rs`.
+
+- **Field.** `npcs` interactables on a square grid 48 px apart, each offered while `{ "all": [{ "not": { "flag": "hushed" } }, { "counter": { "name": "visits", "max": 1000000 } }] }` holds, its `interacted` cue barking "Evening." with `say`, adding a `visits` and adding to the game's `talks`. `walkers` interactors walk seeded closed paths, a sine on each axis, over the grid's full rows, so each always has an interactable within its 48 px reach and its focus moves every few frames; each presses its `interact` slot every `period` frames, staggered, the bench writing its `Intent` in `Phase::Intent` before `interact`. `holders` entities hold `quests` quests of sixteen stages each, stage `i` of quest `q` complete once `talks` reaches `quests × i + q + 1` and paying its holder one `earned`, the holders starting at stages 0 to 3 in turn; a default run's 360 frames reach about 96 talks, under the 128 that would finish every quest. The kit's counters, cues, interact, say and quests plugins run in the app's schedule with their phases (no `KitPlugins::set()`); the lean view draws the walkers and the interactables, and the prompts and barks draw as world labels.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `walkers` | 8 | 1–64 | yes | Interactors on seeded closed paths through the field |
+| `npcs` | 400 | 1–20,000 | yes | Interactables on a square grid 48 px apart, each with a `when` |
+| `holders` | 64 | 1–4,096 | yes | Entities holding `quests` quests each |
+| `quests` | 8 | 1–32 | | Quests a holder holds, sixteen stages each |
+| `period` | 30 | 1–600 | | Frames between a walker's presses |
+
+- **Presets:** `min` (2 walkers, 40 interactables, 8 holders of 4 quests) and `default`.
+- **Counters:** `bench:` `walkers`, `focused` (the walkers with a focus), `npcs`, `holders`, `barks` (the live ones), `talks` (the game's) and `stages` (completed so far: every holder's `earned`), read from the frame's final state.
+- **Owned:** `system.interact`, `system.interact_prompt`, `system.say_tick`, `system.quest_tick` and `stage.update` p50/p95.
+- **Guards:** `bench.focused constant` (every walker focused), `bench.barks <= 64` (the barks' cap) and `bench.stages >= 300`, its first valid reading, 384, rounded down to a hundred.
+
 ## `e01-pit`
 
 Example 01's heaviest frame: the full ball pit under the rope bridge with six enemies awake about the player (`features/run/pit.rs`). The script: `start_run` at frame 2, `fill_pit` to 12,000 balls at 30, `wake_foes` at 630, then 180 warm-up frames (warm-up 810 in all) and 300 measured; it ends asserting the `pit` probe (`balls` = 12,000, `foes_alive` = 6, `foes_awake` ≥ 5). 1920×1080, CPU, five repeats.
@@ -446,6 +465,7 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `blast` | `guards_blast` | `blast` at `min` | `Body` count = `bodies`, one map; before window frame 20 no body awake and no collision event; at 20 the blast reaching bodies and leaving no sleeper, then a blast every `period` frames; each window frame no body out of the bin; instances = bodies in view plus visible art tiles |
 | `saves` | `guards_saves` | `saves` at `min` | records = `objects` + 1 + `spawns`; view instances |
 | `spread` | `guards_spread` | `spread` at `min` | the receivers tagged and every one lit; each window frame every one burning, chemistry's queue at most one entry a receiver, nothing dropped; view instances |
+| `story` | `guards_story` | `story` at `min` | the walkers, interactables and holders spawned; each window frame every walker focused and at most 64 barks; by the window's end barks, talks and completed stages; view instances |
 | `rooms` | `guards_rooms` | `rooms` at `min` | `RigidBody` count = `bodies`, one map; each window frame `moves` bodies spawned again and `paints` cells written in place; instances = bodies in view plus visible art tiles |
 | `generate` | `guards_generate` | `generate` at `min` | the template and the generator registered; each window frame `rooms` rooms generated and spawned, `rooms` × (`objects` + 1) entities, `rooms` removed; instances = bodies in view plus visible art tiles; after the frames, `the_generate_row_keeps_only_the_live_runs_rooms_and_areas` finds the template and the live run's rooms alone, the other prefix's areas neither loaded nor kept |
 | `boot` | `guards_boot` | `boot` at `min`, its assets' load run by `LoadPlan::run_headless`, no frame stepped | the plan's units = `bench.units`; every sound the manifests name loaded, no sprite packed (the reading is the load's: its sprite batches read 0, and its bytes, which carry the checkout's canonical path, are not pinned) |

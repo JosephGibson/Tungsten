@@ -916,6 +916,79 @@
       "workload_version": 1
     },
     {
+      "name": "story",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "story",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 60,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.interact",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.interact_prompt",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.say_tick",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.quest_tick",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "focused",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "barks",
+          "kind": "counter_max",
+          "max": 64
+        },
+        {
+          "counter": "stages",
+          "kind": "counter_min",
+          "min": 300
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
       "name": "e01-pit",
       "package": "example-01-platformer",
       "folder": "examples/01_platformer",

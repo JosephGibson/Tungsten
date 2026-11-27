@@ -29,6 +29,7 @@ use crate::piles::{self, PileCounts};
 use crate::rooms::{self, RoomCounts};
 use crate::saves::SaveCounts;
 use crate::spread::{self, SpreadCounts};
+use crate::story::{self, StoryCounts};
 use crate::terrain::{self, TerrainCounts};
 use crate::view::{self, ViewSprite};
 use crate::{BENCHES, bench_app, gpu, particles};
@@ -79,7 +80,7 @@ fn harness(cfg: &BenchConfig) -> Harness {
         .collect();
     let mut textures = HeadlessTextures(handles.into_iter());
     match cfg.bench.name {
-        "physics" | "ecs" | "churn" | "saves" | "spread" => {
+        "physics" | "ecs" | "churn" | "saves" | "spread" | "story" => {
             r#gen::register_view_textures(harness.world_mut(), &mut textures);
         }
         "particles" => {
@@ -735,6 +736,56 @@ fn guards_spread() {
         "spread: the guard drew nothing"
     );
     reading.check(manifest_path("src/tests/guards/spread.json"));
+}
+
+/// `story` at `min` (8.1's first plan): the walkers, interactables and
+/// holders spawned, then, each window frame, every walker focused and the
+/// barks within their cap; by the window's end the walkers have barked,
+/// talked and completed stages.
+#[test]
+fn guards_story() {
+    use tungsten::kit::{Barks, Counters, Interactable, Interactor, Quests};
+    let bench = knobs::select(BENCHES, Some("story")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    assert_eq!(cfg.row(), "story");
+    let mut harness = harness(&cfg);
+    let walkers = knob(&cfg, "walkers");
+    {
+        let world = harness.world();
+        assert_eq!(count::<Interactor>(world), walkers, "walkers");
+        assert_eq!(count::<Interactable>(world), knob(&cfg, "npcs"), "npcs");
+        assert_eq!(count::<Quests>(world), knob(&cfg, "holders"), "holders");
+        assert!(
+            world.has_resource::<BenchCounters<StoryCounts>>(),
+            "the counters"
+        );
+    }
+    let barks = |world: &World| world.get_resource::<Barks>().map_or(0, Barks::len);
+    let reading = measure_checking(
+        &mut harness,
+        cfg.bench.warmup,
+        view_drawable,
+        |world, frame| {
+            assert_eq!(
+                story::focused(world) as u64,
+                walkers,
+                "window frame {frame}: every walker focused"
+            );
+            assert!(barks(world) <= 64, "window frame {frame}");
+        },
+    );
+    let world = harness.world();
+    assert!(barks(world) > 0, "the walkers barked");
+    assert!(
+        world.resource::<Counters>().get(story::TALKS) > 0,
+        "the walkers talked"
+    );
+    assert!(story::stages(world) > 0, "stages completed");
+    assert!(
+        reading.max_sprite_instances > 0,
+        "story: the guard drew nothing"
+    );
+    reading.check(manifest_path("src/tests/guards/story.json"));
 }
 
 /// `boot` at `min` (redo 7.9): the row's assets written as it writes them,
