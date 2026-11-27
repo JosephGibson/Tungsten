@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "screen",
+    "width": 320,
+    "children": [
+      {
+        "kind": "heading",
+        "text": "The night watch"
+      },
+      {
+        "kind": "note",
+        "text": "Type the warden's name, then Enter."
+      },
+      {
+        "kind": "text_field",
+        "key": "name",
+        "placeholder": "Warden",
+        "max": 16,
+        "on": {
+          "action": "story.name"
+        }
+      }
+    ]
+  }
+}

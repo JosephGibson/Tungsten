@@ -41,5 +41,10 @@
   },
   "ui_themes": {
     "ex05_default": { "path": "ui/themes/ex05_default.json" }
+  },
+  "ui_screens": {
+    "dialogue": { "path": "story/dialogue.json" },
+    "journal": { "path": "story/journal.json" },
+    "name_card": { "path": "story/name_card.json" }
   }
 }

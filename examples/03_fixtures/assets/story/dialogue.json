@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "root",
+    "layer": "game_popup",
+    "modal": true,
+    "layout": {
+      "width": "100%",
+      "height": "100%",
+      "align_items": "center",
+      "justify_content": "end",
+      "padding": "spacing.xl"
+    },
+    "overrides": {
+      "background": "#00000000",
+      "border_width": 0
+    },
+    "children": [
+      {
+        "kind": "panel",
+        "key": "card",
+        "layout": {
+          "width": 520,
+          "gap": "spacing.sm"
+        },
+        "children": [
+          {
+            "kind": "row",
+            "key": "line",
+            "layout": {
+              "gap": "spacing.md"
+            },
+            "bind": {
+              "visible": "dialogue.reading"
+            },
+            "children": [
+              {
+                "kind": "mount",
+                "key": "portrait",
+                "mount": "dialogue.portrait"
+              },
+              {
+                "kind": "column",
+                "layout": {
+                  "gap": "spacing.xs"
+                },
+                "children": [
+                  {
+                    "kind": "heading",
+                    "key": "speaker",
+                    "bind": {
+                      "text": "dialogue.speaker"
+                    }
+                  },
+                  {
+                    "kind": "label",
+                    "key": "text",
+                    "bind": {
+                      "text": "dialogue.text"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "button",
+            "key": "continue",
+            "text": "Continue",
+            "bind": {
+              "visible": "dialogue.reading"
+            },
+            "on": {
+              "action": "dialogue.continue"
+            }
+          },
+          {
+            "kind": "column",
+            "key": "choosing",
+            "layout": {
+              "gap": "spacing.xs"
+            },
+            "bind": {
+              "visible": "dialogue.choosing"
+            },
+            "children": [
+              {
+                "kind": "repeat",
+                "key": "choices",
+                "rows": "dialogue.choices",
+                "row": {
+                  "kind": "button",
+                  "field": "text",
+                  "on": {
+                    "action": "dialogue.choose"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -312,6 +312,15 @@ row "fixture=debug" "$log_dir/${fixtures_pkg}-debug.log" "$fixtures_pkg" \
 log_forbids=""
 end_section "Debug views passed" "Debug views failures" 1
 
+# Redo 8.1: the `story` scene, the sketch of the kit's story systems, the
+# one fixtures scene on the kit. Its 30 frames load the composed manifests
+# beside the kit, build the room from the scene's inline JSON and open the
+# name card over play.
+begin_section "Redo 8.1 story row (pkg: $fixtures_pkg, scene=story)"
+row "story" "$log_dir/${fixtures_pkg}-story.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=story TUNGSTEN_SMOKE_FRAMES=30
+end_section "Story passed" "Story failures" 1
+
 # Benchmarks: each example-02-bench row at smoke length. Default-scale rows
 # run at dev opt-level 0; the slowest, ecs at default, takes about 12 s. The
 # gpu default row also runs the per-pass timestamp queries (materials, lit

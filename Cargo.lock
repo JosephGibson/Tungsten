@@ -820,6 +820,7 @@ dependencies = [
  "anyhow",
  "glam",
  "log",
+ "serde_json",
  "tungsten",
 ]
 

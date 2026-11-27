@@ -10,6 +10,8 @@ tungsten = { workspace = true }
 glam = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
+# The story scene's inline data (redo 8.1).
+serde_json = { workspace = true }
 
 [dev-dependencies]
 # The headless test harness, `tungsten::testing` (D-110, D-125).

@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "screen",
+    "width": 360,
+    "children": [
+      {
+        "kind": "heading",
+        "text": "Journal"
+      },
+      {
+        "kind": "repeat",
+        "key": "active",
+        "rows": "quests.active",
+        "row": {
+          "kind": "column",
+          "children": [
+            {
+              "kind": "label",
+              "key": "title",
+              "field": "title"
+            },
+            {
+              "kind": "note",
+              "key": "journal",
+              "field": "journal"
+            },
+            {
+              "kind": "small",
+              "key": "objectives",
+              "field": "objectives"
+            }
+          ]
+        }
+      },
+      {
+        "kind": "repeat",
+        "key": "done",
+        "rows": "quests.done",
+        "row": {
+          "kind": "small",
+          "field": "title"
+        }
+      },
+      {
+        "kind": "button",
+        "key": "close",
+        "text": "Close",
+        "on": "pop"
+      }
+    ]
+  }
+}

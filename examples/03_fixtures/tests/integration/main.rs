@@ -1,6 +1,7 @@
 //! The fixtures crate's integration tests in one binary (redo 7.1), one
 //! module per former binary: `screens` the `ui` scene on the headless
-//! harness, and the opt-in GPU regressions `post_regression`,
+//! harness, `story` redo 8.1's `story` scene on it, and the opt-in GPU
+//! regressions `post_regression`,
 //! `transition_regression` and `ui_regression`, with redo 7.9's
 //! `seams_regression`, gated on `TUNGSTEN_VISUAL_REGRESSION=1`. Each
 //! regression module runs its captures in parallel with no lock, so
@@ -9,5 +10,6 @@
 mod post_regression;
 mod screens;
 mod seams_regression;
+mod story;
 mod transition_regression;
 mod ui_regression;

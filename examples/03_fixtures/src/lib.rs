@@ -22,6 +22,10 @@
 //!   directional lights, the M29 smoke row; no variables of its own.
 //! - `seams` ([`seams`]): a piece for each drawing seam of redo 7.9, whose
 //!   pixels `just visual` checks; no variables of its own.
+//! - `story` ([`story`]): redo 8.1's sketch of the kit's story systems, a
+//!   talk, a quest, a bark, the journal and a name typed into a text field;
+//!   no variables of its own. The one scene on the kit, so its data is
+//!   inline JSON and the manifest lists its screen files alone.
 //!
 //! Like `02_bench`, every scene runs from the repository root on the root
 //! `tungsten.json` and `input.json`, and composes the root manifest with
@@ -30,11 +34,12 @@
 pub mod lighting;
 pub mod post;
 pub mod seams;
+pub mod story;
 pub mod transition;
 pub mod ui;
 
 /// The scenes `TUNGSTEN_FIXTURE` accepts.
-const SCENES: &str = "post, transition, ui, lighting, seams";
+const SCENES: &str = "post, transition, ui, lighting, seams, story";
 
 /// Runs the scene `TUNGSTEN_FIXTURE` names, `ui` when it is unset; any other
 /// value fails with the list of scenes.
@@ -46,6 +51,7 @@ pub fn run() -> anyhow::Result<()> {
         "ui" => ui::run(),
         "lighting" => lighting::run(),
         "seams" => seams::run(),
+        "story" => story::run(),
         _ => anyhow::bail!("invalid TUNGSTEN_FIXTURE='{scene}': expected one of {SCENES}"),
     }
 }
