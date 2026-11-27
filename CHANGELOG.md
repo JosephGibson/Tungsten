@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.120.0] - 2026-11-26
+
 Summary: Phase 7's last steps and its close. 7.16, agent guidance, ships a `tungsten new` game an `AGENTS.md` that indexes the engine's files in Cargo's checkout (`D-312`); example 01 floats "Immune", strikes with its bowling ball and warms its staff light (`D-313`), and the template's boot splash draws on true black; then the two passes the owner set ahead of the close, the test audit and the QA pass (`D-314`), and Step 17, which carries Phase 7's 37 open rows into the roadmap redo's Phase 8 rows. The test audit cuts 98 low-value tests and merges 69 into 27 tables with no covered library line or region lost; the QA pass fixes 31 bugs and 15 doc comments, deletes the frozen 1.0 records and the plans archive and takes tracked Markdown from 10.8 to 3.9 MB. Against 0.119.0 the release sitting reads all 27 rows `ok` with no rerun, `boot`'s `first_frame` p50 105.0 → 94.4 ms `improved` in both pairs. 01's save schema stays at 41. Phase 8, Genres, is next.
 
 ### Added
