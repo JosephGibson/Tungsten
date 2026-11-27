@@ -34,7 +34,8 @@
 //! credited to its brawler, a stone bolt ending at a rolling ball, and a
 //! crystal on a dynamic body drawn in by the ranger's magnet; 7.13c's foes
 //! and cues' ogre, whose kill's key burst takes a full budget's oldest
-//! cosmetic slot; 8.1's reader, who takes the nearer of two notices.
+//! cosmetic slot; 8.1's reader, who takes the nearer of two notices, and
+//! the notice board's conversation.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -49,13 +50,13 @@ use super::{
     teleport, traced_steps,
 };
 use crate::kit::{
-    Abilities, Aim, CharacterAnimator, ContactDamage, ContactTouch, Conversion, CooldownElapsed,
-    Counters, DamagePart, DamageRequest, Damaged, DamagedPart, EffectInstance, EffectRequest,
-    Effects, Facing, Health, Hit, HitFlash, HitShape, Hitbox, Hurtbox, Interactor, KitPlugins,
-    KitRng, Knockback, LabelStyle, Level, Line, LinearMotion, Modifier, Penetration, Phase,
-    ProjectileExpired, Read, Shield, Source, StateMachine, StateMachinePlugin, Stats, Steering,
-    Struck, TagFilter, TagSet, Tags, TopDownMover, TraceKind, WorldSource, WorldSources,
-    ZoneEntered, damage, float_label, knock_back,
+    Abilities, Aim, CharacterAnimator, ContactDamage, ContactTouch, Conversation, Conversion,
+    CooldownElapsed, Counters, DamagePart, DamageRequest, Damaged, DamagedPart, EffectInstance,
+    EffectRequest, Effects, Facing, Health, Hit, HitFlash, HitShape, Hitbox, Hurtbox, Interactor,
+    KitPlugins, KitRng, Knockback, LabelStyle, Level, Line, LinearMotion, Modifier, Penetration,
+    Phase, ProjectileExpired, Read, Shield, Source, Speaker, StateMachine, StateMachinePlugin,
+    Stats, Steering, Struck, TagFilter, TagSet, Tags, TopDownMover, TraceKind, WorldSource,
+    WorldSources, ZoneEntered, damage, float_label, knock_back,
 };
 use crate::testing::Harness;
 use tungsten_core::PluginSet;
@@ -3714,4 +3715,17 @@ fn a_reader_takes_the_nearer_of_two_notices() {
             "dt {dt}: the far one now nearer"
         );
     }
+}
+
+#[test]
+fn the_notice_boards_conversation_loads() {
+    let harness = recipe(GENRE, KitPlugins::set(), DTS[0]);
+    let data = harness.world().resource::<tungsten_core::DataRegistry>();
+    let board = data.get::<Conversation>("notice_board").unwrap();
+    assert_eq!((board.speaker(), board.start()), ("notice", "read"));
+    assert_eq!(
+        board.node_names().collect::<Vec<_>>(),
+        ["read", "signed", "taken"]
+    );
+    assert_eq!(data.get::<Speaker>("notice").unwrap().pace(), 60.0);
 }

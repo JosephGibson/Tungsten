@@ -574,6 +574,11 @@ shape consume_output: Intensity taken off a status.
   field status: effects ID or entry — the status; the load checks it
   field amount: f32 (> 0) — taken off; at 0 it has run out
   sample: { "status": "burning", "amount": 1 }
+shape conversation: A `dialogue` entry: nodes by name, walked from `start`; lists run at once, story-safe actions only.
+  field speaker: text — the `speakers` entry of its lines that name none; the load checks it
+  field start: text — the node a talk enters first
+  field nodes: { node name: dialogue_node } — 1 to 256, `[a-z][a-z0-9_]*`, each reachable from `start`; the nodes that may show nothing chain at most 63 and never cycle
+  sample: { "speaker": "keeper", "start": "hi", "nodes": { "hi": { "lines": ["Evening."] } } }
 shape conversion_rule: A share of each part of one damage type converted to another; one part's shares past 1 normalize.
   field from: tag — the type a part carries, exactly or as a dotted ancestor: a declared damage type or an ancestor of one
   field to: tag — the share's one type: a declared damage type other than `from`
@@ -641,6 +646,30 @@ shape damage_type: A game's damage type: each field inherited from its nearest d
   sample: {}
 shape despawn_action: An entity despawned with its children.
   field target: one of self | other = "self" — the subject or the other entity
+  sample: {}
+shape dialogue_branch: A branch entry: the first that holds is entered.
+  field when: shape condition = null — taken when it holds; the last entry takes none
+  field next: text — the node entered
+  sample: { "next": "thanks" }
+shape dialogue_choice: A choice a node offers.
+  field text: text — at most 2,000 characters
+  field when: shape condition = null — offered only while it holds
+  field do: list of shape cue_action = [] — run as it is taken, before its `next`
+  field next: text = null — the node it enters; none ends
+  field back: bool = false — the choice Cancel takes; one a node
+  sample: { "text": "Not tonight." }
+shape dialogue_line: A line: its text alone, or this object.
+  field speaker: text = null — its `speakers` entry, else the conversation's
+  field text: text — at most 2,000 characters
+  field mood: text = null — the speaker's portrait for it; `neutral` when left out
+  field when: shape condition = null — shown only while it holds, the speaker the subject, the listener the other
+  sample: { "text": "Evening." }
+shape dialogue_node: A node: its lines, then at most one exit; none ends the talk.
+  field lines: list of shape dialogue_line = [] — at most 32, each shown in turn, skipped when its `when` fails
+  field do: list of shape cue_action = [] — run as the node is entered, the speaker the subject, the listener the other; no `ability`, `loop`, `stop` or `label`
+  field choices: list of shape dialogue_choice = [] — at most 8, offered after the lines while their `when` holds; one without a `when`
+  field next: text = null — the node entered after the lines
+  field branch: list of shape dialogue_branch = [] — after the lines, the first entry that holds; the last without a `when`
   sample: {}
 shape effect: A change an entity carries: timed, infinite or instant, with a payload, modifiers and tags.
   field duration: f32 (>= 0) = null — seconds of game time it lasts; infinite when left out, instant at 0
@@ -933,6 +962,11 @@ shape spawn_payload: A prefab spawned from the entity at its point.
   field centred: bool = false — the prefab's centre, its `rigid_body`'s offset, else a bodiless one's hurtbox, hitbox, pickup or projectile shape offset, else its sprite's drawn centre, on the entity's centre plus the offset, rather than its point on the entity's point
   field lob: shape lob = null — in place of a `speed`: the launch that lands it on the aim's point, a `nearest` or `random` target's (its centre when centred), else the entity's `aim` point; a use with none is refused before anything is spent
   sample: { "prefab": "bolt" }
+shape speaker: Who speaks: a `speakers` entry.
+  field name: text — the name shown
+  field portrait: a sprite ID, or { mood: sprite ID } = null — the sprite a line in each mood shows, `neutral` for a line naming none; the load checks each
+  field pace: f32 (> 0) = 40.0 — characters a second a box reveals its lines at
+  sample: { "name": "Old Tamsin" }
 shape stat_bounds: A game stat's clamp.
   field min: f32 = null — the least value; none when left out
   field max: f32 = null — the greatest value, at least `min`; none when left out
@@ -987,10 +1021,12 @@ kind abilities: An `ability`: what an entity's `abilities` list owns, a trigger 
 kind cue_rules: A list of `cue_rule`: shared reactions to an event, run after the entity's own cues.
 kind curves: A `curve`: what an effect's `scale` reads and a `level` climbs.
 kind damage_types: An object of `damage_type` by damage type: each key a declared tag, defined by one entry; a World holds 64.
+kind dialogue: A `conversation`: nodes of lines, choices and branches that a talk walks.
 kind effects: An `effect`: what a cue's `effect` action, a chemistry rule, an ability or an offer applies.
 kind interactions: An `interaction`: a chemistry rule from a stimulus to outputs on what receives it.
 kind loot_tables: A `weighted_table`: what a `roll` cue action draws and spawns.
 kind offers: An `offers`: what a `level` draws at each level up.
+kind speakers: A `speaker`: the name a conversation shows, its portraits by mood and its reveal pace.
 kind stats: An object of `stat_bounds` by stat name: each declares a game stat and its clamp.
 kind tags: A JSON array of tag names; each declares itself and its dotted ancestors.
 kind world_cues: A list of `cue_action` a game plays by name at a point, with no subject: `prefab`, `roll`, `burst`, `sound`, `shake`, a `label` with a font, and a `counter` or `flag` with `target: game`.

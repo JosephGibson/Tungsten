@@ -83,7 +83,7 @@ fn every_registered_scene_name_and_kind_appears_in_two_genres() {
     }
     assert!(short.is_empty(), "under two genres: {}", short.join(", "));
     assert_eq!(registered.len(), 52);
-    assert_eq!(kinds.len(), 11);
+    assert_eq!(kinds.len(), 13);
 }
 
 #[test]

@@ -3429,6 +3429,47 @@ fn check_actions(
     Ok(())
 }
 
+/// The name a story list's checks give the event its actions run on.
+const STORY_LIST: &str = "story list";
+
+/// Checks a list a story item runs at once, outside the cue system (redo
+/// 8.1): a conversation's node or choice, a quest's rewards. It refuses
+/// `ability`, whose cues ride an event a held clock drops, `loop` and
+/// `stop`, whose wants only the cue system's own pass keeps, and `label`,
+/// which needs an amount no list carries; then checks the rest as
+/// [`check_actions`] does for an event with no amount and, when `other`,
+/// another entity. `field` names the list.
+pub(crate) fn check_list(
+    world: &World,
+    field: &str,
+    actions: &[CueAction],
+    other: bool,
+) -> Result<(), MissingAsset> {
+    for (i, action) in actions.iter().enumerate() {
+        if matches!(
+            action.kind,
+            ActionKind::Ability { .. }
+                | ActionKind::Loop { .. }
+                | ActionKind::Stop { .. }
+                | ActionKind::Label(_)
+                | ActionKind::PartLabel(_)
+        ) {
+            return Err(MissingAsset::new(
+                format!("{field}.{i}.{}", action.name()),
+                "story list action (no ability, loop, stop or label)",
+                action.name(),
+            ));
+        }
+    }
+    let event = EventInfo {
+        name: STORY_LIST,
+        amount: false,
+        other,
+        kinds: false,
+    };
+    check_actions(world, field, event, actions)
+}
+
 /// The registered cue event `name`, else the [`MissingAsset`] at `field`.
 fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, MissingAsset> {
     world

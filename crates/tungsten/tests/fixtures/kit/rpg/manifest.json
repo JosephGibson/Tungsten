@@ -177,6 +177,19 @@
       "ward": {
         "path": "data/cue_rules/ward.json"
       }
+    },
+    "speakers": {
+      "keeper": {
+        "path": "data/speakers/keeper.json"
+      },
+      "warden": {
+        "path": "data/speakers/warden.json"
+      }
+    },
+    "dialogue": {
+      "keeper.evening": {
+        "path": "data/dialogue/keeper_evening.json"
+      }
     }
   },
   "animations": {

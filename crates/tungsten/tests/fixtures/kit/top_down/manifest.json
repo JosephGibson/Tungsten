@@ -413,6 +413,16 @@
       "poison": {
         "path": "data/interactions/poison.json"
       }
+    },
+    "speakers": {
+      "notice": {
+        "path": "data/speakers/notice.json"
+      }
+    },
+    "dialogue": {
+      "notice_board": {
+        "path": "data/dialogue/notice_board.json"
+      }
     }
   },
   "animations": {

@@ -364,6 +364,7 @@ pub use react::level::{LEVEL_TICK, Level, LevelPlugin, LevelUp, Offer, Offers};
 pub use react::loot::WeightedTable;
 pub use react::world_cues::WorldCue;
 pub use story::condition::Condition;
+pub use story::dialogue::{Conversation, DialoguePlugin, Speaker};
 pub use transform::hierarchy::{
     Children, HierarchyPlugin, LocalOffset, Parent, TRANSFORM_PROPAGATE, TRANSFORM_PROPAGATE_LATE,
     despawn_recursive, spawn_child,

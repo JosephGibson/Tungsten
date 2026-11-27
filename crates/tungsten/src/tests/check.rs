@@ -614,3 +614,87 @@ fn check_reports_a_post_effect_whose_shader_is_missing() {
         .resource::<tungsten_core::assets::PostEffectRegistry>();
     assert!(effects.pass("heat").is_some());
 }
+
+#[cfg(feature = "kit")]
+#[test]
+fn a_broken_conversation_fails_the_check_with_its_field_path() {
+    let good = serde_json::json!({
+        "speaker": "keeper",
+        "start": "greet",
+        "nodes": {
+            "greet": { "lines": ["Evening."], "next": "offer" },
+            "offer": { "choices": [{ "text": "Bye.", "back": true }, { "text": "More?", "next": "greet" }] }
+        }
+    });
+    let broken = |edit: &dyn Fn(&mut serde_json::Value)| {
+        let mut value = good.clone();
+        edit(&mut value);
+        value
+    };
+    let cases = [
+        (good.clone(), None),
+        (
+            broken(&|v| v["nodes"]["greet"]["next"] = "farewell".into()),
+            Some("nodes.greet.next: unknown node `farewell`"),
+        ),
+        (
+            broken(&|v| v["nodes"]["lost"] = serde_json::json!({ "lines": ["?"] })),
+            Some("nodes.lost: unreachable from `start`"),
+        ),
+        (
+            broken(&|v| {
+                v["nodes"]["offer"]["choices"][1]["when"] = serde_json::json!({ "flag": "f" });
+                v["nodes"]["offer"]["choices"][0]["when"] = serde_json::json!({ "flag": "g" });
+            }),
+            Some("nodes.offer.choices: every choice has a `when`"),
+        ),
+        (
+            broken(&|v| {
+                v["nodes"]["greet"] = serde_json::json!({ "next": "loop" });
+                v["nodes"]["loop"] = serde_json::json!({
+                    "branch": [{ "when": { "flag": "f" }, "next": "greet" }, { "next": "offer" }]
+                });
+            }),
+            Some("a cycle of nodes that may show nothing"),
+        ),
+        (
+            broken(&|v| v["nodes"]["greet"]["lines"][0] = "x".repeat(2001).into()),
+            Some("nodes.greet.lines.0.text: 2001 characters, past 2000"),
+        ),
+        (
+            broken(&|v| {
+                v["nodes"]["greet"]["lines"][0] =
+                    serde_json::json!({ "speaker": "gull", "text": "Caw." });
+            }),
+            Some("field `nodes.greet.lines.0.speaker`: unknown speaker `gull`"),
+        ),
+    ];
+    for (conversation, expected) in cases {
+        let game = Folder::new();
+        game.write("assets/data/keeper.json", r#"{ "name": "Old Tamsin" }"#);
+        game.write("assets/data/evening.json", &conversation.to_string());
+        let root = game.write(
+            "assets/manifest.json",
+            r#"{ "data": { "speakers": { "keeper": { "path": "data/keeper.json" } },
+                          "dialogue": { "keeper.evening": { "path": "data/evening.json" } } } }"#,
+        );
+        let mut app = game_world();
+        let errors = check_files(app.world_mut(), &[root], &game.0);
+        match expected {
+            None => assert!(errors.is_empty(), "{errors:#?}"),
+            Some(message) => {
+                assert_eq!(errors.len(), 1, "{message}: {errors:#?}");
+                assert_eq!(
+                    errors[0].file,
+                    Path::new("assets/data/evening.json"),
+                    "{message}"
+                );
+                assert!(
+                    errors[0].message.contains(message),
+                    "{message}: {}",
+                    errors[0].message
+                );
+            }
+        }
+    }
+}

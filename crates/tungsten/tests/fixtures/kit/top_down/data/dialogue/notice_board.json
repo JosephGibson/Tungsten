@@ -1,0 +1,50 @@
+{
+  "speaker": "notice",
+  "start": "read",
+  "nodes": {
+    "read": {
+      "lines": [
+        "Wanted: three wolf pelts."
+      ],
+      "choices": [
+        {
+          "text": "Take the errand.",
+          "do": [
+            {
+              "flag": {
+                "name": "errand.taken",
+                "target": "other"
+              }
+            }
+          ],
+          "next": "taken"
+        },
+        {
+          "text": "Leave it.",
+          "back": true
+        }
+      ]
+    },
+    "taken": {
+      "branch": [
+        {
+          "when": {
+            "flag": {
+              "name": "errand.taken",
+              "target": "other"
+            }
+          },
+          "next": "signed"
+        },
+        {
+          "next": "read"
+        }
+      ]
+    },
+    "signed": {
+      "lines": [
+        "Your name is on the board."
+      ]
+    }
+  }
+}

@@ -48,6 +48,7 @@ use crate::present::looks::LooksPlugin;
 use crate::react::counters::CountersPlugin;
 use crate::react::cues::CuesPlugin;
 use crate::react::level::LevelPlugin;
+use crate::story::dialogue::DialoguePlugin;
 use crate::transform::hierarchy::HierarchyPlugin;
 
 /// Every kit plugin that takes no game type, in the kit's order, as a
@@ -89,8 +90,8 @@ impl KitPlugins {
     /// wrap, stay in view, aim, facing, the character animator, depth sort,
     /// the hit shapes, contact damage, projectiles, pickups, impact damage,
     /// effects, looks by tags, health bars, particle bursts, chemistry,
-    /// abilities, levels, caps, the interactor and the debug drawing, in that
-    /// order.
+    /// abilities, levels, caps, the interactor, the dialogue kinds and the
+    /// debug drawing, in that order.
     #[must_use]
     pub fn set() -> PluginSet {
         PluginSet::new()
@@ -141,6 +142,7 @@ impl KitPlugins {
             .with(LevelPlugin)
             .with(CapPlugin)
             .with(InteractPlugin)
+            .with(DialoguePlugin)
             .with(KitDebugPlugin)
     }
 }

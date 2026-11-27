@@ -12,7 +12,8 @@
 //! whose first rat comes at once, a crate warden, who carries a ward crate
 //! at its side as it turns and lobs it onto a mark, and a fogling whose
 //! health bar waits for a hurt; 8.1's night warden, who talks to the
-//! keeper in reach and lights the lamp post once.
+//! keeper in reach and lights the lamp post once, and the keeper's evening
+//! conversation with its speakers.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -23,8 +24,8 @@ use super::{
     traced_steps,
 };
 use crate::kit::{
-    Abilities, Cooldown, Counters, Effects, Flags, Health, Hit, Interactor, KitPlugins, KitRng,
-    Level, Source, Tags, TopDownMover, damage,
+    Abilities, Conversation, Cooldown, Counters, Effects, Flags, Health, Hit, Interactor,
+    KitPlugins, KitRng, Level, Source, Speaker, Tags, TopDownMover, damage,
 };
 use crate::testing::Harness;
 
@@ -1100,4 +1101,22 @@ fn the_lamp_post_offers_light_until_its_flag_is_set() {
             "dt {dt}"
         );
     }
+}
+
+#[test]
+fn the_keepers_conversation_loads_with_its_speakers() {
+    let harness = recipe(GENRE, KitPlugins::set(), DTS[0]);
+    let data = harness.world().resource::<tungsten_core::DataRegistry>();
+    let evening = data.get::<Conversation>("keeper.evening").unwrap();
+    assert_eq!((evening.speaker(), evening.start()), ("keeper", "greet"));
+    assert_eq!(
+        evening.node_names().collect::<Vec<_>>(),
+        ["greet", "keepers", "offer", "thanks"]
+    );
+    let keeper = data.get::<Speaker>("keeper").unwrap();
+    assert_eq!(
+        (keeper.name(), keeper.pace(), keeper.portrait(None)),
+        ("Old Tamsin", 40.0, None)
+    );
+    assert_eq!(data.get::<Speaker>("warden").unwrap().name(), "Warden");
 }

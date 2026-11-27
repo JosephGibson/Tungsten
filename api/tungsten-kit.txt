@@ -5902,6 +5902,29 @@ impl core::marker::Unpin for tungsten_kit::ContactTouch
 impl core::marker::UnsafeUnpin for tungsten_kit::ContactTouch
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ContactTouch
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ContactTouch
+pub struct tungsten_kit::Conversation
+impl tungsten_kit::Conversation
+pub fn tungsten_kit::Conversation::node_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_kit::Conversation::speaker(&self) -> &str
+pub fn tungsten_kit::Conversation::start(&self) -> &str
+impl core::clone::Clone for tungsten_kit::Conversation
+pub fn tungsten_kit::Conversation::clone(&self) -> tungsten_kit::Conversation
+impl core::cmp::PartialEq for tungsten_kit::Conversation
+pub fn tungsten_kit::Conversation::eq(&self, &tungsten_kit::Conversation) -> bool
+impl core::fmt::Debug for tungsten_kit::Conversation
+pub fn tungsten_kit::Conversation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Conversation
+impl serde_core::ser::Serialize for tungsten_kit::Conversation
+pub fn tungsten_kit::Conversation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Conversation
+pub fn tungsten_kit::Conversation::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Conversation
+impl core::marker::Send for tungsten_kit::Conversation
+impl core::marker::Sync for tungsten_kit::Conversation
+impl core::marker::Unpin for tungsten_kit::Conversation
+impl core::marker::UnsafeUnpin for tungsten_kit::Conversation
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Conversation
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Conversation
 pub struct tungsten_kit::Conversion
 impl tungsten_kit::Conversion
 pub fn tungsten_kit::Conversion::new() -> Self
@@ -6532,6 +6555,23 @@ impl core::marker::Unpin for tungsten_kit::DespawnOutsidePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::DespawnOutsidePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DespawnOutsidePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DespawnOutsidePlugin
+pub struct tungsten_kit::DialoguePlugin
+impl core::clone::Clone for tungsten_kit::DialoguePlugin
+pub fn tungsten_kit::DialoguePlugin::clone(&self) -> tungsten_kit::DialoguePlugin
+impl core::default::Default for tungsten_kit::DialoguePlugin
+pub fn tungsten_kit::DialoguePlugin::default() -> tungsten_kit::DialoguePlugin
+impl core::fmt::Debug for tungsten_kit::DialoguePlugin
+pub fn tungsten_kit::DialoguePlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::DialoguePlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::DialoguePlugin
+pub fn tungsten_kit::DialoguePlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::DialoguePlugin
+impl core::marker::Send for tungsten_kit::DialoguePlugin
+impl core::marker::Sync for tungsten_kit::DialoguePlugin
+impl core::marker::Unpin for tungsten_kit::DialoguePlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::DialoguePlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DialoguePlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DialoguePlugin
 pub struct tungsten_kit::Effect
 impl tungsten_kit::Effect
 pub fn tungsten_kit::Effect::bands(&self) -> impl core::iter::traits::iterator::Iterator<Item = (f32, &[alloc::string::String])>
@@ -9192,6 +9232,32 @@ impl core::marker::Unpin for tungsten_kit::SpawnerPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::SpawnerPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SpawnerPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SpawnerPlugin
+pub struct tungsten_kit::Speaker
+impl tungsten_kit::Speaker
+pub fn tungsten_kit::Speaker::name(&self) -> &str
+pub fn tungsten_kit::Speaker::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::Speaker::pace(&self) -> f32
+pub fn tungsten_kit::Speaker::portrait(&self, core::option::Option<&str>) -> core::option::Option<&str>
+pub fn tungsten_kit::Speaker::with_pace(self, f32) -> Self
+pub fn tungsten_kit::Speaker::with_portrait(self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_kit::Speaker
+pub fn tungsten_kit::Speaker::clone(&self) -> tungsten_kit::Speaker
+impl core::cmp::PartialEq for tungsten_kit::Speaker
+pub fn tungsten_kit::Speaker::eq(&self, &tungsten_kit::Speaker) -> bool
+impl core::fmt::Debug for tungsten_kit::Speaker
+pub fn tungsten_kit::Speaker::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Speaker
+impl serde_core::ser::Serialize for tungsten_kit::Speaker
+pub fn tungsten_kit::Speaker::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Speaker
+pub fn tungsten_kit::Speaker::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Speaker
+impl core::marker::Send for tungsten_kit::Speaker
+impl core::marker::Sync for tungsten_kit::Speaker
+impl core::marker::Unpin for tungsten_kit::Speaker
+impl core::marker::UnsafeUnpin for tungsten_kit::Speaker
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Speaker
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Speaker
 pub struct tungsten_kit::SpeedLimit
 impl tungsten_kit::SpeedLimit
 pub fn tungsten_kit::SpeedLimit::speed(f32) -> Self
