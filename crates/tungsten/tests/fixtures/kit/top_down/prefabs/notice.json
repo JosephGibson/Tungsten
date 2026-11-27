@@ -9,6 +9,9 @@
       "interacted": [
         {
           "dialogue": "notice_board"
+        },
+        {
+          "say": "Read me twice."
         }
       ]
     }

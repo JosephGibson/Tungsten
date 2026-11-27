@@ -1,0 +1,8 @@
+{
+  "name": "Old Tamsin",
+  "portrait": {
+    "neutral": "keeper_face",
+    "worried": "keeper_worried"
+  },
+  "pace": 40
+}

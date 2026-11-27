@@ -1085,6 +1085,43 @@ pub fn tungsten::state::despawn_scene_entities(&mut tungsten_core::ecs::world::W
 pub fn tungsten::state::state_dispatcher_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::state::ui_state_roots_system(&mut tungsten_core::ecs::world::World)
 pub type tungsten::state::StateId = &'static str
+pub mod tungsten::story
+pub struct tungsten::story::DialogueBoxView
+impl tungsten::story::DialogueBoxView
+pub fn tungsten::story::DialogueBoxView::portrait(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten::story::DialogueBoxView::revealing(&self) -> core::option::Option<u32>
+pub fn tungsten::story::DialogueBoxView::up(&self) -> bool
+impl core::default::Default for tungsten::story::DialogueBoxView
+pub fn tungsten::story::DialogueBoxView::default() -> tungsten::story::DialogueBoxView
+impl core::fmt::Debug for tungsten::story::DialogueBoxView
+pub fn tungsten::story::DialogueBoxView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::story::DialogueBoxView
+impl core::marker::Send for tungsten::story::DialogueBoxView
+impl core::marker::Sync for tungsten::story::DialogueBoxView
+impl core::marker::Unpin for tungsten::story::DialogueBoxView
+impl core::marker::UnsafeUnpin for tungsten::story::DialogueBoxView
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::story::DialogueBoxView
+impl core::panic::unwind_safe::UnwindSafe for tungsten::story::DialogueBoxView
+pub struct tungsten::story::StoryUiPlugin
+impl core::clone::Clone for tungsten::story::StoryUiPlugin
+pub fn tungsten::story::StoryUiPlugin::clone(&self) -> tungsten::story::StoryUiPlugin
+impl core::default::Default for tungsten::story::StoryUiPlugin
+pub fn tungsten::story::StoryUiPlugin::default() -> tungsten::story::StoryUiPlugin
+impl core::fmt::Debug for tungsten::story::StoryUiPlugin
+pub fn tungsten::story::StoryUiPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::story::StoryUiPlugin
+impl tungsten_core::schedule::Plugin for tungsten::story::StoryUiPlugin
+pub fn tungsten::story::StoryUiPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::story::StoryUiPlugin
+impl core::marker::Send for tungsten::story::StoryUiPlugin
+impl core::marker::Sync for tungsten::story::StoryUiPlugin
+impl core::marker::Unpin for tungsten::story::StoryUiPlugin
+impl core::marker::UnsafeUnpin for tungsten::story::StoryUiPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::story::StoryUiPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::story::StoryUiPlugin
+pub const tungsten::story::DIALOGUE_OPEN: &str
+pub const tungsten::story::DIALOGUE_SCREEN: tungsten::state::StateId
+pub const tungsten::story::TEXT_KEY: &str
 pub mod tungsten::systems_overlay
 pub struct tungsten::systems_overlay::SystemTimingOverlay
 pub tungsten::systems_overlay::SystemTimingOverlay::alpha: f32

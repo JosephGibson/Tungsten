@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "screen",
+    "width": 420,
+    "children": [
+      {
+        "kind": "row",
+        "children": [
+          {
+            "kind": "mount",
+            "key": "portrait",
+            "mount": "dialogue.portrait"
+          },
+          {
+            "kind": "column",
+            "children": [
+              {
+                "kind": "heading",
+                "key": "speaker",
+                "bind": {
+                  "text": "dialogue.speaker"
+                }
+              },
+              {
+                "kind": "label",
+                "key": "text",
+                "bind": {
+                  "text": "dialogue.text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "kind": "button",
+        "key": "continue",
+        "text": "Continue",
+        "bind": {
+          "visible": "dialogue.reading"
+        },
+        "on": {
+          "action": "dialogue.continue"
+        }
+      },
+      {
+        "kind": "column",
+        "key": "choosing",
+        "bind": {
+          "visible": "dialogue.choosing"
+        },
+        "children": [
+          {
+            "kind": "repeat",
+            "key": "choices",
+            "rows": "dialogue.choices",
+            "row": {
+              "kind": "button",
+              "field": "text",
+              "on": {
+                "action": "dialogue.choose"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

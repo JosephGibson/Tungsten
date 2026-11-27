@@ -366,6 +366,7 @@ pub use react::world_cues::WorldCue;
 pub use story::condition::Condition;
 pub use story::dialogue::{Conversation, DialoguePlugin, Speaker};
 pub use story::runner::{Dialogue, DialogueEnded, DialogueStarted, Talk, TalkLine, talk};
+pub use story::say::{Barks, SAY_TICK, SayPlugin};
 pub use transform::hierarchy::{
     Children, HierarchyPlugin, LocalOffset, Parent, TRANSFORM_PROPAGATE, TRANSFORM_PROPAGATE_LATE,
     despawn_recursive, spawn_child,

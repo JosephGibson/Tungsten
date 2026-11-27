@@ -56,6 +56,7 @@ use crate::react::loot::{LOOT_TABLES, WeightedTable, register_loot_tables};
 use crate::react::world_cues::{WORLD_CUES, WorldCue, WorldCueActions};
 use crate::story::dialogue::{Conversation, DIALOGUE};
 use crate::story::runner::{start_talk, talking};
+use crate::story::say::{SayDef, SayStyle, bark, say_round_trip};
 use crate::transform::hierarchy::despawn_recursive;
 
 /// [`CuesPlugin`]'s system, in the react phase, last of the kit's items.
@@ -426,6 +427,9 @@ pub(crate) enum ActionKind {
     /// A conversation started, the subject speaking to the other: a
     /// `DataRef`, a `String`'s size.
     Dialogue(DataRef<Conversation>),
+    /// A bark over the subject or the other, boxed so the action keeps its
+    /// size.
+    Say(Box<SayDef>),
 }
 
 /// A counter action's change.
@@ -795,6 +799,7 @@ impl CueAction {
             {
                 *target = to;
             }
+            ActionKind::Say(say) if to == Target::Other => say.other = true,
             _ => panic!("CueAction::{method}: a `{name}` action takes no target"),
         }
         self
@@ -1130,6 +1135,42 @@ impl CueAction {
         Self::of(ActionKind::Dialogue(conversation))
     }
 
+    /// The subject says `text` over its head for 2.5 game seconds, in white
+    /// `engine_mono` at 14 UI units, replacing its last bark (redo 8.1);
+    /// [`for_other`](Self::for_other) has the other entity say it. Data
+    /// form `{ "say": "Fog's coming in." }`, or the object of `text`,
+    /// `seconds`, `font`, `size`, `color` (linear), `offset` and `target`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let fog = CueAction::say("Fog's coming in.");
+    /// assert_eq!(serde_json::to_value(&fog).unwrap(), serde_json::json!({ "say": "Fog's coming in." }));
+    /// let back: CueAction =
+    ///     serde_json::from_str(r#"{ "say": { "text": "Aye.", "target": "other" } }"#).unwrap();
+    /// assert_eq!(back, CueAction::say("Aye.").for_other());
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// When `text` is empty or past 2,000 characters.
+    #[must_use]
+    #[track_caller]
+    pub fn say(text: impl Into<String>) -> Self {
+        let text = text.into();
+        let count = text.chars().count();
+        assert!(
+            (1..=2000).contains(&count),
+            "CueAction::say: 1 to 2000 characters, not {count}"
+        );
+        Self::of(ActionKind::Say(Box::new(SayDef {
+            style: SayStyle::new(text),
+            other: false,
+        })))
+    }
+
     /// Uses the subject's ability `name` now, as [`use_ability`] uses it;
     /// [`for_other`](Self::for_other) uses the other entity's. Data form
     /// `{ "ability": "wand" }` or
@@ -1240,6 +1281,7 @@ impl CueAction {
             ActionKind::Clip(_) => "clip",
             ActionKind::Camera { .. } => "camera",
             ActionKind::Dialogue(_) => "dialogue",
+            ActionKind::Say(_) => "say",
         }
     }
 }
@@ -1292,6 +1334,7 @@ pub(crate) enum CueActionDef {
     Clip(Clips),
     Camera(CameraActionDef),
     Dialogue(DataRef<Conversation>),
+    Say(SayDef),
 }
 
 /// A `camera` action as data writes it: exactly one of `raise` and
@@ -1991,6 +2034,7 @@ impl TryFrom<CueActionDef> for CueAction {
                 (None, None) => unreachable!("checked at deserialization"),
             },
             CueActionDef::Dialogue(conversation) => ActionKind::Dialogue(conversation),
+            CueActionDef::Say(say) => ActionKind::Say(Box::new(say)),
         };
         Ok(Self { kind })
     }
@@ -2096,6 +2140,7 @@ impl From<CueAction> for CueActionDef {
                 release: (!raise).then_some(id),
             }),
             ActionKind::Dialogue(conversation) => CueActionDef::Dialogue(conversation),
+            ActionKind::Say(say) => CueActionDef::Say(*say),
         }
     }
 }
@@ -3429,6 +3474,13 @@ fn check_actions(
             }
             ActionKind::Clip(clips) => check_clips(world, &at, clips)?,
             ActionKind::Dialogue(conversation) => conversation.check(world, &at)?,
+            ActionKind::Say(say) if say.other && !event.other => {
+                return Err(MissingAsset::new(
+                    format!("{at}.target"),
+                    "cue event with an other entity",
+                    event.name,
+                ));
+            }
             ActionKind::PartLabel(part) => {
                 if let Some(ticks) = &part.ticks {
                     for (field, name) in ticks.kind.names() {
@@ -3595,7 +3647,7 @@ fn needs_subject(action: &CueAction) -> bool {
             | ActionKind::Loop { .. }
             | ActionKind::Stop { .. }
             | ActionKind::Dialogue(_)
-    )
+    ) || matches!(&action.kind, ActionKind::Say(say) if !say.other)
 }
 
 /// Checks a list a story item runs at once, outside the cue system (redo
@@ -4652,6 +4704,17 @@ impl Reactor {
                 };
                 start_talk(world, id.to_owned(), found, subject, listener);
             }
+            ActionKind::Say(say) => {
+                let to = if say.other {
+                    Target::Other
+                } else {
+                    Target::Subject
+                };
+                let Some(speaker) = target(to, world) else {
+                    return skip(world, NO_OTHER);
+                };
+                bark(world, speaker, &say.style);
+            }
             ActionKind::Label(Some(style)) => {
                 let Some(amount) = occurrence.amount else {
                     return skip(world, NO_AMOUNT);
@@ -5481,12 +5544,67 @@ fn describe_cues(world: &mut World) {
                 "every camera rig whose `id` is the name raised, the latest raised winning a tie, or lowered; none holding it, a traced skip",
             ))
             .field(FieldDescription::new(
+                "say",
+                FieldType::Shape("say_action"),
+                "a bark over the subject or the other, replacing its last, fading at its end; a text alone reads as `{ \"text\": .. }`; never in a world cue",
+            ))
+            .field(FieldDescription::new(
                 "dialogue",
                 FieldType::Data(DIALOGUE),
                 "a conversation started at once, the subject speaking and the other listening; without an other or while a talk runs, a traced skip; never in a world cue",
             ))
             .sample(r#"{ "despawn": {} }"#)
             .roundtrip(round_trip::<CueActionDef>),
+        ComponentDescription::new(
+            "say_action",
+            "A bark: a line over an entity's centre, aged by the game clock.",
+        )
+        .field(FieldDescription::new(
+            "text",
+            FieldType::Text,
+            "1 to 2,000 characters",
+        ))
+        .field(
+            FieldDescription::new(
+                "seconds",
+                FieldType::F32 {
+                    min: Bound::Exclusive(0.0),
+                    max: Bound::Open,
+                },
+                "game seconds it shows, the last 0.2 fading",
+            )
+            .default("2.5"),
+        )
+        .field(
+            FieldDescription::new("font", FieldType::Text, "a face or family ID")
+                .default(r#""engine_mono""#),
+        )
+        .field(
+            FieldDescription::new(
+                "size",
+                FieldType::F32 {
+                    min: Bound::Exclusive(0.0),
+                    max: Bound::Open,
+                },
+                "in UI units",
+            )
+            .default("14.0"),
+        )
+        .field(
+            FieldDescription::new("color", FieldType::Color, "linear")
+                .default("[1.0, 1.0, 1.0, 1.0]"),
+        )
+        .field(
+            FieldDescription::new(
+                "offset",
+                FieldType::Vec2,
+                "its shift in UI units off the entity's centre, y down",
+            )
+            .default("[0.0, -16.0]"),
+        )
+        .field(target(&["self", "other"], "the subject or the other entity"))
+        .sample(r#"{ "text": "Fog's coming in." }"#)
+        .roundtrip(say_round_trip),
         ComponentDescription::new("camera_action", "A camera rig raised or released by its ID.")
             .one_of()
             .field(FieldDescription::new(

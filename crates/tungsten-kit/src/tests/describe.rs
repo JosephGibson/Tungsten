@@ -133,13 +133,13 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     assert_eq!(kinds.len(), 13);
     assert_eq!(
         descriptions.shapes().count(),
-        100,
+        101,
         "7.10c's lob, the prefab and roll actions' object forms, the cone, the conduction, \
          the projectile's end and the place; 7.10g's clip rule, blink, path rider and tag look; \
          7.18's camera box, lead, follow and fixed, and the camera action; 7.13c's impact extra \
          and push; 7.13c's foes and cues' burst action; 7.13c's foes' overlay bob; 8.1's condition and its \
          flag, counter, stat and tags forms, the speaker, the conversation and its node, line, \
-         choice and branch"
+         choice and branch, and the say action"
     );
 }
 
@@ -259,8 +259,8 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 68,
-        "the cue action's eighteen forms, the target's three, the hit shape's two, the modifier's \
+        probed, 69,
+        "the cue action's nineteen forms, the target's three, the hit shape's two, the modifier's \
          four, the ability trigger's four, its target's four, its payload's seven, the offer's two, \
          a chemistry output's eleven, a projectile end's one, a fixed camera's three, a camera \
          action's two and a condition's seven"
@@ -319,6 +319,7 @@ fn each_described_enum_variant_deserializes() {
             + 3
             + 3
             + 2
+            + 2
             + 2,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
          steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
@@ -327,7 +328,7 @@ fn each_described_enum_variant_deserializes() {
          directions, a cap's past, a clip rule's motions, a hitbox's facings and credits, \
          a camera lead's sources, a blast's spare, point and land and an impact's land and four \
          actions' `at`, each with `aim`; a cue rule's reasons are a name or a list; the flag, \
-         counter, stat and tags conditions' targets"
+         counter, stat and tags conditions' targets and the say action's"
     );
 }
 
@@ -440,13 +441,13 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 200,
+        checked, 202,
         "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
          four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, the \
          hit flash's interval, a look's overlay speed and depth and glow radius, its light's \
          radius and intensity and sound's volume, a lob's speed, a cone's reach, half angle, \
          rays, damage, knockback, sweep, push and far share, a conduction's damage, \
-         reach, keep and jumps, a cap's max and a place's range, a blink's last seconds, a spawner's alive and first, a world rule's margin, a path's wait, a lift's board and back, a tag look's growth, an overlay bob's height and seconds, a health bar's rise and inset, and a camera rig's view height, zoom and priority and its lead's max, time and smoothing, a blast's far share, an impact's speed, per mass, most, floor, mass, amount, margin and scale, its extra's damage and its push's away, most and along, a pickup's fall, a steering's pace and a projectile's seconds, a counter condition's and a stat condition's bounds, an interactor's reach and size, an interactable's radius and a speaker's pace"
+         reach, keep and jumps, a cap's max and a place's range, a blink's last seconds, a spawner's alive and first, a world rule's margin, a path's wait, a lift's board and back, a tag look's growth, an overlay bob's height and seconds, a health bar's rise and inset, and a camera rig's view height, zoom and priority and its lead's max, time and smoothing, a blast's far share, an impact's speed, per mass, most, floor, mass, amount, margin and scale, its extra's damage and its push's away, most and along, a pickup's fall, a steering's pace and a projectile's seconds, a counter condition's and a stat condition's bounds, an interactor's reach and size, an interactable's radius, a speaker's pace and a bark's seconds and size"
     );
 }
 
@@ -456,7 +457,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
     assert_eq!(count("component "), 52);
-    assert_eq!(count("shape "), 100);
+    assert_eq!(count("shape "), 101);
     assert_eq!(count("kind "), 13);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));

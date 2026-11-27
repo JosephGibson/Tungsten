@@ -14,7 +14,7 @@
 //! health bar waits for a hurt; 8.1's night warden, who talks to the
 //! keeper in reach and lights the lamp post once, and the keeper's evening
 //! conversation with its speakers, which the keeper's `interacted` cue
-//! starts.
+//! starts; the lit lamp's bark.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -25,8 +25,8 @@ use super::{
     traced_steps,
 };
 use crate::kit::{
-    Abilities, Conversation, Cooldown, Counters, Dialogue, Effects, Flags, Health, Hit, Interactor,
-    KitPlugins, KitRng, Level, Source, Speaker, Tags, TopDownMover, damage,
+    Abilities, Barks, Conversation, Cooldown, Counters, Dialogue, Effects, Flags, Health, Hit,
+    Interactor, KitPlugins, KitRng, Level, Source, Speaker, Tags, TopDownMover, damage,
 };
 use crate::testing::Harness;
 
@@ -1171,5 +1171,27 @@ fn the_keepers_interacted_cue_starts_its_conversation() {
         assert_eq!(line(world).unwrap().1, "Bless you.");
         assert!(Dialogue::advance(world));
         assert!(world.resource::<Dialogue>().current().is_none(), "dt {dt}");
+    }
+}
+
+#[test]
+fn the_lit_lamp_barks_over_its_post() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "night_warden", [64.0, 64.0]);
+        let post = spawn(&mut harness, "lamp_post", [84.0, 64.0]);
+        harness.step(1);
+        assert!(
+            !harness.world().has_resource::<Barks>(),
+            "dt {dt}: no bark yet"
+        );
+        harness.tap_action("interact");
+        let barks = harness.world().resource::<Barks>();
+        assert_eq!(barks.text_of(post), Some("It catches."), "dt {dt}");
+        harness.step(frames_for(3.0, dt));
+        assert!(
+            harness.world().resource::<Barks>().is_empty(),
+            "dt {dt}: gone after 2.5 s"
+        );
     }
 }

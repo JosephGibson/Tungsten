@@ -1,0 +1,19 @@
+{
+  "ui_screens": {
+    "dialogue": {
+      "path": "ui/screens/dialogue.json"
+    }
+  },
+  "data": {
+    "speakers": {
+      "keeper": {
+        "path": "data/speakers/keeper.json"
+      }
+    },
+    "dialogue": {
+      "keeper.evening": {
+        "path": "data/dialogue/keeper_evening.json"
+      }
+    }
+  }
+}

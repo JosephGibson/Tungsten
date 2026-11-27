@@ -156,6 +156,7 @@ fn a_world_cue_refuses_subject_actions() {
         (json!([{ "ability": "wand" }]), "0.ability"),
         (json!([{ "label": {} }]), "0.label"),
         (json!([{ "dialogue": "keeper.evening" }]), "0.dialogue"),
+        (json!([{ "say": "Hush." }]), "0.say"),
         (
             json!([{ "counter": { "name": "hits", "add": 1 } }]),
             "0.counter.target",

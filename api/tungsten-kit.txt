@@ -1227,6 +1227,7 @@ pub fn tungsten_kit::CueAction::raise_camera(impl core::convert::Into<alloc::str
 pub fn tungsten_kit::CueAction::refill_ability(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::release_camera(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::roll(tungsten_core::assets::data::DataRef<tungsten_kit::WeightedTable>) -> Self
+pub fn tungsten_kit::CueAction::say(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::shake(f32) -> Self
 pub fn tungsten_kit::CueAction::sound(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::squash(tungsten_core::components::SquashTrigger) -> Self
@@ -5261,6 +5262,22 @@ impl core::marker::Unpin for tungsten_kit::AnimationPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AnimationPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AnimationPlugin
+pub struct tungsten_kit::Barks
+impl tungsten_kit::Barks
+pub fn tungsten_kit::Barks::is_empty(&self) -> bool
+pub fn tungsten_kit::Barks::len(&self) -> usize
+pub fn tungsten_kit::Barks::text_of(&self, tungsten_core::ecs::entity::Entity) -> core::option::Option<&str>
+impl core::default::Default for tungsten_kit::Barks
+pub fn tungsten_kit::Barks::default() -> tungsten_kit::Barks
+impl core::fmt::Debug for tungsten_kit::Barks
+pub fn tungsten_kit::Barks::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::Barks
+impl core::marker::Send for tungsten_kit::Barks
+impl core::marker::Sync for tungsten_kit::Barks
+impl core::marker::Unpin for tungsten_kit::Barks
+impl core::marker::UnsafeUnpin for tungsten_kit::Barks
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Barks
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Barks
 pub struct tungsten_kit::Blast
 impl tungsten_kit::Blast
 pub fn tungsten_kit::Blast::at_centre(self) -> Self
@@ -6100,6 +6117,7 @@ pub fn tungsten_kit::CueAction::raise_camera(impl core::convert::Into<alloc::str
 pub fn tungsten_kit::CueAction::refill_ability(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::release_camera(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::roll(tungsten_core::assets::data::DataRef<tungsten_kit::WeightedTable>) -> Self
+pub fn tungsten_kit::CueAction::say(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::shake(f32) -> Self
 pub fn tungsten_kit::CueAction::sound(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::squash(tungsten_core::components::SquashTrigger) -> Self
@@ -8938,6 +8956,23 @@ impl core::marker::Unpin for tungsten_kit::ResistRecord
 impl core::marker::UnsafeUnpin for tungsten_kit::ResistRecord
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ResistRecord
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ResistRecord
+pub struct tungsten_kit::SayPlugin
+impl core::clone::Clone for tungsten_kit::SayPlugin
+pub fn tungsten_kit::SayPlugin::clone(&self) -> tungsten_kit::SayPlugin
+impl core::default::Default for tungsten_kit::SayPlugin
+pub fn tungsten_kit::SayPlugin::default() -> tungsten_kit::SayPlugin
+impl core::fmt::Debug for tungsten_kit::SayPlugin
+pub fn tungsten_kit::SayPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::SayPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::SayPlugin
+pub fn tungsten_kit::SayPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::SayPlugin
+impl core::marker::Send for tungsten_kit::SayPlugin
+impl core::marker::Sync for tungsten_kit::SayPlugin
+impl core::marker::Unpin for tungsten_kit::SayPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::SayPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SayPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SayPlugin
 pub struct tungsten_kit::Scaled
 impl tungsten_kit::Scaled
 pub const tungsten_kit::Scaled::ALL: Self
@@ -10255,6 +10290,7 @@ pub const tungsten_kit::PICKUP_MAGNET: &str
 pub const tungsten_kit::PICKUP_TICK: &str
 pub const tungsten_kit::PLATFORMER_CONTROLLER: &str
 pub const tungsten_kit::PROJECTILE_TICK: &str
+pub const tungsten_kit::SAY_TICK: &str
 pub const tungsten_kit::SHIELD_TICK: &str
 pub const tungsten_kit::SPAWNER_TICK: &str
 pub const tungsten_kit::SPAWN_CHILDREN: &str

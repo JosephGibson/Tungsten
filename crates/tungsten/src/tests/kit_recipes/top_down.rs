@@ -35,7 +35,8 @@
 //! crystal on a dynamic body drawn in by the ranger's magnet; 7.13c's foes
 //! and cues' ogre, whose kill's key burst takes a full budget's oldest
 //! cosmetic slot; 8.1's reader, who takes the nearer of two notices, and
-//! the notice board's conversation, read and its errand taken.
+//! the notice board's conversation, read and its errand taken, and its
+//! bark.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3780,5 +3781,29 @@ fn reading_the_notice_and_choosing_sets_its_flag() {
         );
         assert!(Dialogue::advance(world));
         assert!(world.resource::<Dialogue>().current().is_none());
+    }
+}
+
+#[test]
+fn a_read_notice_barks_once() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "reader", [100.0, 100.0]);
+        let notice = spawn(&mut harness, "notice", [100.0, 70.0]);
+        harness.step(1);
+        harness.tap_action("interact");
+        let barks = harness.world().resource::<crate::kit::Barks>();
+        assert_eq!(
+            (barks.len(), barks.text_of(notice)),
+            (1, Some("Read me twice.")),
+            "dt {dt}"
+        );
+        crate::kit::Dialogue::end(harness.world_mut());
+        harness.tap_action("interact");
+        assert_eq!(
+            harness.world().resource::<crate::kit::Barks>().len(),
+            1,
+            "dt {dt}: the second read replaces the first"
+        );
     }
 }

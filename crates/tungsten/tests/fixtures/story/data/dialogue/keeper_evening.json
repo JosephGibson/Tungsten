@@ -1,0 +1,64 @@
+{
+  "speaker": "keeper",
+  "start": "greet",
+  "nodes": {
+    "greet": {
+      "lines": [
+        "Evening, warden.",
+        "Cold tonight."
+      ],
+      "next": "offer"
+    },
+    "offer": {
+      "lines": [
+        {
+          "text": "The lamp by the steps is out again.",
+          "mood": "worried"
+        }
+      ],
+      "choices": [
+        {
+          "text": "I'll light it.",
+          "do": [
+            {
+              "flag": {
+                "name": "lamp.promised",
+                "target": "game"
+              }
+            }
+          ],
+          "next": "thanks"
+        },
+        {
+          "text": "Who keeps the lamps?",
+          "when": {
+            "not": {
+              "flag": {
+                "name": "lamp.asked",
+                "target": "game"
+              }
+            }
+          },
+          "do": [
+            {
+              "flag": {
+                "name": "lamp.asked",
+                "target": "game"
+              }
+            }
+          ],
+          "next": "offer"
+        },
+        {
+          "text": "Not tonight.",
+          "back": true
+        }
+      ]
+    },
+    "thanks": {
+      "lines": [
+        "Bless you."
+      ]
+    }
+  }
+}

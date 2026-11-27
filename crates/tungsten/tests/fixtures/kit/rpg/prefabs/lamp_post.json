@@ -23,6 +23,9 @@
             "name": "lamp.lit",
             "target": "game"
           }
+        },
+        {
+          "say": "It catches."
         }
       ]
     }

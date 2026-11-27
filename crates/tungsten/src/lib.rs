@@ -28,6 +28,8 @@ mod script;
 mod settings;
 pub mod sprite_extract;
 pub mod state;
+#[cfg(feature = "kit")]
+pub mod story;
 pub mod systems_overlay;
 pub mod telemetry;
 #[cfg(any(test, feature = "testing"))]
