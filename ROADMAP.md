@@ -4,8 +4,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `phase-8`: Phase 8, Genres, a step at a time on one track in [the roadmap redo](docs/plans/roadmap-redo.md)'s §3 order: 8.1 story systems, 8.2 shooter and AI systems, 8.3 tooling for hand-made content, 8.7 ARPG systems (after 8.1 and 8.2, beside 8.3 and 8.4), 8.4 01 refreshed, 8.5 the template's final pass, 8.6 proof; each step's row names the register rows it takes by ID, carried there when Phase 7 closed (2026-11-26) with every row of its own landed, closed or parked; 8.1 runs as three plans, each written when the one before it closes: `story-systems` (P7-3, P8-1, P8-2, P8-5), then items and shops (P8-3, PA-12, PA-13, S-162, with tooltips, popups and images in screen files), then cutscenes, the clock and areas (P8-4, P8-6, P8-7, P8-17); `story-systems` is planned and its run is next.
-- `story-systems`: 8.1's first plan ([plan](docs/plans/story-systems.md)): data conditions; an interactor and `interactable` with a prompt from the action's binding and the `interacted` cue event (P7-3); speakers and conversations as data kinds with reachability, speaker and reference checks, a runner whose lists apply at once and the `dialogue` cue action, text revealed without relayout, a dialogue box on a screen file and the `say` cue action (P8-1); quests on holders and the game, with objectives on the conditions, rewards and a journal (P8-2); typed text from the window and a text field (P8-5); recipes in `rpg` and `top_down`, a `story` row and a sketch in the fixtures crate.
+- `phase-8`: Phase 8, Genres, a step at a time on one track in [the roadmap redo](docs/plans/roadmap-redo.md)'s §3 order: 8.1 story systems, 8.2 shooter and AI systems, 8.3 tooling for hand-made content, 8.7 ARPG systems (after 8.1 and 8.2, beside 8.3 and 8.4), 8.4 01 refreshed, 8.5 the template's final pass, 8.6 proof; each step's row names the register rows it takes by ID, carried there when Phase 7 closed (2026-11-26) with every row of its own landed, closed or parked; 8.1 runs as three plans, each written when the one before it closes: `story-systems` (P7-3, P8-1, P8-2, P8-5), then items and shops (P8-3, PA-12, PA-13, S-162, with tooltips, popups and images in screen files), then cutscenes, the clock and areas (P8-4, P8-6, P8-7, P8-17); `story-systems` landed (`D-315`: P7-3, P8-1, P8-2, P8-5), and the items and shops plan is next.
 
 ## Next
 
@@ -67,7 +66,8 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - Multi-select, box select, copy between rooms and a searchable palette in the level editor (`D-267`, level-editor's Q10; the cell grid landed in `D-268`).
 - Shapes, layers, routes and a room's own settings (size, tileset, post, ambient, budget) in the level editor; `tungsten level apply` edits them today (`D-268`).
 - An overlay for `tungsten level render`, the grid, IDs and places the editor draws; `level map` and `query` name them today, and a script that opens the editor captures its overlay (`D-268`).
-- The level editor's prompt on core's text input once 8.1 lands it (P8-5): any layout, a caret that moves, a paste (`D-268`).
+- The level editor's prompt on core's text field, which 8.1 landed (P8-5, `D-315`): any layout and a caret that moves, a paste once a clipboard lands (`D-268`).
+- Text input past typed characters: IME composition, paste and a clipboard, selection, a blinking caret, and a caret placed from the shaped text for joined and right-to-left runs (P8-5's rest, `D-315`).
 - The manifest's own check refusing two room IDs on one file, as it refuses prefabs and data entries; `level generate` and the editor refuse to write such a file today (`D-267`, level-editor's Q13).
 - The platformer controller's free air-jump count set at run time, and an unlimited free count (K25's rest): a game that wants them.
 - Example 01's route test: eight `LAUNCHES` rows start with the body over the next step's face; restart them clear of the rock, as the tomes' rows are.
@@ -140,4 +140,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - Example 01's backdrop cull moved onto the engine's measure of a sprite's alpha, or retired: it reads the generator's list of opaque sprites, and is still worth 0.07–0.14 ms a frame at 2160p under the depth test (S-14's rest, `D-297`).
 - `SpriteInstance::z_norm` out of the instance once no material shader reads it: no stock pipeline's depth has read it since `D-297`, and it is a field of a public 48-byte layout that extracts and tests pin.
 - A second QA slice for what the QA pass of 2026-11-26 left unaudited at its 9 % spend line (its plan at `4972ea86`): `docs/perf/benchmarks.md` (the latest reading per row and the levers for 9.2) and `docs/perf/profiling-workflow.md` (its bench list misses `tuple_query_bench` and `ui_route_bench`), the CLI, crash probe and launcher, 40 of example 01's files (its level, lightning, player, props, run, spells, tomes and toys features), the template's `src/` and eleven `scripts/*.py`.
+- A `when` condition on cue rules, read on the cue system's hot path, which 01's pit pins (`D-315`).
+- A speaker's name set at run time, so a line names what the player typed (`D-315`).
+- Example 01's tomes on the kit's `interactable`, `interactor` and prompt, in place of their own reach, press and hint panel, at 8.4 (`D-315`).
 - Phase 9, Release: benchmarks with budgets, performance, the stability policy, quality, docs and platforms, tests, release candidates, 1.0.
