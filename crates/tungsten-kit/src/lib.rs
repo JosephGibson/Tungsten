@@ -141,7 +141,10 @@
 //!   hit, its first wall or its range, unless it pierces, turns at a wall in
 //!   its bounce layers or passes one in its pass layers.
 //!   [`Pickup`], [`PickedUp`] and [`PickupPlugin`]: collected once, drawn in
-//!   by a magnet.
+//!   by a magnet. [`Interactor`], [`Interactable`], [`Interacted`] and
+//!   [`InteractPlugin`]: the nearest interactable in reach whose filters
+//!   pass takes an interactor's focus, a press of its slot sends
+//!   `interacted`, and a prompt over the focus names the binding to press.
 //! - **Damage.** [`Health`], [`damage`], [`heal`], [`Hit`], [`Damaged`],
 //!   [`Healed`], [`HitFlash`] and [`HealthPlugin`]: health with an
 //!   invulnerability window, a death policy and a hit flash on the
@@ -190,6 +193,18 @@
 //!   each level up an event and a draw of offers, an effect or an ability
 //!   the game's choice applies; the `offers` data kind and the `level`
 //!   scene component.
+//! - **Story.** [`Condition`]: a closed condition in data, read on the
+//!   subject, the other entity or the game, which the story's `when`s take.
+//!   [`Speaker`], [`Conversation`] and [`DialoguePlugin`]: the `speakers`
+//!   and `dialogue` kinds, checked to their field paths. [`talk`],
+//!   [`Dialogue`], [`Talk`] and [`TalkLine`]: a conversation run by calls,
+//!   its lists applied at the call, started in data by the `dialogue` cue
+//!   action. [`Barks`] and [`SayPlugin`]: a line the `say` action barks
+//!   over an entity. [`Quest`], [`Quests`], [`QuestStatus`],
+//!   [`QuestChanged`] and [`QuestsPlugin`]: quests on a holder or the
+//!   game, their stages completed by objectives or the `quest` action, their
+//!   rewards run in order. The umbrella's `tungsten::story` draws the box
+//!   and the journal.
 //! - **Present.** [`AnimationPlugin`]: an animated sprite, whose
 //!   `AnimationState` writes its current frame into `Sprite.asset_id`.
 //!   [`CharacterAnimator`], [`Clips`], [`ClipRule`] and
