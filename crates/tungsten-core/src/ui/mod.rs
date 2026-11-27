@@ -30,6 +30,7 @@
 pub mod anim;
 pub mod control;
 pub mod event;
+pub mod field;
 pub mod focus;
 pub mod geometry;
 pub mod hit;

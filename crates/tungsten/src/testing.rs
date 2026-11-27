@@ -365,6 +365,14 @@ impl Harness {
         }
     }
 
+    /// Types `text`, as the window's typed characters would between
+    /// redraws (redo 8.1): each character a [`RawInput::Text`](tungsten_core::RawInput::Text)
+    /// record, control characters left out. A focused text field takes it;
+    /// with none, the game reads it from the input's `typed`.
+    pub fn type_text(&mut self, text: &str) {
+        input_bridge::apply_text(self.world_mut(), text);
+    }
+
     /// Presses `action`'s first binding, as the key, button, wheel or
     /// gamepad event would between redraws: the next frame reads it as just
     /// pressed, and later frames as held until [`Harness::release_action`].

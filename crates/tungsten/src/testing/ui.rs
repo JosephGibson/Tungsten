@@ -198,6 +198,11 @@ impl UiHarness {
         self.harness.input_mut().key_down(key);
     }
 
+    /// Types `text`, as [`Harness::type_text`] does.
+    pub fn type_text(&mut self, text: &str) {
+        self.harness.type_text(text);
+    }
+
     /// Releases `key`.
     pub fn key_up(&mut self, key: KeyCode) {
         self.harness.input_mut().key_up(key);

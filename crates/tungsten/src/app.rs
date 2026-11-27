@@ -3824,13 +3824,20 @@ impl ApplicationHandler for App {
                 event,
                 is_synthetic,
                 ..
-            } => input_bridge::apply_key(
-                &mut self.world,
-                event.physical_key,
-                event.state,
-                event.repeat,
-                is_synthetic,
-            ),
+            } => {
+                // The text a press typed follows it only when the press
+                // reached the input (redo 8.1).
+                let pressed = input_bridge::apply_key(
+                    &mut self.world,
+                    event.physical_key,
+                    event.state,
+                    event.repeat,
+                    is_synthetic,
+                );
+                if pressed && let Some(text) = event.text.as_deref() {
+                    input_bridge::apply_text(&mut self.world, text);
+                }
+            }
             WindowEvent::Focused(focused) => input_bridge::apply_focus(&mut self.world, focused),
             WindowEvent::ModifiersChanged(modifiers) => {
                 input_bridge::apply_modifiers(&mut self.world, modifiers.state());

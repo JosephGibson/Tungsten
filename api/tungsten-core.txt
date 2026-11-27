@@ -10111,6 +10111,8 @@ pub tungsten_core::input::RawInput::PointerLeft
 #[non_exhaustive] pub tungsten_core::input::RawInput::PointerMoved
 pub tungsten_core::input::RawInput::PointerMoved::x: f32
 pub tungsten_core::input::RawInput::PointerMoved::y: f32
+#[non_exhaustive] pub tungsten_core::input::RawInput::Text
+pub tungsten_core::input::RawInput::Text::ch: char
 #[non_exhaustive] pub tungsten_core::input::RawInput::Wheel
 pub tungsten_core::input::RawInput::Wheel::delta: tungsten_core::input::WheelDelta
 impl core::clone::Clone for tungsten_core::input::RawInput
@@ -10266,6 +10268,7 @@ pub fn tungsten_core::input::InputState::is_mouse_pressed(&self, tungsten_core::
 pub fn tungsten_core::input::InputState::is_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::is_scroll_active(&self, tungsten_core::input::ScrollDirection) -> bool
 pub fn tungsten_core::input::InputState::is_stick_pressed(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
+pub fn tungsten_core::input::InputState::is_suppressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::just_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::just_released(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::key_down(&mut self, tungsten_core::input::KeyCode)
@@ -10292,6 +10295,8 @@ pub fn tungsten_core::input::InputState::stick_just_pressed(&self, tungsten_core
 pub fn tungsten_core::input::InputState::stick_just_released(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
 pub fn tungsten_core::input::InputState::stick_response(&self) -> tungsten_core::input::StickResponse
 pub fn tungsten_core::input::InputState::suppress_until_release(&mut self, tungsten_core::input::KeyCode)
+pub fn tungsten_core::input::InputState::type_text(&mut self, &str)
+pub fn tungsten_core::input::InputState::typed(&self) -> impl core::iter::traits::iterator::Iterator<Item = char> + '_
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
 pub fn tungsten_core::input::InputState::clone(&self) -> tungsten_core::input::InputState
@@ -14800,6 +14805,12 @@ pub tungsten_core::ui::event::UiEvent::CaptureCancelled::widget: tungsten_core::
 #[non_exhaustive] pub tungsten_core::ui::event::UiEvent::DoubleClicked
 pub tungsten_core::ui::event::UiEvent::DoubleClicked::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::ui::event::UiEvent::DoubleClicked::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::event::UiEvent::FieldChanged
+pub tungsten_core::ui::event::UiEvent::FieldChanged::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::event::UiEvent::FieldChanged::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::event::UiEvent::FieldCommitted
+pub tungsten_core::ui::event::UiEvent::FieldCommitted::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::event::UiEvent::FieldCommitted::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::ui::event::UiEvent::FocusGained
 pub tungsten_core::ui::event::UiEvent::FocusGained::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::ui::event::UiEvent::FocusGained::widget: tungsten_core::ui::id::WidgetId
@@ -14871,6 +14882,7 @@ impl core::marker::Unpin for tungsten_core::ui::event::UiValue
 impl core::marker::UnsafeUnpin for tungsten_core::ui::event::UiValue
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::event::UiValue
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::event::UiValue
+pub mod tungsten_core::ui::field
 pub mod tungsten_core::ui::focus
 #[non_exhaustive] pub enum tungsten_core::ui::focus::NavDirection
 pub tungsten_core::ui::focus::NavDirection::Down
@@ -15062,6 +15074,7 @@ pub tungsten_core::ui::node::Role::Image
 pub tungsten_core::ui::node::Role::Label
 pub tungsten_core::ui::node::Role::None
 pub tungsten_core::ui::node::Role::Slider
+pub tungsten_core::ui::node::Role::TextInput
 pub tungsten_core::ui::node::Role::Window
 impl core::clone::Clone for tungsten_core::ui::node::Role
 pub fn tungsten_core::ui::node::Role::clone(&self) -> tungsten_core::ui::node::Role
@@ -15145,6 +15158,7 @@ pub tungsten_core::ui::node::WidgetKind::Label
 pub tungsten_core::ui::node::WidgetKind::Mesh
 pub tungsten_core::ui::node::WidgetKind::Panel
 pub tungsten_core::ui::node::WidgetKind::Slider
+pub tungsten_core::ui::node::WidgetKind::TextField
 pub tungsten_core::ui::node::WidgetKind::Toggle
 impl tungsten_core::ui::node::WidgetKind
 pub const fn tungsten_core::ui::node::WidgetKind::default_role(self) -> tungsten_core::ui::node::Role
@@ -16673,6 +16687,13 @@ pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2,
 pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
 pub fn tungsten_core::ui::tree::UiTree::text_node(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::text::TextNodeId>
 impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::field_caret(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<usize>
+pub fn tungsten_core::ui::tree::UiTree::field_value(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&str>
+pub fn tungsten_core::ui::tree::UiTree::set_field_max(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<usize>)
+pub fn tungsten_core::ui::tree::UiTree::set_field_value(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<alloc::string::String>) -> bool
+pub fn tungsten_core::ui::tree::UiTree::set_placeholder(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<alloc::string::String>)
+pub fn tungsten_core::ui::tree::UiTree::text_field(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<alloc::string::String>) -> tungsten_core::ui::id::WidgetId
+impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::has_prompt(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_prompt(&mut self, tungsten_core::ui::id::WidgetId, &str) -> bool
 impl tungsten_core::ui::tree::UiTree
@@ -17080,6 +17101,7 @@ pub tungsten_core::ui::Role::Image
 pub tungsten_core::ui::Role::Label
 pub tungsten_core::ui::Role::None
 pub tungsten_core::ui::Role::Slider
+pub tungsten_core::ui::Role::TextInput
 pub tungsten_core::ui::Role::Window
 impl core::clone::Clone for tungsten_core::ui::node::Role
 pub fn tungsten_core::ui::node::Role::clone(&self) -> tungsten_core::ui::node::Role
@@ -17237,6 +17259,12 @@ pub tungsten_core::ui::UiEvent::CaptureCancelled::widget: tungsten_core::ui::id:
 #[non_exhaustive] pub tungsten_core::ui::UiEvent::DoubleClicked
 pub tungsten_core::ui::UiEvent::DoubleClicked::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::ui::UiEvent::DoubleClicked::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::UiEvent::FieldChanged
+pub tungsten_core::ui::UiEvent::FieldChanged::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::UiEvent::FieldChanged::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::UiEvent::FieldCommitted
+pub tungsten_core::ui::UiEvent::FieldCommitted::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::UiEvent::FieldCommitted::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::ui::UiEvent::FocusGained
 pub tungsten_core::ui::UiEvent::FocusGained::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::ui::UiEvent::FocusGained::widget: tungsten_core::ui::id::WidgetId
@@ -17395,6 +17423,7 @@ pub tungsten_core::ui::WidgetKind::Label
 pub tungsten_core::ui::WidgetKind::Mesh
 pub tungsten_core::ui::WidgetKind::Panel
 pub tungsten_core::ui::WidgetKind::Slider
+pub tungsten_core::ui::WidgetKind::TextField
 pub tungsten_core::ui::WidgetKind::Toggle
 impl tungsten_core::ui::node::WidgetKind
 pub const fn tungsten_core::ui::node::WidgetKind::default_role(self) -> tungsten_core::ui::node::Role
@@ -18697,6 +18726,13 @@ pub fn tungsten_core::ui::tree::UiTree::layer_viewport(&self, tungsten_core::ui:
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats
 pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
 pub fn tungsten_core::ui::tree::UiTree::text_node(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::text::TextNodeId>
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::field_caret(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<usize>
+pub fn tungsten_core::ui::tree::UiTree::field_value(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&str>
+pub fn tungsten_core::ui::tree::UiTree::set_field_max(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<usize>)
+pub fn tungsten_core::ui::tree::UiTree::set_field_value(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<alloc::string::String>) -> bool
+pub fn tungsten_core::ui::tree::UiTree::set_placeholder(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<alloc::string::String>)
+pub fn tungsten_core::ui::tree::UiTree::text_field(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<alloc::string::String>) -> tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::has_prompt(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_prompt(&mut self, tungsten_core::ui::id::WidgetId, &str) -> bool
@@ -20157,6 +20193,8 @@ pub tungsten_core::RawInput::PointerLeft
 #[non_exhaustive] pub tungsten_core::RawInput::PointerMoved
 pub tungsten_core::RawInput::PointerMoved::x: f32
 pub tungsten_core::RawInput::PointerMoved::y: f32
+#[non_exhaustive] pub tungsten_core::RawInput::Text
+pub tungsten_core::RawInput::Text::ch: char
 #[non_exhaustive] pub tungsten_core::RawInput::Wheel
 pub tungsten_core::RawInput::Wheel::delta: tungsten_core::input::WheelDelta
 impl core::clone::Clone for tungsten_core::input::RawInput
@@ -20919,6 +20957,12 @@ pub tungsten_core::UiEvent::CaptureCancelled::widget: tungsten_core::ui::id::Wid
 #[non_exhaustive] pub tungsten_core::UiEvent::DoubleClicked
 pub tungsten_core::UiEvent::DoubleClicked::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::UiEvent::DoubleClicked::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::UiEvent::FieldChanged
+pub tungsten_core::UiEvent::FieldChanged::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::UiEvent::FieldChanged::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::UiEvent::FieldCommitted
+pub tungsten_core::UiEvent::FieldCommitted::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::UiEvent::FieldCommitted::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::UiEvent::FocusGained
 pub tungsten_core::UiEvent::FocusGained::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::UiEvent::FocusGained::widget: tungsten_core::ui::id::WidgetId
@@ -22589,6 +22633,7 @@ pub fn tungsten_core::input::InputState::is_mouse_pressed(&self, tungsten_core::
 pub fn tungsten_core::input::InputState::is_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::is_scroll_active(&self, tungsten_core::input::ScrollDirection) -> bool
 pub fn tungsten_core::input::InputState::is_stick_pressed(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
+pub fn tungsten_core::input::InputState::is_suppressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::just_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::just_released(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::key_down(&mut self, tungsten_core::input::KeyCode)
@@ -22615,6 +22660,8 @@ pub fn tungsten_core::input::InputState::stick_just_pressed(&self, tungsten_core
 pub fn tungsten_core::input::InputState::stick_just_released(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
 pub fn tungsten_core::input::InputState::stick_response(&self) -> tungsten_core::input::StickResponse
 pub fn tungsten_core::input::InputState::suppress_until_release(&mut self, tungsten_core::input::KeyCode)
+pub fn tungsten_core::input::InputState::type_text(&mut self, &str)
+pub fn tungsten_core::input::InputState::typed(&self) -> impl core::iter::traits::iterator::Iterator<Item = char> + '_
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
 pub fn tungsten_core::input::InputState::clone(&self) -> tungsten_core::input::InputState
@@ -25892,6 +25939,13 @@ pub fn tungsten_core::ui::tree::UiTree::layer_viewport(&self, tungsten_core::ui:
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats
 pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
 pub fn tungsten_core::ui::tree::UiTree::text_node(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::text::TextNodeId>
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::field_caret(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<usize>
+pub fn tungsten_core::ui::tree::UiTree::field_value(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&str>
+pub fn tungsten_core::ui::tree::UiTree::set_field_max(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<usize>)
+pub fn tungsten_core::ui::tree::UiTree::set_field_value(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<alloc::string::String>) -> bool
+pub fn tungsten_core::ui::tree::UiTree::set_placeholder(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<alloc::string::String>)
+pub fn tungsten_core::ui::tree::UiTree::text_field(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<alloc::string::String>) -> tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::has_prompt(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_prompt(&mut self, tungsten_core::ui::id::WidgetId, &str) -> bool

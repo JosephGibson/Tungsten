@@ -1085,6 +1085,35 @@ impl UiTree {
             WidgetKind::Mesh => {
                 push_mesh(out, &node.mesh, rect, transform, unit, alpha, clip);
             }
+            WidgetKind::TextField => {
+                // The caret, while it holds focus: a 1-unit bar the line's
+                // height, after the value before it, in the text's colour
+                // (redo 8.1). No blink.
+                if self.focused() == Some(id)
+                    && let Some(Control::Field(field)) = &node.control
+                    && let Some(label) = node.children.first().and_then(|&child| self.node(child))
+                    && let Some(label_rect) = label.content.or(label.rect)
+                {
+                    let line = label
+                        .resolved
+                        .as_ref()
+                        .map_or(resolved.text.line_height, |style| style.text.line_height);
+                    let x = label_rect.min.x + field.caret_x;
+                    let caret = Rect::new(
+                        Vec2::new(x, label_rect.min.y),
+                        Vec2::new(x + 1.0, label_rect.min.y + line),
+                    );
+                    push_box(
+                        out,
+                        paint_rect(caret),
+                        faded(resolved.text.color, alpha),
+                        TRANSPARENT,
+                        0.0,
+                        0.0,
+                        clip,
+                    );
+                }
+            }
             WidgetKind::Panel | WidgetKind::Button => {}
         }
         if node.children.is_empty() {

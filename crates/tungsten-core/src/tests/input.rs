@@ -770,3 +770,45 @@ fn adjacent_axis_moves_coalesce() {
     input.set_gamepad_axis(PAD, x, 0.42);
     assert_eq!(records(&input).len(), 3);
 }
+
+#[test]
+fn typed_text_records_each_character_in_order_and_drops_controls() {
+    let mut input = InputState::new();
+    input.key_down(KeyCode::KeyA);
+    input.type_text("aé\u{8}\n\t!");
+    input.type_text("b");
+    assert_eq!(
+        input.typed().collect::<String>(),
+        "aé!b",
+        "in order, controls left out"
+    );
+    let texts: Vec<char> = input
+        .raw_events()
+        .iter()
+        .filter_map(|event| match event.input {
+            RawInput::Text { ch } => Some(ch),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(texts, ['a', 'é', '!', 'b']);
+    assert!(
+        matches!(
+            input.raw_events()[0].input,
+            RawInput::Key {
+                code: KeyCode::KeyA,
+                ..
+            }
+        ),
+        "after the press that typed it"
+    );
+    assert_eq!(
+        std::mem::size_of::<RawInput>(),
+        16,
+        "the stream keeps its size"
+    );
+    input.begin_frame();
+    assert_eq!(input.typed().count(), 0, "a frame's own text");
+    input.suppress_until_release(KeyCode::KeyB);
+    assert!(input.is_suppressed(KeyCode::KeyB));
+    assert!(!input.is_suppressed(KeyCode::KeyA));
+}

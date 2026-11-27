@@ -370,3 +370,66 @@ fn unmapped_pad_events_are_skipped() {
         None
     );
 }
+
+/// A press as the app's keyboard arm takes it (redo 8.1): the key, then
+/// the text it typed only when the press reached the input.
+fn typing(world: &mut World, code: WinitKeyCode, text: &str, repeat: bool, is_synthetic: bool) {
+    if apply_key(
+        world,
+        PhysicalKey::Code(code),
+        ElementState::Pressed,
+        repeat,
+        is_synthetic,
+    ) {
+        apply_text(world, text);
+    }
+}
+
+fn typed(world: &World) -> String {
+    input(world).typed().collect()
+}
+
+#[test]
+fn a_keys_text_reaches_the_stream() {
+    let mut world = world();
+    typing(&mut world, WinitKeyCode::KeyA, "a", false, false);
+    // Shift is the window's: the text a press typed is as given.
+    typing(&mut world, WinitKeyCode::KeyB, "B", false, false);
+    typing(&mut world, WinitKeyCode::KeyB, "B", true, false);
+    assert_eq!(typed(&world), "aBB", "a held key's repeat types again");
+    let order: Vec<&str> = input(&world)
+        .raw_events()
+        .iter()
+        .map(|event| match event.input {
+            RawInput::Key { .. } => "key",
+            RawInput::Text { .. } => "text",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(
+        order,
+        ["key", "text", "key", "text", "key", "text"],
+        "each after its press"
+    );
+    // A key that types no text, and a release, record none.
+    typing(&mut world, WinitKeyCode::Backspace, "\u{8}", false, false);
+    release(&mut world, WinitKeyCode::KeyA, false);
+    assert_eq!(typed(&world), "aBB");
+}
+
+#[test]
+fn a_synthetic_or_suppressed_press_or_a_stray_repeat_types_nothing() {
+    let mut world = world();
+    // The synthetic press winit sends for a key held across a focus return.
+    typing(&mut world, WinitKeyCode::KeyW, "w", false, true);
+    // X11's first auto-repeat after it, unflagged, while the key stays
+    // suppressed.
+    typing(&mut world, WinitKeyCode::KeyW, "w", false, false);
+    typing(&mut world, WinitKeyCode::KeyW, "w", true, false);
+    // A repeat of a key never pressed.
+    typing(&mut world, WinitKeyCode::KeyQ, "q", true, false);
+    assert_eq!(typed(&world), "", "none of them typed");
+    release(&mut world, WinitKeyCode::KeyW, false);
+    typing(&mut world, WinitKeyCode::KeyW, "w", false, false);
+    assert_eq!(typed(&world), "w", "a real press after the release types");
+}

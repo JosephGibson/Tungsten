@@ -337,6 +337,7 @@ pub fn build(world: &mut World, id: &str) -> Option<BuiltScreen> {
         part,
         repeats,
         mounts,
+        fields,
         warnings,
         ..
     } = builder;
@@ -355,6 +356,10 @@ pub fn build(world: &mut World, id: &str) -> Option<BuiltScreen> {
     world.insert_resource(screens);
     for (mount, node) in mounts {
         mount(world, node);
+    }
+    for (field, read) in fields {
+        let text = read(world);
+        world.resource_mut::<UiTree>().set_field_value(field, text);
     }
     refresh(world, built.root);
     Some(built)
@@ -689,6 +694,8 @@ struct Builder<'a> {
     part: Part,
     repeats: Vec<Repeat>,
     mounts: Vec<(MountFn, WidgetId)>,
+    /// The text fields whose text binding is read once, at build.
+    fields: Vec<(WidgetId, TextBinding)>,
     warnings: Vec<(String, String)>,
     row: Option<RowScope>,
 }
@@ -701,6 +708,7 @@ impl<'a> Builder<'a> {
             part: Part::default(),
             repeats: Vec::new(),
             mounts: Vec::new(),
+            fields: Vec::new(),
             warnings: Vec::new(),
             row: None,
         }
@@ -778,6 +786,14 @@ impl<'a> Builder<'a> {
                 widgets::prompt_row(tree, parent, template)
             }
             Kind::Button => widgets::button(tree, parent, &text),
+            Kind::TextField => {
+                let field = tree.text_field(parent, text.as_str());
+                tree.set_field_max(field, node.max.map(|max| max as usize));
+                if let Some(placeholder) = &node.placeholder {
+                    tree.set_placeholder(field, placeholder.as_str());
+                }
+                field
+            }
             Kind::ChoiceRow => widgets::choice_row(tree, parent, caption, &text),
             Kind::ToggleRow => widgets::toggle_row(tree, parent, caption, false),
             Kind::SliderRow => {
@@ -907,7 +923,13 @@ impl<'a> Builder<'a> {
             .as_deref()
             .and_then(|name| self.find(name, "text binding", &bindings.text))
         {
-            self.part.bound.push(Bound::Text(id, read));
+            if node.kind == Kind::TextField {
+                // A field's text binding is read once, at build, so a refresh
+                // never writes over what the player types.
+                self.fields.push((id, read));
+            } else {
+                self.part.bound.push(Bound::Text(id, read));
+            }
         }
         if let Some(read) = bind
             .value

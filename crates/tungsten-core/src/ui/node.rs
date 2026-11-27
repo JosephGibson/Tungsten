@@ -60,6 +60,10 @@ pub enum WidgetKind {
     /// of its box (M57). It takes the panel's kind style for its own box and
     /// has no natural size.
     Mesh,
+    /// A focusable, interactive box holding one `Label`, its value or its
+    /// placeholder, edited while it holds focus (redo 8.1). It takes the
+    /// button's kind style.
+    TextField,
 }
 
 impl WidgetKind {
@@ -73,6 +77,7 @@ impl WidgetKind {
             Self::Image | Self::Mesh => Role::Image,
             Self::Toggle => Role::CheckBox,
             Self::Slider => Role::Slider,
+            Self::TextField => Role::TextInput,
         }
     }
 
@@ -87,9 +92,12 @@ impl WidgetKind {
     }
 
     /// Whether widgets of this kind start focusable and interactive:
-    /// buttons, toggles and sliders.
+    /// buttons, toggles, sliders and text fields.
     const fn is_control(self) -> bool {
-        matches!(self, Self::Button | Self::Toggle | Self::Slider)
+        matches!(
+            self,
+            Self::Button | Self::Toggle | Self::Slider | Self::TextField
+        )
     }
 }
 
@@ -117,6 +125,8 @@ pub enum Role {
     CheckBox,
     /// A control that picks a value in a range.
     Slider,
+    /// A control that takes typed text.
+    TextInput,
 }
 
 /// Whether a widget takes part in layout, paint and hit testing.

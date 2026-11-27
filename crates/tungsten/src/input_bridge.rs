@@ -126,24 +126,45 @@ pub fn translate_modifiers(state: ModifiersState) -> Modifiers {
 /// sends for each key still held when focus returns, marks the key so it
 /// stays released until it is pressed again, X11's auto-repeat included. A
 /// press flagged `repeat` of a key not held is dropped: the engine never saw
-/// its first press (`D-144`).
+/// its first press (`D-144`). Returns whether a press reached the input,
+/// so the text it typed may follow ([`apply_text`]): a synthetic press, a
+/// key held across a focus return and a stray repeat type nothing, as they
+/// press nothing.
 pub fn apply_key(
     world: &mut World,
     key: PhysicalKey,
     state: ElementState,
     repeat: bool,
     is_synthetic: bool,
-) {
+) -> bool {
     let Some(input) = world.get_resource_mut::<InputState>() else {
-        return;
+        return false;
     };
     let code = translate_key(key);
     match state {
-        ElementState::Released if !is_synthetic => input.key_up(code),
-        ElementState::Released => {}
-        ElementState::Pressed if is_synthetic => input.suppress_until_release(code),
-        ElementState::Pressed if repeat && !input.is_pressed(code) => {}
-        ElementState::Pressed => input.key_down(code),
+        ElementState::Released if !is_synthetic => {
+            input.key_up(code);
+            false
+        }
+        ElementState::Released => false,
+        ElementState::Pressed if is_synthetic => {
+            input.suppress_until_release(code);
+            false
+        }
+        ElementState::Pressed if repeat && !input.is_pressed(code) => false,
+        ElementState::Pressed => {
+            let reached = !input.is_suppressed(code);
+            input.key_down(code);
+            reached
+        }
+    }
+}
+
+/// The text a press typed (`KeyEvent::text`), recorded after its press
+/// (redo 8.1); IME composition stays later.
+pub fn apply_text(world: &mut World, text: &str) {
+    if let Some(input) = world.get_resource_mut::<InputState>() {
+        input.type_text(text);
     }
 }
 

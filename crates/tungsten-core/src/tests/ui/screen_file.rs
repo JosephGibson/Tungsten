@@ -605,3 +605,48 @@ fn the_screen_schema_lists_every_field_the_model_reads() {
         assert_eq!(required.len(), 1 + kind.required().len(), "{}", kind.name());
     }
 }
+
+#[test]
+fn a_text_field_node_parses_and_refuses_an_unknown_field() {
+    let file = read(&screen(
+        r#"{"kind": "text_field", "key": "name", "text": "Ada", "placeholder": "Your name", "max": 12, "on": {"action": "named"}},
+           {"kind": "text_field", "key": "note", "bind": {"text": "note"}}"#,
+    ));
+    let names = ScreenNames::default();
+    assert!(
+        file.check(&names)
+            .iter()
+            .any(|error| error.message.contains("note")),
+        "names checked"
+    );
+    for (json, field) in [
+        (
+            r#"{"kind": "text_field", "caption": "Name"}"#,
+            "root.children[0].caption",
+        ),
+        (
+            r#"{"kind": "text_field", "text": "a", "bind": {"text": "b"}}"#,
+            "root.children[0].text",
+        ),
+        (
+            r#"{"kind": "text_field", "max": 0}"#,
+            "root.children[0].max",
+        ),
+        (
+            r#"{"kind": "text_field", "bind": {"value": "v"}}"#,
+            "root.children[0].bind.value",
+        ),
+        (
+            r#"{"kind": "text_field", "max": -1}"#,
+            "root.children[0].max",
+        ),
+    ] {
+        let error = error(&screen(json));
+        assert!(
+            error.field.starts_with(field),
+            "{json}: {} {}",
+            error.field,
+            error.message
+        );
+    }
+}

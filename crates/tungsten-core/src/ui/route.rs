@@ -28,9 +28,10 @@ use crate::time::Time;
 
 use super::control;
 use super::event::{UiEvent, UiValue};
+use super::field::FieldKey;
 use super::focus::NavDirection;
 use super::id::{UiKey, WidgetId};
-use super::node::{CursorIcon, Role};
+use super::node::{CursorIcon, Role, WidgetKind};
 use super::paint::UiDebug;
 use super::prompt;
 use super::tree::UiTree;
@@ -588,6 +589,7 @@ fn ui_actions(map: &ActionMap, binding: Binding) -> u8 {
 /// OS repeat reaches it only for a key it holds.
 fn feed(routed: &mut InputState, input: RawInput) {
     match input {
+        RawInput::Text { ch } => routed.type_text(ch.encode_utf8(&mut [0; 4])),
         RawInput::Key {
             code,
             pressed: true,
@@ -691,6 +693,11 @@ impl Routing<'_> {
     }
 
     fn event(&mut self, input: RawInput) {
+        if let Some(field) = self.field_in_play()
+            && self.field_input(field, input)
+        {
+            return;
+        }
         match input {
             RawInput::PointerMoved { x, y } => {
                 self.router.pointer = Some(Vec2::new(x, y));
@@ -815,7 +822,8 @@ impl Routing<'_> {
                 }
                 self.router.routed.push(input);
             }
-            RawInput::Modifiers(_) => self.router.routed.push(input),
+            // Typed text with no field to take it is the game's.
+            RawInput::Modifiers(_) | RawInput::Text { .. } => self.router.routed.push(input),
             RawInput::Focus(focused) => {
                 if !focused {
                     self.focus_lost();
@@ -1183,6 +1191,85 @@ impl Routing<'_> {
         Some(focused)
     }
 
+    /// The text field holding focus in play, while no capture runs.
+    fn field_in_play(&self) -> Option<WidgetId> {
+        if self.router.capture.is_some() {
+            return None;
+        }
+        self.focus_in_play()
+            .filter(|&focused| self.tree.kind(focused) == Some(WidgetKind::TextField))
+    }
+
+    /// A focused field's input (redo 8.1): typed text inserts at its caret;
+    /// Backspace, Delete, Left, Right, Home and End edit and move; Enter
+    /// commits; Escape restores its value on focus and lets focus go. Tab
+    /// and Shift+Tab, Up and Down go on as focus moves; every other key is
+    /// the field's, kept from the game and the `ui_*` actions. Returns
+    /// whether the field took `input`.
+    fn field_input(&mut self, field: WidgetId, input: RawInput) -> bool {
+        let key = self.tree.key(field);
+        let code = match input {
+            RawInput::Text { ch } => {
+                if self.tree.field_insert(field, ch) {
+                    self.router
+                        .events
+                        .push(UiEvent::FieldChanged { widget: field, key });
+                }
+                return true;
+            }
+            RawInput::Key {
+                code,
+                pressed: true,
+                ..
+            } => code,
+            _ => return false,
+        };
+        let repeat = matches!(input, RawInput::Key { repeat: true, .. });
+        let edit = match code {
+            KeyCode::Tab | KeyCode::ArrowUp | KeyCode::ArrowDown => return false,
+            KeyCode::Backspace => Some(FieldKey::Backspace),
+            KeyCode::Delete => Some(FieldKey::Delete),
+            KeyCode::ArrowLeft => Some(FieldKey::Left),
+            KeyCode::ArrowRight => Some(FieldKey::Right),
+            KeyCode::Home => Some(FieldKey::Home),
+            KeyCode::End => Some(FieldKey::End),
+            _ => None,
+        };
+        self.set_device(InputDevice::Keyboard);
+        if !repeat {
+            self.router.ui_held.push(NavInput::Key(code));
+        }
+        match (edit, code) {
+            (Some(edit), _) => {
+                if self.tree.field_key(field, edit) {
+                    self.router
+                        .events
+                        .push(UiEvent::FieldChanged { widget: field, key });
+                }
+            }
+            (None, KeyCode::Enter) if !repeat => {
+                self.tree.field_commit(field);
+                self.router
+                    .events
+                    .push(UiEvent::FieldCommitted { widget: field, key });
+                self.router
+                    .events
+                    .push(UiEvent::Activated { widget: field, key });
+            }
+            (None, KeyCode::Escape) if !repeat => {
+                if self.tree.field_restore(field) {
+                    self.router
+                        .events
+                        .push(UiEvent::FieldChanged { widget: field, key });
+                }
+                self.tree.blur();
+                self.sync_focus();
+            }
+            _ => {}
+        }
+        true
+    }
+
     /// A shown modal root that is not frozen, with no focus in it or above
     /// it, focuses its first focusable widget.
     fn focus_into_modal(&mut self) {
@@ -1372,6 +1459,13 @@ impl Routing<'_> {
     /// commits its new state; a back button ([`BACK_KEY`]) then backs out of
     /// its root with `Cancel`.
     fn activate(&mut self, widget: WidgetId) {
+        // A text field's use is its commit; a click or an accept only
+        // focuses it.
+        if self.tree.kind(widget) == Some(WidgetKind::TextField) {
+            self.tree.focus(widget);
+            self.sync_focus();
+            return;
+        }
         let key = self.tree.key(widget);
         self.router.events.push(UiEvent::Activated { widget, key });
         if let Some(on) = self.tree.toggled(widget) {
@@ -1447,9 +1541,11 @@ impl Routing<'_> {
             return;
         }
         if let Some(widget) = self.router.reported_focus {
+            self.tree.field_focus(widget, false);
             self.router.events.push(UiEvent::FocusLost { widget });
         }
         if let Some(widget) = focused {
+            self.tree.field_focus(widget, true);
             let key = self.tree.key(widget);
             self.router
                 .events

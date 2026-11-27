@@ -1354,6 +1354,7 @@ pub fn tungsten::testing::Harness::set_dt(&mut self, f32)
 pub fn tungsten::testing::Harness::step(&mut self, u32) -> u32
 pub fn tungsten::testing::Harness::stops(&self) -> alloc::vec::Vec<(tungsten_core::audio::Voice, f32)>
 pub fn tungsten::testing::Harness::tap_action(&mut self, &str) -> u32
+pub fn tungsten::testing::Harness::type_text(&mut self, &str)
 pub fn tungsten::testing::Harness::voice_volumes(&self, tungsten_core::audio::Voice) -> alloc::vec::Vec<(f32, f32)>
 pub fn tungsten::testing::Harness::world(&self) -> &tungsten_core::ecs::world::World
 pub fn tungsten::testing::Harness::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World
@@ -1399,6 +1400,7 @@ pub fn tungsten::testing::UiHarness::text(&self) -> &tungsten_core::ui::measure:
 pub fn tungsten::testing::UiHarness::tree(&self) -> &tungsten_core::ui::tree::UiTree
 pub fn tungsten::testing::UiHarness::tree_json(&self) -> alloc::string::String
 pub fn tungsten::testing::UiHarness::tree_mut(&mut self) -> &mut tungsten_core::ui::tree::UiTree
+pub fn tungsten::testing::UiHarness::type_text(&mut self, &str)
 pub fn tungsten::testing::UiHarness::wheel(&mut self, f32)
 pub fn tungsten::testing::UiHarness::world(&self) -> &tungsten_core::ecs::world::World
 pub fn tungsten::testing::UiHarness::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World

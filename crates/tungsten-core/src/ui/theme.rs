@@ -77,7 +77,7 @@ impl Theme {
             // A mesh's own box looks like a panel (M57).
             WidgetKind::Panel | WidgetKind::Mesh => &self.kinds.panel,
             WidgetKind::Label => &self.kinds.label,
-            WidgetKind::Button => &self.kinds.button,
+            WidgetKind::Button | WidgetKind::TextField => &self.kinds.button,
             WidgetKind::Image => &self.kinds.image,
             WidgetKind::Toggle => &self.kinds.toggle,
             WidgetKind::Slider => &self.kinds.slider,

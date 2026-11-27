@@ -531,6 +531,11 @@ impl UiTree {
                 if let Some(text_node) = node.text_id {
                     self.pending_text_release.push(text_node);
                 }
+                if let Some(super::control::Control::Field(field)) = &node.control
+                    && let Some(scratch) = field.scratch
+                {
+                    self.pending_text_release.push(scratch);
+                }
                 stack.extend(node.children);
             }
         }
@@ -603,7 +608,8 @@ impl UiTree {
             | WidgetKind::Image
             | WidgetKind::Toggle
             | WidgetKind::Slider
-            | WidgetKind::Mesh => None,
+            | WidgetKind::Mesh
+            | WidgetKind::TextField => None,
         }
     }
 

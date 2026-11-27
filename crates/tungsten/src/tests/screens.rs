@@ -825,6 +825,58 @@ fn a_named_action_gets_its_key_and_value() {
     );
 }
 
+/// A screen file's text field (redo 8.1): its text binding read once, at
+/// build, so typing is never written over; its `on` runs at its commit.
+#[test]
+fn a_screen_file_field_binds_and_runs_its_action_at_commit() {
+    let menu = file(
+        r#"{"kind": "text_field", "key": "name", "bind": {"text": "text"}, "placeholder": "Your name",
+            "max": 8, "on": {"action": "record"}},
+           {"kind": "button", "key": "ok", "text": "OK"}"#,
+    );
+    let mut harness = data_harness(&[("menu", &menu)], true);
+    harness.world_mut().resource_mut::<Board>().text = "Ada".into();
+    opened_file(&mut harness, "menu");
+    let name = keyed(&harness, "name");
+    assert_eq!(
+        harness.tree().field_value(name),
+        Some("Ada"),
+        "read at build"
+    );
+    assert!(harness.focus(name));
+    harness.step(1);
+    harness.type_text("mson-Byron");
+    harness.step(1);
+    assert_eq!(
+        harness.tree().field_value(name),
+        Some("Adamson-"),
+        "held to 8"
+    );
+    harness.world_mut().resource_mut::<Board>().text = "Eve".into();
+    harness.step(3);
+    assert_eq!(
+        harness.tree().field_value(name),
+        Some("Adamson-"),
+        "a refresh never writes over it"
+    );
+    assert!(heard(&harness).is_empty(), "nothing before the commit");
+    tap(&mut harness, KeyCode::Enter);
+    assert_eq!(
+        heard(&harness),
+        [UiAction {
+            key: Some("name".into()),
+            row: None,
+            value: None,
+        }],
+        "the action at the commit"
+    );
+    assert_eq!(
+        stack(&harness).active_id(),
+        Some("menu"),
+        "the screen stays up"
+    );
+}
+
 #[test]
 fn a_row_action_names_its_row() {
     let menu = file(

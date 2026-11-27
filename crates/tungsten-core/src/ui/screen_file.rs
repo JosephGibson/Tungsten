@@ -185,6 +185,7 @@ pub(crate) enum Kind {
     Meter,
     Mount,
     Repeat,
+    TextField,
 }
 
 /// The fields every kind takes.
@@ -200,7 +201,7 @@ const COMMON: [&str; 8] = [
 ];
 
 impl Kind {
-    const ALL: [Self; 20] = [
+    const ALL: [Self; 21] = [
         Self::Screen,
         Self::Root,
         Self::Group,
@@ -221,6 +222,7 @@ impl Kind {
         Self::Meter,
         Self::Mount,
         Self::Repeat,
+        Self::TextField,
     ];
 
     const fn name(self) -> &'static str {
@@ -245,6 +247,7 @@ impl Kind {
             Self::Meter => "meter",
             Self::Mount => "mount",
             Self::Repeat => "repeat",
+            Self::TextField => "text_field",
         }
     }
 
@@ -270,6 +273,7 @@ impl Kind {
             Self::Meter => &["width", "height", "color"],
             Self::Mount => &["mount"],
             Self::Repeat => &["rows", "row"],
+            Self::TextField => &["text", "placeholder", "max", "on"],
         }
     }
 
@@ -307,7 +311,7 @@ impl Kind {
     /// to every kind.
     fn binds(self, binding: &str) -> bool {
         match binding {
-            "text" => self.holds_text() || self == Self::ChoiceRow,
+            "text" => self.holds_text() || matches!(self, Self::ChoiceRow | Self::TextField),
             "value" => matches!(self, Self::ToggleRow | Self::SliderRow | Self::TabRail),
             "fill" => self == Self::Meter,
             _ => true,
@@ -376,6 +380,10 @@ pub(crate) struct Node {
     pub(crate) rows: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) row: Option<Box<Node>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) placeholder: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) max: Option<u32>,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)] // serde's skip_serializing_if passes a reference.
@@ -1182,7 +1190,9 @@ impl Checker {
             node.field.is_some(),
         ];
         let sources = sources.into_iter().filter(|set| *set).count();
-        if (kind.holds_text() && sources != 1) || (kind == Kind::ChoiceRow && sources > 1) {
+        if (kind.holds_text() && sources != 1)
+            || (matches!(kind, Kind::ChoiceRow | Kind::TextField) && sources > 1)
+        {
             let exactly = if kind.holds_text() {
                 "exactly"
             } else {
@@ -1195,6 +1205,15 @@ impl Checker {
                     kind.name()
                 ),
             );
+        }
+        if kind == Kind::TextField && node.field.is_some() {
+            return fail(
+                "field",
+                "a text_field takes text or bind.text, read at build".into(),
+            );
+        }
+        if node.max == Some(0) {
+            return fail("max", "a text_field's max is at least 1".into());
         }
         if node.field.is_some() && place != Place::InRow {
             return fail("field", "a field is read only inside a repeat's row".into());
@@ -1669,7 +1688,8 @@ fn field_schema(field: &str) -> Value {
         "style" | "field" | "template" | "readout" | "mount" | "rows" => {
             json!({ "type": "string", "minLength": 1 })
         }
-        "text" | "caption" => json!({ "type": "string" }),
+        "text" | "caption" | "placeholder" => json!({ "type": "string" }),
+        "max" => json!({ "type": "integer", "minimum": 1 }),
         "mono" | "danger" | "modal" | "centred" => json!({ "type": "boolean" }),
         "children" | "over" => json!({ "type": "array", "items": reference("node") }),
         "tabs" => json!({ "type": "array", "minItems": 1, "items": reference("tab") }),

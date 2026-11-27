@@ -488,7 +488,7 @@ pub(crate) fn lay_out_root(
                                 height: known.height.unwrap_or(image.natural_size.y),
                             };
                         }
-                        if let Some(control) = node.control {
+                        if let Some(control) = &node.control {
                             // The text scale grows a control with its line
                             // height (M56), on the game layers (M58).
                             let line = node

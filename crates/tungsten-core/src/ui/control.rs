@@ -168,24 +168,29 @@ impl SliderRange {
     }
 }
 
-/// A toggle's state or a slider's value and range.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// A toggle's state, a slider's value and range, or a text field's state,
+/// boxed so the control keeps its size in every node (redo 8.1).
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Control {
     Toggle(bool),
     Slider { value: f32, range: SliderRange },
+    Field(Box<FieldState>),
 }
 
 impl Control {
     /// The size an `Auto` axis takes for a control whose resolved line
     /// height is `line`: a toggle one line square, a slider ten lines wide
-    /// and one tall.
-    pub(crate) fn natural_size(self, line: f32) -> (f32, f32) {
+    /// and one tall; a field measures its label, as a button does.
+    pub(crate) fn natural_size(&self, line: f32) -> (f32, f32) {
         match self {
             Self::Toggle(_) => (line, line),
             Self::Slider { .. } => (line * 10.0, line),
+            Self::Field(_) => (0.0, 0.0),
         }
     }
 }
+
+use super::field::FieldState;
 
 /// The side of the square thumb of a slider whose box is `rect`: its
 /// height, or its width when narrower.
@@ -293,9 +298,9 @@ impl UiTree {
     /// A toggle's state; `None` for any other widget.
     #[must_use]
     pub fn toggled(&self, id: WidgetId) -> Option<bool> {
-        match self.node(id)?.control? {
-            Control::Toggle(on) => Some(on),
-            Control::Slider { .. } => None,
+        match self.node(id)?.control.as_ref()? {
+            Control::Toggle(on) => Some(*on),
+            Control::Slider { .. } | Control::Field(_) => None,
         }
     }
 
@@ -318,9 +323,9 @@ impl UiTree {
     /// A slider's value; `None` for any other widget.
     #[must_use]
     pub fn slider_value(&self, id: WidgetId) -> Option<f32> {
-        match self.node(id)?.control? {
-            Control::Slider { value, .. } => Some(value),
-            Control::Toggle(_) => None,
+        match self.node(id)?.control.as_ref()? {
+            Control::Slider { value, .. } => Some(*value),
+            Control::Toggle(_) | Control::Field(_) => None,
         }
     }
 
@@ -350,9 +355,9 @@ impl UiTree {
     /// A slider's range; `None` for any other widget.
     #[must_use]
     pub fn slider_range(&self, id: WidgetId) -> Option<SliderRange> {
-        match self.node(id)?.control? {
-            Control::Slider { range, .. } => Some(range),
-            Control::Toggle(_) => None,
+        match self.node(id)?.control.as_ref()? {
+            Control::Slider { range, .. } => Some(*range),
+            Control::Toggle(_) | Control::Field(_) => None,
         }
     }
 

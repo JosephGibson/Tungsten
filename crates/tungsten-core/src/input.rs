@@ -491,6 +491,14 @@ pub enum RawInput {
         /// Connected, or disconnected.
         connected: bool,
     },
+    /// One character a key press typed, in the layout and with the
+    /// modifiers the window applied (redo 8.1); a press that types several
+    /// records one each, in order. Control characters never record.
+    #[non_exhaustive]
+    Text {
+        /// The character.
+        ch: char,
+    },
 }
 
 /// A [`RawInput`] and its place in arrival order.
@@ -794,6 +802,35 @@ impl InputState {
             repeat,
             modifiers: self.modifiers,
         });
+    }
+
+    /// Whether a press of `key` is ignored until its release
+    /// ([`suppress_until_release`](Self::suppress_until_release)), so the
+    /// window's bridge records no text for it (redo 8.1).
+    #[must_use]
+    pub fn is_suppressed(&self, key: KeyCode) -> bool {
+        self.suppressed.contains(&key)
+    }
+
+    /// Records each character of `text` a press typed, in order, as a
+    /// [`RawInput::Text`] (redo 8.1); control characters, such as a
+    /// Backspace's or an Enter's, are left out. The window's bridge calls it
+    /// after the press reached the input, a test or a script to type.
+    pub fn type_text(&mut self, text: &str) {
+        for ch in text.chars().filter(|ch| !ch.is_control()) {
+            self.record(RawInput::Text { ch });
+        }
+    }
+
+    /// The frame's typed characters, in order, read from
+    /// [`raw_events`](Self::raw_events).
+    pub fn typed(&self) -> impl Iterator<Item = char> + '_ {
+        self.raw_events
+            .iter()
+            .filter_map(|event| match event.input {
+                RawInput::Text { ch } => Some(ch),
+                _ => None,
+            })
     }
 
     /// A release: releases a held `key` and records it. A release of a key

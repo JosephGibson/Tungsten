@@ -9,7 +9,7 @@ use std::fmt::Write as _;
 
 use glam::Vec2;
 
-use crate::text::{TextNodeId, TextNodeStore};
+use crate::text::{MeasureWidth, StyledText, TextNodeId, TextNodeStore};
 
 use super::geometry::Rect;
 use super::id::WidgetId;
@@ -91,6 +91,45 @@ impl UiTree {
         stats
     }
 
+    /// A text field's caret position (redo 8.1): the width of its value
+    /// before the caret, measured through a scratch node the field keeps in
+    /// the store in its label's resolved text style, so the caret sits on
+    /// the glyph boundary for left-to-right text that joins nothing across
+    /// it.
+    fn measure_caret(&mut self, id: WidgetId, scale: f32, store: &mut dyn TextNodeStore) {
+        let Some(field) = self.field(id) else {
+            return;
+        };
+        let prefix = field.before_caret().to_owned();
+        let scratch = field.scratch;
+        let style = self
+            .node(id)
+            .and_then(|node| node.children.first().copied())
+            .and_then(|label| self.node(label))
+            .and_then(|label| label.resolved.as_ref())
+            .map(|resolved| resolved.text.clone());
+        let Some(mut style) = style else {
+            return;
+        };
+        let scratch = scratch.unwrap_or_else(|| store.create_node());
+        let width = if prefix.is_empty() {
+            0.0
+        } else {
+            style.size *= scale;
+            style.line_height *= scale;
+            store.set_text(scratch, &StyledText::from(prefix.as_str()), &style);
+            store
+                .measure(scratch, None, MeasureWidth::MaxContent)
+                .size
+                .x
+                / scale
+        };
+        if let Some(field) = self.field_mut(id) {
+            field.scratch = Some(scratch);
+            field.caret_x = width;
+        }
+    }
+
     /// Whether any label under `id` holds a text node.
     fn subtree_has_text_node(&self, id: WidgetId) -> bool {
         let Some(node) = self.node(id) else {
@@ -116,6 +155,7 @@ impl UiTree {
             return;
         }
         let children = node.children.clone();
+        let field = node.kind == WidgetKind::TextField;
         if node.kind == WidgetKind::Label {
             let text_node = node.text_id.unwrap_or_else(|| store.create_node());
             if (node.text_stale || node.text_id.is_none())
@@ -137,6 +177,9 @@ impl UiTree {
         }
         for child in children {
             self.prepare_text(child, scale, store);
+        }
+        if field {
+            self.measure_caret(id, scale, store);
         }
     }
 

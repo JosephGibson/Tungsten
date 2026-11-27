@@ -122,6 +122,25 @@ pub enum UiEvent {
         /// The value.
         value: UiValue,
     },
+    /// A text field's value changed at an edit: typed text, Backspace,
+    /// Delete or Escape's restore (redo 8.1). Read the value with
+    /// [`UiTree::field_value`](super::UiTree::field_value).
+    #[non_exhaustive]
+    FieldChanged {
+        /// The field.
+        widget: WidgetId,
+        /// Its key, when it has one.
+        key: Option<UiKey>,
+    },
+    /// A text field committed its value on Enter (redo 8.1), followed by
+    /// its `Activated`, so a screen file's `on` runs at the commit.
+    #[non_exhaustive]
+    FieldCommitted {
+        /// The field.
+        widget: WidgetId,
+        /// Its key, when it has one.
+        key: Option<UiKey>,
+    },
     /// A capture started with
     /// [`UiRouter::capture_next_input`](super::UiRouter::capture_next_input)
     /// took the next key, mouse button, pad button or stick direction press
@@ -227,6 +246,8 @@ impl UiEvent {
             | Self::FocusLost { widget }
             | Self::ValueChanged { widget, .. }
             | Self::ValueCommitted { widget, .. }
+            | Self::FieldChanged { widget, .. }
+            | Self::FieldCommitted { widget, .. }
             | Self::AnimationFinished { widget, .. }
             | Self::InputCaptured { widget, .. }
             | Self::CaptureCancelled { widget }
