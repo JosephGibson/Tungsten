@@ -160,6 +160,9 @@ pub(crate) struct CommandSignature {
     scale_bits: u32,
     /// The clip's rectangle, never its index (M46 critique 1.5).
     clip: ClipRect,
+    /// The characters it shows, when it reveals (redo 8.1): a moved count
+    /// prepares the batch again, and nothing lays out.
+    reveal: Option<u32>,
 }
 
 /// A batch's draw inputs: its commands', the paint scale and the viewport
@@ -197,6 +200,7 @@ pub(crate) fn batch_signature(
                 color: *color,
                 scale_bits: scale.to_bits(),
                 clip: list.clip_of(command),
+                reveal: list.reveal_of(*node),
             }),
             _ => None,
         })
@@ -283,7 +287,8 @@ impl BatchBook {
 /// The text areas of the batch at `range`: one per text command whose node
 /// is committed under the current font epoch, at the command's physical box,
 /// scaled by the paint scale (`D-127`) times the command's (M56) and bounded
-/// by its box ∩ clip.
+/// by its box ∩ clip. A command whose node reveals (redo 8.1) draws as at
+/// most two areas over its one buffer, [`reveal_bounds`]'s.
 fn batch_areas<'a>(
     list: &'a PaintList,
     range: Range<usize>,
@@ -305,16 +310,138 @@ fn batch_areas<'a>(
             continue;
         };
         let [r, g, b, a] = *color;
-        out.push(TextArea {
+        let scale = list.scale * scale;
+        let bounds = text_bounds(*rect, list.clip_of(command));
+        let area = |bounds: TextBounds| TextArea {
             buffer,
             left: rect.min.x,
             top: rect.min.y,
-            scale: list.scale * scale,
-            bounds: text_bounds(*rect, list.clip_of(command)),
+            scale,
+            bounds,
             default_color: Color::rgba(r, g, b, a),
             custom_glyphs: &[],
+        };
+        match list.reveal_of(*node) {
+            None => out.push(area(bounds)),
+            Some(count) => {
+                for bounds in reveal_bounds(buffer, count, rect.min, scale, bounds)
+                    .into_iter()
+                    .flatten()
+                {
+                    out.push(area(bounds));
+                }
+            }
+        }
+    }
+}
+
+/// What a revealed run's first `count` characters cover, in the buffer's
+/// own units: the bottom of the last run wholly revealed, and the band of
+/// the run that holds the count's end, its top, bottom and the right edge
+/// of its last revealed glyph; `None` for both when the count reaches past
+/// the text, which draws whole.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Revealed {
+    /// The bottom of the runs wholly revealed; `None` when none is.
+    pub(crate) whole: Option<f32>,
+    /// The partly revealed run's top, bottom and right edge.
+    pub(crate) band: Option<(f32, f32, f32)>,
+}
+
+/// The first `count` characters of `buffer`'s laid-out text, a line break
+/// counting as one: [`Revealed`]'s runs, or `None` when the count reaches
+/// past the text. A glyph is revealed when every character it draws is; a
+/// right-to-left run reveals whole once its first character is.
+pub(crate) fn revealed(buffer: &glyphon::Buffer, count: u32) -> Option<Revealed> {
+    let mut left = count as usize;
+    let mut whole = None;
+    let mut line: Option<(usize, usize)> = None;
+    for run in buffer.layout_runs() {
+        // Entering a line: the characters before it spent, its own revealed
+        // byte offset found.
+        let offset = match line {
+            Some((index, offset)) if index == run.line_i => offset,
+            _ => {
+                if let Some((index, _)) = line {
+                    let spent = buffer.lines[index].text().chars().count() + 1;
+                    left = left.saturating_sub(spent);
+                }
+                let offset = run
+                    .text
+                    .char_indices()
+                    .nth(left)
+                    .map_or(run.text.len(), |(at, _)| at);
+                line = Some((run.line_i, offset));
+                offset
+            }
+        };
+        let bottom = run.line_top + run.line_height;
+        let shown = |glyph: &&glyphon::LayoutGlyph| glyph.end <= offset;
+        if run.glyphs.iter().all(|glyph| shown(&glyph))
+            && (offset == run.text.len() || !run.glyphs.is_empty())
+        {
+            // Wholly revealed; a wrapped line's next run may hold the end.
+            whole = Some(bottom);
+            continue;
+        }
+        let revealed: Vec<&glyphon::LayoutGlyph> = run.glyphs.iter().filter(shown).collect();
+        if run.rtl {
+            if !revealed.is_empty() {
+                whole = Some(bottom);
+            }
+            return Some(Revealed { whole, band: None });
+        }
+        let right = revealed
+            .iter()
+            .map(|glyph| glyph.x + glyph.w)
+            .fold(None, |most: Option<f32>, edge| {
+                Some(most.map_or(edge, |most| most.max(edge)))
+            });
+        return Some(Revealed {
+            whole,
+            band: right.map(|right| (run.line_top, bottom, right)),
         });
     }
+    // Every run with glyphs revealed: the text draws whole.
+    None
+}
+
+/// The bounds a revealed command draws in, at most two: its wholly revealed
+/// runs under one rectangle, and the band of the run holding the count's
+/// end, to the right edge of its last revealed glyph, each inside `bounds`
+/// (the box ∩ clip) and sharing their one edge. A count past the text
+/// gives `bounds` alone; 0 gives none.
+pub(crate) fn reveal_bounds(
+    buffer: &glyphon::Buffer,
+    count: u32,
+    origin: glam::Vec2,
+    scale: f32,
+    bounds: TextBounds,
+) -> [Option<TextBounds>; 2] {
+    let Some(revealed) = revealed(buffer, count) else {
+        return [Some(bounds), None];
+    };
+    let y = |at: f32| origin.y + at * scale;
+    let edge = revealed
+        .whole
+        .map(|bottom| (y(bottom).round() as i32).clamp(bounds.top, bounds.bottom));
+    let whole = edge.map(|edge| TextBounds {
+        bottom: edge,
+        ..bounds
+    });
+    let band = revealed.band.map(|(top, bottom, right)| {
+        let top = edge.unwrap_or_else(|| (y(top).floor() as i32).max(bounds.top));
+        let bottom = (y(bottom).ceil() as i32).clamp(top, bounds.bottom);
+        let right = ((origin.x + right * scale).ceil() as i32).clamp(bounds.left, bounds.right);
+        TextBounds {
+            left: bounds.left,
+            top,
+            right,
+            bottom,
+        }
+    });
+    let drawn = |area: Option<TextBounds>| area.filter(|b| b.right > b.left && b.bottom > b.top);
+    [drawn(whole), drawn(band)]
 }
 
 /// The prewarm's text areas (M56): every text command of `list`, as a

@@ -108,6 +108,7 @@ fn list_of(commands: Vec<PaintCommand>) -> PaintList {
         }],
         commands,
         vertices: Vec::new(),
+        reveals: Vec::new(),
     }
 }
 

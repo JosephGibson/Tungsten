@@ -62,6 +62,7 @@ fn list(clips: Vec<ClipRect>, commands: Vec<PaintCommand>) -> PaintList {
         clips,
         commands,
         vertices: Vec::new(),
+        reveals: Vec::new(),
     }
 }
 

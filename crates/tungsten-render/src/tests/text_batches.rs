@@ -3,7 +3,7 @@ use std::path::Path;
 
 use glam::Vec2;
 use tungsten_core::assets::ResolvedFontFamily;
-use tungsten_core::text::{StyledText, TextStyle};
+use tungsten_core::text::{StyledText, TextSpan, TextStyle};
 
 use super::*;
 
@@ -261,6 +261,7 @@ fn a_changed_label_re_prepares_its_batch_alone() {
             text(right, rect(60.0, 10.0, 80.0, 20.0), 0),
         ],
         vertices: Vec::new(),
+        reveals: Vec::new(),
     };
     let mut book = BatchBook::default();
     let first = signatures(&list, &engine);
@@ -294,6 +295,7 @@ fn a_clip_rectangle_that_changes_under_an_unchanged_command_re_prepares() {
         clips: vec![clip(0, 0, 800, 600), clip(0, 0, 50, 50)],
         commands: vec![text(node, rect(0.0, 0.0, 100.0, 20.0), 1)],
         vertices: Vec::new(),
+        reveals: Vec::new(),
     };
     let before = signatures(&list, &engine);
     list.clips[1] = clip(0, 0, 60, 50);
@@ -317,6 +319,7 @@ fn position_colour_scale_and_viewport_are_in_the_signature() {
         clips: vec![clip(0, 0, 800, 600)],
         commands: vec![text(node, rect(0.0, 0.0, 100.0, 20.0), 0)],
         vertices: Vec::new(),
+        reveals: Vec::new(),
     };
     let reference = batch_signature(&base, 0..1, &engine, 800, 600);
     let mut moved = base.clone();
@@ -368,12 +371,14 @@ fn a_batch_absent_for_a_frame_re_prepares_when_it_returns() {
             text(b, rect(10.0, 10.0, 100.0, 20.0), 0),
         ],
         vertices: Vec::new(),
+        reveals: Vec::new(),
     };
     let one = PaintList {
         scale: 1.0,
         clips: vec![clip(0, 0, 800, 600)],
         commands: vec![text(a, rect(0.0, 0.0, 100.0, 20.0), 0)],
         vertices: Vec::new(),
+        reveals: Vec::new(),
     };
     let mut book = BatchBook::default();
     let both = signatures(&two, &engine);
@@ -402,6 +407,7 @@ fn a_failed_batch_is_not_drawn_and_prepares_again() {
         clips: vec![clip(0, 0, 800, 600)],
         commands: vec![text(node, rect(0.0, 0.0, 100.0, 20.0), 0)],
         vertices: Vec::new(),
+        reveals: Vec::new(),
     };
     let mut book = BatchBook::default();
     let signature = signatures(&list, &engine);
@@ -490,6 +496,7 @@ fn only_committed_nodes_under_the_current_epoch_give_areas() {
             text(bare, rect(10.0, 40.0, 100.0, 20.0), 0),
         ],
         vertices: Vec::new(),
+        reveals: Vec::new(),
     };
     let (_, nodes) = engine.batch_parts();
     let mut areas = Vec::new();
@@ -530,6 +537,7 @@ fn a_commands_text_scale_reaches_its_area_on_top_of_the_paint_scale() {
             },
         ],
         vertices: Vec::new(),
+        reveals: Vec::new(),
     };
     let (_, nodes) = engine.batch_parts();
     let mut areas = Vec::new();
@@ -558,6 +566,7 @@ fn the_prewarms_areas_are_the_lists_runs_at_their_boxes_and_scales() {
             },
         ],
         vertices: Vec::new(),
+        reveals: Vec::new(),
     };
     let (_, nodes) = engine.batch_parts();
     let mut areas = Vec::new();
@@ -598,6 +607,7 @@ fn an_outline_is_not_cut_at_its_text_box() {
             cut
         }],
         vertices: Vec::new(),
+        reveals: Vec::new(),
     };
     let (_, nodes) = engine.batch_parts();
     let mut areas = Vec::new();
@@ -621,4 +631,167 @@ fn an_outline_is_not_cut_at_its_text_box() {
             .iter()
             .all(|area| std::ptr::eq(area.buffer, areas[0].buffer))
     );
+}
+
+/// A committed node holding `text`, laid out `width` wide.
+fn wrapped_node(engine: &mut TextEngine, text: &StyledText, width: f32) -> TextNodeId {
+    let node = engine.create_node();
+    engine.set_text(node, text, &style());
+    engine.commit_layout(node, Vec2::new(width, 200.0));
+    node
+}
+
+/// `node`'s command at (10, 10), 200 by 100, with `count` revealed.
+fn revealing(node: TextNodeId, count: Option<u32>) -> PaintList {
+    PaintList {
+        scale: 1.0,
+        clips: vec![clip(0, 0, 800, 600)],
+        commands: vec![text(node, rect(10.0, 10.0, 200.0, 100.0), 0)],
+        vertices: Vec::new(),
+        reveals: count.map(|count| vec![(node, count)]).unwrap_or_default(),
+    }
+}
+
+fn bounds_of(areas: &[TextArea<'_>]) -> Vec<(i32, i32, i32, i32)> {
+    areas
+        .iter()
+        .map(|area| {
+            let b = area.bounds;
+            (b.left, b.top, b.right, b.bottom)
+        })
+        .collect()
+}
+
+#[test]
+fn a_revealed_command_draws_its_whole_runs_and_one_partial_band() {
+    let mut engine = engine();
+    // Two lines: "Evening, warden." and "The lamp is out."
+    let node = wrapped_node(
+        &mut engine,
+        &StyledText::from("Evening, warden.\nThe lamp is out."),
+        200.0,
+    );
+    let (_, nodes) = engine.batch_parts();
+    let area = |count: Option<u32>| {
+        let list = revealing(node, count);
+        let mut areas = Vec::new();
+        batch_areas(&list, 0..1, &nodes, &mut areas);
+        bounds_of(&areas)
+    };
+    let full = area(None);
+    assert_eq!(full, [(10, 10, 210, 110)]);
+    // The first line, its break and "The": the first line whole, a band on
+    // the second to the "e"'s right edge.
+    let split = area(Some(16 + 1 + 3));
+    assert_eq!(split.len(), 2, "{split:?}");
+    let (whole, band) = (split[0], split[1]);
+    assert_eq!(
+        (whole.0, whole.1, whole.2),
+        (10, 10, 210),
+        "the box's width"
+    );
+    assert_eq!(band.1, whole.3, "they share their one edge");
+    assert!(band.3 > band.1 && band.3 <= 110);
+    assert!(band.2 > 10 && band.2 < 80, "to the third glyph: {band:?}");
+    let more = area(Some(16 + 1 + 4));
+    assert!(
+        more[1].2 >= band.2,
+        "one more character reaches as far or further"
+    );
+    // Within the first line: a band alone.
+    let first = area(Some(4));
+    assert_eq!(first.len(), 1);
+    assert_eq!((first[0].0, first[0].1), (10, 10));
+    assert!(first[0].3 < whole.3 + 1 && first[0].2 < band.2 + 40);
+    // The first line exactly: one area, the whole first line.
+    assert_eq!(area(Some(16)), [whole]);
+}
+
+#[test]
+fn a_count_past_the_text_draws_one_area() {
+    let mut engine = engine();
+    let node = wrapped_node(&mut engine, &StyledText::from("Bless you."), 200.0);
+    let (_, nodes) = engine.batch_parts();
+    let area = |count: Option<u32>| {
+        let list = revealing(node, count);
+        let mut areas = Vec::new();
+        batch_areas(&list, 0..1, &nodes, &mut areas);
+        bounds_of(&areas)
+    };
+    let full = area(None);
+    assert_eq!(area(Some(10)), full, "exactly its length");
+    assert_eq!(area(Some(1000)), full, "past it");
+    assert!(area(Some(0)).is_empty(), "0 draws nothing");
+}
+
+#[test]
+fn a_moved_reveal_prepares_its_batch_again() {
+    let mut engine = engine();
+    let node = wrapped_node(&mut engine, &StyledText::from("Evening."), 200.0);
+    let signature =
+        |count: Option<u32>| batch_signature(&revealing(node, count), 0..1, &engine, 800, 600);
+    let mut book = BatchBook::default();
+    let first = signature(Some(3));
+    assert_eq!(book.changed(std::slice::from_ref(&first)), [true]);
+    book.mark_prepared(0, first);
+    assert_eq!(
+        book.changed(&[signature(Some(3))]),
+        [false],
+        "the same count"
+    );
+    assert_eq!(
+        book.changed(&[signature(Some(4))]),
+        [true],
+        "one more character"
+    );
+    assert_eq!(book.changed(&[signature(None)]), [true], "every character");
+    assert_eq!(
+        engine.node_revision(node),
+        Some(1),
+        "nothing laid out again"
+    );
+}
+
+#[test]
+fn the_plain_copies_of_coloured_text_reveal_with_it() {
+    let mut engine = engine();
+    let mut text = StyledText::from("Evening, ");
+    text.spans
+        .push(TextSpan::new("warden").with_color([255, 200, 0, 255]));
+    let node = wrapped_node(&mut engine, &text, 200.0);
+    engine.prepare_plain([node.plain()]);
+    let (_, nodes) = engine.batch_parts();
+    let at = rect(10.0, 10.0, 200.0, 100.0);
+    let copy = |dx: f32| PaintCommand::Text {
+        node: node.plain(),
+        rect: Rect::new(at.min + Vec2::new(dx, 0.0), at.max + Vec2::new(dx, 0.0)),
+        color: [0, 0, 0, 255],
+        scale: 1.0,
+        clip: 0,
+    };
+    let list = PaintList {
+        scale: 1.0,
+        clips: vec![clip(0, 0, 800, 600)],
+        commands: vec![copy(-1.0), copy(1.0), text_command(node, at)],
+        vertices: Vec::new(),
+        reveals: vec![(node, 5)],
+    };
+    let mut areas = Vec::new();
+    batch_areas(&list, 0..3, &nodes, &mut areas);
+    assert_eq!(areas.len(), 3, "one band each");
+    let rights: Vec<i32> = areas.iter().map(|area| area.bounds.right).collect();
+    assert_eq!(
+        rights[0] + 2,
+        rights[1],
+        "each copy cut at its own box's offset"
+    );
+    assert!(rights[2] < 120, "the text cut too: {rights:?}");
+    assert!(
+        !std::ptr::eq(areas[0].buffer, areas[2].buffer),
+        "the copies draw the plain view"
+    );
+}
+
+fn text_command(node: TextNodeId, at: Rect) -> PaintCommand {
+    text(node, at, 0)
 }

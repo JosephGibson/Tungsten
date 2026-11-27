@@ -42,7 +42,7 @@ use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig, PhysicsWorkers, Posi
 use tungsten_core::post::{PostPass, PostStack, PostTail};
 use tungsten_core::save::SaveOptions;
 use tungsten_core::ui::{
-    CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree, WindowPlacements,
+    CursorIcon, PaintList, UiDebug, UiReveals, UiRouter, UiThemeRegistry, UiTree, WindowPlacements,
 };
 use tungsten_core::workers::SystemWorkers;
 use tungsten_core::{
@@ -485,6 +485,9 @@ pub struct App {
     ui_paint: PaintList,
     /// What the retained list was painted with; `None` before the first.
     painted_at: Option<PaintedAt>,
+    /// The `UiReveals` revision the retained list's reveals were written
+    /// at (redo 8.1); `None` before the first or without the resource.
+    revealed_at: Option<u64>,
     /// An exclusive fullscreen request's downgrade to borderless, logged
     /// once a run (M59), not at every apply.
     exclusive_warning: std::sync::Once,
@@ -863,6 +866,7 @@ impl App {
             transition_post_stack: PostStack::new(),
             ui_paint: PaintList::default(),
             painted_at: None,
+            revealed_at: None,
             exclusive_warning: std::sync::Once::new(),
             cursor: WindowCursor::default(),
             routed_events: 0,
@@ -2529,18 +2533,41 @@ impl App {
             .world
             .get_resource::<UiTree>()
             .is_some_and(UiTree::is_paint_dirty);
-        if !dirty && self.painted_at == Some(at) {
+        let repaint = dirty || self.painted_at != Some(at);
+        if repaint {
+            // Borrow split: the tree paints with `&World`'s registry.
+            let Some(mut tree) = self.world.remove_resource::<UiTree>() else {
+                return;
+            };
+            let empty = AssetRegistry::new();
+            let sprites = self.world.get_resource::<AssetRegistry>().unwrap_or(&empty);
+            tree.paint(scale, &debug, sprites, &mut self.ui_paint);
+            self.world.insert_resource(tree);
+            self.painted_at = Some(at);
+        }
+        self.write_reveals(repaint);
+    }
+
+    /// Writes the `UiReveals` counts into the retained paint list (redo
+    /// 8.1) after a repaint, which clears them, or when their revision
+    /// moved; a frame with neither does nothing.
+    #[inline(always)]
+    fn write_reveals(&mut self, repainted: bool) {
+        let revision = self
+            .world
+            .get_resource::<UiReveals>()
+            .map(UiReveals::revision);
+        if !repainted && revision == self.revealed_at {
             return;
         }
-        // Borrow split: the tree paints with `&World`'s registry.
-        let Some(mut tree) = self.world.remove_resource::<UiTree>() else {
-            return;
-        };
-        let empty = AssetRegistry::new();
-        let sprites = self.world.get_resource::<AssetRegistry>().unwrap_or(&empty);
-        tree.paint(scale, &debug, sprites, &mut self.ui_paint);
-        self.world.insert_resource(tree);
-        self.painted_at = Some(at);
+        self.revealed_at = revision;
+        match (
+            self.world.get_resource::<UiReveals>(),
+            self.world.get_resource::<UiTree>(),
+        ) {
+            (Some(reveals), Some(tree)) => reveals.write(tree, &mut self.ui_paint),
+            _ => self.ui_paint.reveals.clear(),
+        }
     }
 
     /// Paints the text runs of the roots a prewarm asked for (M56); `None`
@@ -2940,6 +2967,7 @@ impl App {
         {
             self.ui_paint = PaintList::default();
             self.painted_at = None;
+            self.revealed_at = None;
         }
         // M46: the UI layout, counted in `extract` (Q11).
         let ui_layout_ms = self.stage_ui_layout();

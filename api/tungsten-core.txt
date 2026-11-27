@@ -15306,6 +15306,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::ClipRect
 pub struct tungsten_core::ui::paint::PaintList
 pub tungsten_core::ui::paint::PaintList::clips: alloc::vec::Vec<tungsten_core::ui::paint::ClipRect>
 pub tungsten_core::ui::paint::PaintList::commands: alloc::vec::Vec<tungsten_core::ui::paint::PaintCommand>
+pub tungsten_core::ui::paint::PaintList::reveals: alloc::vec::Vec<(tungsten_core::text::TextNodeId, u32)>
 pub tungsten_core::ui::paint::PaintList::scale: f32
 pub tungsten_core::ui::paint::PaintList::vertices: alloc::vec::Vec<tungsten_core::ui::node::UiVertex>
 impl tungsten_core::ui::paint::PaintList
@@ -15314,6 +15315,7 @@ pub fn tungsten_core::ui::paint::PaintList::clip_of(&self, &tungsten_core::ui::p
 pub fn tungsten_core::ui::paint::PaintList::dump(&self) -> alloc::string::String
 pub fn tungsten_core::ui::paint::PaintList::is_empty(&self) -> bool
 pub fn tungsten_core::ui::paint::PaintList::mesh_vertices(&self, &tungsten_core::ui::paint::PaintCommand) -> &[tungsten_core::ui::node::UiVertex]
+pub fn tungsten_core::ui::paint::PaintList::reveal_of(&self, tungsten_core::text::TextNodeId) -> core::option::Option<u32>
 pub fn tungsten_core::ui::paint::PaintList::text_batches(&self) -> alloc::vec::Vec<core::ops::range::Range<usize>>
 impl core::clone::Clone for tungsten_core::ui::paint::PaintList
 pub fn tungsten_core::ui::paint::PaintList::clone(&self) -> tungsten_core::ui::paint::PaintList
@@ -15371,6 +15373,25 @@ impl core::marker::Unpin for tungsten_core::ui::prompt::PromptText
 impl core::marker::UnsafeUnpin for tungsten_core::ui::prompt::PromptText
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::prompt::PromptText
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::prompt::PromptText
+pub mod tungsten_core::ui::reveal
+pub struct tungsten_core::ui::reveal::UiReveals
+impl tungsten_core::ui::reveal::UiReveals
+pub fn tungsten_core::ui::reveal::UiReveals::get(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<u32>
+pub fn tungsten_core::ui::reveal::UiReveals::of(&mut tungsten_core::World) -> &mut Self
+pub fn tungsten_core::ui::reveal::UiReveals::revision(&self) -> u64
+pub fn tungsten_core::ui::reveal::UiReveals::set(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<u32>)
+pub fn tungsten_core::ui::reveal::UiReveals::write(&self, &tungsten_core::ui::tree::UiTree, &mut tungsten_core::ui::paint::PaintList)
+impl core::default::Default for tungsten_core::ui::reveal::UiReveals
+pub fn tungsten_core::ui::reveal::UiReveals::default() -> tungsten_core::ui::reveal::UiReveals
+impl core::fmt::Debug for tungsten_core::ui::reveal::UiReveals
+pub fn tungsten_core::ui::reveal::UiReveals::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::reveal::UiReveals
+impl core::marker::Send for tungsten_core::ui::reveal::UiReveals
+impl core::marker::Sync for tungsten_core::ui::reveal::UiReveals
+impl core::marker::Unpin for tungsten_core::ui::reveal::UiReveals
+impl core::marker::UnsafeUnpin for tungsten_core::ui::reveal::UiReveals
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::reveal::UiReveals
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::reveal::UiReveals
 pub mod tungsten_core::ui::route
 #[non_exhaustive] pub enum tungsten_core::ui::route::InputDevice
 pub tungsten_core::ui::route::InputDevice::Gamepad
@@ -17759,6 +17780,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::NamedSty
 pub struct tungsten_core::ui::PaintList
 pub tungsten_core::ui::PaintList::clips: alloc::vec::Vec<tungsten_core::ui::paint::ClipRect>
 pub tungsten_core::ui::PaintList::commands: alloc::vec::Vec<tungsten_core::ui::paint::PaintCommand>
+pub tungsten_core::ui::PaintList::reveals: alloc::vec::Vec<(tungsten_core::text::TextNodeId, u32)>
 pub tungsten_core::ui::PaintList::scale: f32
 pub tungsten_core::ui::PaintList::vertices: alloc::vec::Vec<tungsten_core::ui::node::UiVertex>
 impl tungsten_core::ui::paint::PaintList
@@ -17767,6 +17789,7 @@ pub fn tungsten_core::ui::paint::PaintList::clip_of(&self, &tungsten_core::ui::p
 pub fn tungsten_core::ui::paint::PaintList::dump(&self) -> alloc::string::String
 pub fn tungsten_core::ui::paint::PaintList::is_empty(&self) -> bool
 pub fn tungsten_core::ui::paint::PaintList::mesh_vertices(&self, &tungsten_core::ui::paint::PaintCommand) -> &[tungsten_core::ui::node::UiVertex]
+pub fn tungsten_core::ui::paint::PaintList::reveal_of(&self, tungsten_core::text::TextNodeId) -> core::option::Option<u32>
 pub fn tungsten_core::ui::paint::PaintList::text_batches(&self) -> alloc::vec::Vec<core::ops::range::Range<usize>>
 impl core::clone::Clone for tungsten_core::ui::paint::PaintList
 pub fn tungsten_core::ui::paint::PaintList::clone(&self) -> tungsten_core::ui::paint::PaintList
@@ -18340,6 +18363,24 @@ impl core::marker::Unpin for tungsten_core::ui::id::UiKey
 impl core::marker::UnsafeUnpin for tungsten_core::ui::id::UiKey
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::id::UiKey
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::id::UiKey
+pub struct tungsten_core::ui::UiReveals
+impl tungsten_core::ui::reveal::UiReveals
+pub fn tungsten_core::ui::reveal::UiReveals::get(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<u32>
+pub fn tungsten_core::ui::reveal::UiReveals::of(&mut tungsten_core::World) -> &mut Self
+pub fn tungsten_core::ui::reveal::UiReveals::revision(&self) -> u64
+pub fn tungsten_core::ui::reveal::UiReveals::set(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<u32>)
+pub fn tungsten_core::ui::reveal::UiReveals::write(&self, &tungsten_core::ui::tree::UiTree, &mut tungsten_core::ui::paint::PaintList)
+impl core::default::Default for tungsten_core::ui::reveal::UiReveals
+pub fn tungsten_core::ui::reveal::UiReveals::default() -> tungsten_core::ui::reveal::UiReveals
+impl core::fmt::Debug for tungsten_core::ui::reveal::UiReveals
+pub fn tungsten_core::ui::reveal::UiReveals::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::reveal::UiReveals
+impl core::marker::Send for tungsten_core::ui::reveal::UiReveals
+impl core::marker::Sync for tungsten_core::ui::reveal::UiReveals
+impl core::marker::Unpin for tungsten_core::ui::reveal::UiReveals
+impl core::marker::UnsafeUnpin for tungsten_core::ui::reveal::UiReveals
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::reveal::UiReveals
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::reveal::UiReveals
 #[non_exhaustive] pub struct tungsten_core::ui::UiRouteSettings
 pub tungsten_core::ui::UiRouteSettings::double_click_distance: f32
 pub tungsten_core::ui::UiRouteSettings::double_click_time: f32
@@ -22922,6 +22963,7 @@ impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Opti
 pub struct tungsten_core::PaintList
 pub tungsten_core::PaintList::clips: alloc::vec::Vec<tungsten_core::ui::paint::ClipRect>
 pub tungsten_core::PaintList::commands: alloc::vec::Vec<tungsten_core::ui::paint::PaintCommand>
+pub tungsten_core::PaintList::reveals: alloc::vec::Vec<(tungsten_core::text::TextNodeId, u32)>
 pub tungsten_core::PaintList::scale: f32
 pub tungsten_core::PaintList::vertices: alloc::vec::Vec<tungsten_core::ui::node::UiVertex>
 impl tungsten_core::ui::paint::PaintList
@@ -22930,6 +22972,7 @@ pub fn tungsten_core::ui::paint::PaintList::clip_of(&self, &tungsten_core::ui::p
 pub fn tungsten_core::ui::paint::PaintList::dump(&self) -> alloc::string::String
 pub fn tungsten_core::ui::paint::PaintList::is_empty(&self) -> bool
 pub fn tungsten_core::ui::paint::PaintList::mesh_vertices(&self, &tungsten_core::ui::paint::PaintCommand) -> &[tungsten_core::ui::node::UiVertex]
+pub fn tungsten_core::ui::paint::PaintList::reveal_of(&self, tungsten_core::text::TextNodeId) -> core::option::Option<u32>
 pub fn tungsten_core::ui::paint::PaintList::text_batches(&self) -> alloc::vec::Vec<core::ops::range::Range<usize>>
 impl core::clone::Clone for tungsten_core::ui::paint::PaintList
 pub fn tungsten_core::ui::paint::PaintList::clone(&self) -> tungsten_core::ui::paint::PaintList

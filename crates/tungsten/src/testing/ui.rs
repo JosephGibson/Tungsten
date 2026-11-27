@@ -9,7 +9,8 @@
 use glam::Vec2;
 use tungsten_core::text::TextNodeStore as _;
 use tungsten_core::ui::{
-    FixedAdvanceMeasure, LayoutStats, PaintList, Rect, UiDebug, UiKey, UiTree, Visibility, WidgetId,
+    FixedAdvanceMeasure, LayoutStats, PaintList, Rect, UiDebug, UiKey, UiReveals, UiTree,
+    Visibility, WidgetId,
 };
 use tungsten_core::{AssetRegistry, KeyCode, MouseButton, ScaleFactor, World};
 
@@ -445,8 +446,9 @@ impl UiHarness {
     }
 
     /// Paints the tree now, at scale 1 with the world's `UiDebug` flags and
-    /// sprite registry, as the app's extract paints it (M46). Clears the
-    /// tree's paint-dirty flag.
+    /// sprite registry, as the app's extract paints it (M46), the world's
+    /// `UiReveals` counts written after it (redo 8.1). Clears the tree's
+    /// paint-dirty flag.
     ///
     /// # Panics
     ///
@@ -461,6 +463,9 @@ impl UiHarness {
         let sprites = world.get_resource::<AssetRegistry>().unwrap_or(&empty);
         let mut list = PaintList::default();
         tree.paint(1.0, &debug, sprites, &mut list);
+        if let Some(reveals) = world.get_resource::<UiReveals>() {
+            reveals.write(&tree, &mut list);
+        }
         world.insert_resource(tree);
         list
     }

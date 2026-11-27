@@ -500,6 +500,28 @@ fn an_idle_screen_lays_out_no_root() {
     );
 }
 
+/// The reveal guard (redo 8.1): a label shown a character more each frame
+/// lays nothing out, and each frame's paint list carries its count.
+#[test]
+fn a_revealing_label_lays_out_no_root() {
+    let (mut harness, heard) = harness();
+    opened(&mut harness, Menu::new("menu", PLAIN, &heard));
+    let label = harness.find("Other").expect("a button");
+    let before = harness.layout_totals();
+    for count in 0..60 {
+        tungsten_core::ui::UiReveals::of(harness.world_mut()).set(label, Some(count));
+        harness.step(1);
+        let ui = &harness.harness().draw().expect("a frame ran").ui;
+        assert_eq!(ui.reveals.len(), 1, "frame {count}");
+        assert_eq!(ui.reveals[0].1, count, "frame {count}");
+    }
+    assert_eq!(harness.layout_totals(), before, "60 counts lay nothing out");
+    tungsten_core::ui::UiReveals::of(harness.world_mut()).set(label, None);
+    harness.step(1);
+    let ui = &harness.harness().draw().expect("a frame ran").ui;
+    assert!(ui.reveals.is_empty(), "every character again");
+}
+
 // ---- data screens (redo 7.20) ----
 
 /// What the data screens' bindings read, and the actions they heard.

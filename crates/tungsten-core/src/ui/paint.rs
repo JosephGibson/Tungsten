@@ -398,6 +398,12 @@ pub struct PaintList {
     /// The vertices [`PaintCommand::Mesh`] commands index, in physical
     /// pixels (M57).
     pub vertices: Vec<UiVertex>,
+    /// The text nodes that show only their first characters, each its base
+    /// ID and its count (redo 8.1); empty unless a label reveals.
+    /// [`UiReveals::write`](super::UiReveals::write) fills it after a paint,
+    /// and a command finds its count by its node's base, so a label's
+    /// outline and shadow copies reveal with it.
+    pub reveals: Vec<(TextNodeId, u32)>,
 }
 
 impl Default for PaintList {
@@ -408,17 +414,30 @@ impl Default for PaintList {
             clips: Vec::new(),
             commands: Vec::new(),
             vertices: Vec::new(),
+            reveals: Vec::new(),
         }
     }
 }
 
 impl PaintList {
-    /// Drops the clips, commands and vertices, keeping their capacity and
-    /// the scale.
+    /// Drops the clips, commands, vertices and reveals, keeping their
+    /// capacity and the scale.
     pub fn clear(&mut self) {
         self.clips.clear();
         self.commands.clear();
         self.vertices.clear();
+        self.reveals.clear();
+    }
+
+    /// The count of characters `node`'s command shows, by its base ID;
+    /// `None` when it shows every one.
+    #[must_use]
+    pub fn reveal_of(&self, node: TextNodeId) -> Option<u32> {
+        let base = node.base();
+        self.reveals
+            .iter()
+            .find(|&&(id, _)| id == base)
+            .map(|&(_, count)| count)
     }
 
     /// The vertices a [`PaintCommand::Mesh`] draws; empty for any other

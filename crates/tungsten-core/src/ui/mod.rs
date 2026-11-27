@@ -13,7 +13,7 @@
 //! [`UiValue`]. M56 adds paint-only opacity, translation and scale, a
 //! root's fade and freeze, content-box text, disabled ancestors' look,
 //! [`UiTrack`] animations on the real clock, binding-aware prompts (and, from redo 8.1, [`PromptText`] outside a
-//! tree) and the router's capture-next-input mode for rebinding. M57 adds the mesh kind,
+//! tree and [`UiReveals`], text shown by count) and the router's capture-next-input mode for rebinding. M57 adds the mesh kind,
 //! its [`UiVertex`] triangles and their paint command, vertical scroll
 //! panels (paint-only offsets, the wheel, scrolling focus into view), drag
 //! handles that move their root, [`WindowPlacements`], the file that keeps
@@ -39,6 +39,7 @@ pub mod measure;
 pub mod node;
 pub mod paint;
 pub mod prompt;
+pub mod reveal;
 pub mod route;
 pub mod screen_build;
 pub mod screen_file;
@@ -62,6 +63,7 @@ pub use node::{
 };
 pub use paint::{ClipRect, PaintCommand, PaintList, UiDebug, to_physical};
 pub use prompt::PromptText;
+pub use reveal::UiReveals;
 pub use route::{
     BACK_KEY, InputDevice, UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT,
     UI_UP, UiRouteSettings, UiRouter, ui_route_system,
