@@ -259,8 +259,8 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 67,
-        "the cue action's seventeen forms, the target's three, the hit shape's two, the modifier's \
+        probed, 68,
+        "the cue action's eighteen forms, the target's three, the hit shape's two, the modifier's \
          four, the ability trigger's four, its target's four, its payload's seven, the offer's two, \
          a chemistry output's eleven, a projectile end's one, a fixed camera's three, a camera \
          action's two and a condition's seven"

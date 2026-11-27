@@ -939,6 +939,8 @@ fn serialize_error(what: &str, component: &str, err: &serde_json::Error) -> Capt
 /// ([`RestoreError::Generation`]). An area whose save names no generation
 /// restores as before, since names decide (`D-230`).
 ///
+/// Once it has applied, it runs the hooks [`on_restore`] registered.
+///
 /// It checks everything first, as [`check_world`], and changes nothing on
 /// an error: the format, each version, each value migrated a step at a
 /// time and merged, each spawn's prefab prepared, each tile against its
@@ -984,7 +986,46 @@ pub fn restore_world<B: Bundle + Clone>(
     }
     resolve_all(world, &registry, holders, &save.resource_refs, &mut report);
     settle(world, &placed, &mut report);
+    run_restore_hooks(world);
     Ok(report)
+}
+
+/// The hooks [`restore_world`] runs once a restore has applied, a World
+/// resource [`on_restore`] inserts: each name's hook, in registration
+/// order.
+#[derive(Debug, Default)]
+pub(crate) struct RestoreHooks(Vec<(String, RestoreHook)>);
+
+/// A hook [`on_restore`] registers.
+type RestoreHook = fn(&mut World);
+
+/// Registers `hook` to run each time [`restore_world`] has applied a save,
+/// after every other change, in registration order; a failed restore runs
+/// none (redo 8.1). A second registration under `name` replaces the first
+/// in its place. It is for state kept outside saves that a restore makes
+/// stale: the kit's plugins register one that ends a running conversation
+/// and one that clears the barks, since a restore leaves every unsaved
+/// resource as it was.
+pub fn on_restore(world: &mut World, name: &str, hook: fn(&mut World)) {
+    if !world.has_resource::<RestoreHooks>() {
+        world.insert_resource(RestoreHooks::default());
+    }
+    let hooks = &mut world.resource_mut::<RestoreHooks>().0;
+    match hooks.iter_mut().find(|(known, _)| known == name) {
+        Some((_, held)) => *held = hook,
+        None => hooks.push((name.to_owned(), hook)),
+    }
+}
+
+/// Runs the World's [`RestoreHooks`] in order.
+fn run_restore_hooks(world: &mut World) {
+    let Some(hooks) = world.get_resource::<RestoreHooks>() else {
+        return;
+    };
+    let hooks: Vec<RestoreHook> = hooks.0.iter().map(|&(_, hook)| hook).collect();
+    for hook in hooks {
+        hook(world);
+    }
 }
 
 /// [`restore_world`]'s checks alone: the format, the counter, each

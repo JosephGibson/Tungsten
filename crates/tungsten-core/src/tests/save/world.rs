@@ -3243,3 +3243,80 @@ fn a_kept_table_enters_its_area_as_its_records_do() {
     assert_eq!(healths(&b), healths(&a));
     assert_eq!(text(&capture_world(&b).unwrap()), text(&saved));
 }
+
+/// What the restore hooks ran, in order.
+#[derive(Debug, Default)]
+struct HookLog(Vec<&'static str>);
+
+fn log_first(world: &mut World) {
+    world.resource_mut::<HookLog>().0.push("first");
+}
+
+fn log_second(world: &mut World) {
+    // It sees the restore applied: the saved weather is back.
+    let raining = world.resource::<Weather>().raining;
+    world.resource_mut::<HookLog>().0.push(if raining {
+        "second, raining"
+    } else {
+        "second, dry"
+    });
+}
+
+fn log_again(world: &mut World) {
+    world.resource_mut::<HookLog>().0.push("again");
+}
+
+/// A World saved raining, and a fresh one to restore it into, logging.
+fn saved_rain() -> (WorldSave, World) {
+    let mut a = world();
+    level(&mut a);
+    a.resource_mut::<Weather>().raining = true;
+    let saved = capture_world(&a).unwrap();
+    let mut b = world();
+    level(&mut b);
+    b.insert_resource(HookLog::default());
+    (saved, b)
+}
+
+#[test]
+fn restore_hooks_run_in_order_after_the_restore_applies() {
+    let (saved, mut b) = saved_rain();
+    on_restore(&mut b, "first", log_first);
+    on_restore(&mut b, "second", log_second);
+    assert!(
+        b.resource::<HookLog>().0.is_empty(),
+        "registering runs nothing"
+    );
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert_eq!(b.resource::<HookLog>().0, ["first", "second, raining"]);
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert_eq!(b.resource::<HookLog>().0.len(), 4, "each restore runs them");
+    // A World with no hook restores as before.
+    let (saved, mut c) = saved_rain();
+    restore_world(&mut c, &saved, &(Scene,)).unwrap();
+    assert!(c.resource::<HookLog>().0.is_empty());
+}
+
+#[test]
+fn a_failed_restore_runs_no_hook() {
+    let (saved, mut b) = saved_rain();
+    on_restore(&mut b, "first", log_first);
+    let mut format = serde_json::to_value(&saved).unwrap();
+    format["format"] = json!(99);
+    assert!(restore_world(&mut b, &from_value(format), &(Scene,)).is_err());
+    assert!(b.resource::<HookLog>().0.is_empty());
+}
+
+#[test]
+fn a_hook_registered_again_under_its_name_replaces_the_first() {
+    let (saved, mut b) = saved_rain();
+    on_restore(&mut b, "first", log_first);
+    on_restore(&mut b, "second", log_second);
+    on_restore(&mut b, "first", log_again);
+    restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert_eq!(
+        b.resource::<HookLog>().0,
+        ["again", "second, raining"],
+        "in the first's place"
+    );
+}

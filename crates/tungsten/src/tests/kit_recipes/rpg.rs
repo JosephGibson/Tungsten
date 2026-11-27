@@ -13,7 +13,8 @@
 //! at its side as it turns and lobs it onto a mark, and a fogling whose
 //! health bar waits for a hurt; 8.1's night warden, who talks to the
 //! keeper in reach and lights the lamp post once, and the keeper's evening
-//! conversation with its speakers.
+//! conversation with its speakers, which the keeper's `interacted` cue
+//! starts.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -24,7 +25,7 @@ use super::{
     traced_steps,
 };
 use crate::kit::{
-    Abilities, Conversation, Cooldown, Counters, Effects, Flags, Health, Hit, Interactor,
+    Abilities, Conversation, Cooldown, Counters, Dialogue, Effects, Flags, Health, Hit, Interactor,
     KitPlugins, KitRng, Level, Source, Speaker, Tags, TopDownMover, damage,
 };
 use crate::testing::Harness;
@@ -1119,4 +1120,56 @@ fn the_keepers_conversation_loads_with_its_speakers() {
         ("Old Tamsin", 40.0, None)
     );
     assert_eq!(data.get::<Speaker>("warden").unwrap().name(), "Warden");
+}
+
+#[test]
+fn the_keepers_interacted_cue_starts_its_conversation() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "night_warden", [64.0, 64.0]);
+        let keeper = spawn(&mut harness, "keeper", [96.0, 64.0]);
+        harness.step(1);
+        harness.tap_action("interact");
+        let world = harness.world_mut();
+        let line = |world: &tungsten_core::World| {
+            let talk = world.resource::<Dialogue>().current()?;
+            let line = talk.line()?;
+            Some((line.name().to_owned(), line.text().to_owned()))
+        };
+        let talk = world
+            .resource::<Dialogue>()
+            .current()
+            .expect("the cue started it");
+        assert_eq!(
+            (
+                talk.conversation(),
+                talk.node(),
+                talk.speaker(),
+                talk.listener()
+            ),
+            ("keeper.evening", "greet", keeper, warden),
+            "dt {dt}"
+        );
+        assert_eq!(
+            line(world),
+            Some(("Old Tamsin".into(), "Evening, warden.".into()))
+        );
+        assert!(Dialogue::advance(world));
+        assert_eq!(line(world), Some(("Warden".into(), "Evening.".into())));
+        assert!(Dialogue::advance(world));
+        assert!(Dialogue::advance(world));
+        let offered: Vec<usize> = world
+            .resource::<Dialogue>()
+            .current()
+            .unwrap()
+            .choices()
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(offered, [0, 1, 2], "dt {dt}");
+        assert!(Dialogue::choose(world, 0));
+        assert!(world.resource::<Flags>().has("lamp.promised"), "dt {dt}");
+        assert_eq!(line(world).unwrap().1, "Bless you.");
+        assert!(Dialogue::advance(world));
+        assert!(world.resource::<Dialogue>().current().is_none(), "dt {dt}");
+    }
 }

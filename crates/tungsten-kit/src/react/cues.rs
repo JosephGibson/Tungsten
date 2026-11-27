@@ -54,6 +54,8 @@ use crate::react::counters::{Counters, Flags};
 use crate::react::level::LevelUp;
 use crate::react::loot::{LOOT_TABLES, WeightedTable, register_loot_tables};
 use crate::react::world_cues::{WORLD_CUES, WorldCue, WorldCueActions};
+use crate::story::dialogue::{Conversation, DIALOGUE};
+use crate::story::runner::{start_talk, talking};
 use crate::transform::hierarchy::despawn_recursive;
 
 /// [`CuesPlugin`]'s system, in the react phase, last of the kit's items.
@@ -421,6 +423,9 @@ pub(crate) enum ActionKind {
         id: String,
         raise: bool,
     },
+    /// A conversation started, the subject speaking to the other: a
+    /// `DataRef`, a `String`'s size.
+    Dialogue(DataRef<Conversation>),
 }
 
 /// A counter action's change.
@@ -1103,6 +1108,28 @@ impl CueAction {
         })
     }
 
+    /// Starts `conversation`, a `dialogue` entry or one in place, with the
+    /// subject speaking and the event's other entity listening (redo 8.1),
+    /// as [`talk`](crate::talk) starts one; skipped and traced without an
+    /// other or while a talk runs. Data form `{ "dialogue": "keeper.evening" }`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_core::DataRef;
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let greet = CueAction::dialogue(DataRef::by_id("keeper.evening"));
+    /// assert_eq!(
+    ///     serde_json::to_value(&greet).unwrap(),
+    ///     serde_json::json!({ "dialogue": "keeper.evening" })
+    /// );
+    /// ```
+    #[must_use]
+    pub fn dialogue(conversation: DataRef<Conversation>) -> Self {
+        Self::of(ActionKind::Dialogue(conversation))
+    }
+
     /// Uses the subject's ability `name` now, as [`use_ability`] uses it;
     /// [`for_other`](Self::for_other) uses the other entity's. Data form
     /// `{ "ability": "wand" }` or
@@ -1212,6 +1239,7 @@ impl CueAction {
             ActionKind::Stop { .. } => "stop",
             ActionKind::Clip(_) => "clip",
             ActionKind::Camera { .. } => "camera",
+            ActionKind::Dialogue(_) => "dialogue",
         }
     }
 }
@@ -1263,6 +1291,7 @@ pub(crate) enum CueActionDef {
     Stop(StopDef),
     Clip(Clips),
     Camera(CameraActionDef),
+    Dialogue(DataRef<Conversation>),
 }
 
 /// A `camera` action as data writes it: exactly one of `raise` and
@@ -1961,6 +1990,7 @@ impl TryFrom<CueActionDef> for CueAction {
                 (None, Some(id)) => ActionKind::Camera { id, raise: false },
                 (None, None) => unreachable!("checked at deserialization"),
             },
+            CueActionDef::Dialogue(conversation) => ActionKind::Dialogue(conversation),
         };
         Ok(Self { kind })
     }
@@ -2065,6 +2095,7 @@ impl From<CueAction> for CueActionDef {
                 raise: raise.then(|| id.clone()),
                 release: (!raise).then_some(id),
             }),
+            ActionKind::Dialogue(conversation) => CueActionDef::Dialogue(conversation),
         }
     }
 }
@@ -3397,6 +3428,7 @@ fn check_actions(
                 ));
             }
             ActionKind::Clip(clips) => check_clips(world, &at, clips)?,
+            ActionKind::Dialogue(conversation) => conversation.check(world, &at)?,
             ActionKind::PartLabel(part) => {
                 if let Some(ticks) = &part.ticks {
                     for (field, name) in ticks.kind.names() {
@@ -3429,8 +3461,142 @@ fn check_actions(
     Ok(())
 }
 
-/// The name a story list's checks give the event its actions run on.
-const STORY_LIST: &str = "story list";
+/// The event name a story list's actions run on, in its checks and its
+/// traces.
+const STORY_LIST: &str = "story_list";
+/// The most lists one call of [`run_list`] runs, its own and those its
+/// actions start.
+pub(crate) const MAX_LISTS: usize = 64;
+
+/// The reactor the lists story items run at once use, apart from the cue
+/// system's, so a list runs outside the fixed step (redo 8.1). A World
+/// resource the first [`run_list`] inserts, out of the World while a list
+/// runs.
+#[derive(Default)]
+pub(crate) struct ListRunner(Reactor);
+
+/// One list waiting for the outermost [`run_list`] call.
+struct QueuedList {
+    actions: Vec<CueAction>,
+    subject: Option<Entity>,
+    other: Option<Entity>,
+    at: Vec2,
+    /// One more than the list whose action queued it.
+    depth: u8,
+}
+
+/// The lists a running list started, which the outermost call drains in
+/// order before it returns; a World resource that stays while the runner
+/// is out.
+#[derive(Default)]
+pub(crate) struct ListQueue {
+    lists: std::collections::VecDeque<QueuedList>,
+    /// Whether a call is running lists.
+    running: bool,
+    /// The running list's depth: 0 for a call's own.
+    depth: u8,
+    /// Whether the call bound has warned.
+    warned: bool,
+}
+
+/// Runs `actions` now, outside the cue system (redo 8.1): a conversation's
+/// node or choice, a quest's rewards. Each action takes the cue system's
+/// own path with `subject` as the subject (none: the actions that need one
+/// are skipped and traced), `other` as the other entity and `at` as the
+/// event's point, then the list finishes as the cue system's pass does,
+/// its despawns into the command buffer. Its sound intervals read the real
+/// clock, since a conversation holds the game's. A list an action starts
+/// while one runs waits in [`ListQueue`] and runs, in order, before the
+/// outermost call returns; one call runs at most [`MAX_LISTS`], dropping
+/// and tracing the rest and warning once.
+pub(crate) fn run_list(
+    world: &mut World,
+    actions: &[CueAction],
+    subject: Option<Entity>,
+    other: Option<Entity>,
+    at: Vec2,
+) {
+    if actions.is_empty() {
+        return;
+    }
+    if !world.has_resource::<ListQueue>() {
+        world.insert_resource(ListQueue::default());
+    }
+    let queue = world.resource_mut::<ListQueue>();
+    if queue.running {
+        let depth = queue.depth.saturating_add(1);
+        queue.lists.push_back(QueuedList {
+            actions: actions.to_vec(),
+            subject,
+            other,
+            at,
+            depth,
+        });
+        return;
+    }
+    queue.running = true;
+    queue.depth = 0;
+    let mut runner = world.remove_resource::<ListRunner>().unwrap_or_default();
+    runner.0.run_story_list(world, actions, subject, other, at);
+    let mut ran = 1;
+    loop {
+        let queue = world.resource_mut::<ListQueue>();
+        let Some(list) = queue.lists.pop_front() else {
+            break;
+        };
+        if ran == MAX_LISTS {
+            let dropped = 1 + queue.lists.len();
+            queue.lists.clear();
+            let warn = !std::mem::replace(&mut queue.warned, true);
+            if warn {
+                log::warn!(
+                    "story lists: one call ran {MAX_LISTS} lists; {dropped} more dropped, as each \
+                     past the bound is"
+                );
+            }
+            trace(world, list.subject.unwrap_or(Entity::PLACEHOLDER), || {
+                TraceKind::Skipped {
+                    event: STORY_LIST,
+                    action: "all",
+                    why: TOO_MANY_LISTS,
+                }
+            });
+            break;
+        }
+        queue.depth = list.depth;
+        runner
+            .0
+            .run_story_list(world, &list.actions, list.subject, list.other, list.at);
+        ran += 1;
+    }
+    let queue = world.resource_mut::<ListQueue>();
+    queue.running = false;
+    queue.depth = 0;
+    world.insert_resource(runner);
+}
+
+/// Whether `action` acts on or from the subject, so a list with none skips
+/// it.
+fn needs_subject(action: &CueAction) -> bool {
+    matches!(
+        action.kind,
+        ActionKind::Counter {
+            target: Target::Subject,
+            ..
+        } | ActionKind::Flag {
+            target: Target::Subject,
+            ..
+        } | ActionKind::Despawn(Target::Subject)
+            | ActionKind::Squash(_)
+            | ActionKind::Flash
+            | ActionKind::Clip(_)
+            | ActionKind::Effect { .. }
+            | ActionKind::Ability { .. }
+            | ActionKind::Loop { .. }
+            | ActionKind::Stop { .. }
+            | ActionKind::Dialogue(_)
+    )
+}
 
 /// Checks a list a story item runs at once, outside the cue system (redo
 /// 8.1): a conversation's node or choice, a quest's rewards. It refuses
@@ -3735,6 +3901,10 @@ const LOOP_RAMP: f32 = 0.05;
 const GONE: &str = "the subject is gone";
 const DESPAWNING: &str = "the subject is despawning";
 const NO_OTHER: &str = "the event has no other entity, or it is gone";
+const TALKING: &str = "a conversation runs";
+const NO_CONVERSATION: &str = "no `dialogue` entry holds the ID";
+const NO_SUBJECT: &str = "the list runs with no subject";
+const TOO_MANY_LISTS: &str = "one call ran its 64 lists";
 const NO_AMOUNT: &str = "the event has no amount";
 const NO_COMMANDS: &str = "the World has no CommandBuffer";
 const NO_QUEUE: &str = "the World has no queue for it";
@@ -3863,6 +4033,40 @@ struct OpenSum {
 const SUM_SLACK: f32 = 1e-4;
 
 impl Reactor {
+    /// Runs one story list as [`run_list`] describes: each action for an
+    /// occurrence of [`STORY_LIST`], then the list's despawns.
+    fn run_story_list(
+        &mut self,
+        world: &mut World,
+        actions: &[CueAction],
+        subject: Option<Entity>,
+        other: Option<Entity>,
+        at: Vec2,
+    ) {
+        self.clock = world.get_resource::<Time>().map_or(0.0, Time::real_elapsed);
+        let occurrence = Occurrence {
+            other,
+            ..Occurrence::new(STORY_LIST, subject.unwrap_or(Entity::PLACEHOLDER), at)
+        };
+        for action in actions {
+            if subject.is_none() && needs_subject(action) {
+                trace(world, Entity::PLACEHOLDER, || TraceKind::Skipped {
+                    event: STORY_LIST,
+                    action: action.name(),
+                    why: NO_SUBJECT,
+                });
+                continue;
+            }
+            self.apply(world, &occurrence, action, None);
+        }
+        for entity in self.despawns.drain(..) {
+            if let Some(commands) = world.get_resource_mut::<CommandBuffer>() {
+                despawn_recursive(commands, entity);
+            }
+            trace(world, entity, || TraceKind::Despawn { by: CUES });
+        }
+    }
+
     fn run(&mut self, world: &mut World) {
         follow_listener(world);
         self.react(world);
@@ -4428,6 +4632,25 @@ impl Reactor {
                     return skip(world, NO_ANIMATOR);
                 };
                 animator.play((**clips).clone());
+            }
+            ActionKind::Dialogue(conversation) => {
+                let Some(listener) = target(Target::Other, world) else {
+                    return skip(world, NO_OTHER);
+                };
+                if talking(world) {
+                    return skip(world, TALKING);
+                }
+                let found = match conversation.as_inline() {
+                    Some(inline) => Some(("inline", inline.clone())),
+                    None => conversation.id().and_then(|id| {
+                        let data = world.get_resource::<DataRegistry>()?;
+                        Some((id, data.get::<Conversation>(id)?.clone()))
+                    }),
+                };
+                let Some((id, found)) = found else {
+                    return skip(world, NO_CONVERSATION);
+                };
+                start_talk(world, id.to_owned(), found, subject, listener);
             }
             ActionKind::Label(Some(style)) => {
                 let Some(amount) = occurrence.amount else {
@@ -5256,6 +5479,11 @@ fn describe_cues(world: &mut World) {
                 "camera",
                 FieldType::Shape("camera_action"),
                 "every camera rig whose `id` is the name raised, the latest raised winning a tie, or lowered; none holding it, a traced skip",
+            ))
+            .field(FieldDescription::new(
+                "dialogue",
+                FieldType::Data(DIALOGUE),
+                "a conversation started at once, the subject speaking and the other listening; without an other or while a talk runs, a traced skip; never in a world cue",
             ))
             .sample(r#"{ "despawn": {} }"#)
             .roundtrip(round_trip::<CueActionDef>),

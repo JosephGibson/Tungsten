@@ -1213,6 +1213,7 @@ pub fn tungsten_kit::CueAction::clip(impl core::convert::Into<tungsten_kit::Clip
 pub fn tungsten_kit::CueAction::counter_add(&str, i64) -> Self
 pub fn tungsten_kit::CueAction::counter_set(&str, i64) -> Self
 pub fn tungsten_kit::CueAction::despawn() -> Self
+pub fn tungsten_kit::CueAction::dialogue(tungsten_core::assets::data::DataRef<tungsten_kit::Conversation>) -> Self
 pub fn tungsten_kit::CueAction::effect(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::CueAction::flag(&str, bool) -> Self
 pub fn tungsten_kit::CueAction::flash() -> Self
@@ -6085,6 +6086,7 @@ pub fn tungsten_kit::CueAction::clip(impl core::convert::Into<tungsten_kit::Clip
 pub fn tungsten_kit::CueAction::counter_add(&str, i64) -> Self
 pub fn tungsten_kit::CueAction::counter_set(&str, i64) -> Self
 pub fn tungsten_kit::CueAction::despawn() -> Self
+pub fn tungsten_kit::CueAction::dialogue(tungsten_core::assets::data::DataRef<tungsten_kit::Conversation>) -> Self
 pub fn tungsten_kit::CueAction::effect(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::CueAction::flag(&str, bool) -> Self
 pub fn tungsten_kit::CueAction::flash() -> Self
@@ -6555,6 +6557,41 @@ impl core::marker::Unpin for tungsten_kit::DespawnOutsidePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::DespawnOutsidePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DespawnOutsidePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DespawnOutsidePlugin
+pub struct tungsten_kit::Dialogue
+impl tungsten_kit::Dialogue
+pub fn tungsten_kit::Dialogue::advance(&mut tungsten_core::ecs::world::World) -> bool
+pub fn tungsten_kit::Dialogue::choose(&mut tungsten_core::ecs::world::World, usize) -> bool
+pub fn tungsten_kit::Dialogue::current(&self) -> core::option::Option<&tungsten_kit::Talk>
+pub fn tungsten_kit::Dialogue::end(&mut tungsten_core::ecs::world::World)
+impl core::default::Default for tungsten_kit::Dialogue
+pub fn tungsten_kit::Dialogue::default() -> tungsten_kit::Dialogue
+impl core::fmt::Debug for tungsten_kit::Dialogue
+pub fn tungsten_kit::Dialogue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::Dialogue
+impl core::marker::Send for tungsten_kit::Dialogue
+impl core::marker::Sync for tungsten_kit::Dialogue
+impl core::marker::Unpin for tungsten_kit::Dialogue
+impl core::marker::UnsafeUnpin for tungsten_kit::Dialogue
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Dialogue
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Dialogue
+#[non_exhaustive] pub struct tungsten_kit::DialogueEnded
+pub tungsten_kit::DialogueEnded::conversation: alloc::string::String
+pub tungsten_kit::DialogueEnded::listener: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::DialogueEnded::speaker: tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten_kit::DialogueEnded
+pub fn tungsten_kit::DialogueEnded::clone(&self) -> tungsten_kit::DialogueEnded
+impl core::cmp::PartialEq for tungsten_kit::DialogueEnded
+pub fn tungsten_kit::DialogueEnded::eq(&self, &tungsten_kit::DialogueEnded) -> bool
+impl core::fmt::Debug for tungsten_kit::DialogueEnded
+pub fn tungsten_kit::DialogueEnded::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::DialogueEnded
+impl core::marker::Freeze for tungsten_kit::DialogueEnded
+impl core::marker::Send for tungsten_kit::DialogueEnded
+impl core::marker::Sync for tungsten_kit::DialogueEnded
+impl core::marker::Unpin for tungsten_kit::DialogueEnded
+impl core::marker::UnsafeUnpin for tungsten_kit::DialogueEnded
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DialogueEnded
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DialogueEnded
 pub struct tungsten_kit::DialoguePlugin
 impl core::clone::Clone for tungsten_kit::DialoguePlugin
 pub fn tungsten_kit::DialoguePlugin::clone(&self) -> tungsten_kit::DialoguePlugin
@@ -6572,6 +6609,24 @@ impl core::marker::Unpin for tungsten_kit::DialoguePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::DialoguePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DialoguePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DialoguePlugin
+#[non_exhaustive] pub struct tungsten_kit::DialogueStarted
+pub tungsten_kit::DialogueStarted::conversation: alloc::string::String
+pub tungsten_kit::DialogueStarted::listener: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::DialogueStarted::speaker: tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten_kit::DialogueStarted
+pub fn tungsten_kit::DialogueStarted::clone(&self) -> tungsten_kit::DialogueStarted
+impl core::cmp::PartialEq for tungsten_kit::DialogueStarted
+pub fn tungsten_kit::DialogueStarted::eq(&self, &tungsten_kit::DialogueStarted) -> bool
+impl core::fmt::Debug for tungsten_kit::DialogueStarted
+pub fn tungsten_kit::DialogueStarted::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::DialogueStarted
+impl core::marker::Freeze for tungsten_kit::DialogueStarted
+impl core::marker::Send for tungsten_kit::DialogueStarted
+impl core::marker::Sync for tungsten_kit::DialogueStarted
+impl core::marker::Unpin for tungsten_kit::DialogueStarted
+impl core::marker::UnsafeUnpin for tungsten_kit::DialogueStarted
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DialogueStarted
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DialogueStarted
 pub struct tungsten_kit::Effect
 impl tungsten_kit::Effect
 pub fn tungsten_kit::Effect::bands(&self) -> impl core::iter::traits::iterator::Iterator<Item = (f32, &[alloc::string::String])>
@@ -9694,6 +9749,48 @@ impl core::marker::Unpin for tungsten_kit::TagsPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::TagsPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TagsPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TagsPlugin
+pub struct tungsten_kit::Talk
+impl tungsten_kit::Talk
+pub fn tungsten_kit::Talk::back(&self) -> core::option::Option<usize>
+pub fn tungsten_kit::Talk::choices(&self) -> impl core::iter::traits::iterator::Iterator<Item = (usize, &str)>
+pub fn tungsten_kit::Talk::choosing(&self) -> bool
+pub fn tungsten_kit::Talk::conversation(&self) -> &str
+pub fn tungsten_kit::Talk::line(&self) -> core::option::Option<&tungsten_kit::TalkLine>
+pub fn tungsten_kit::Talk::listener(&self) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::Talk::node(&self) -> &str
+pub fn tungsten_kit::Talk::speaker(&self) -> tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten_kit::Talk
+pub fn tungsten_kit::Talk::clone(&self) -> tungsten_kit::Talk
+impl core::fmt::Debug for tungsten_kit::Talk
+pub fn tungsten_kit::Talk::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::Talk
+impl core::marker::Send for tungsten_kit::Talk
+impl core::marker::Sync for tungsten_kit::Talk
+impl core::marker::Unpin for tungsten_kit::Talk
+impl core::marker::UnsafeUnpin for tungsten_kit::Talk
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Talk
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Talk
+pub struct tungsten_kit::TalkLine
+impl tungsten_kit::TalkLine
+pub fn tungsten_kit::TalkLine::name(&self) -> &str
+pub fn tungsten_kit::TalkLine::pace(&self) -> f32
+pub fn tungsten_kit::TalkLine::portrait(&self) -> core::option::Option<&str>
+pub fn tungsten_kit::TalkLine::speaker(&self) -> &str
+pub fn tungsten_kit::TalkLine::text(&self) -> &str
+impl core::clone::Clone for tungsten_kit::TalkLine
+pub fn tungsten_kit::TalkLine::clone(&self) -> tungsten_kit::TalkLine
+impl core::cmp::PartialEq for tungsten_kit::TalkLine
+pub fn tungsten_kit::TalkLine::eq(&self, &tungsten_kit::TalkLine) -> bool
+impl core::fmt::Debug for tungsten_kit::TalkLine
+pub fn tungsten_kit::TalkLine::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::TalkLine
+impl core::marker::Freeze for tungsten_kit::TalkLine
+impl core::marker::Send for tungsten_kit::TalkLine
+impl core::marker::Sync for tungsten_kit::TalkLine
+impl core::marker::Unpin for tungsten_kit::TalkLine
+impl core::marker::UnsafeUnpin for tungsten_kit::TalkLine
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TalkLine
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TalkLine
 pub struct tungsten_kit::Target
 impl tungsten_kit::Target
 pub fn tungsten_kit::Target::nearest(tungsten_kit::TagFilter) -> Self
@@ -10201,5 +10298,6 @@ pub fn tungsten_kit::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tun
 pub fn tungsten_kit::steered_direction(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::step_velocity(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::stimulate(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str, f32, core::option::Option<tungsten_core::ecs::entity::Entity>) -> bool
+pub fn tungsten_kit::talk(&mut tungsten_core::ecs::world::World, &str, tungsten_core::ecs::entity::Entity, tungsten_core::ecs::entity::Entity) -> bool
 pub fn tungsten_kit::use_ability(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &str) -> tungsten_kit::Used
 pub type tungsten_kit::HitPrep = fn(&tungsten_core::ecs::world::World, &mut tungsten_kit::DamageRequest)

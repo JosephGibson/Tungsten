@@ -4,6 +4,13 @@
     "interactable": {
       "verb": "Read",
       "radius": 8
+    },
+    "cues": {
+      "interacted": [
+        {
+          "dialogue": "notice_board"
+        }
+      ]
     }
   }
 }

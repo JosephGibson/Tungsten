@@ -35,7 +35,7 @@
 //! crystal on a dynamic body drawn in by the ranger's magnet; 7.13c's foes
 //! and cues' ogre, whose kill's key burst takes a full budget's oldest
 //! cosmetic slot; 8.1's reader, who takes the nearer of two notices, and
-//! the notice board's conversation.
+//! the notice board's conversation, read and its errand taken.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -51,12 +51,12 @@ use super::{
 };
 use crate::kit::{
     Abilities, Aim, CharacterAnimator, ContactDamage, ContactTouch, Conversation, Conversion,
-    CooldownElapsed, Counters, DamagePart, DamageRequest, Damaged, DamagedPart, EffectInstance,
-    EffectRequest, Effects, Facing, Health, Hit, HitFlash, HitShape, Hitbox, Hurtbox, Interactor,
-    KitPlugins, KitRng, Knockback, LabelStyle, Level, Line, LinearMotion, Modifier, Penetration,
-    Phase, ProjectileExpired, Read, Shield, Source, Speaker, StateMachine, StateMachinePlugin,
-    Stats, Steering, Struck, TagFilter, TagSet, Tags, TopDownMover, TraceKind, WorldSource,
-    WorldSources, ZoneEntered, damage, float_label, knock_back,
+    CooldownElapsed, Counters, DamagePart, DamageRequest, Damaged, DamagedPart, Dialogue,
+    EffectInstance, EffectRequest, Effects, Facing, Health, Hit, HitFlash, HitShape, Hitbox,
+    Hurtbox, Interactor, KitPlugins, KitRng, Knockback, LabelStyle, Level, Line, LinearMotion,
+    Modifier, Penetration, Phase, ProjectileExpired, Read, Shield, Source, Speaker, StateMachine,
+    StateMachinePlugin, Stats, Steering, Struck, TagFilter, TagSet, Tags, TopDownMover, TraceKind,
+    WorldSource, WorldSources, ZoneEntered, damage, float_label, knock_back,
 };
 use crate::testing::Harness;
 use tungsten_core::PluginSet;
@@ -3728,4 +3728,57 @@ fn the_notice_boards_conversation_loads() {
         ["read", "signed", "taken"]
     );
     assert_eq!(data.get::<Speaker>("notice").unwrap().pace(), 60.0);
+}
+
+#[test]
+fn reading_the_notice_and_choosing_sets_its_flag() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let reader = spawn(&mut harness, "reader", [100.0, 100.0]);
+        let notice = spawn(&mut harness, "notice", [100.0, 70.0]);
+        harness.step(1);
+        harness.tap_action("interact");
+        let world = harness.world_mut();
+        let text = |world: &World| {
+            let talk = world.resource::<Dialogue>().current()?;
+            Some(talk.line()?.text().to_owned())
+        };
+        let talk = world
+            .resource::<Dialogue>()
+            .current()
+            .expect("the cue started it");
+        assert_eq!(
+            (talk.speaker(), talk.listener()),
+            (notice, reader),
+            "dt {dt}"
+        );
+        assert_eq!(text(world).as_deref(), Some("Wanted: three wolf pelts."));
+        assert!(Dialogue::advance(world));
+        let offered: Vec<(usize, String)> = world
+            .resource::<Dialogue>()
+            .current()
+            .unwrap()
+            .choices()
+            .map(|(index, text)| (index, text.to_owned()))
+            .collect();
+        assert_eq!(
+            offered,
+            [(0, "Take the errand.".into()), (1, "Leave it.".into())]
+        );
+        assert!(Dialogue::choose(world, 0));
+        assert!(
+            world
+                .get::<crate::kit::Flags>(reader)
+                .unwrap()
+                .has("errand.taken"),
+            "dt {dt}"
+        );
+        assert_eq!(
+            text(world).as_deref(),
+            Some("Your name is on the board."),
+            "the branch"
+        );
+        assert!(Dialogue::advance(world));
+        assert!(world.resource::<Dialogue>().current().is_none());
+    }
 }

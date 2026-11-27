@@ -8,6 +8,13 @@
           "team.player"
         ]
       }
+    },
+    "cues": {
+      "interacted": [
+        {
+          "dialogue": "keeper.evening"
+        }
+      ]
     }
   }
 }

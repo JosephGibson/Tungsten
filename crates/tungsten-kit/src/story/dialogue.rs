@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
+use tungsten_core::save;
 use tungsten_core::{AssetRegistry, DataRegistry, MissingAsset, Plugin, Schedule, World};
 
 use crate::foundation::describe::{
@@ -15,6 +16,7 @@ use crate::foundation::describe::{
 use crate::foundation::phases::ensure_phases;
 use crate::react::cues::{CueAction, check_list};
 use crate::story::condition::Condition;
+use crate::story::runner::{DialogueEnded, DialogueStarted, end_on_restore};
 
 /// The data kind of speakers.
 pub(crate) const SPEAKERS: &str = "speakers";
@@ -291,6 +293,24 @@ impl Conversation {
     /// Its node names, in order.
     pub fn node_names(&self) -> impl Iterator<Item = &str> {
         self.nodes.keys().map(String::as_str)
+    }
+
+    /// Node `name`.
+    pub(crate) fn node(&self, name: &str) -> Option<&Node> {
+        self.nodes.get(name)
+    }
+}
+
+#[cfg(test)]
+impl Conversation {
+    /// A conversation built past the parse's checks, for a test of the
+    /// runner's own bound.
+    pub(crate) fn unchecked(speaker: &str, start: &str, nodes: BTreeMap<String, Node>) -> Self {
+        Self {
+            speaker: speaker.to_owned(),
+            start: start.to_owned(),
+            nodes,
+        }
     }
 }
 
@@ -701,16 +721,25 @@ fn check_conversation(conversation: &Conversation, world: &World) -> Result<(), 
 }
 
 /// Registers the `speakers` and `dialogue` data kinds with their checks and
-/// descriptions. The runner that walks a conversation is calls, not a
+/// descriptions, `EventQueue<DialogueStarted>` and
+/// `EventQueue<DialogueEnded>`, and a restore hook ([`save::on_restore`])
+/// that ends a running talk. The runner that walks a conversation,
+/// [`talk`](crate::talk) and [`Dialogue`](crate::Dialogue), is calls, not a
 /// system.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DialoguePlugin;
+
+/// The restore hook's name.
+const RESTORE_HOOK: &str = "kit.dialogue";
 
 impl Plugin for DialoguePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         world.register_data_kind_with_assets(SPEAKERS, check_speaker);
         world.register_data_kind_with_assets(DIALOGUE, check_conversation);
+        world.register_event::<DialogueStarted>();
+        world.register_event::<DialogueEnded>();
+        save::on_restore(world, RESTORE_HOOK, end_on_restore);
         describe_dialogue(world);
     }
 }

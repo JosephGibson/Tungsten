@@ -615,6 +615,7 @@ shape cue_action: One reaction to an event.
   field stop: shape stop_action — the subject's want of a looping sound ends; the last one's voice fades out
   field clip: an animation ID; { left, right, up, down } of animation IDs by facing, `right` flipped when `left` is left out, or by the aim with `side: aim`, a one-shot keeping its first frame's aim; or { aim: [..] }, two or more drawn facing right from straight down to straight up; or { aim: { right, left, from } }, a strip a side whose frame nearest the aim holds, from straight down or with `from: up` from straight up, `right` flipped when `left` is left out — a clip played once on the subject's character animator over its state's and its rules', from its first frame; the load checks each ID
   field camera: shape camera_action — every camera rig whose `id` is the name raised, the latest raised winning a tie, or lowered; none holding it, a traced skip
+  field dialogue: dialogue ID or entry — a conversation started at once, the subject speaking and the other listening; without an other or while a talk runs, a traced skip; never in a world cue
   sample: { "despawn": {} }
 shape cue_amount: A rule's range over an occurrence's amount, each end inclusive and optional.
   field min: f32 = null — the least amount that passes
