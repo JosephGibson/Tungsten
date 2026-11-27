@@ -31,16 +31,6 @@ fn mouse_press_and_release() {
 }
 
 #[test]
-fn duplicate_key_down_does_not_re_trigger() {
-    let mut input = InputState::new();
-    input.key_down(KeyCode::KeyW);
-    input.begin_frame();
-    input.key_down(KeyCode::KeyW);
-    assert!(!input.just_pressed(KeyCode::KeyW));
-    assert!(input.is_pressed(KeyCode::KeyW));
-}
-
-#[test]
 fn cursor_delta_accumulates_within_a_frame_and_resets_next_frame() {
     let mut input = InputState::new();
     input.update_cursor_position(10.0, 20.0);

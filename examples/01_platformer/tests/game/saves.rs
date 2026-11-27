@@ -2648,6 +2648,46 @@ fn a_keg_chain_saved_mid_chain_resumes_with_the_same_kegs_gone() {
     );
 }
 
+#[test]
+fn a_loaded_runs_first_keg_blast_still_lights_the_crates_it_reaches() {
+    // A save holds the cascades' step counter, so a load in the same World
+    // blows its keg on the step the run before blew it on.
+    let (mut harness, player) = grounded();
+    let world = harness.world_mut();
+    let keg_at = Vec2::new(900.0, TOP - prefab_box("keg").0.y - 0.5);
+    let keg = props::spawn(world, PropKind::Keg, keg_at);
+    let crate_at = Vec2::new(1000.0, TOP - prefab_box("crate").0.y - 0.5);
+    let wood = props::spawn(world, PropKind::Crate, crate_at);
+    harness.step(2);
+    let wood = id_of(&harness, wood);
+    let me = id_of(&harness, player);
+    assert!(
+        props::light(harness.world_mut(), keg, Some(me)),
+        "its fuse lights"
+    );
+    let saved = capture(&harness);
+    let burns = |harness: &UiHarness| {
+        let world = harness.world();
+        world
+            .query::<(Entity, &Saved)>()
+            .find(|&(_, own)| own.id().0 == wood)
+            .is_some_and(|(entity, _)| props::burning(world, entity))
+    };
+    assert!(
+        until(&mut harness, 150, burns),
+        "the blast lights the crate"
+    );
+    let read: SaveGame = serde_json::from_value(json(&saved)).expect("a save reads");
+    load(&mut harness, read);
+    scaffold(&mut harness);
+    pin_camera(&mut harness, CORNER);
+    harness.world_mut().resource_mut::<Time>().resume();
+    assert!(
+        until(&mut harness, 150, burns),
+        "a loaded run's first keg blast, on the step the last run's blew on, lights the crate"
+    );
+}
+
 /// Chemistry's waiting entries and the entries its runs took.
 fn queue_counts(harness: &UiHarness) -> (usize, u64) {
     let chemistry = harness.world().resource::<Chemistry>();

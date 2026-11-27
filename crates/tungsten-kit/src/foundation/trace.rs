@@ -43,6 +43,9 @@ pub struct KitTrace {
     capacity: usize,
     steps: u64,
     pushed: u64,
+    /// `pushed` at the last [`clear`](Self::clear): `pushed` stays the
+    /// debug view's place across a clear.
+    cleared: u64,
 }
 
 impl Default for KitTrace {
@@ -65,6 +68,7 @@ impl KitTrace {
             capacity,
             steps: 0,
             pushed: 0,
+            cleared: 0,
         }
     }
 
@@ -90,7 +94,7 @@ impl KitTrace {
     /// How many entries it dropped, oldest first, to keep its capacity.
     #[must_use]
     pub fn dropped(&self) -> u64 {
-        self.pushed - self.ring.len() as u64
+        self.pushed - self.cleared - self.ring.len() as u64
     }
 
     /// How many fixed steps have ended since it was inserted.
@@ -116,7 +120,7 @@ impl KitTrace {
     /// Drops every entry and the dropped count; the step count stays.
     pub fn clear(&mut self) {
         self.ring.clear();
-        self.pushed = 0;
+        self.cleared = self.pushed;
     }
 
     fn push(&mut self, entry: TraceEntry) {
@@ -219,7 +223,7 @@ impl TraceKind {
 }
 
 impl fmt::Display for TraceEntry {
-    /// `frame 12 step 40: Entity(7) damaged 3 (killed)`, in the kind's
+    /// `frame 12 step 40: Entity(7) damaged 3 with Entity(9)`, in the kind's
     /// words.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

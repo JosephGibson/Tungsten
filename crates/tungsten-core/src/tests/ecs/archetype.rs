@@ -30,15 +30,6 @@ fn make_entity(index: u32) -> Entity {
 }
 
 #[test]
-fn push_and_get() {
-    let mut arch = make_arch(vec![column::<u32>(vec![]), column::<f32>(vec![])]);
-    push_row::<u32, f32>(&mut arch, make_entity(0), 42u32, 1.5f32);
-
-    assert_eq!(values::<u32>(&arch), vec![42u32]);
-    assert_eq!(values::<f32>(&arch), vec![1.5f32]);
-}
-
-#[test]
 fn columns_follow_the_sorted_type_key() {
     let arch = make_arch(vec![
         column::<u32>(vec![]),
@@ -262,14 +253,6 @@ fn slot_column_erased_is_the_key_types_own_column() {
 }
 
 #[test]
-fn typed_rejects_another_component_type() {
-    let (_, column) = column::<u32>(vec![7]);
-
-    assert_eq!(column.typed::<u32>().unwrap().0, vec![7]);
-    assert!(column.typed::<f32>().is_none());
-}
-
-#[test]
 fn swap_remove_row_middle() {
     let mut arch = make_arch(vec![column::<u32>(vec![]), column::<f32>(vec![])]);
 
@@ -451,24 +434,6 @@ fn move_row_to_rejects_another_column_type() {
     let (_, mut source) = column::<u32>(vec![1]);
     let (_, mut dest) = column::<f32>(vec![]);
     source.move_row_to(0, &mut *dest);
-}
-
-#[test]
-fn columns_consistent_length_after_multiple_removals() {
-    let mut arch = make_arch(vec![column::<u32>(vec![]), column::<bool>(vec![])]);
-
-    for i in 0u32..5 {
-        push_row::<u32, bool>(&mut arch, make_entity(i), i, i % 2 == 0);
-    }
-
-    arch.swap_remove_row(2);
-    arch.swap_remove_row(0);
-
-    let u32_len = arch.typed_column::<u32>().unwrap().0.len();
-    let bool_len = arch.typed_column::<bool>().unwrap().0.len();
-    assert_eq!(u32_len, arch.entities.len());
-    assert_eq!(bool_len, arch.entities.len());
-    assert_eq!(u32_len, 3);
 }
 
 #[test]

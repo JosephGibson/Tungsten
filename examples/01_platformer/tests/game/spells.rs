@@ -42,8 +42,8 @@ use tungsten::testing::UiHarness;
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::level::components::Glow;
-use example_01_platformer::features::player::components::Lantern;
-use example_01_platformer::features::player::{GUTTER_PUFF, STAFF_LIT};
+use example_01_platformer::features::player::components::{Lantern, StaffGlow};
+use example_01_platformer::features::player::{GUTTER_PUFF, GUTTER_SECS, STAFF_LIT};
 use example_01_platformer::features::spells::components::Spell;
 use tungsten::kit::Tags;
 
@@ -391,7 +391,16 @@ fn the_staff_light_burns_mana_and_gutters_out() {
     });
     assert!(out, "it gutters out");
     assert_eq!((gutters, puffs), (1, 1), "one puff and one sound");
+    // It fades out over its gutter's seconds, sputtering, then goes dark;
+    // a cast's pause holds the regeneration off past the fade.
+    super::combat::apply(&mut harness, player, "casting", None);
     harness.step(1);
+    let fading = *harness.world().get::<Glow>(player).unwrap();
+    let lit = harness.world().get::<StaffGlow>(player).unwrap().0.light;
+    assert!(!fading.hidden && fading.light < lit, "fading: {fading:?}");
+    for _ in 0..(GUTTER_SECS * 60.0).ceil() as u32 {
+        harness.step(1);
+    }
     assert!(harness.world().get::<Glow>(player).unwrap().hidden, "dark");
     // It waits for 10 mana, then relights.
     let mut waited = 0.0_f32;

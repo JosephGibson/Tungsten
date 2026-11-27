@@ -9,14 +9,14 @@ A gameplay framework for action RPGs, designed on paper by the [roadmap redo](ro
   - Each step's mechanisms: the step's own plan specifies them from the tree of its day.
   - A game or a vertical slice (the owner's answer of 2026-10-23); the studied games' names for things, items, content and tree layouts.
   - Minions, totems, traps and mines; reserved auras; flasks; leech; armour, evasion and block (a physical factor and a `damage_taken` line cover 1.0's need); dual wielding; crafting beyond a reroll; trade; multiplayer. A game writes them on §3.6's named handlers, or 1.x takes them.
-- **files to touch:** This file. `ROADMAP.md`'s `arpg-design` line at the start and the finish. The [Phase 7 plan](phase-7.md) holds §15's rows' steps and status (its §2); the steps that build them read this file and leave it as it is.
+- **files to touch:** This file. `ROADMAP.md`'s `arpg-design` line at the start and the finish. The [roadmap redo](roadmap-redo.md)'s §3 Phase 8 rows hold §15's open rows by ID since Phase 7's close, which found the rest landed (§15's triage note); the steps that build them read this file and leave it as it is.
 - **ordered steps:**
   1. Read the brief, the kit's stat, damage, ability, projectile and loot code and the API snapshots; targeted research on the mechanics (§2). Done.
   2. The design (§3–§10), the page with numbers, weekly tasks and stress numbers (§11–§13), the build sheet and register (§14–§15), the scope by step (§16), trade-offs and questions (§17–§18). Done.
   3. A fresh-context verifier on every citation (§19). Done.
   4. One `/critique` round at xhigh on §5 and §6, applying what holds (§19). Done.
   5. The owner's triage of §15's rows and §18's questions. Done 2026-10-29: every row at its default step, every question at its default.
-  6. 7.7 assigns the rows to 7.10, 8.1, 8.2 and 8.7; 8.6 takes §12's tasks; 9.1 takes §13's rows. Done 2026-10-29 in the [Phase 7 plan](phase-7.md) (§2.2, §2.3, §2.6), with §1's assumptions rechecked there (§2.7).
+  6. 7.7 assigns the rows to 7.10, 8.1, 8.2 and 8.7; 8.6 takes §12's tasks; 9.1 takes §13's rows. Done 2026-10-29 in the Phase 7 plan (§2.2, §2.3, §2.6), with §1's assumptions rechecked there (§2.7); at its close (2026-11-26, its last content at `baaecc20`) its open rows went into the redo's §3 Phase 8 rows by ID.
 - **done-when:**
   - Every "data only" and "game Rust" verdict cites an item in `api/*.txt`, and every gap names a search that finds nothing; §19's verifier report confirms or fixes every citation.
   - One critique round on §5 and §6 has run and what held is applied (§19).
@@ -33,7 +33,7 @@ A gameplay framework for action RPGs, designed on paper by the [roadmap redo](ro
 
 ## 1. Assumptions
 
-Provisional, as the brief says; 7.7 rechecks each before it assigns §15's rows. Rechecked at `08111d5a`: each holds ([Phase 7 plan](phase-7.md) §2.7).
+Provisional, as the brief says; 7.7 rechecks each before it assigns §15's rows. Rechecked at `08111d5a`: each holds (the Phase 7 plan's §2.7, at `baaecc20`).
 
 - **The redo's §5.2 statuses and Q17's merge.** Effects become statuses with intensity, stacking, granted tags and stat changes; this design's lines (§4.1) are what a status's stat changes become, and a status's lines scale with its intensity through `curves`.
 - **P8-3's equipment as statuses.** An equipped item applies a status whose lines are the item's rolled global lines (§4.6).
@@ -621,7 +621,7 @@ Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the g
 
 The rows hold about 7,000 of the build sheet's 7,040 lines: AR33's 40 are P7-6's, already in 7.10's list, and AR1 and AR10 are data only.
 
-**Triage, 2026-10-29.** The owner kept every row at its default step: PA-1–PA-11 to 7.10, PA-12 and PA-13 to 8.1, PA-14–PA-16 to 8.2, PA-17–PA-22 to 8.7. PA-3, PA-4 and PA-9 may still move to 8.7 if 7.10's plan finds the step too large (PA-Q2, §16); they moved on 2026-10-31 (`phase-7.md` §2.3). PA-13's label styles the instance's rarity by name; 8.7's `rarities` kind (PA-19) is what rolls it. 7.7 assigns the rows by ID.
+**Triage, 2026-10-29.** The owner kept every row at its default step: PA-1–PA-11 to 7.10, PA-12 and PA-13 to 8.1, PA-14–PA-16 to 8.2, PA-17–PA-22 to 8.7. PA-3, PA-4 and PA-9 may still move to 8.7 if 7.10's plan finds the step too large (PA-Q2, §16); they moved on 2026-10-31 (the Phase 7 plan's §2.3, at `baaecc20`). PA-13's label styles the instance's rarity by name; 8.7's `rarities` kind (PA-19) is what rolls it. 7.7 assigns the rows by ID. At Phase 7's close (2026-11-26) the eight rows 7.10 took had landed, PA-1, PA-2, PA-5, PA-6, PA-7, PA-10 and PA-11 in 7.10a (`D-238`) and PA-8 in 7.10b (`D-240`, `D-241`), and the other fourteen sit by ID in the redo's §3 rows: PA-12 and PA-13 in 8.1, PA-14, PA-15 and PA-16 in 8.2, and PA-3, PA-4, PA-9 and PA-17 to PA-22 in 8.7.
 
 ## 16. Minimal implementation scope by step
 
@@ -656,7 +656,7 @@ The `defer` row (PA-9) and PA-3 and PA-4 moved to 8.7 on 2026-10-31 (PA-Q2), whi
 The owner accepted all six defaults on 2026-10-29: PA-Q2 and PA-Q5 through §15's triage, the other four as asked.
 
 - **PA-Q1. The new domain's name.** *Default: `build`* (T12). **Accepted.**
-- **PA-Q2. How large 7.10 grows.** Eleven rows land there by the brief's rule. *Default: all eleven; PA-3, PA-4 and PA-9 may move to 8.7 if 7.10's plan finds it too large* (§16). **Accepted.** **Taken 2026-10-31,** before 7.10's plans: the three moved to 8.7 when 7.10 took the motion rows 7.8 moved on (`phase-7.md` §2.3).
+- **PA-Q2. How large 7.10 grows.** Eleven rows land there by the brief's rule. *Default: all eleven; PA-3, PA-4 and PA-9 may move to 8.7 if 7.10's plan finds it too large* (§16). **Accepted.** **Taken 2026-10-31,** before 7.10's plans: the three moved to 8.7 when 7.10 took the motion rows 7.8 moved on (the Phase 7 plan's §2.3, at `baaecc20`).
 - **PA-Q3. Crit in the kit for every genre.** *Default: yes, as a source's stats, drawn only where a chance is above 0* (§6.4), so 01's crit becomes data at 7.13. **Accepted.**
 - **PA-Q4. Saved items.** *Default: in full, with the seed* (T5). **Accepted.**
 - **PA-Q5. World sources in 7.10 rather than 8.7.** 01's difficulty uses them, and the `arpg` recipe's area modifiers, which meets the redo's §5.3 admission rule. *Default: 7.10.* **Accepted.**
@@ -691,4 +691,4 @@ These fixes were checked mechanically, not by a second round (the brief's stop).
 
 - **2026-10-28.** Read §7.3 and the sections it names, the paper designs' register, the plans README, the API snapshots and the kit's stats, damage pipeline, effects, abilities, hit grid, phases and source code, and 01's combat and enemies. Researched the mechanics on public wikis and guides (§2). Found two `D-218` entries in `DECISIONS.md` (the ARPG genre and a `game.id` rule); the `qa6` session in the same tree renumbered its rule to `D-219` (`f139bef`), so `D-218` here is the ARPG's. Drafted with a span checker and an arithmetic script in the scratchpad; the critique (gpt-6-astra, xhigh, on an 18,776-character extract) and a fresh-context verifier ran in parallel on the draft, and their findings were applied in that order.
 - **2026-10-29.** Step 5 in the 0.113 tree: the owner triaged §15's rows in four batches (7.10's fixed shapes, 7.10's movable rows, 8.1 and 8.2, 8.7) and answered §18's four open questions; PA-Q2 and PA-Q5 followed from the rows. Every row and question kept its default. The status moved to `in progress`, not `done`: step 6 is 7.7's, and it reads §15 before the plan is archived.
-- **2026-10-31.** PA-3, PA-4 and PA-9 moved to 8.7 before 7.10's plans (PA-Q2; §15, §16), when 7.10 took the motion rows 7.8 moved on (`phase-7.md` §2.3).
+- **2026-10-31.** PA-3, PA-4 and PA-9 moved to 8.7 before 7.10's plans (PA-Q2; §15, §16), when 7.10 took the motion rows 7.8 moved on (the Phase 7 plan's §2.3, at `baaecc20`).

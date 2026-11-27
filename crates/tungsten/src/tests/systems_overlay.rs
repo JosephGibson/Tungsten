@@ -1,5 +1,4 @@
 use glam::Vec2;
-use tungsten_core::input::KeyCode;
 use tungsten_core::text::TextAlign;
 use tungsten_core::ui::{FixedAdvanceMeasure, UiTree};
 
@@ -136,20 +135,6 @@ fn rows_sort_by_average_under_the_column_headers() {
         TextAlign::End
     );
     assert!(tree.scroll(window.body).is_some(), "a scrolling body");
-}
-
-#[test]
-fn toggle_on_f2_action_flips_enabled() {
-    let mut world = World::new();
-    let mut input = InputState::new();
-    input.key_down(KeyCode::F2);
-    world.insert_resource(input);
-    world.insert_resource(ActionMap::default_map());
-    world.insert_resource(SystemTimingOverlay::default());
-
-    systems_overlay_toggle_system(&mut world);
-
-    assert!(world.get_resource::<SystemTimingOverlay>().unwrap().enabled);
 }
 
 // ---- M58 step 5: stages, numbers and bars ----

@@ -21,9 +21,9 @@ use glam::{Vec2, Vec3};
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
 use tungsten::core::save::SaveOptions;
 use tungsten::core::{
-    AmbientLight, Bundle, CameraController, Collider, DataRegistry, Entity, Light, Position,
-    RigidBodyBundle, Schedule, SpawnContext, Stage, TilemapInstance, TilemapRegistry, Transform,
-    World, system,
+    AmbientLight, Bundle, CameraController, Collider, DataRegistry, Entity, EventCursor, Light,
+    Position, RigidBodyBundle, Schedule, SpawnContext, Stage, TilemapInstance, TilemapRegistry,
+    Transform, World, system,
 };
 use tungsten::kit::{Phase, StateMachine, TRANSFORM_PROPAGATE, Tags, WorldBounds, ensure_phases};
 use tungsten::plugins::{CAMERA_UPDATE, PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
@@ -147,6 +147,11 @@ impl Plugin for LevelPlugin {
             .after("props_heat")
             .before("cascade_run");
         schedule.add(Stage::FixedUpdate, Phase::Overlap.join(take));
+        let mut bites = EventCursor::new();
+        let throw = system("lava_throw", move |world: &mut World| {
+            lava::throw(world, &mut bites);
+        });
+        schedule.add(Stage::FixedUpdate, Phase::React.join(throw));
         schedule.add(
             Stage::PostUpdate,
             Phase::Present.join(system("elevator_look", elevator::look)),

@@ -50,6 +50,15 @@ pub const AIMING: &str = "state.aiming";
 pub const FLARE_RADIUS: f32 = 1.35;
 pub const FLARE_CORE: f32 = 1.6;
 pub const FLARE_LIGHT: f32 = 1.5;
+/// The staff light's own look: as it lights, its halo, core and lights
+/// kindle from [`KINDLE_FROM`] of the prefab's to [`KINDLE_PEAK`] of it over
+/// the first [`KINDLE_RISE`] of [`KINDLE_SECS`], and settle back to it; as
+/// it gutters out they fade to nothing over [`GUTTER_SECS`], sputtering.
+pub const KINDLE_SECS: f32 = 0.45;
+pub const KINDLE_RISE: f32 = 0.25;
+pub const KINDLE_FROM: f32 = 0.2;
+pub const KINDLE_PEAK: f32 = 1.45;
+pub const GUTTER_SECS: f32 = 0.7;
 /// The staff light: its ability, which burns mana each step it is lit, the
 /// tag its effect grants while it burns, the mana it relights at after
 /// guttering out, and the puff it gutters with (L5's first half, Q15).

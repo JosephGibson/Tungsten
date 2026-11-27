@@ -440,49 +440,45 @@ fn thermal_shock_hurts_the_player_at_half() {
 }
 
 #[test]
-fn lethal_fire_on_a_frozen_dummy_explodes_as_its_one_burst() {
-    let (mut harness, _, dummy) = with_dummy();
-    apply(&mut harness, dummy, "frozen", None);
-    DamageRequest::new(dummy, 395.0).apply(harness.world_mut());
-    Hit::new(dummy, [(Kind::Fire, 10.0)]).queue(harness.world_mut());
-    harness.step(1);
-    assert_eq!(health(&harness, dummy), 0.0, "killed");
-    // Its thermal shock ran in the killing step's resolve, a step earlier
-    // than the cascade's.
-    assert_eq!(bursts(&harness, "ex10_frost_blast"), 1, "exploded");
-    assert_eq!(
-        bursts(&harness, "ex10_ice_shatter") + bursts(&harness, "ex10_poof"),
-        0
-    );
-    harness.step(1);
-    assert_eq!(bursts(&harness, "ex10_frost_blast"), 1, "its one burst");
-    assert_eq!(
-        bursts(&harness, "ex10_ice_shatter") + bursts(&harness, "ex10_poof"),
-        0
-    );
-}
-
-#[test]
-fn lethal_cold_on_a_burning_dummy_steams_as_its_one_burst() {
-    let (mut harness, _, dummy) = with_dummy();
-    apply(&mut harness, dummy, "burning", None);
-    DamageRequest::new(dummy, 395.0).apply(harness.world_mut());
-    Hit::new(dummy, [(Kind::Cold, 10.0)]).queue(harness.world_mut());
-    harness.step(1);
-    assert_eq!(health(&harness, dummy), 0.0, "killed");
-    // Its steam ran in the killing step's resolve, a step earlier than the
-    // cascade's.
-    assert_eq!(bursts(&harness, "ex10_steam_burst"), 1, "steamed");
-    assert_eq!(
-        bursts(&harness, "ex10_burn_out") + bursts(&harness, "ex10_poof"),
-        0
-    );
-    harness.step(1);
-    assert_eq!(bursts(&harness, "ex10_steam_burst"), 1, "its one burst");
-    assert_eq!(
-        bursts(&harness, "ex10_burn_out") + bursts(&harness, "ex10_poof"),
-        0
-    );
+fn a_lethal_hit_on_a_reacting_dummy_bursts_once() {
+    // Each reaction runs in the killing step's resolve, a step earlier than the cascade's, in
+    // place of the two endings it replaces.
+    for (case, status, kind, burst, endings) in [
+        (
+            "fire on a frozen dummy",
+            "frozen",
+            Kind::Fire,
+            "ex10_frost_blast",
+            ["ex10_ice_shatter", "ex10_poof"],
+        ),
+        (
+            "cold on a burning dummy",
+            "burning",
+            Kind::Cold,
+            "ex10_steam_burst",
+            ["ex10_burn_out", "ex10_poof"],
+        ),
+    ] {
+        let (mut harness, _, dummy) = with_dummy();
+        apply(&mut harness, dummy, status, None);
+        DamageRequest::new(dummy, 395.0).apply(harness.world_mut());
+        Hit::new(dummy, [(kind, 10.0)]).queue(harness.world_mut());
+        harness.step(1);
+        assert_eq!(health(&harness, dummy), 0.0, "{case}: killed");
+        assert_eq!(bursts(&harness, burst), 1, "{case}: its burst");
+        assert_eq!(
+            bursts(&harness, endings[0]) + bursts(&harness, endings[1]),
+            0,
+            "{case}: no ending"
+        );
+        harness.step(1);
+        assert_eq!(bursts(&harness, burst), 1, "{case}: its one burst");
+        assert_eq!(
+            bursts(&harness, endings[0]) + bursts(&harness, endings[1]),
+            0,
+            "{case}: still no ending"
+        );
+    }
 }
 
 #[test]

@@ -577,12 +577,14 @@ fn bin_key(cell: (i32, i32)) -> u64 {
     (u64::from(cell.0 as u32) << 32) | u64::from(cell.1 as u32)
 }
 
-/// The bin of width `width` that holds `point`.
+/// The bin of width `width` that holds `point`, clamped so that its
+/// neighbours, which [`Magnet::pull`] walks, stay in range: near 2^31 an
+/// `f32` steps by 256, so the margin is half the range, not 1.
 fn bin_of(point: Vec2, width: f32) -> (i32, i32) {
     let bin = |v: f32| {
         (v / width)
             .floor()
-            .clamp(i32::MIN as f32 + 1.0, i32::MAX as f32 - 1.0) as i32
+            .clamp((i32::MIN / 2) as f32, (i32::MAX / 2) as f32) as i32
     };
     (bin(point.x), bin(point.y))
 }

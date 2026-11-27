@@ -325,6 +325,34 @@ fn each_op_holds_on_numbers() {
 }
 
 #[test]
+fn asserts_compare_large_integers_exactly() {
+    // Past 2^53 two distinct integers are one `f64`.
+    let low = json!(9_007_199_254_740_992_u64);
+    let high = json!(9_007_199_254_740_993_u64);
+    let top = json!(u64::MAX);
+    let below_top = json!(u64::MAX - 1);
+    let cases = [
+        ("==", &high, &low, false),
+        ("!=", &high, &low, true),
+        ("<", &low, &high, true),
+        ("<=", &high, &low, false),
+        (">", &high, &low, true),
+        (">=", &low, &high, false),
+        ("==", &below_top, &top, false),
+        ("<", &below_top, &top, true),
+        (">", &json!(i64::MIN + 1), &json!(i64::MIN), true),
+        ("<", &json!(-1), &top, true),
+    ];
+    for (op, actual, value, holds) in cases {
+        assert_eq!(
+            assert_of(op, value).check(actual),
+            Ok(holds),
+            "{actual} {op} {value}"
+        );
+    }
+}
+
+#[test]
 fn each_op_holds_on_arrays_and_strings() {
     assert_eq!(
         assert_of("==", &json!([1, 2.0])).check(&json!([1.0, 2])),

@@ -1,6 +1,6 @@
 # Seam register (redo 7.5)
 
-Every place example 01 and the template compensate for the engine, kit or template, with evidence, ranked by the code a generic fix would delete and how often the pattern recurs: the roadmap redo's analysis pass (`docs/plans/roadmap-redo.md`, step 7.5, its brief in §7.1). It keeps its register as the paper designs and the ARPG design keep theirs: this file holds each row's evidence, and the Phase 7 plan's tables (`docs/plans/phase-7.md` §2.2–§2.3) its disposition. Framed at `3b01712d`.
+Every place example 01 and the template compensate for the engine, kit or template, with evidence, ranked by the code a generic fix would delete and how often the pattern recurs: the roadmap redo's analysis pass (`docs/plans/roadmap-redo.md`, step 7.5, its brief in §7.1). It keeps its register as the paper designs and the ARPG design keep theirs: this file holds each row's evidence, and the Phase 7 plan's tables held its disposition (§2.2–§2.3, at `baaecc20`) until Phase 7's close carried the open ones into the [roadmap redo](roadmap-redo.md)'s §3 Phase 8 rows by ID. Framed at `3b01712d`.
 
 - **status:** in progress (written, verified and triaged by redo 7.5; the evidence its rows' steps build from, deleted with its citations by the rule in its done-when)
 - **goal:** Every seam in 01's `src/`, `tests/` and `tools/` and in the template as a verified row: the code a generic fix would delete, how often the pattern recurs, what the engine, kit or template lacks, the fix and its prerequisites; ranked, and each row triaged once into phase 7's tables, so the step that builds each system takes its seams.
@@ -9,9 +9,9 @@ Every place example 01 and the template compensate for the engine, kit or templa
   - The paper designs' and the ARPG design's rows, and a K-row without new evidence: their 01 sites go to §4, not into new rows.
   - Bugs beyond one verified line each (§5); known issues takes them.
   - A second reading or verification round.
-- **files to touch:** This file, by redo 7.5's run. The dispositions live in phase 7's tables, `ROADMAP.md`'s Later and the levers for 9.2 in `docs/perf/benchmarks.md` (§7). After 7.5, only the commit that deletes this file.
+- **files to touch:** This file, by redo 7.5's run. The dispositions lived in phase 7's tables until its close; the open S-rows sit by ID in the redo's §3 Phase 8 rows, beside `ROADMAP.md`'s Later and the levers for 9.2 in `docs/perf/benchmarks.md` (§7). After 7.5, only the commit that deletes this file.
 - **ordered steps:** (1) the method and seeds (§1–§2); (2) nine readings and their merge, kept in the run's folder (§1.5); (3) verification (§3–§6); (4) triage (§3's Step column, §7); (5) the close (this status, §5's filed marks).
-- **done-when:** §3's rows read, merged, verified and triaged, each S-ID once in phase 7's tables (its Step 4's count). After 7.5 this file stays `in progress`. Once every S-row and every ID its §4 names is terminal (phase 7's §2.1), one commit ends each `Later` and `9.2` line naming one of them with "the seam register at `<sha>`", this file's last commit, and deletes this file with its citations; that pointer names no `docs/plans/` path, which the citation check would fail once the file is gone.
+- **done-when:** §3's rows read, merged, verified and triaged, each S-ID once in phase 7's tables (its Step 4's count). After 7.5 this file stays `in progress`. Once every S-row and every ID its §4 names is terminal (landed, closed, `Later` or `9.2`, by the Phase 7 plan's §2.1 at `baaecc20`; the rows open at its close end in the Phase 8 steps whose §3 rows name them), one commit ends each `Later` and `9.2` line naming one of them with "the seam register at `<sha>`", this file's last commit, and deletes this file with its citations; that pointer names no `docs/plans/` path, which the citation check would fail once the file is gone.
 
 ## Context digest
 
@@ -217,7 +217,7 @@ A seam these fixed is marked done in the reader's file, not reported.
 
 ### 2.7 Registered rows
 
-Phase 7's §2.2 and §2.3 (`docs/plans/phase-7.md`): the P7-, P8- and PA- rows, from the paper designs' and the ARPG design's registers, and the K-rows of §2.1 without new evidence. A finding one of their fixes would delete is a §4 entry, never an S-row; a K-row with new evidence is an S-row ending `(K<n>)` (§1.2).
+Phase 7's §2.2 and §2.3 (the Phase 7 plan, at `baaecc20`): the P7-, P8- and PA- rows, from the paper designs' and the ARPG design's registers, and the K-rows of §2.1 without new evidence. A finding one of their fixes would delete is a §4 entry, never an S-row; a K-row with new evidence is an S-row ending `(K<n>)` (§1.2).
 
 ### 2.8 Seeds matched beyond the lists
 

@@ -9,15 +9,15 @@ use std::path::{Path, PathBuf};
 
 use tungsten_core::assets::manifest::ResolvedSprite;
 use tungsten_core::assets::{
-    AnimationData, AnimationRegistry, MaterialRegistry, ParticleConfig, ParticleConfigRegistry,
-    ParticleMeshRegistry, PrefabRegistry, ResolvedManifest, SceneData, SoundData, SoundRegistry,
-    StagedLoad, StagedLoadError, TilemapData, TilemapRegistry, UvRect,
+    AnimationData, AnimationRegistry, FilterMode, MaterialRegistry, ParticleConfig,
+    ParticleConfigRegistry, ParticleMeshRegistry, PrefabRegistry, ResolvedManifest, SceneData,
+    SoundData, SoundRegistry, StagedLoad, StagedLoadError, TilemapData, TilemapRegistry, UvRect,
 };
 use tungsten_core::ui::{
     ScreenFile, ScreenFileError, ScreenNames, Theme, ThemeFile, UiBindings, UiScreenRegistry,
     UiThemeRegistry, UiTree, widgets,
 };
-use tungsten_core::{AssetRegistry, TextureHandle, World};
+use tungsten_core::{AssetRegistry, SpriteAlpha, TextureHandle, World};
 
 use super::atlas::decode_sprite_siblings;
 use super::{
@@ -55,6 +55,17 @@ pub(crate) fn check_files(
     let (manifest, issues) = ResolvedManifest::load_for_check(roots, game_dir);
     for issue in issues {
         errors.push(&issue.manifest, issue.error.to_string());
+    }
+
+    // 1b. The reserved names, which every load refuses, each reported.
+    let (white, glow) = (super::ENGINE_WHITE, super::ENGINE_GLOW);
+    if let Some(sprite) = manifest.sprites.get(white) {
+        let message = format!("sprite '{white}' is reserved by the engine; rename it");
+        errors.push(&sprite.path, message);
+    }
+    if let Some(material) = manifest.materials.get(glow) {
+        let message = format!("material '{glow}' is reserved by the engine; rename it");
+        errors.push(&material.source_manifest, message);
     }
 
     // 2. Sprites and their siblings, registered so every later reference,
@@ -336,7 +347,8 @@ pub(crate) fn screen_names(world: &World, registry: &UiScreenRegistry) -> Screen
 
 /// Decodes each sprite's file once and its siblings against its size, and
 /// checks each sheet frame against the image (redo 7.9), then registers each
-/// sprite that decodes with a placeholder handle.
+/// sprite that decodes with a placeholder handle, and the reserved
+/// `engine_white` after them unless a manifest sprite took its name.
 fn check_sprites(manifest: &ResolvedManifest, world: &mut World, errors: &mut Errors) {
     let mut sizes: HashMap<&Path, Option<(u32, u32)>> = HashMap::new();
     for id in sorted(manifest.sprites.keys()) {
@@ -388,12 +400,26 @@ fn check_sprites(manifest: &ResolvedManifest, world: &mut World, errors: &mut Er
         }
         register_metadata(asset_registry(world), id, sprite, size, NO_TEXTURE, false);
     }
+    // The reserved white texel after the manifest's, as a load registers
+    // it, so a prefab may name it.
+    let registry = asset_registry(world);
+    if registry.get_sprite(super::ENGINE_WHITE).is_none() {
+        registry.register_sprite(
+            super::ENGINE_WHITE.to_string(),
+            FilterMode::Nearest,
+            1,
+            1,
+            PathBuf::new(),
+            NO_TEXTURE,
+            UvRect::FULL,
+            None,
+            None,
+            None,
+        );
+        registry.set_sprite_alpha(super::ENGINE_WHITE, SpriteAlpha::Opaque);
+    }
 }
 
-/// Registers sprite `id`'s metadata with no pixels behind it, as `tungsten
-/// check` and the headless harness do (redo 7.9): its size (its frame's, or
-/// `file`'s for a whole file), filter, siblings, nine-slice, frame, anchor
-/// and named points, on `atlas` with full UVs, and lit on it when `lit`.
 /// A sprite's size in source pixels from its file's, `(width, height)`:
 /// a sheet frame's rect's, else the whole file's.
 pub(crate) fn frame_size(sprite: &ResolvedSprite, file: (u32, u32)) -> (u32, u32) {
@@ -402,6 +428,10 @@ pub(crate) fn frame_size(sprite: &ResolvedSprite, file: (u32, u32)) -> (u32, u32
         .map_or(file, |[_, _, width, height]| (width, height))
 }
 
+/// Registers sprite `id`'s metadata with no pixels behind it, as `tungsten
+/// check` and the headless harness do (redo 7.9): its size (its frame's, or
+/// `file`'s for a whole file), filter, siblings, nine-slice, frame, anchor
+/// and named points, on `atlas` with full UVs, and lit on it when `lit`.
 pub(crate) fn register_metadata(
     registry: &mut AssetRegistry,
     id: &str,

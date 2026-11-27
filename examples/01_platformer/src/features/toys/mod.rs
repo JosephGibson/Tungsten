@@ -52,11 +52,16 @@ pub const SMALL_BALL_INTERVAL: f32 = 0.032 / 5.0;
 /// in one place.
 pub const BALL_JITTER: f32 = TILE / 16.0;
 /// A tossed bowling ball's speed, and the steepest it leaves the hand at,
-/// so it lands low and rolls.
-pub const TOSS_SPEED: f32 = 700.0;
+/// so it lands low and rolls: its prefab's mass, 8, keeps its shatter, keg
+/// and throw thresholds, and its `impact_damage` grows with the speed.
+pub const TOSS_SPEED: f32 = 1120.0;
 pub const TOSS_STEEPEST: f32 = 25.0 * std::f32::consts::PI / 180.0;
 /// Where a tossed ball leaves the caster's centre, along the aim.
 pub const TOSS_OFFSET: f32 = 28.0;
+/// A bowling ball's strike: meeting an enemy at this closing speed or more,
+/// px/s, along the line between their centres, it stuns it
+/// (`elements::systems::ball_strikes`).
+pub const STRIKE_SPEED: f32 = 800.0;
 /// Iron's weight: a block falling faster than [`IRON_FALL_FROM`] falls
 /// harder by [`IRON_WEIGHT`] px/s², half the world's gravity again, unless
 /// a troll holds or throws it.

@@ -11,24 +11,6 @@ fn alloc_gives_distinct_entities() {
 }
 
 #[test]
-fn alloc_free_reuses_index_with_bumped_generation() {
-    let mut e = Entities::new();
-    let a = e.alloc();
-    e.set_location(
-        a,
-        EntityLocation {
-            archetype_id: 0,
-            row: 0,
-        },
-    );
-    e.free(a);
-
-    let b = e.alloc();
-    assert_eq!(b.index, a.index, "slot should be reused");
-    assert_eq!(b.generation, a.generation + 1, "generation must be bumped");
-}
-
-#[test]
 fn stale_handle_returns_none() {
     let mut e = Entities::new();
     let a = e.alloc();

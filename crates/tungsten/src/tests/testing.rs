@@ -544,21 +544,23 @@ fn set_dt_accepts_zero() {
 }
 
 #[test]
-#[should_panic(expected = "dt must be finite and not negative")]
-fn set_dt_rejects_nan() {
-    Harness::new(app()).set_dt(f32::NAN);
-}
-
-#[test]
-#[should_panic(expected = "dt must be finite and not negative")]
-fn set_dt_rejects_infinity() {
-    Harness::new(app()).set_dt(f32::INFINITY);
-}
-
-#[test]
-#[should_panic(expected = "dt must be finite and not negative")]
-fn set_dt_rejects_a_negative_dt() {
-    Harness::new(app()).set_dt(-0.01);
+fn set_dt_rejects_a_dt_that_is_not_finite_or_is_negative() {
+    for dt in [f32::NAN, f32::INFINITY, -0.01] {
+        let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            Harness::new(app()).set_dt(dt);
+        })) else {
+            panic!("dt {dt}: set_dt took it");
+        };
+        let message = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| payload.downcast_ref::<&str>().copied())
+            .unwrap_or_default();
+        assert!(
+            message.contains("dt must be finite and not negative"),
+            "dt {dt}: panicked with {message:?}"
+        );
+    }
 }
 
 /// What each stage's system saw of [`Exiting`], one entry a run.

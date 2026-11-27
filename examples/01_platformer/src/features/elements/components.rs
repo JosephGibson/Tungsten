@@ -47,3 +47,18 @@ impl IcePulse {
 /// pulse it lights: drawn just before it, both ended by their tweens.
 #[derive(Debug, Clone, Copy)]
 pub struct PulseGlow(pub tungsten::core::Entity);
+
+/// The bowling balls' strikes whose bodies still touch: each a ball and
+/// the enemy it struck, kept until they part, so one contact stuns once
+/// (`ball_strikes`) and thuds none (`ball_impacts`). A World resource the
+/// plugin inserts; not saved, so a load mid-contact may strike once more.
+#[derive(Debug, Default)]
+pub struct Strikes(pub Vec<(tungsten::core::Entity, tungsten::core::Entity)>);
+
+impl Strikes {
+    /// Whether `ball` struck `foe` and still touches it.
+    #[must_use]
+    pub fn touching(&self, ball: tungsten::core::Entity, foe: tungsten::core::Entity) -> bool {
+        self.0.contains(&(ball, foe))
+    }
+}

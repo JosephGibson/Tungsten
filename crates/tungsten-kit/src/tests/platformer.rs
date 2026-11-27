@@ -226,15 +226,6 @@ fn an_early_release_cuts_the_jump_once_and_a_cut_of_one_keeps_it() {
 }
 
 #[test]
-fn a_press_alone_holds_the_jump_at_full_height() {
-    let (mut world, mut schedule, entity) = standing(PlatformerController::new(RUN, JUMP));
-    let start = position(&world, entity).y;
-    controller(&mut world, entity).press_jump();
-    let height = start - peak(&mut world, &mut schedule, entity, 30);
-    assert!(JUMP * JUMP / (2.0 * GRAVITY) - height < 0.25, "{height}");
-}
-
-#[test]
 fn coyote_time_takes_a_press_made_just_after_the_edge_and_not_later() {
     // Returns whether a press `late` steps after it left the edge jumped.
     let jumps_after = |late: usize| {

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """CPU-only asset coverage, template, documentation, active-plan, plan-citation and roadmap checks (stdlib only).
 
-Never traverses docs/plans/archive, follows directory symlinks, edits manifests,
-or deletes files. Rust's manifests/decision_index tests remain authoritative for
+Never traverses the deleted records' folders (docs/plans/archive, docs/plans/1.0;
+D-314), follows directory symlinks, edits manifests, or deletes files. Rust's manifests/decision_index tests remain authoritative for
 manifest semantics and index membership; `just repo-check` runs them too.
 """
 
@@ -23,7 +23,9 @@ DOCS = (
     "docs/plans/README.md", "docs/releases.md", "docs/assets.md", "docs/getting-started.md",
     "docs/README.md", "docs/validation.md", "ROADMAP.md", "docs/operating-rules.md",
 )
-ARCHIVE = "docs/plans/archive"
+# The plans archive and the frozen 1.0 records, deleted by D-314; their last commit keeps
+# them (`just history <path>`). A link or citation into either is a note, never resolved.
+HISTORICAL = ("docs/plans/archive", "docs/plans/1.0")
 # Existing content outside the manifest schema, not a blanket file exemption.
 ASSET_EXCEPTIONS = {
     "assets/fonts/README.md": "font inventory and licensing documentation",
@@ -43,15 +45,13 @@ PLAN_CITATION = re.compile(r"docs/plans/[\w./-]+?\.md")
 ROADMAP = "ROADMAP.md"
 ROADMAP_SECTIONS = ("Now", "Next", "Later")
 LOCAL_LINK = re.compile(r'\]\((<[^>]+>|[^\s)]+)(?:\s+"[^"]*")?\)|^\s{0,3}\[[^\]]+\]:\s*(<[^>]+>|\S+)', re.M)
-# A frozen record's banner (D-215). Frozen records are never edited again, so their links
-# to removed or renamed files rot by design until step 9.7 deletes them: notes, not errors.
-FROZEN = re.compile(r"Frozen [0-9-]+ \(`?D-215")
 # The plan skeleton (.claude/skills/tungsten-plan/skeleton.md) is not a live plan; its links
 # resolve at its destination, docs/plans/<topic>.md. It is outside active_plan_documents, intentionally.
 
 
 def archive_path(path):
-    return path == ARCHIVE or path.startswith(ARCHIVE + "/")
+    """A path in a deleted record's folder (HISTORICAL)."""
+    return any(path == h or path.startswith(h + "/") for h in HISTORICAL)
 
 
 def walk_files(directory):
@@ -230,9 +230,9 @@ def plan_fields(text):
 def active_plan_documents(root):
     """Markdown, including folder maps, at the top level and one program deep."""
     plans = root / "docs/plans"
-    # Deliberately one level deep: archive is neither listed nor opened.
-    folders = [plans] + sorted(d for d in plans.iterdir()
-                               if d.is_dir() and not d.is_symlink() and d.name != "archive")
+    # Deliberately one level deep; a deleted record's folder is neither listed nor opened.
+    folders = [plans] + sorted(d for d in plans.iterdir() if d.is_dir() and not d.is_symlink()
+                               and not archive_path(d.relative_to(root).as_posix()))
     for folder in folders:
         for path in sorted(folder.glob("*.md")):
             if not path.is_symlink():
@@ -253,13 +253,11 @@ def check_plans(root, errors, notes):
                 errors.append(f"{rel}: missing plan header '{field}'")
         status = re.split(r"\s*[(—;]", fields.get("status", ""), maxsplit=1)[0].strip()
         if status in ("done", "abandoned", "superseded"):
-            program = path.parent.relative_to(root / "docs/plans").as_posix()
-            target = ARCHIVE if program == "." else f"{ARCHIVE}/{program}"
-            errors.append(f"{rel}: {status} plan belongs in {target}/")
+            errors.append(f"{rel}: {status} plan: delete it with its citations")
         elif status not in ("draft", "in progress"):
             errors.append(f"{rel}: unknown status {status!r}")
         elif status == "in progress":
-            notes.append(f"active plan: {rel}; review remaining checks before archiving (age alone is not completion)")
+            notes.append(f"active plan: {rel}; review remaining checks before deleting it (age alone is not completion)")
 
 
 def markdown_body(text):
@@ -296,7 +294,6 @@ def markdown_anchors(text):
 
 def check_local_links(root, path, text, errors, notes, anchors):
     rel = path.relative_to(root).as_posix()
-    frozen = bool(FROZEN.search(text))
     for match in LOCAL_LINK.finditer(markdown_body(text)):
         target = (match[1] or match[2]).strip("<>")
         url = urlsplit(target)
@@ -304,21 +301,15 @@ def check_local_links(root, path, text, errors, notes, anchors):
             continue
         dest = Path(os.path.normpath(path.parent / unquote(url.path))) if url.path else path
         if archive_path(os.path.relpath(dest, root)):
-            notes.append(f"archive link left unread: {rel}: {target}")
+            notes.append(f"a deleted record's link, a note (D-314): {rel}: {target}")
             continue
         if not dest.exists():
-            if frozen:
-                notes.append(f"frozen record's dead link left as is: {rel}: {target}")
-            else:
-                errors.append(f"{rel}: broken link {target}")
+            errors.append(f"{rel}: broken link {target}")
         elif url.fragment and dest.suffix == ".md":
             if dest not in anchors:
                 anchors[dest] = markdown_anchors(text if dest == path else dest.read_text())
             if unquote(url.fragment) not in anchors[dest]:
-                if frozen:
-                    notes.append(f"frozen record's dead fragment left as is: {rel}: {target}")
-                else:
-                    errors.append(f"{rel}: broken fragment {target}")
+                errors.append(f"{rel}: broken fragment {target}")
 
 
 def check_docs(root, errors, notes):
@@ -366,8 +357,8 @@ def tracked_files(root):
 
 
 def check_plan_citations(root, errors, notes):
-    # A cited plan that moved to the archive or was deleted leaves agents a dead
-    # route. Archive citations stay notes: archived plans are never opened.
+    # A cited plan that was deleted leaves agents a dead route. Citations of the
+    # deleted records' folders (D-314) stay notes: their last commit keeps them.
     for rel in tracked_files(root):
         if (not rel.endswith(CITING_SUFFIXES) or rel.startswith("docs/plans/")
                 or rel in CITATION_EXEMPT or re.fullmatch(r"scripts/test-[^/]+\.py", rel)):
@@ -377,7 +368,7 @@ def check_plan_citations(root, errors, notes):
             continue
         for cited in sorted(set(PLAN_CITATION.findall(path.read_text(errors="replace")))):
             if archive_path(cited):
-                notes.append(f"archive citation left unread: {rel}: {cited}")
+                notes.append(f"a deleted record's citation, a note (D-314): {rel}: {cited}")
             elif not (root / cited).is_file():
                 errors.append(f"{rel}: cites missing plan {cited}")
 
@@ -425,13 +416,9 @@ def check_agent_config(root, errors):
     settings = json.loads((root / ".claude/settings.json").read_text())
     if settings.get("env", {}).get("CLAUDE_CODE_GLOB_NO_IGNORE") != "false":
         errors.append(".claude/settings.json: Glob ignore setting must be false")
-    if "Read(./docs/plans/archive/**)" not in settings.get("permissions", {}).get("deny", []):
-        errors.append(".claude/settings.json: missing archive Read deny")
     for rule in settings.get("permissions", {}).get("allow", []):
         if rule == "Bash" or (rule.startswith("Bash(") and "*" in rule):
             errors.append(".claude/settings.json: execution allows must use exact commands")
-    if "docs/plans/archive/" not in (root / ".ignore").read_text().splitlines():
-        errors.append(".ignore: missing archive exclusion")
 
 
 def changed_paths(root, base=None):

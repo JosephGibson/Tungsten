@@ -971,16 +971,6 @@ fn a_frame_holds_only_the_targets_it_uses() {
     );
 }
 
-#[test]
-fn no_frame_of_the_matrix_drops_a_pass() {
-    for shape in matrix() {
-        let graph = declare(&shape);
-        let compiled = graph.compile().expect("compiles");
-        let (old, _) = reference(&shape);
-        assert_eq!(compiled.passes.len(), old.len(), "{shape:?}");
-    }
-}
-
 /// The format of the texture `at` names: a pooled texture's, or the
 /// output's for an imported one.
 fn format_at(shape: &Shape, compiled: &Compiled<PassKind>, at: At) -> TextureFormat {

@@ -1,6 +1,6 @@
 //! The boot splash: the atom fits the window and builds with the load,
 //! paced by the hold, the readouts count it, the tile's rows sit on whole
-//! pixels, and the splash fades in and out.
+//! pixels, and the splash fades in and out, on true black.
 
 use tungsten_template_basic::shell::boot::{self, FADE_SECS, Splash};
 
@@ -147,4 +147,19 @@ fn the_splash_fades_in_and_out() {
         .iter()
         .find(|section| section.content == "W · 74 · TUNGSTEN");
     assert_eq!(title.map(|section| section.color[3]), Some(255));
+}
+
+#[test]
+fn the_splash_sits_on_true_black() {
+    // Opaque #000000 over the whole window first, from the first frame to
+    // the fade's end, so the splash fades out to black.
+    for window in [[1280, 720], [720, 1280], [3840, 2160]] {
+        for (fraction, secs) in [(0.0, 0.0), (0.5, 1.0), (1.0, HOLD)] {
+            let splash = at(window, fraction, secs);
+            let black = splash.sprites.first().expect("a backdrop");
+            let size = window.map(|side| side as f32);
+            assert_eq!((black.position, black.size), ([0.0; 2], size));
+            assert_eq!(black.color, [0, 0, 0, 255], "{window:?} at {secs} s");
+        }
+    }
 }

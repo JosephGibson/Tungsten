@@ -186,6 +186,33 @@ fn a_typed_projectiles_hits_carry_its_hitboxs_parts() {
 }
 
 #[test]
+fn an_off_hitbox_projectile_hits_nothing() {
+    // A bolt over a target, its hitbox on, then switched off as `disarm`
+    // switches a killed missile's: an off one strikes nothing and flies on.
+    for on in [true, false] {
+        let (mut world, mut schedule) = projectile_rig(&[]);
+        target(&mut world);
+        let bolt = world.spawn_with((
+            tungsten_core::Transform::from_position(Vec2::ZERO),
+            Hitbox::new(HitShape::circle(2.0), 10.0),
+            Projectile::new(),
+        ));
+        world.get_mut::<Hitbox>(bolt).unwrap().set_on(on);
+        fixed_step(&mut world, &mut schedule);
+        let struck = world
+            .resource::<tungsten_core::EventQueue<Struck>>()
+            .iter()
+            .count();
+        let projectile = world.get::<Projectile>(bolt).unwrap();
+        assert_eq!(
+            (struck, projectile.hits(), projectile.is_spent()),
+            if on { (1, 1, true) } else { (0, 0, false) },
+            "a bolt whose hitbox is on {on}: its strikes, hits and end"
+        );
+    }
+}
+
+#[test]
 fn a_loaded_piercing_projectile_given_its_targets_passes_none_twice() {
     use tungsten_core::physics::{Position, PrevPosition};
 

@@ -689,6 +689,39 @@ pub(crate) fn reload_manifest_sounds(
     removed
 }
 
+/// The manifest reload's warnings for each sprite and material `world`
+/// registers that `new_manifest` no longer lists, each kept stale, but for
+/// the engine's own, which no manifest lists: the reserved `engine_white`,
+/// and each material from no manifest (`engine_glow`, and `damage_flash`
+/// unless the game's manifest declared it).
+pub(crate) fn removed_warnings(world: &World, new_manifest: &ResolvedManifest) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(sprites) = world.get_resource::<AssetRegistry>() {
+        let removed = sprites
+            .sprite_names()
+            .filter(|id| *id != super::ENGINE_WHITE && !new_manifest.sprites.contains_key(*id));
+        for id in removed {
+            lines.push(format!(
+                "Manifest reload: sprite '{id}' removed — keeping stale"
+            ));
+        }
+    }
+    if let Some(materials) = world.get_resource::<MaterialRegistry>() {
+        let removed = materials.iter().filter(|(id, asset)| {
+            let from_manifest = materials
+                .path_for_id(*asset)
+                .is_some_and(|path| !path.as_os_str().is_empty());
+            from_manifest && !new_manifest.materials.contains_key(*id)
+        });
+        for (id, _) in removed {
+            lines.push(format!(
+                "Manifest reload: material '{id}' removed — keeping stale"
+            ));
+        }
+    }
+    lines
+}
+
 /// Hot-reload manifest additions; removals stay stale and last-known-good wins.
 ///
 /// `roots` is the whole composition (`D-052`), whichever root changed: the
@@ -720,10 +753,8 @@ pub fn reload_manifest(
             .map(ToString::to_string)
             .collect();
 
-        for id in &existing {
-            if !new_manifest.sprites.contains_key(id.as_str()) {
-                log::warn!("Manifest reload: sprite '{id}' removed — keeping stale");
-            }
+        for line in removed_warnings(world, &new_manifest) {
+            log::warn!("{line}");
         }
         // M29: warn when an existing sprite drops its normal/emissive
         // sibling. Aux pages stay last-known-good until the next full repack.
@@ -980,13 +1011,7 @@ pub fn reload_manifest(
             .map(|mr| mr.iter().map(|(name, _)| name.to_string()).collect())
             .unwrap_or_default();
 
-        // Warn on removals (last-known-good).
-        for id in &existing {
-            if !new_manifest.materials.contains_key(id.as_str()) {
-                log::warn!("Manifest reload: material '{id}' removed — keeping stale");
-            }
-        }
-
+        // Removals warned with the sprites' (last-known-good).
         for (id, entry) in &new_manifest.materials {
             if existing.iter().any(|e| e == id) {
                 // Refresh existing pipeline against new defaults / shader pointer.

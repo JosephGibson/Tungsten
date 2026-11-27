@@ -5,33 +5,32 @@ How Claude Code and Codex pick up this repo's instructions, skills and search fi
 ## Instructions
 
 - `AGENTS.md` is the only instruction body. `CLAUDE.md` contains just `@AGENTS.md`, so both tools read the same text. Keep `@` imports out of `AGENTS.md`: Codex doesn't document expanding them.
-- Scoped rules: `crates/tungsten-render/AGENTS.md`, with a matching one-line `CLAUDE.md` import. `templates/basic/AGENTS.md` and its `CLAUDE.md` are the rules of a game made from the template, which `tungsten new` copies; `just ctx` holds them to 12,288 bytes and 100 lines (`D-183`), and they load when a session works in the template.
+- Scoped rules: `crates/tungsten-render/AGENTS.md`, with a matching one-line `CLAUDE.md` import. `templates/basic/AGENTS.md` and its `CLAUDE.md` are the rules of a game made from the template, which `tungsten new` copies; `just ctx` holds them to 13,312 bytes and 100 lines (`D-183`) and checks the paths of their index, and they load when a session works in the template. [Games made from the template](#games-made-from-the-template) covers what a game's agents get.
 - **Codex** reads one instruction file per directory from the repo root to the launch directory (`AGENTS.override.md`, then `AGENTS.md`); the combined default budget is 32 KiB. A root launch doesn't preload nested files, so the root `AGENTS.md` tells agents to read the render file before editing there.
-- **Claude Code:** the [current official guidance](https://code.claude.com/docs/en/memory#agentsmd) (consulted 2026-10-12) documents native `AGENTS.md` support from 2.1.277. With a project `CLAUDE.md` present, the default still uses it and its imports; even the mode that reads both files deduplicates an imported `AGENTS.md`. Keep the one-line compatibility imports for older or unsupported sessions. This newer behavior is documented, not locally re-probed.
-- **Local probe**, Claude Code 2.1.311 (2026-10-29, [the checks below](#verifying-a-client)), agreeing with 2.1.110's (2026-09-25):
-  - Launched at the repo root, the root body loads once, through `CLAUDE.md`'s import. 2.1.110 loaded the render rules when a file in `crates/tungsten-render/` was read; 2.1.311 wasn't probed for it.
+- **Claude Code:** the [official guidance](https://code.claude.com/docs/en/memory#agentsmd) documents native `AGENTS.md` support from 2.1.277; with a project `CLAUDE.md` present the default still uses it and its imports, and even the mode that reads both files deduplicates an imported `AGENTS.md` (documented, not probed here). Keep the one-line compatibility imports for older or unsupported sessions.
+- **Local probe**, Claude Code 2.1.311 (2026-10-29, [the checks below](#verifying-a-client)):
+  - Launched at the repo root, the root body loads once, through `CLAUDE.md`'s import. Whether the render rules then load when a file in `crates/tungsten-render/` is read was not probed (2.1.110 loaded them).
   - Launched inside `crates/tungsten-render/`, the crate's `CLAUDE.md` and `AGENTS.md` load, and the root `CLAUDE.md` without its `@AGENTS.md`, which counts as an external import. It stays out until you approve external imports in the interactive prompt; headless `claude -p` runs there never get the root rules. **Launch Claude from the repo root.**
   - A headless run ignores `.claude/settings.json`'s allow list until the workspace's trust dialog has been accepted once.
-  - 2.1.110 didn't read a bare `AGENTS.md`; that result does not describe clients with native support.
 
 ## Skills
 
-- Canonical copies (tracked): `.claude/skills/tungsten-wgpu/`, `.claude/skills/tungsten-perf/`, `.claude/skills/tungsten-decision/` (writing, amending and superseding `DECISIONS.md` entries), `.claude/skills/tungsten-release/` (branch documentation, `just release`, the owner's block, rehearsals, verification and recovery), `.claude/skills/tungsten-plan/` (writing and running a large plan, with its skeleton) and `.claude/skills/tungsten-next/` (the owner's next prompt, from `just status` and `ROADMAP.md`, a phase plan's next step included). The canonical release procedure is [releases.md](releases.md). Codex finds them through the symlinks `.agents/skills/<name> -> ../../.claude/skills/<name>`. Relative links inside `SKILL.md` resolve through both paths.
+- Canonical copies (tracked) in `.claude/skills/`, each described by its frontmatter: `tungsten-wgpu/`, `tungsten-perf/`, `tungsten-decision/`, `tungsten-release/`, `tungsten-plan/` (with its skeleton) and `tungsten-next/`. The canonical release procedure is [releases.md](releases.md). Codex finds them through the symlinks `.agents/skills/<name> -> ../../.claude/skills/<name>`. Relative links inside `SKILL.md` resolve through both paths.
 - Frontmatter holds only `name` and a description of 300 characters or fewer; bodies stay under 8 KiB. Claude's `paths` field isn't a Codex activation contract, so don't rely on it.
 - **Windows:** symlinks need Developer Mode (or an elevated shell) and `core.symlinks=true` before cloning (`git clone -c core.symlinks=true …`). Without them Git writes plain text files and Codex won't see the skills; Claude is unaffected.
 
 ## Search filters
 
-- `.ignore` hides the archive, build and perf outputs from ripgrep-based tools (rg, fd, Claude Grep/Glob, Codex tools that use those search programs). `.gitignore` covers Git and build noise.
+- `.ignore` hides build and perf outputs and the API snapshots from ripgrep-based tools (rg, fd, Claude Grep/Glob, Codex tools that use those search programs). `.gitignore` covers Git and build noise.
 - Claude's Glob ignores `.gitignore` unless `CLAUDE_CODE_GLOB_NO_IGNORE=false`, which `.claude/settings.json` sets. Grep already honors `.gitignore` and `.ignore`.
 - `.claudeignore` was removed: 2.1.110's Grep didn't honor it in a controlled test.
-- Filters aren't access boundaries. The archive rule is enforced for Claude by a project `Read(./docs/plans/archive/**)` deny, which a scratch-project test confirmed for launches at the project root (subdirectory launches weren't verified). For everything else it's the `AGENTS.md` hard rule. Never bypass filters with `rg -uu`.
+- Filters aren't access boundaries; never bypass them with `rg -uu`.
 
 ## Permissions, sandbox and trust
 
 - `.claude/settings.json` allows exact shared `just` commands (`just physics-release` bare and with `-- --nocapture`, the form physics gates run; the API, notices, template and level checks), workspace build/test/check commands, the launch commands of examples 01 and 02, and bounded discovery probes (`rg --files crates examples scripts`, `fd --type f . crates examples scripts`, `ast-grep --version`). No execution prefixes or wildcard arguments are granted. Other searches, parameterized perf captures and install commands use normal interactive approval or personal rules. Hooks and model choices belong in `.claude/settings.local.json` (ignored) or user settings; managed settings override both. Check effective rules with `/permissions` in an interactive session.
 - Don't add blanket `cargo`/`just` allows: recipes, build scripts and tests execute repo code.
-- Committing (`D-215`, superseding `D-105`): sessions commit at each logical step in Conventional Commits, staging only the paths they changed, checked by the `commit-msg` hook that `just hooks` enables; a parallel session works in its own worktree. Sessions push the version branch after each commit (`git push origin 0.NNN`, `D-216`); tags, merges, every other push and history rewrites stay with the owner, whose tag push publishes a release ([operating rules](operating-rules.md#git), `D-227`). See [plan execution](plans/README.md#executing-a-plan) and [release handoff](releases.md#handoff-and-next-branch).
+- Committing and pushing follow the [operating rules](operating-rules.md#git) (`D-215`, `D-216`, `D-227`); history rewrites stay with the owner, as tags, merges and every other push do. See [plan execution](plans/README.md#executing-a-plan) and [release handoff](releases.md#handoff-and-next-branch).
 - Codex suggestion for interactive work: `codex --sandbox workspace-write --ask-for-approval on-request`. First builds download crates and may need approval, and so may writes under `.agents/` or `.codex/`. Project `.codex/` config and non-managed hooks only apply once the project is trusted. Exec-policy rules govern commands outside the sandbox and aren't a push ban.
 - Deferred: hooks, custom subagents, blanket execution allows and LSP plugins. Explicit commands (`just` recipes and the raw `cargo` commands they wrap) are the shared workflow.
 
@@ -46,15 +45,44 @@ codex exec --sandbox read-only 'Without tools, list the AGENTS.md files you were
 
 Model self-reports can be wrong about duplication. For a firm answer, compare `claude -p --output-format json` usage across directories that contain canary files. Last verified 2026-10-29 with Claude Code 2.1.311 (results under [Instructions](#instructions)) and Codex CLI 0.160.0, which listed the root `AGENTS.md` from the root, and the root and render files from `crates/tungsten-render/`; rerun both checks after a client upgrade.
 
+## Games made from the template
+
+What `tungsten new` gives a game's agents (`D-312`, from 7.13g's evaluation and a survey of how clients and other projects guide agents).
+
+- **What ships:** `AGENTS.md`, the game's rules and the kit's catalogue, always loaded, and `CLAUDE.md`, its one-line import; `README.md` and `tools/README.md` for people and agents alike. No skills, no copied docs, no client configuration: a skill copied into the game goes stale once the game moves to a newer engine, and measured skill use is uneven (a docs skill never invoked in 56 % of one framework's evaluated cases, <https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals>).
+- **How each client loads it:** Claude Code loads the game's `CLAUDE.md` and so `AGENTS.md` through its import, and every `CLAUDE.md` in the folders above, so a game lives outside other repositories (<https://code.claude.com/docs/en/memory.md>). Codex reads one `AGENTS.md` a folder from the game's Git root down to its working folder, 32 KiB in all by default (<https://learn.chatgpt.com/docs/agent-configuration/agents-md.md>). Other clients that read `AGENTS.md` are listed at <https://agents.md/>.
+- **Budgets:** `just ctx` holds `templates/basic/AGENTS.md` to 13,312 bytes and 100 lines.
+
+### The index of the engine's files
+
+- `AGENTS.md`'s section `## The engine's files` sends agents to the engine's own repository in Cargo's checkout, which `cargo metadata` names (the `tungsten` package's `manifest_path`) at the revision `Cargo.lock` pins, so what they read matches the engine the game builds against, offline, and follows the pin when the game upgrades.
+- It names the guide and `docs/levels.md` with the way to read them a section at a time, and the kit listing by search, because a whole read past a client's limit arrives cut: Claude Code shows a 2,000-character preview of a shell result past about 30,000 characters (<https://code.claude.com/docs/en/tools-reference.md>), and the evaluation's agents never read the saved rest.
+- `just ctx` checks that each engine path the section names exists in this repository, the tree a game's checkout holds.
+
+### Where a fix goes
+
+A guidance fix lands where the agent was looking when it needed the answer, by the kind of answer: a command's message when a command it ran could have printed it; a line in the template's `AGENTS.md` when one line answers every task; the section of the doc it was reading (the guide, `docs/levels.md`, 01's README or tools guide) when the answer belongs to one kind of task; the item's own doc (its rustdoc, a kit field's description) when it was reading that item; and a rewording in place, naming the case that misled, when it had read the line and gone another way. A fix for one workspace's agents lands on that workspace's read path: 01's agents read 01's README, tools guide and rustdoc, and a template copy's agents read `AGENTS.md`, the guide and the `api/` listings. In 7.13g's two passes, fixes held where they landed on the reader's path and recurred where they landed off it or too narrowly worded.
+
+### Verifying a copy
+
+Make a copy with `tungsten new` outside any repository, then, from its folder:
+
+```bash
+claude -p 'Without tools, list the instruction files and skills loaded into your context.'
+codex exec --sandbox read-only 'Without tools, list the AGENTS.md files and skills you were given.'
+```
+
+Both should name the copy's `AGENTS.md` (Claude through `CLAUDE.md`). Then follow the index as it reads: `cargo metadata --format-version 1` names `crates/tungsten/Cargo.toml` in Cargo's checkout at the pinned revision, whose root holds `docs/getting-started.md`.
+
 ## Local check tiers
 
-Run from the repository root with Rust, just, Python 3.12+, Bash, ShellCheck and actionlint installed. The [validation matrix](validation.md#change-to-check-matrix) owns change-to-check rules and targeted edit-loop commands. `just checks [PATH…]` prints recommendations only; no paths selects staged/unstaged/untracked Git changes, and `--base REF` includes committed work since an explicit base. See [selector semantics](validation.md#read-only-selector).
+Run from the repository root with Rust, just, Python 3.12+, Bash, ShellCheck and actionlint installed. The [validation matrix](validation.md#change-to-check-matrix) owns change-to-check rules, targeted edit-loop commands and `just quick`; `just checks` follows [its selector semantics](validation.md#read-only-selector), and [its evidence rules](validation.md#evidence-and-hardware-boundaries) report a pixel test a CPU run skips as **not run**.
 
-`just quick` combines format/context/repository QA and workspace type checking. It is broader than a targeted edit-loop test and does not replace final `just check` or applicable hardware checks. `just ci` mirrors the informational CPU CI sequence; `just --list` and [justfile](../justfile) describe the recipes, including `level-check`, `physics-release`, API and template checks. Pixel tests skipped by a CPU run are **not run**, as the [evidence rules](validation.md#evidence-and-hardware-boundaries) explain.
+`just ci` mirrors the informational CPU CI sequence; `just --list` and [justfile](../justfile) describe the recipes, including `level-check`, `physics-release`, API and template checks.
 
-`just repo-check` checks asset coverage, active plan headers, maintained docs and active program documents one folder deep (including their README maps), local inline/reference destinations and Markdown fragments, decision IDs, plan citations, agent configuration, and `ROADMAP.md`'s sections, Now's one to three items and one-line items. Archive targets are notes and never probed, and so are a frozen record's dead links and fragments (`D-215`); fenced Markdown examples and the plan skeleton's future-location links are not active-document navigation. Version/changelog/DESIGN consistency and Rust manifest/index tests run afterward. Other Markdown and external URLs need separate review. In-progress plans are review notes; dates do not establish abandonment. Missing citations fail; historical changelog/decision citations and script-test fixtures remain exempt.
+`just repo-check` checks asset coverage, active plan headers, maintained docs and active program documents one folder deep (including their README maps), local inline/reference destinations and Markdown fragments, decision IDs, plan citations, agent configuration, and `ROADMAP.md`'s sections, Now's one to three items and one-line items. Links and citations into the deleted records' folders (`docs/plans/archive/`, `docs/plans/1.0/`, `D-314`) are notes, never probed; fenced Markdown examples and the plan skeleton's future-location links are not active-document navigation. Version/changelog/DESIGN consistency and Rust manifest/index tests run afterward. Other Markdown and external URLs need separate review. In-progress plans are review notes; dates do not establish abandonment. Missing citations fail; historical changelog/decision citations and script-test fixtures remain exempt.
 
-The checker is read-only and standard-library-only; it never traverses the plan archive, follows directory symlinks during enumeration, guesses asset IDs or edits manifests. Asset coverage exceptions are listed in [assets](assets.md#coverage-exceptions); a new one needs a scoped checker review.
+The checker is read-only and standard-library-only; it never follows directory symlinks during enumeration, guesses asset IDs or edits manifests. Asset coverage exceptions are listed in [assets](assets.md#coverage-exceptions); a new one needs a scoped checker review.
 
 API snapshots use the pinned toolchain and `cargo-public-api` 0.52.0 (`cargo install --locked cargo-public-api@0.52.0`, `D-107`). Unused-dependency review uses `cargo shear --locked` (`cargo install --locked cargo-shear`); the test modules included with `#[path]` are listed under its `ignored-paths` in `Cargo.toml`. These tools stay local. Release preflight additionally needs Git, authenticated gh and network; use [the release guide](releases.md#ordinary-release) for its read-only inspection and the owner's block.
 

@@ -43,15 +43,22 @@ fn a_range_with_min_above_max_panics() {
 }
 
 #[test]
-#[should_panic(expected = "finite and not negative")]
-fn a_negative_step_panics() {
-    let _ = SliderRange::new(0.0, 1.0).with_step(-0.5);
-}
-
-#[test]
-#[should_panic(expected = "finite and not negative")]
-fn a_step_not_finite_panics() {
-    let _ = SliderRange::new(0.0, 1.0).with_step(f32::NAN);
+fn a_step_negative_or_not_finite_panics() {
+    for step in [-0.5, f32::NAN] {
+        let Err(payload) = std::panic::catch_unwind(|| SliderRange::new(0.0, 1.0).with_step(step))
+        else {
+            panic!("step {step}: with_step took it");
+        };
+        let message = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| payload.downcast_ref::<&str>().copied())
+            .unwrap_or_default();
+        assert!(
+            message.contains("finite and not negative"),
+            "step {step}: panicked with {message:?}"
+        );
+    }
 }
 
 #[test]

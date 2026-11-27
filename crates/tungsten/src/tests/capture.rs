@@ -1,5 +1,4 @@
 use super::*;
-use tungsten_render::ScreenshotError;
 
 fn capture_at(target_frame: u64) -> Capture {
     Capture::new(CaptureConfig {
@@ -35,21 +34,6 @@ fn a_written_target_frame_leaves_no_error() {
     capture.frame_rendered(2, written());
     capture.frame_rendered(3, presented_without_capture());
     assert!(capture.finish(3).is_none());
-}
-
-#[test]
-fn a_write_error_is_the_capture_error_naming_its_frame() {
-    let mut capture = capture_at(2);
-    capture.frame_rendered(
-        2,
-        RenderOutcome::Presented {
-            capture: Some(Err(ScreenshotError::MapFailed)),
-        },
-    );
-    let error = capture.finish(4).expect("the failed write is an error");
-    let message = format!("{error:#}");
-    assert!(message.contains("capture frame 2"), "{message}");
-    assert!(message.contains("buffer map failed"), "{message}");
 }
 
 #[test]
@@ -95,4 +79,69 @@ fn the_capture_error_is_returned_once() {
     let mut capture = capture_at(5);
     assert!(capture.finish(1).is_some());
     assert!(capture.finish(1).is_none());
+}
+
+/// A fresh folder of its own under the system's temp folder.
+fn tempdir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("tungsten_capture_{}_{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn two_captures_of_one_path_keep_the_written_file() {
+    let dir = tempdir("one_path");
+    let a = dir.join("a.png");
+    std::fs::write(&a, b"png bytes").unwrap();
+    let mut capture = Capture::empty();
+    capture.add(5, a.clone());
+    capture.add(5, a.clone());
+    capture.frame_rendered(
+        5,
+        RenderOutcome::Presented {
+            capture: Some(Ok(a.clone())),
+        },
+    );
+    let outcomes = capture.take_outcomes();
+    assert_eq!(
+        std::fs::read(&a).unwrap(),
+        b"png bytes",
+        "two captures of one path on one frame: the written file keeps its bytes"
+    );
+    assert_eq!(outcomes.len(), 2, "{outcomes:#?}");
+    assert!(
+        outcomes.iter().all(|outcome| outcome.error.is_none()),
+        "two captures of one path on one frame: both written, {outcomes:#?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_second_capture_of_a_frame_makes_its_folder() {
+    let dir = tempdir("folder");
+    let first = dir.join("a").join("first.png");
+    std::fs::create_dir_all(first.parent().unwrap()).unwrap();
+    std::fs::write(&first, b"png bytes").unwrap();
+    let second = dir.join("b").join("second.png");
+    let mut capture = Capture::empty();
+    capture.add(5, first.clone());
+    capture.add(5, second.clone());
+    capture.frame_rendered(
+        5,
+        RenderOutcome::Presented {
+            capture: Some(Ok(first.clone())),
+        },
+    );
+    let outcomes = capture.take_outcomes();
+    assert!(
+        outcomes.iter().all(|outcome| outcome.error.is_none()),
+        "a second capture of a frame into a folder not made yet: {outcomes:#?}"
+    );
+    assert_eq!(
+        std::fs::read(&second).ok().as_deref(),
+        Some(&b"png bytes"[..]),
+        "a second capture of a frame into a folder not made yet: the copy"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

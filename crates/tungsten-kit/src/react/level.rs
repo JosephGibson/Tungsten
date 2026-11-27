@@ -670,7 +670,9 @@ fn tick_entity(world: &mut World, entity: Entity) {
         }
         (reached, top)
     };
-    debug_assert!(reached <= top);
+    // The climb stops at the top; a level a save or a reloaded curve left
+    // above it holds.
+    debug_assert!(reached <= top.max(current));
     if reached == current {
         return;
     }

@@ -1,31 +1,42 @@
 use super::*;
 
 #[test]
-fn curve_scalar_endpoints() {
-    let c = Curve::<f32> {
-        points: vec![(0.0, 10.0), (1.0, 20.0)],
-    };
-    assert_eq!(c.sample(-1.0), 10.0);
-    assert_eq!(c.sample(0.0), 10.0);
-    assert_eq!(c.sample(1.0), 20.0);
-    assert_eq!(c.sample(2.0), 20.0);
-}
-
-#[test]
-fn curve_scalar_midpoint_interpolates() {
-    let c = Curve::<f32> {
-        points: vec![(0.0, 0.0), (1.0, 10.0)],
-    };
-    assert!((c.sample(0.5) - 5.0).abs() < 1.0e-5);
-}
-
-#[test]
-fn curve_scalar_multi_segment() {
-    let c = Curve::<f32> {
-        points: vec![(0.0, 0.0), (0.5, 10.0), (1.0, 0.0)],
-    };
-    assert!((c.sample(0.25) - 5.0).abs() < 1.0e-5);
-    assert!((c.sample(0.75) - 5.0).abs() < 1.0e-5);
+fn a_scalar_curve_samples_its_points() {
+    // a tolerance of 0 keeps the endpoints exact: outside the points a sample clamps to the end
+    let cases = [
+        (
+            "endpoints",
+            vec![(0.0, 10.0), (1.0, 20.0)],
+            vec![(-1.0, 10.0), (0.0, 10.0), (1.0, 20.0), (2.0, 20.0)],
+            0.0,
+        ),
+        (
+            "midpoint",
+            vec![(0.0, 0.0), (1.0, 10.0)],
+            vec![(0.5, 5.0)],
+            1.0e-5,
+        ),
+        (
+            "two segments",
+            vec![(0.0, 0.0), (0.5, 10.0), (1.0, 0.0)],
+            vec![(0.25, 5.0), (0.75, 5.0)],
+            1.0e-5,
+        ),
+    ];
+    for (case, points, samples, tolerance) in cases {
+        let c = Curve::<f32> { points };
+        for (t, want) in samples {
+            let got = c.sample(t);
+            if tolerance == 0.0 {
+                assert_eq!(got, want, "{case}: sample({t})");
+            } else {
+                assert!(
+                    (got - want).abs() < tolerance,
+                    "{case}: sample({t}) = {got}, want {want}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

@@ -100,6 +100,57 @@ fn a_missing_slot_is_not_found() {
 }
 
 #[test]
+fn a_slot_that_cannot_be_read_is_io_not_not_found() {
+    let slots = slots();
+    // A folder where the slot's file goes: reading it fails, and not as a
+    // missing file (a folder on Unix, access denied on Windows).
+    let path = slots.dir().unwrap().join("x.json");
+    std::fs::create_dir_all(&path).unwrap();
+    let error = slots.load::<Progress>("x").unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            SaveError::Io { path: failed, source }
+                if *failed == path && source.kind() != std::io::ErrorKind::NotFound
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn slots_whose_folder_is_a_file_fail_to_list_as_io() {
+    let file = tempdir().join("saves");
+    std::fs::write(&file, "a file").unwrap();
+    let error = SaveSlots::new(Some(file.clone())).list().unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            SaveError::Io { path, source }
+                if *path == file && source.kind() != std::io::ErrorKind::NotFound
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn data_that_does_not_serialize_is_serialize_and_writes_nothing() {
+    let slots = slots();
+    // `serde_json` refuses a map key that is not a string.
+    let data = std::collections::BTreeMap::from([((1_u8, 2_u8), 3_u8)]);
+    let error = slots
+        .save_stamped("x", &data, &SaveStamp::new(1, "0.1.0", 5))
+        .unwrap_err();
+    assert!(
+        matches!(&error, SaveError::Serialize { slot, .. } if slot == "x"),
+        "{error}"
+    );
+    assert!(
+        !slots.dir().unwrap().exists(),
+        "it fails before the folder is made"
+    );
+}
+
+#[test]
 fn a_corrupt_slot_is_corrupt_and_left_unchanged() {
     let slots = slots();
     for text in [
@@ -324,6 +375,36 @@ fn a_type_that_overrides_migrate_keeps_its_own() {
     assert!(
         Jumped::migrate_step(1, serde_json::json!({})).is_err(),
         "its steps are the default's"
+    );
+}
+
+#[test]
+fn a_migration_whose_result_does_not_fit_the_type_is_migration() {
+    let slots = slots();
+    // Schema 2's step to 3 runs, and leaves an `a` that is no number.
+    slots
+        .save_stamped(
+            "misfit",
+            &serde_json::json!({ "a": "one", "b": 4 }),
+            &SaveStamp::new(2, "0.1.0", 5),
+        )
+        .unwrap();
+    let path = slots.dir().unwrap().join("misfit.json");
+    let before = std::fs::read(&path).unwrap();
+    let error = slots.load::<Stepped>("misfit").unwrap_err();
+    // The type's own refusal, not a step's.
+    assert!(
+        matches!(
+            &error,
+            SaveError::Migration { slot, from: 2, source }
+                if slot == "misfit" && source.is::<serde_json::Error>()
+        ),
+        "{error}"
+    );
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        before,
+        "the file is unchanged"
     );
 }
 
@@ -572,13 +653,14 @@ const HELD: Duration = Duration::from_secs(10);
 
 /// The file system's own writes and renames, with the writer held where a
 /// test asks: a sync reports itself on `syncing` and waits for a token on
-/// `sync_gate`, or fails; a rename fails with `rename_errors` in turn; a
-/// sleep reports its length on `sleeping` and waits for a token on
-/// `sleep_gate`.
+/// `sync_gate`, then fails, or unwinds as a panic does (`panic_sync`); a
+/// rename fails with `rename_errors` in turn; a sleep reports its length on
+/// `sleeping` and waits for a token on `sleep_gate`.
 struct HeldOps {
     syncing: Option<mpsc::Sender<()>>,
     sync_gate: Option<mpsc::Receiver<()>>,
     fail_sync: bool,
+    panic_sync: bool,
     windows: bool,
     rename_errors: Vec<i32>,
     sleeping: Option<mpsc::Sender<Duration>>,
@@ -591,6 +673,7 @@ impl HeldOps {
             syncing: None,
             sync_gate: None,
             fail_sync: false,
+            panic_sync: false,
             windows: false,
             rename_errors: Vec::new(),
             sleeping: None,
@@ -614,6 +697,11 @@ impl Ops for HeldOps {
         }
         if let Some(gate) = &self.sync_gate {
             let _ = gate.recv_timeout(HELD);
+        }
+        if self.panic_sync {
+            // A panic's unwind without the panic hook, so the run prints no
+            // panic message.
+            std::panic::resume_unwind(Box::new("injected writer panic"));
         }
         if self.fail_sync {
             return Err(std::io::Error::other("injected sync failure"));
@@ -921,6 +1009,135 @@ fn slots_whose_writer_cannot_start_write_each_save_before_it_returns() {
     assert_eq!(pending(&slots), 0);
     assert_eq!(slots.load::<Progress>("slot-1").unwrap(), progress());
     slots.flush().unwrap();
+}
+
+#[test]
+fn a_writer_that_dies_leaves_its_queue_to_the_flush_and_later_saves_commit_at_once() {
+    let (syncing, in_sync) = mpsc::channel();
+    let (release, sync_gate) = mpsc::channel();
+    let slots = behind(HeldOps {
+        syncing: Some(syncing),
+        sync_gate: Some(sync_gate),
+        panic_sync: true,
+        ..HeldOps::free()
+    });
+    let dir = slots.dir().unwrap().to_path_buf();
+    let old = Progress {
+        level: 1,
+        name: "old".into(),
+    };
+    SaveSlots::new(Some(dir.clone())).save("a", &old).unwrap();
+    // A folder, not empty, where `d`'s file goes: its rename fails.
+    let blocked = dir.join("d.json");
+    std::fs::create_dir_all(&blocked).unwrap();
+    std::fs::write(blocked.join("keep"), "").unwrap();
+
+    slots.save("a", &progress()).unwrap();
+    in_sync.recv_timeout(HELD).expect("the writer syncs `a`");
+    // Staged behind the save the writer holds: `b` twice, the first
+    // superseded, `d`, and `e`, deleted before its turn.
+    let first = Progress {
+        level: 2,
+        name: "first".into(),
+    };
+    slots.save("b", &first).unwrap();
+    slots.save("b", &progress()).unwrap();
+    slots.save("d", &progress()).unwrap();
+    slots.save("e", &progress()).unwrap();
+    slots.delete("e").unwrap();
+    assert_eq!(pending(&slots), 3, "a, b and d");
+
+    // The writer unwinds inside `a`'s sync; the flush commits what it left,
+    // in order, and reports `d`'s failure once.
+    release.send(()).unwrap();
+    let error = slots.flush().unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            SaveError::Write(WriteError::Io { path, .. } | WriteError::Busy { path, .. })
+                if *path == blocked
+        ),
+        "{error}"
+    );
+    slots.flush().expect("a failure is reported once");
+    assert_eq!(pending(&slots), 0);
+    assert_eq!(
+        slots.load::<Progress>("a").unwrap(),
+        old,
+        "the held save is lost with its temp file, and the old file stands"
+    );
+    assert_eq!(
+        slots.load::<Progress>("b").unwrap(),
+        progress(),
+        "the newer save of `b` stands"
+    );
+    std::fs::remove_dir_all(&blocked).unwrap();
+    assert_eq!(
+        files(&slots),
+        ["a.json", "b.json"],
+        "no temp file is left, and the deleted `e` is not written"
+    );
+    let list = slots.list().unwrap();
+    assert!(list.warnings.is_empty(), "{:?}", list.warnings);
+    let names: Vec<&str> = list.slots.iter().map(|info| info.name.as_str()).collect();
+    assert_eq!(names, ["a", "b"]);
+
+    // From here on a save is in place when it returns.
+    slots.save("c", &progress()).unwrap();
+    assert_eq!(pending(&slots), 0);
+    assert_eq!(files(&slots), ["a.json", "b.json", "c.json"]);
+    drop(slots);
+    let whole = SaveSlots::new(Some(dir));
+    assert_eq!(files(&whole), ["a.json", "b.json", "c.json"]);
+    assert_eq!(whole.load::<Progress>("c").unwrap(), progress());
+}
+
+#[test]
+fn a_save_made_after_the_writer_dies_supersedes_the_slots_staged_save() {
+    let (syncing, in_sync) = mpsc::channel();
+    let (release, sync_gate) = mpsc::channel();
+    let slots = behind(HeldOps {
+        syncing: Some(syncing),
+        sync_gate: Some(sync_gate),
+        panic_sync: true,
+        ..HeldOps::free()
+    });
+    let old = Progress {
+        level: 1,
+        name: "old".into(),
+    };
+    slots.save("a", &progress()).unwrap();
+    in_sync.recv_timeout(HELD).expect("the writer syncs `a`");
+    // `b`'s save is staged behind the one the writer holds.
+    slots.save("b", &old).unwrap();
+
+    // The writer unwinds inside `a`'s sync and leaves `b`'s save staged.
+    release.send(()).unwrap();
+    let start = std::time::Instant::now();
+    while !lock(&slots.behind.as_ref().unwrap().shared.state).dead {
+        assert!(start.elapsed() < HELD, "the writer dies inside `a`'s sync");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+
+    // A newer save of `b`, committed where it is made, takes the staged
+    // one's place.
+    slots.save("b", &progress()).unwrap();
+    assert_eq!(
+        slots.load::<Progress>("b").unwrap(),
+        progress(),
+        "a load after the in-place save reads it, not the older staged save"
+    );
+    slots.flush().unwrap();
+    assert_eq!(
+        slots.load::<Progress>("b").unwrap(),
+        progress(),
+        "the flush does not rename the older staged save over the newer"
+    );
+    assert_eq!(
+        files(&slots),
+        ["b.json"],
+        "the older save's temp file is gone, and `a`'s was lost with it"
+    );
 }
 
 #[test]

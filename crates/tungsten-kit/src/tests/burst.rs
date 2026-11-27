@@ -100,6 +100,29 @@ fn a_burst_spawns_at_once_and_goes_with_its_particles() {
 }
 
 #[test]
+fn an_unknown_key_burst_evicts_nothing() {
+    let (mut world, _) = rig();
+    world.insert_resource(BurstBudget::new().with_cap(1));
+    let sparks = burst(&mut world, "sparks", Vec2::ZERO, false).unwrap();
+    // At the cap, a key burst of a config the registry lacks spawns nothing,
+    // so it takes no burst's slot.
+    assert!(burst(&mut world, "smoke", Vec2::ZERO, true).is_none());
+    let kept = (
+        world.get::<ParticleBurst>(sparks).unwrap().counted,
+        world.get::<ParticleEmitterState>(sparks).unwrap().drained,
+        world.resource::<BurstBudget>().spawned(),
+    );
+    assert_eq!(
+        kept,
+        (true, false, 1),
+        "an unknown key burst at the cap: the cosmetic one counted and emitting, none spawned"
+    );
+    // A known key burst still takes its slot.
+    assert!(burst(&mut world, "gore", Vec2::ZERO, true).is_some());
+    assert!(!world.get::<ParticleBurst>(sparks).unwrap().counted);
+}
+
+#[test]
 fn bursts_keep_their_budget() {
     let (mut world, _) = rig();
     world.insert_resource(BurstBudget::new().with_cap(2));

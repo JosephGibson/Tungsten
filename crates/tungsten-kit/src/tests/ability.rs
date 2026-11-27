@@ -845,6 +845,76 @@ fn the_load_refuses_a_name_twice_a_speedy_spawn_without_motion_and_bad_values() 
 }
 
 #[test]
+fn an_inline_ability_of_each_written_form_round_trips_through_its_data() {
+    // Per case: the ability's data, a key its written form holds and that
+    // key's value, as an inline ability in a save writes it.
+    let impulse = json!([{ "impulse": 1 }]);
+    let cases = [
+        (
+            "interval",
+            json!({ "trigger": { "interval": 1.5 }, "payload": impulse }),
+            "/trigger",
+            json!({ "interval": 1.5 }),
+        ),
+        (
+            "random",
+            json!({ "target": { "random": { "any": ["team.enemy"], "range": 64 } }, "payload": impulse }),
+            "/target",
+            json!({ "random": { "any": ["team.enemy"], "range": 64.0 } }),
+        ),
+        (
+            "aim",
+            json!({ "target": { "aim": {} }, "payload": impulse }),
+            "/target",
+            json!({ "aim": {} }),
+        ),
+        (
+            "nearest",
+            json!({ "target": { "nearest": { "any": ["team.enemy"], "range": 64 } }, "payload": impulse }),
+            "/target",
+            json!({ "nearest": { "any": ["team.enemy"], "range": 64.0 } }),
+        ),
+        (
+            "cone",
+            json!({ "payload": [{ "cone": { "reach": 80, "half_angle": 30, "damage": 3, "tags": ["damage.cold"] } }] }),
+            "/payload/0/cone/half_angle",
+            json!(30.0),
+        ),
+        (
+            "conduct",
+            json!({
+                "target": { "random": { "any": ["team.enemy"] } },
+                "payload": [{ "conduct": { "damage": 5, "reach": 100, "jumps": 3, "receivers": { "all": ["conductive"] } } }]
+            }),
+            "/payload/0/conduct/jumps",
+            json!(3),
+        ),
+        (
+            "place",
+            json!({ "payload": [{ "place": { "prefab": "puff", "range": 120 } }] }),
+            "/payload/0/place",
+            json!({ "prefab": "puff", "range": 120.0 }),
+        ),
+        (
+            "centred lob",
+            json!({ "payload": [{ "spawn": { "prefab": "puff", "offset": 4, "centred": true, "lob": { "speed": 400, "time": [0.25, 2] } } }] }),
+            "/payload/0/spawn",
+            json!({ "prefab": "puff", "speed": 0.0, "offset": 4.0, "centred": true, "lob": { "speed": 400.0, "time": [0.25, 2.0] } }),
+        ),
+    ];
+    for (case, data, key, want) in cases {
+        let ability: Ability = serde_json::from_value(data).unwrap();
+        let written = serde_json::to_value(&ability).unwrap();
+        assert_eq!(written.pointer(key), Some(&want), "{case}: {written}");
+        assert_eq!(
+            serde_json::from_value::<Ability>(written).unwrap(),
+            ability,
+            "{case}: read back the same"
+        );
+    }
+}
+
+#[test]
 fn the_component_names_inline_entries_replaces_owned_names_and_saves_its_state() {
     let (mut world, mut schedule) = rig();
     let wand = insert(

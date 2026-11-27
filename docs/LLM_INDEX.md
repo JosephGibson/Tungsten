@@ -95,4 +95,4 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 
 ## Usually skip
 
-`CHANGELOG.md` unless releasing; binary assets; large example tilemaps unless tilemap-specific. Never open `docs/plans/archive/`.
+`CHANGELOG.md` unless releasing; binary assets; large example tilemaps unless tilemap-specific.

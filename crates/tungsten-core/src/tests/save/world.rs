@@ -737,6 +737,8 @@ fn an_unknown_component_prefab_or_object_is_dropped_and_reported() {
     let cave = &mut saved["areas"]["cave"];
     cave["named"]["bat_9"] = json!({ "components": { "health": { "current": 1.0 } } });
     cave["named"]["bat_1"]["components"]["mana"] = json!(3);
+    cave["named"]["bat_1"]["removed"] = json!(["ghost"]);
+    cave["spawns"][0]["components"]["ghost"] = json!(1);
     cave["spawns"][1]["prefab"] = json!("ghost");
 
     let mut b = world();
@@ -746,12 +748,38 @@ fn an_unknown_component_prefab_or_object_is_dropped_and_reported() {
         report.dropped,
         [
             "`bat_1` in area `cave`'s `mana`: not a saved component",
+            "`bat_1` in area `cave`'s removed `ghost`: not a saved component",
             "`bat_9` in area `cave`: the level no longer has it",
+            "spawn 0 (`bolt`)'s `ghost`: not a saved component",
             "spawn 1 (`ghost`): the manifest has no such prefab",
         ]
     );
     assert_eq!(b.get::<Health>(lb.bat_1).unwrap().current, 6.0);
     assert_eq!(spawns(&b).len(), 1, "the known one");
+}
+
+#[test]
+fn a_spawn_whose_prefab_no_longer_prepares_fails_the_restore_and_changes_nothing() {
+    let mut a = world();
+    let la = level(&mut a);
+    fire(&mut a, la.turret, 210.0);
+    flush(&mut a);
+    let mut saved = value(&capture_world(&a).unwrap());
+    // A position past the prefab's bound: no unknown prefab to drop, so
+    // the restore fails.
+    saved["areas"]["cave"]["spawns"][0]["components"]["position"] = json!([1.0e8, 0.0]);
+
+    let mut b = world();
+    level(&mut b);
+    let before = snapshot(&b);
+    let err = restore_world(&mut b, &from_value(saved), &(Scene,)).unwrap_err();
+    assert!(
+        matches!(&err, RestoreError::Prefab { what, message }
+            if what == "spawn 0 (`bolt`)" && message.contains("must be finite and within")),
+        "{err:?}"
+    );
+    assert_eq!(snapshot(&b), before);
+    assert!(b.query::<&Scene>().next().is_none());
 }
 
 #[test]
@@ -1452,9 +1480,32 @@ mod generated {
         true
     }
 
+    /// `chain` without a `migrate` of its own: the trait's, which refuses.
+    struct Bare(Chain);
+
+    impl RoomGenerator for Bare {
+        fn version(&self) -> u32 {
+            self.0.version()
+        }
+
+        fn reproduces(&self, version: u32) -> bool {
+            self.0.reproduces(version)
+        }
+
+        fn generate(&self, generation: &mut Generate<'_>) -> Result<(), String> {
+            self.0.generate(generation)
+        }
+    }
+
+    /// A migration that leaves the record unreadable: `named` a number.
+    fn unreadable(_: &Generation, _: Option<&Generation>, area: &mut Value) -> bool {
+        area["named"] = json!(5);
+        true
+    }
+
     /// A World saving `health` with `options`, the prefab `crate`, the
     /// cave tileset, the template `hall`, and `chain` registered.
-    fn world_of_with(chain: Chain, options: SaveOptions<Health>) -> World {
+    fn world_of_with(chain: impl RoomGenerator, options: SaveOptions<Health>) -> World {
         let mut world = World::new();
         world.register_component::<Health>("health");
         world.register_saved_with("health", options);
@@ -1475,7 +1526,7 @@ mod generated {
         world
     }
 
-    fn world_of(chain: Chain) -> World {
+    fn world_of(chain: impl RoomGenerator) -> World {
         world_of_with(chain, SaveOptions::new())
     }
 
@@ -1691,6 +1742,18 @@ mod generated {
             }
         );
         assert_eq!(room_ids(&d), ["deep_r0", "deep_r1", "deep_r2", "hall"]);
+        // Nor do two of the save's generations that make one room ID.
+        let mut split = value(&save);
+        split["generated"]["chain_r1"]["seed"] = json!(8);
+        let mut fresh = world_of(chain(1));
+        let err = regenerate(&mut fresh, &from_value(split)).unwrap_err();
+        assert_eq!(
+            err,
+            GenerateError::Taken {
+                room: "chain_r0".into()
+            }
+        );
+        assert_eq!(room_ids(&fresh), ["hall"]);
     }
 
     #[test]
@@ -1717,6 +1780,69 @@ mod generated {
         );
         assert_eq!(snapshot(&world), before, "nothing changed");
         assert_eq!(health(&world, "chain_r0.crate_1"), Some(3.0));
+    }
+
+    #[test]
+    fn a_generated_area_its_generator_does_not_migrate_fails_and_changes_nothing() {
+        // A generator the World lacks, whose namesake would keep the record
+        // and is never asked; the trait's default `migrate`; a migration
+        // whose record no longer reads.
+        let seen = Seen::default();
+        let mut renamed = value(&fixture());
+        for generation in renamed["generated"].as_object_mut().unwrap().values_mut() {
+            generation["generator"] = json!("chian");
+        }
+        let keeping = Chain {
+            migrate: Some(keep),
+            seen: seen.clone(),
+            ..chain(1)
+        };
+        fn regenerated(generator: impl RoomGenerator) -> World {
+            let mut world = world_of(generator);
+            for rooms in regenerate(&mut world, &fixture()).unwrap() {
+                spawn_all(&mut world, &rooms);
+            }
+            world
+        }
+        let unreadable = Chain {
+            migrate: Some(unreadable),
+            ..chain(2)
+        };
+        let cases = [
+            (
+                "a generator the World lacks",
+                world_of(keeping),
+                from_value(renamed),
+                "area `chain_r0` refused, now None",
+            ),
+            (
+                "the default migrate",
+                regenerated(Bare(chain(2))),
+                fixture(),
+                "area `chain_r0` refused, now Some(2)",
+            ),
+            (
+                "an unreadable record",
+                regenerated(unreadable),
+                fixture(),
+                "area `chain_r0`'s migrated record does not load",
+            ),
+        ];
+        for (case, mut world, save, want) in cases {
+            let before = snapshot(&world);
+            let err = restore_world(&mut world, &save, &(Scene,)).unwrap_err();
+            let got = match &err {
+                RestoreError::Generation { area, now, .. } => format!(
+                    "area `{area}` refused, now {:?}",
+                    now.as_ref().map(|now| now.version)
+                ),
+                RestoreError::Value { what, .. } => format!("{what} does not load"),
+                other => format!("{other:?}"),
+            };
+            assert_eq!(got, want, "{case}");
+            assert_eq!(snapshot(&world), before, "{case}: nothing changed");
+        }
+        assert!(seen.borrow().is_empty(), "the lacking generator's namesake");
     }
 
     #[test]

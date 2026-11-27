@@ -1,6 +1,8 @@
 //! The level's systems: its drawn clock, the camera's zoom, the glows and
 //! each area's light; and the areas the view shows.
 
+use std::f32::consts::TAU;
+
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
 use tungsten::core::{
@@ -71,23 +73,50 @@ pub fn bloom_on(world: &World) -> bool {
         .is_none_or(|settings| settings.bloom() != Some(false))
 }
 
-/// `level_glows`: each glow's halo, its core and its light, spawned as its
+/// `level_glows`: each glow's halo, its core and its lights, spawned as its
 /// owner's children (the kit's) the first frame the glow is seen, each hung
-/// from the owner's point by its offset, pulsing by the drawn clock; a part
-/// leaves with its owner, as any child does. The halos hide while the Bloom
-/// option is off.
+/// from the owner's point by its offset, pulsing by the drawn clock, quick
+/// and small, or by the glow's own slow pulse, which swings its core too;
+/// a part leaves with its owner, as any child does. The halos hide while
+/// the Bloom option is off.
 pub fn glows(world: &mut World) {
     let time = drawn_time(world);
     let bloom = bloom_on(world);
-    let owners: Vec<(Entity, Glow, Vec2, Option<GlowParts>)> = world
-        .query::<(Entity, &Glow, &Transform, Option<&GlowParts>)>()
-        .map(|(entity, glow, at, parts)| (entity, *glow, at.position, parts.copied()))
+    // Each owner and its point: its glow and parts are read in the loop, so
+    // the frame's list stays small whatever a glow holds.
+    let owners: Vec<(Entity, Vec2)> = world
+        .query::<(Entity, &Glow, &Transform)>()
+        .map(|(entity, _, at)| (entity, at.position))
         .collect();
-    for (owner, glow, at, parts) in owners {
-        let parts = parts
+    for (owner, at) in owners {
+        let Some(glow) = world.get::<Glow>(owner).copied() else {
+            continue;
+        };
+        let parts = world
+            .get::<GlowParts>(owner)
+            .copied()
             .filter(|parts| parts.spawned)
             .unwrap_or_else(|| spawn_parts(world, owner, &glow));
-        let pulse = 1.0 + 0.04 * (time * 4.0 + parts.phase).sin();
+        // The halo's and core's scale and the lights' share of their
+        // intensity, by the glow's own slow pulse or the level's quick one.
+        let (pulse, core, swing, flicker) = match glow.pulse {
+            Some(own) => {
+                let wave = (TAU * time / own.period.max(0.1) + parts.phase).sin();
+                let swing = 1.0 + own.light * wave;
+                (
+                    1.0 + own.radius * wave,
+                    1.0 + own.radius * wave,
+                    swing,
+                    glow.light * swing,
+                )
+            }
+            None => (
+                1.0 + 0.04 * (time * 4.0 + parts.phase).sin(),
+                1.0,
+                1.0,
+                glow.light + 0.13 * (time * 5.0 + parts.phase).sin(),
+            ),
+        };
         let centre = glow.centre(at);
         if let Some(halo) = parts.halo {
             place(
@@ -99,10 +128,15 @@ pub fn glows(world: &mut World) {
                 glow.hidden || !bloom,
             );
         }
-        if let Some(core) = parts.core {
-            place(world, core, at, centre, glow.core, glow.hidden);
+        if let Some(part) = parts.core {
+            place(world, part, at, centre, glow.core * core, glow.hidden);
         }
-        let flicker = glow.light + 0.13 * (time * 5.0 + parts.phase).sin();
+        if let (Some(tail), Some(lamp)) = (glow.tail, parts.tail) {
+            hang(world, lamp, at, centre);
+            if let Some(light) = world.get_mut::<Light>(lamp) {
+                light.intensity = if glow.hidden { 0.0 } else { tail.light * swing };
+            }
+        }
         let Some(lamp) = parts.light else {
             continue;
         };
@@ -129,8 +163,9 @@ fn hang(world: &mut World, entity: Entity, at: Vec2, point: Vec2) {
 /// A glow's parts for `owner`, its children (the kit's `spawn_child`),
 /// owned by gameplay, phased by its save ID's low bits, which keep the
 /// clock's in an `f32` at an authored ID's size, or by its column when it
-/// has none; recorded in the owner's [`GlowParts`]. The player's glow, the
-/// lantern, takes its light at [`PLAYER_LIGHT_PRIORITY`].
+/// has none; recorded in the owner's [`GlowParts`]. Its light shines in its
+/// core's colour, its tail's in its halo's. The player's glow, the lantern,
+/// takes its lights at [`PLAYER_LIGHT_PRIORITY`].
 fn spawn_parts(world: &mut World, owner: Entity, glow: &Glow) -> GlowParts {
     let phase = crate::shared::save_id(world, owner).map_or_else(
         || {
@@ -140,12 +175,17 @@ fn spawn_parts(world: &mut World, owner: Entity, glow: &Glow) -> GlowParts {
         },
         |id| (id.0 % 1024) as f32,
     );
-    let [r, g, b, _] = glow.color.map(|c| f32::from(c) / 255.0);
+    let rgb = |color: [u8; 4]| {
+        let [r, g, b, _] = color.map(|c| f32::from(c) / 255.0);
+        Vec3::new(r, g, b)
+    };
+    let core_color = glow.core_color.unwrap_or(glow.color);
     let offset = Vec2::from(glow.offset);
-    let light = (glow.light > 0.0).then(|| {
-        let mut light = Light::point(Vec3::new(r, g, b), glow.reach());
-        light.intensity = glow.light;
-        if world.has::<Player>(owner) {
+    let player = world.has::<Player>(owner);
+    let lamp = |world: &mut World, color: Vec3, reach: f32, intensity: f32| {
+        let mut light = Light::point(color, reach);
+        light.intensity = intensity;
+        if player {
             light.priority = PLAYER_LIGHT_PRIORITY;
         }
         spawn_child(
@@ -154,7 +194,12 @@ fn spawn_parts(world: &mut World, owner: Entity, glow: &Glow) -> GlowParts {
             offset,
             (light, SceneEntity { state_id: GAMEPLAY }),
         )
-    });
+    };
+    let light = (glow.light > 0.0).then(|| lamp(world, rgb(core_color), glow.reach(), glow.light));
+    let tail = glow
+        .tail
+        .filter(|tail| tail.light > 0.0)
+        .map(|tail| lamp(world, rgb(glow.color), tail.reach, tail.light));
     let halo = (glow.radius > 0.0).then(|| {
         let corner = offset - Vec2::splat(glow.radius);
         spawn_sprite(
@@ -176,13 +221,14 @@ fn spawn_parts(world: &mut World, owner: Entity, glow: &Glow) -> GlowParts {
             CORE,
             CORE_MATERIAL,
             CORE_Z,
-            glow.color,
+            core_color,
         )
     });
     let parts = GlowParts {
         halo,
         core,
         light,
+        tail,
         phase,
         spawned: true,
     };

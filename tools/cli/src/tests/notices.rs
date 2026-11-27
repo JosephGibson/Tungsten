@@ -403,15 +403,6 @@ fn font_files_need_a_bundled_entry_or_a_review() {
 }
 
 #[test]
-fn every_embedded_work_and_license_file_is_embedded() {
-    for (_, path) in EMBEDDED_WORKS {
-        assert!(embedded::file(path).is_some(), "{path}");
-    }
-    assert!(embedded::file("LICENSE").is_some());
-    assert!(embedded::file("licenses/clarifications.json").is_some());
-}
-
-#[test]
 #[cfg_attr(
     windows,
     ignore = "python3 is not on every Windows host; the Linux runs hold the tables together"

@@ -2,27 +2,35 @@ use super::*;
 use std::path::PathBuf;
 
 #[test]
-fn register_keeps_the_renderers_id() {
-    let mut reg = ShaderRegistry::new();
-    let path = PathBuf::from("assets/shaders/glow.wgsl");
+fn register_keeps_the_given_id_name_and_path() {
     // The renderer seeds its engine shaders first, so a manifest shader's ID
     // need not follow manifest order; the registry mints none of its own.
-    reg.register("glow", ShaderAssetId(23), path.clone());
-    assert_eq!(reg.get("glow"), Some(ShaderAssetId(23)));
-    assert_eq!(reg.id_for_path(&path), Some(ShaderAssetId(23)));
-    assert_eq!(reg.name_for_id(ShaderAssetId(23)), Some("glow"));
-}
-
-#[test]
-fn path_reverse_lookup_round_trips() {
-    let mut reg = ShaderRegistry::new();
-    let path = PathBuf::from("assets/shaders/sprite.wgsl");
-    let id = ShaderAssetId(0);
-    reg.register("sprite", id, path.clone());
-    assert_eq!(reg.id_for_path(&path), Some(id));
-    assert_eq!(reg.get("sprite"), Some(id));
-    assert_eq!(reg.name_for_id(id), Some("sprite"));
-    assert_eq!(reg.path_for_id(id), Some(path.as_path()));
+    for (case, name, id, path) in [
+        (
+            "the renderer's ID",
+            "glow",
+            ShaderAssetId(23),
+            "assets/shaders/glow.wgsl",
+        ),
+        (
+            "ID zero",
+            "sprite",
+            ShaderAssetId(0),
+            "assets/shaders/sprite.wgsl",
+        ),
+    ] {
+        let mut reg = ShaderRegistry::new();
+        let path = PathBuf::from(path);
+        reg.register(name, id, path.clone());
+        assert_eq!(reg.get(name), Some(id), "{case}: get");
+        assert_eq!(reg.id_for_path(&path), Some(id), "{case}: id_for_path");
+        assert_eq!(reg.name_for_id(id), Some(name), "{case}: name_for_id");
+        assert_eq!(
+            reg.path_for_id(id),
+            Some(path.as_path()),
+            "{case}: path_for_id"
+        );
+    }
 }
 
 #[test]

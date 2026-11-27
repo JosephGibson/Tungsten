@@ -379,6 +379,11 @@
     "path": "sounds/ball_thud.wav",
     "volume": 0.4
   },
+  "ex10_bowling_strike_sfx": {
+    "looping": false,
+    "path": "sounds/bowling_strike.wav",
+    "volume": 0.5
+  },
   "ex10_gun_click_sfx": {
     "looping": false,
     "path": "sounds/gun_click.wav",

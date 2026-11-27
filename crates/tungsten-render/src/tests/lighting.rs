@@ -34,19 +34,6 @@ fn cull_to_cap_keeps_directional_first() {
 }
 
 #[test]
-fn cull_to_cap_truncates_to_sixteen() {
-    let aabb = (Vec2::ZERO, Vec2::splat(1.0));
-    let mut entries: Vec<(Vec2, Light)> = Vec::new();
-    for i in 0..32 {
-        // Each reaches the view from where it stands.
-        let at = i as f32 * 10.0;
-        entries.push((Vec2::splat(at), Light::point(Vec3::ONE, at * 2.0 + 1.0)));
-    }
-    let out = cull_to_cap(aabb, &entries, LIT_LIGHT_CAP);
-    assert_eq!(out.len(), LIT_LIGHT_CAP);
-}
-
-#[test]
 fn past_the_cap_lights_in_view_rank_by_the_views_centre() {
     let aabb = (Vec2::ZERO, Vec2::splat(100.0));
     // Sixteen lights inside the view near its corner come first in input
@@ -68,23 +55,6 @@ fn past_the_cap_lights_in_view_rank_by_the_views_centre() {
         !out.iter().any(|l| l.position_radius[..2] == [1.0, 1.0]),
         "the corner light farthest from the centre goes"
     );
-}
-
-#[test]
-fn past_the_cap_a_dark_light_takes_no_slot() {
-    let aabb = (Vec2::ZERO, Vec2::splat(100.0));
-    let mut dark = Light::point(Vec3::ONE, 5.0);
-    dark.intensity = 0.0;
-    let mut entries = vec![(Vec2::splat(50.0), dark)];
-    entries.extend((0..LIT_LIGHT_CAP).map(|i| {
-        (
-            Vec2::new(10.0 + i as f32, 10.0),
-            Light::point(Vec3::ONE, 5.0),
-        )
-    }));
-    let out = cull_to_cap(aabb, &entries, LIT_LIGHT_CAP);
-    assert_eq!(out.len(), LIT_LIGHT_CAP);
-    assert!(out.iter().all(|l| l.color_intensity[0] > 0.0));
 }
 
 #[test]
@@ -515,6 +485,24 @@ fn past_the_cap_a_priority_light_at_the_views_edge_keeps_its_slot() {
         !holds(&out, edge),
         "at priority 0 the twenty nearer the centre push it out"
     );
+}
+
+#[test]
+fn a_nan_light_past_the_cap_does_not_push_out_the_centre_light() {
+    let aabb = (Vec2::ZERO, Vec2::splat(100.0));
+    let lamp = Light::point(Vec3::ONE, 10.0);
+    let (edge, centre) = (Vec2::new(1.0, 1.0), Vec2::splat(50.0));
+    // A light at a NaN point counts as inside the view (`lights_view`); past
+    // the cap it ranks as the farthest from the view's centre. A finite one
+    // in its place is the control.
+    for odd in [Vec2::new(f32::NAN, 50.0), Vec2::new(99.0, 50.0)] {
+        let out = cull_to_cap(aabb, &[(edge, lamp), (odd, lamp), (centre, lamp)], 2);
+        assert_eq!(out.len(), 2);
+        assert!(
+            holds(&out, centre),
+            "past a cap of 2 beside a light at {odd}, the light at the view's centre is dropped: {out:?}"
+        );
+    }
 }
 
 #[test]

@@ -111,6 +111,8 @@ pub enum Sound {
     Fizzled,
     /// A bowling ball landing hard.
     BallThudded,
+    /// A bowling ball striking an enemy, in place of its thud.
+    BallStruck,
     /// The trigger pulled on an empty magazine or during a reload.
     DryFired,
     /// A reload begun.
@@ -177,7 +179,7 @@ pub enum Sound {
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 65] = [
+    pub const ALL: [Sound; 66] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -210,6 +212,7 @@ impl Sound {
         Sound::LavaSet,
         Sound::Fizzled,
         Sound::BallThudded,
+        Sound::BallStruck,
         Sound::DryFired,
         Sound::Racked,
         Sound::FireEnded,
@@ -281,6 +284,7 @@ impl Sound {
             Sound::LavaSet => "lava_set",
             Sound::Fizzled => "fizzled",
             Sound::BallThudded => "ball_thudded",
+            Sound::BallStruck => "ball_struck",
             Sound::DryFired => "dry_fired",
             Sound::Racked => "racked",
             Sound::FireEnded => "fire_ended",

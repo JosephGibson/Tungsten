@@ -9,19 +9,19 @@ use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
 use tungsten::core::workers;
 use tungsten::core::{
-    AssetRegistry, BodyKind, Bundle, Collider, CollisionEvent, DataRef, Easing, Entity, EventQueue,
-    Particle, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
-    PrevPosition, RigidBody, Shape, Sprite, Time, Transform, Tween, TweenChannel, Velocity, With,
-    World,
+    AssetRegistry, BodyKind, Bundle, Collider, CollisionEvent, DataRef, Easing, Entity,
+    EventCursor, EventQueue, Particle, ParticleConfigRegistry, ParticleEmitter,
+    ParticleEmitterState, Position, PrevPosition, RigidBody, Shape, Sprite, Time, Transform, Tween,
+    TweenChannel, Velocity, With, World,
 };
 use tungsten::kit::{
     Children, ContactDamage, EffectRequest, Effects, Health, Hit, ImpactDamage, Impacted, Reaction,
-    Tags, end_effect, stimulate,
+    Tags, end_effect, step_velocity, stimulate,
 };
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::cascade;
-use super::components::{ColdFace, FireEmitter, Flame, IcePulse, PulseGlow};
+use super::components::{ColdFace, FireEmitter, Flame, IcePulse, PulseGlow, Strikes};
 use super::draw;
 use super::{
     BALL_BURN, BASE_SMASH, BREAK_FLOOR, BREAK_SLACK, BURN_SECS, COAT, COLD, CRATE_BREAK, CRUSH_HIT,
@@ -793,6 +793,90 @@ pub fn fire_contacts(world: &mut World) {
     }
 }
 
+/// How far apart a struck pair's bodies may end a step and still touch:
+/// the kit's `impact_damage` margin.
+const STRIKE_TOUCH: f32 = 3.0;
+
+/// Whether `ball` and `foe` both live and end the step within
+/// [`STRIKE_TOUCH`] of each other.
+fn still_touching(world: &World, ball: Entity, foe: Entity) -> bool {
+    let body = |entity| {
+        Some((
+            body_centre(world, entity)?,
+            world.get::<Collider>(entity)?.shape,
+        ))
+    };
+    match (body(ball), body(foe)) {
+        (Some((a, a_shape)), Some((b, b_shape))) => gap(a, a_shape, b, b_shape) <= STRIKE_TOUCH,
+        _ => false,
+    }
+}
+
+/// `ball_strikes`, in the overlap phase after the kit's `impact_damage` and
+/// before [`ball_impacts`]: each hit the kit's impact damage dealt this
+/// step from a bowling ball to a live enemy, read once through `cursor`,
+/// whose closing speed along the line between their centres, from both
+/// bodies' velocities before the step (`kit::step_velocity`, the kit's own
+/// measure), reaches [`STRIKE_SPEED`](toys::STRIKE_SPEED) stuns it at once
+/// (`data/effects/stunned.json`), a troll too, and plays the strike's
+/// sound where they touch, in save-ID order of the kit's hits. Once a
+/// contact: a pair that struck stays in [`Strikes`] while its bodies end
+/// each step within [`STRIKE_TOUCH`], and strikes no more until they part.
+/// The player is no enemy, so no ball stuns it.
+pub fn ball_strikes(world: &mut World, cursor: &mut EventCursor<Impacted>) {
+    let Some(mut strikes) = world
+        .get_resource_mut::<Strikes>()
+        .map(|strikes| std::mem::take(&mut strikes.0))
+    else {
+        return;
+    };
+    strikes.retain(|&(ball, foe)| still_touching(world, ball, foe));
+    let mut struck: Vec<(Entity, Entity, Vec2)> = Vec::new();
+    if let Some(events) = world.get_resource::<EventQueue<Impacted>>() {
+        let kept = |entity| {
+            step_velocity(world, entity)
+                .or_else(|| world.get::<Velocity>(entity).map(|v| v.0))
+                .unwrap_or(Vec2::ZERO)
+        };
+        for impact in cursor.read(events) {
+            let (ball, foe) = (impact.hitter, impact.target);
+            let live = world
+                .get::<Health>(foe)
+                .is_some_and(|health| !health.is_dead());
+            if !world.has::<BowlingBall>(ball)
+                || !world.has::<Enemy>(foe)
+                || !live
+                || strikes.contains(&(ball, foe))
+                || struck.iter().any(|&(b, f, _)| (b, f) == (ball, foe))
+            {
+                continue;
+            }
+            let (Some(from), Some(to)) = (body_centre(world, ball), body_centre(world, foe)) else {
+                continue;
+            };
+            let towards = (to - from).normalize_or_zero();
+            if (kept(ball) - kept(foe)).dot(towards) < toys::STRIKE_SPEED {
+                continue;
+            }
+            let radius = world
+                .get::<Collider>(ball)
+                .map_or(0.0, |collider| collider.shape.half_extents().x);
+            struck.push((ball, foe, from + towards * radius));
+        }
+    }
+    for (ball, foe, at) in struck {
+        EffectRequest::new(foe, DataRef::by_id(STUNNED_EFFECT)).apply(world);
+        audio::play(world, Sound::BallStruck, at);
+        strikes.push((ball, foe));
+    }
+    if let Some(kept) = world.get_resource_mut::<Strikes>() {
+        kept.0 = strikes;
+    }
+}
+
+/// The effect a strike applies, by its `effects` entry.
+const STUNNED_EFFECT: &str = "stunned";
+
 /// A bowling ball's closing speed from which it lands with a thud.
 const BALL_THUD_SPEED: f32 = 700.0;
 
@@ -803,7 +887,8 @@ const BALL_THUD_SPEED: f32 = 700.0;
 /// a step each, in save-ID order: [`Impact`] events, which
 /// `data/cue_rules/impacts.json` bursts, the sparks a ball's 0.12 s apart
 /// and four a step at most, the dust one a step. The first bowling ball
-/// thuds.
+/// whose contact is not a strike's ([`Strikes`], [`ball_strikes`]) thuds:
+/// a strike plays its own sound in the thud's place.
 pub fn ball_impacts(world: &mut World) {
     let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
         return;
@@ -812,7 +897,10 @@ pub fn ball_impacts(world: &mut World) {
     // lower threshold.
     let mut fast = FastBodies::new(0.45 * IMPACT_SPEED.min(BALL_THUD_SPEED));
     let mut sparked: Vec<(Option<SaveId>, Entity, Vec2)> = Vec::new();
-    let mut dusted: Vec<(Option<SaveId>, Entity, Vec2)> = Vec::new();
+    // Each dusted ball: its save ID, its body, where it met and whether that
+    // contact is a strike's.
+    let mut dusted: Vec<(Option<SaveId>, Entity, Vec2, bool)> = Vec::new();
+    let strikes = world.get_resource::<Strikes>();
     for event in events.iter_current() {
         if !fast.either(world, event.a, event.b) {
             continue;
@@ -826,17 +914,23 @@ pub fn ball_impacts(world: &mut World) {
             .map_or(Vec2::ZERO, |v| v.0);
         let closing = -(va - vb).dot(event.normal);
         if closing >= BALL_THUD_SPEED {
-            for (this, pushed) in [(Some(event.a), event.normal), (event.b, -event.normal)] {
+            for (this, other, pushed) in [
+                (Some(event.a), event.b, event.normal),
+                (event.b, Some(event.a), -event.normal),
+            ] {
                 let Some(this) = this.filter(|&this| world.has::<BowlingBall>(this)) else {
                     continue;
                 };
-                if !dusted.iter().any(|&(_, ball, _)| ball == this)
+                if !dusted.iter().any(|&(_, ball, ..)| ball == this)
                     && let Some(centre) = body_centre(world, this)
                     && let Some(collider) = world.get::<Collider>(this)
                 {
                     let id = crate::shared::save_id(world, this);
                     let radius = collider.shape.half_extents().x;
-                    dusted.push((id, this, centre - pushed * radius));
+                    let struck = other.is_some_and(|other| {
+                        strikes.is_some_and(|strikes| strikes.touching(this, other))
+                    });
+                    dusted.push((id, this, centre - pushed * radius, struck));
                 }
             }
         }
@@ -855,7 +949,7 @@ pub fn ball_impacts(world: &mut World) {
     }
     sparked.sort_by_key(|&(id, ..)| id);
     dusted.sort_by_key(|&(id, ..)| id);
-    if let Some(&(_, _, at)) = dusted.first() {
+    if let Some(&(_, _, at, _)) = dusted.iter().find(|&&(.., struck)| !struck) {
         audio::play(world, Sound::BallThudded, at);
     }
     let raised = sparked
@@ -864,7 +958,7 @@ pub fn ball_impacts(world: &mut World) {
         .chain(
             dusted
                 .into_iter()
-                .map(|(_, body, at)| (Raised::BallDust, body, at)),
+                .map(|(_, body, at, _)| (Raised::BallDust, body, at)),
         );
     if let Some(queue) = world.get_resource_mut::<EventQueue<Impact>>() {
         for (raised, body, at) in raised {
@@ -1371,7 +1465,9 @@ fn touches(world: &World, entity: Entity, centre: Vec2, shape: Shape, spared: u6
 /// The crates a hit breaks this step (V33), in save-ID order, each with
 /// the velocity of what broke it, a share of which its planks carry on: a
 /// crate not frozen that ends the step within
-/// [`TOUCH_MARGIN`](super::TOUCH_MARGIN) of a dynamic body whose speed
+/// [`TOUCH_MARGIN`](super::TOUCH_MARGIN) of a dynamic body, or that much
+/// and the step's worth of the speed they part at after it, since the
+/// solver can push a crate a fast hitter met off it within the step, whose speed
 /// toward it along the line between their centres and the pair's closing
 /// speed on that line, from their speeds before the step, are each
 /// [`BREAK_FLOOR`] or more, so resting bodies and bodies moving together
@@ -1398,8 +1494,9 @@ fn crate_hits(world: &World) -> Vec<(Entity, Vec2)> {
         return Vec::new();
     }
     crates.sort_by_key(|(id, ..)| *id);
-    // The movers fast and heavy enough to break one, the cheap checks first.
-    let mut movers: Vec<(Option<SaveId>, Entity, Vec2, Shape, Vec2)> = world
+    // The movers fast and heavy enough to break one, the cheap checks first:
+    // each one's centre, shape, velocity before the step and now.
+    let mut movers: Vec<(Option<SaveId>, Entity, Vec2, Shape, Vec2, Vec2)> = world
         .query::<(
             Entity,
             &Position,
@@ -1418,23 +1515,39 @@ fn crate_hits(world: &World) -> Vec<(Entity, Vec2)> {
             let heavy = speed / body.inv_mass >= CRATE_BREAK - BREAK_SLACK;
             (speed >= BREAK_FLOOR && heavy).then(|| {
                 let id = crate::shared::save_id(world, entity);
-                (id, entity, at.0 + collider.offset, collider.shape, before)
+                let now = velocity.map_or(Vec2::ZERO, |v| v.0);
+                (
+                    id,
+                    entity,
+                    at.0 + collider.offset,
+                    collider.shape,
+                    before,
+                    now,
+                )
             })
         })
         .collect();
     movers.sort_by_key(|(id, ..)| *id);
     let throws = world.get_resource::<Throws>();
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     let mut broken = Vec::new();
     for (_, crate_, centre, shape) in crates {
         let own = before_step(world, crate_);
-        let hitter = movers.iter().find(|&&(_, body, at, body_shape, before)| {
-            if body == crate_ || gap(centre, shape, at, body_shape) > super::TOUCH_MARGIN {
-                return false;
-            }
-            let towards = (centre - at).normalize_or_zero();
-            before.dot(towards) >= BREAK_FLOOR && (before - own).dot(towards) >= BREAK_FLOOR
-        });
-        if let Some(&(.., before)) = hitter {
+        let own_now = world.get::<Velocity>(crate_).map_or(Vec2::ZERO, |v| v.0);
+        let hitter = movers
+            .iter()
+            .find(|&&(_, body, at, body_shape, before, now)| {
+                if body == crate_ {
+                    return false;
+                }
+                let towards = (centre - at).normalize_or_zero();
+                let parting = (own_now - now).dot(towards).max(0.0);
+                if gap(centre, shape, at, body_shape) > super::TOUCH_MARGIN + parting * dt {
+                    return false;
+                }
+                before.dot(towards) >= BREAK_FLOOR && (before - own).dot(towards) >= BREAK_FLOOR
+            });
+        if let Some(&(.., before, _)) = hitter {
             broken.push((crate_, before));
             continue;
         }

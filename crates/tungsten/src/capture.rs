@@ -7,7 +7,7 @@
 //! when no fatal error came first. Under a script the variables are
 //! ignored and each `capture` step's result goes to the script's report.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tungsten_render::RenderOutcome;
 
@@ -140,8 +140,23 @@ impl Capture {
             )),
         };
         for (index, target) in now.iter().enumerate() {
+            // A copy's folder, made as the renderer made the written file's.
+            if index > 0
+                && result.is_ok()
+                && let Some(parent) = target.path.parent()
+                && let Err(err) = std::fs::create_dir_all(parent)
+            {
+                let error = anyhow::anyhow!(
+                    "capture frame {frame} -> {} not written: making its folder failed: {err}",
+                    target.path.display()
+                );
+                self.settle(frame, target.path.clone(), Some(error));
+                continue;
+            }
             let error = match &result {
                 Ok(_) if index == 0 => None,
+                // The written file itself: a copy onto it would empty it.
+                Ok(written) if same_file(&target.path, written) => None,
                 Ok(written) => std::fs::copy(written, &target.path).err().map(|err| {
                     anyhow::anyhow!(
                         "capture frame {frame} -> {} not written: copying {} failed: {err}",
@@ -196,6 +211,11 @@ impl Capture {
             error: text,
         });
     }
+}
+
+/// Whether `a` and `b` name one file: equal paths, or one canonical path.
+fn same_file(a: &Path, b: &Path) -> bool {
+    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(a), Ok(b)) if a == b)
 }
 
 #[cfg(test)]

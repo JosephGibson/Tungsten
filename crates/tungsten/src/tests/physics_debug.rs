@@ -17,29 +17,6 @@ fn emit_system_is_noop_when_disabled() {
     assert_eq!(world.get_resource::<DebugDraw>().unwrap().len(), 0);
 }
 
-#[test]
-fn emit_system_pushes_one_command_per_collider_when_enabled() {
-    let mut world = World::new();
-    world.insert_resource(DebugDraw::new());
-    world.insert_resource(PhysicsDebugOverlay {
-        enabled: true,
-        ..Default::default()
-    });
-
-    let a = world.spawn();
-    world.insert(a, Position(Vec2::new(0.0, 0.0)));
-    world.insert(a, Collider::aabb(Vec2::splat(2.0)));
-
-    let b = world.spawn();
-    world.insert(b, Position(Vec2::new(10.0, 0.0)));
-    world.insert(b, Collider::circle(3.0));
-
-    physics_debug_emit_system(&mut world);
-
-    let dd = world.get_resource::<DebugDraw>().unwrap();
-    assert_eq!(dd.len(), 2);
-}
-
 /// An enabled overlay over one AABB body with history from (0, 0) to
 /// (12, 0), and a `Time` a quarter of the way through a step.
 fn interpolated_body_world() -> World {

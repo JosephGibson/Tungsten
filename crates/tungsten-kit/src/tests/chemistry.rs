@@ -2980,6 +2980,135 @@ fn a_loaded_queue_without_references_counts_its_dead_entries() {
     assert_eq!(queue_counts(&b), queue_counts(&a));
 }
 
+/// What a handler heard of each reaction: its stimulus or band label, its
+/// tile cell's column and its amount.
+type Heard = Rc<RefCell<Vec<(String, Option<u32>, f32)>>>;
+
+/// At a cap of 1: a `ladder` status whose two bands each enter the handler
+/// `heard`, built by 3 on a `heat` on the named `node` entity `stone`; a
+/// `heat` on a `grass` cell runs `heard`; a three-cell grass strip placed
+/// at the origin.
+fn laddered(heard: &Heard) -> (World, Schedule, Entity) {
+    let heard = Rc::clone(heard);
+    let (mut world, schedule) = rig_with(&ChemistryPlugin::new().with_cap(1).with_handler(
+        "heard",
+        move |_, reaction: &Reaction| {
+            heard.borrow_mut().push((
+                reaction.stimulus().to_owned(),
+                reaction.cell().map(|cell| cell.col),
+                reaction.amount(),
+            ));
+        },
+    ));
+    let ladder: Effect = serde_json::from_value(json!({
+        "intensity": { "max": 5, "decay": 0 },
+        "bands": [
+            { "at": 1, "enter": [{ "handler": "heard" }] },
+            { "at": 2, "enter": [{ "handler": "heard" }] }
+        ]
+    }))
+    .unwrap();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("ladder", ladder);
+    rule(
+        &mut world,
+        "climbs",
+        json!({ "stimulus": "heat", "on": { "all": ["node"] }, "outputs": [{ "build": { "status": "ladder", "amount": 3 } }] }),
+    );
+    rule(
+        &mut world,
+        "warms",
+        json!({ "stimulus": "heat", "on": { "all": ["grass"] }, "outputs": [{ "handler": "heard" }] }),
+    );
+    strip_map(&mut world, "strip", 3, "grass", LayerKind::Render, false);
+    place(&mut world, "strip", Vec2::ZERO);
+    let stone = world.spawn_with((Tags::new(["node"]),));
+    tungsten_core::save::name(&mut world, stone, None, "stone").unwrap();
+    (world, schedule, stone)
+}
+
+/// A `heat` of 1 on the strip's cell at `col`, at `depth`: whether it
+/// reached an entry.
+fn heat_cell(world: &mut World, col: u32, depth: u8) -> bool {
+    let stimulus = queue::Stimulus {
+        amount: 1.0,
+        status_effect: 1.0,
+        dot_base: 1.0,
+        depth,
+        credit: None,
+    };
+    let chemistry = world.resource_mut::<Chemistry>();
+    let run = chemistry.run;
+    chemistry.stimulate(
+        &Settings::default(),
+        Receiver::Cell(cell("strip", Vec2::ZERO, col)),
+        "heat",
+        stimulus,
+        run,
+    )
+}
+
+#[test]
+fn a_saved_queue_keeps_its_tile_cells_and_band_lists() {
+    let (heard_a, heard_b) = (Heard::default(), Heard::default());
+    let (mut a, mut schedule_a, stone) = laddered(&heard_a);
+    // The build crosses both bands, whose lists wait behind the cap with a
+    // heat on two cells.
+    assert!(stimulate(&mut a, stone, "heat", 1.0, None));
+    step(&mut a, &mut schedule_a);
+    assert_eq!(intensity(&a, stone, "ladder"), Some(3.0));
+    assert!(heat_cell(&mut a, 0, 0) && heat_cell(&mut a, 1, 1));
+    assert_eq!(queue_counts(&a), (4, 1));
+    let saved = capture_world(&a).unwrap();
+    let queue = |save: &tungsten_core::save::WorldSave| {
+        serde_json::to_value(save).unwrap()["resources"][CHEMISTRY_QUEUE].clone()
+    };
+    let written = queue(&saved);
+    let entries = written["entries"].as_array().unwrap();
+    let field = |key: &str| -> Vec<&Value> { entries.iter().filter_map(|e| e.get(key)).collect() };
+    let cols: Vec<&Value> = field("cell").iter().map(|cell| &cell["col"]).collect();
+    assert_eq!(
+        cols,
+        [&json!(0), &json!(1)],
+        "the cells by place: {written}"
+    );
+    assert_eq!(field("band"), [&json!(0), &json!(1)], "the band lists");
+
+    // An entry of neither a status nor a stimulus, as an older save might
+    // hold, loads as an empty slot after the others, which keep their keys.
+    let mut edited = serde_json::to_value(&saved).unwrap();
+    edited["resources"][CHEMISTRY_QUEUE]["entries"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({}));
+    let edited = serde_json::from_value(edited).unwrap();
+    let (mut b, mut schedule_b, _) = laddered(&heard_b);
+    restore_world(&mut b, &edited, &(Restored,)).unwrap();
+    assert_eq!(queue_counts(&b), queue_counts(&a));
+    assert_eq!(queue(&capture_world(&b).unwrap()), written, "saved again");
+    // A cell's entry is indexed again: a second heat on it merges.
+    for world in [&mut a, &mut b] {
+        assert!(heat_cell(world, 0, 0));
+        assert_eq!(queue_counts(world), (4, 1), "merged");
+    }
+    for _ in 0..5 {
+        step(&mut a, &mut schedule_a);
+        step(&mut b, &mut schedule_b);
+    }
+    let mut got = heard_b.borrow().clone();
+    assert_eq!(got, *heard_a.borrow(), "the same runs, in turn");
+    got.sort_by(|x, y| x.partial_cmp(y).unwrap());
+    let want = [
+        ("heat", Some(0), 2.0),
+        ("heat", Some(1), 1.0),
+        ("ladder#enter.0", None, 0.0),
+        ("ladder#enter.1", None, 0.0),
+    ]
+    .map(|(label, col, amount)| (label.to_owned(), col, amount));
+    assert_eq!(got, want, "each entry ran once");
+}
+
 // 7.13c: a blast a game shapes and sets off.
 
 /// A bodiless target with health 1000 and a knockback at `at`.
@@ -3675,6 +3804,57 @@ fn a_blast_passes_the_dead() {
     );
     assert!(velocity(&world, live).x < 0.0, "{}", velocity(&world, live));
     assert_eq!(lost(&world, going), 0.0);
+}
+
+// The QA pass: a blast's credit checked as each hit is built.
+
+#[test]
+fn a_blast_credits_no_dead_credit() {
+    let bang = Blast::new(60.0)
+        .with_damage(5.0)
+        .with_far(1.0)
+        .landing_now();
+    let at = |x: f32| Transform::from_position(Vec2::new(x, 0.0));
+    let source_on = |world: &World, target: Entity| {
+        world
+            .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+            .iter()
+            .filter(|hit| hit.entity == target)
+            .last()
+            .map(|hit| hit.source)
+    };
+    // A thrower out of reach, alive, then dead by its Health (still in the
+    // World): the beast's hit credits it alive alone.
+    for dies in [false, true] {
+        let (mut world, _) = rig();
+        let thrower = world.spawn_with((Health::new(1.0), at(-200.0)));
+        let beast = world.spawn_with((Health::new(100.0), at(30.0)));
+        if dies {
+            crate::kill(&mut world, thrower);
+        }
+        blast(&mut world, Vec2::ZERO, &bang, Some(thrower), None);
+        let want = if dies { None } else { Some(thrower) };
+        assert_eq!(
+            source_on(&world, beast),
+            Some(want),
+            "a thrower that dies {dies}"
+        );
+    }
+    // A credit its own hit kills, ahead of the beast in save order: the
+    // beast's hit, built after, credits nobody.
+    let (mut world, _) = rig();
+    let keg = world.spawn_with((Health::new(1.0), at(-30.0)));
+    let beast = world.spawn_with((Health::new(100.0), at(30.0)));
+    blast(&mut world, Vec2::ZERO, &bang, Some(keg), None);
+    assert!(
+        world.get::<Health>(keg).unwrap().is_dead(),
+        "its hit kills it"
+    );
+    assert_eq!(
+        source_on(&world, beast),
+        Some(None),
+        "a credit an earlier hit killed"
+    );
 }
 
 // The receiver grid's directory, packed centres and squared test (phase 7's

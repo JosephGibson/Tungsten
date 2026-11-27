@@ -7,7 +7,8 @@
 //! five seconds (`ice`); the black hole puts out what burns in its reach; fast
 //! iron crushes small balls and hurts the player with physical damage; a
 //! hard impact bursts a small ball's sparks; moving bodies hurt targets by
-//! their speed and mass; cold puts a fire hazard out for a while. What has
+//! their speed and mass, and a bowling ball meeting an enemy fast enough
+//! stuns it; cold puts a fire hazard out for a while. What has
 //! health takes the kit's damage types, effects and chemistry's builds
 //! instead (`combat`).
 //!
@@ -23,8 +24,8 @@ pub mod systems;
 
 use glam::Vec2;
 use tungsten::core::save::SaveOptions;
-use tungsten::core::{Entity, Schedule, Stage, World, system};
-use tungsten::kit::{CueEvent, CuesOnEvent, PROJECTILE_TICK, Phase, ensure_phases};
+use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
+use tungsten::kit::{CueEvent, CuesOnEvent, IMPACT_DAMAGE, PROJECTILE_TICK, Phase, ensure_phases};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
@@ -188,13 +189,18 @@ fn impact_cue(impact: &Impact) -> Option<CueEvent> {
 
 /// The element rules as a plugin. In the fixed step, after the physics
 /// step (the kit times the burns, the freezes and the douses): the fires
-/// against the balls, the impact bursts, the crushes, the bodies' impacts,
+/// against the balls, the bowling balls' strikes after the kit's impact
+/// damage, the impact bursts, the crushes, the bodies' impacts,
 /// the spread and the burning surface and the black hole's dousing, then
 /// the cascades' count, last of 01's contact systems and before the kit's
 /// resolve. Before the frame's particles, the burning surface's emitters
 /// and the impact sparks' colours; in the present phase the cold pulses;
 /// and the flames, pulses and ice shells drawn after the sprites.
 pub struct ElementsPlugin;
+
+/// The bowling balls' strikes, between the fire's contacts and the balls'
+/// thuds, after the kit's impact damage.
+pub const STRIKES: &str = "ball_strikes";
 
 /// The overlap systems the cascades' run follows.
 const CONTACTS: [&str; 7] = [
@@ -227,6 +233,19 @@ impl Plugin for ElementsPlugin {
                 .capture_as(cascade::cascades_saved),
         );
         ensure_phases(schedule);
+        // Between the fire's contacts and the balls' thuds, after the kit's
+        // impact damage, whose hits it reads; added first, so the resolve
+        // keeps the thuds' place before the crushes and the bodies'
+        // impacts, the first of them over the step's contacts.
+        world.insert_resource(components::Strikes::default());
+        let mut struck = EventCursor::new();
+        let strikes = system(STRIKES, move |world: &mut World| {
+            systems::ball_strikes(world, &mut struck);
+        })
+        .after(IMPACT_DAMAGE)
+        .after(CONTACTS[0])
+        .before(CONTACTS[1]);
+        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(strikes));
         let fixed = [
             Phase::Overlap.join(system(CONTACTS[0], systems::fire_contacts)),
             Phase::Overlap.join(system(CONTACTS[1], systems::ball_impacts)),

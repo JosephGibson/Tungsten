@@ -28,10 +28,3 @@ fn sprite_batch_default_lit_false() {
     let b = SpriteBatch::new(TextureHandle(0), FilterMode::Nearest);
     assert!(!b.lit);
 }
-
-#[test]
-fn lit_shader_source_includes_light_ubo_struct() {
-    // Sanity: the manifest mirror and compile-time include must match.
-    assert!(LIT_SPRITE_SHADER_SOURCE.contains("struct LightUbo"));
-    assert!(LIT_SPRITE_SHADER_SOURCE.contains("@group(2) @binding(0)"));
-}

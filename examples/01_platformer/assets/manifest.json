@@ -719,6 +719,9 @@
       "blood": {
         "path": "data/cue_rules/blood.json"
       },
+      "immune": {
+        "path": "data/cue_rules/immune.json"
+      },
       "impacts": {
         "path": "data/cue_rules/impacts.json"
       },
@@ -2235,6 +2238,11 @@
       "looping": false,
       "path": "sounds/bound.wav",
       "volume": 0.4
+    },
+    "ex10_bowling_strike_sfx": {
+      "looping": false,
+      "path": "sounds/bowling_strike.wav",
+      "volume": 0.5
     },
     "ex10_corroded_sfx": {
       "looping": false,

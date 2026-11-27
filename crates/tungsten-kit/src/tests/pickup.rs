@@ -195,6 +195,43 @@ fn the_magnet_takes_the_nearest_collector_in_reach_per_filter_as_a_full_scan_wou
     );
 }
 
+#[test]
+fn a_far_off_magnet_does_not_overflow() {
+    use crate::{Hurtbox, Stats};
+    use tungsten_core::{Time, Transform};
+
+    // A reach of 1 px 3e9 px out, or of 0.001 px 3e6 px out: the bins lie
+    // past i32's range, so the collector's and the pickup's are clamped.
+    for (x, reach) in [(3.0e9_f32, 1.0_f32), (-3.0e9, 1.0), (3.0e6, 0.001)] {
+        let mut world = World::new();
+        world.insert_resource(Time::new());
+        let mut schedule = Schedule::new();
+        PickupPlugin.build(&mut schedule, &mut world);
+        schedule.resolve().unwrap();
+        world.spawn_with((
+            Transform::from_position(Vec2::new(x, 0.0)),
+            Hurtbox::new(HitShape::circle(4.0)),
+            Stats::new().with(Stats::PICKUP_RADIUS, reach),
+        ));
+        let at = Vec2::new(x, reach / 2.0);
+        let gem = world.spawn_with((
+            Position(at),
+            PrevPosition(at),
+            Pickup::new(HitShape::circle(2.0)).with_magnet(100.0),
+        ));
+        world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+        let stepped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+        }));
+        assert!(
+            stepped.is_ok(),
+            "a magnet at x {x} with a collector's reach of {reach} px panics"
+        );
+        let moved = world.get::<Position>(gem).unwrap().0;
+        assert_eq!(moved, Vec2::new(x, 0.0), "x {x}: pulled onto its collector");
+    }
+}
+
 /// A world with the physics, the oscillator and the pickups, its gravity
 /// `gravity` px/s² down, and a still collector at the origin whose hurtbox,
 /// a point, takes what reaches its centre, drawing within 300 px.

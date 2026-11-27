@@ -635,13 +635,11 @@ impl ScriptRunner {
             Verb::Cursor(cursor) => {
                 let at = match cursor {
                     Cursor::Window([x, y]) => Vec2::new(x, y),
-                    Cursor::World(point) => {
-                        let camera = world
-                            .get_resource::<CameraState>()
-                            .copied()
-                            .unwrap_or_default();
-                        (Vec2::from_array(point) - camera.position) * camera.zoom
-                    }
+                    Cursor::World(point) => world
+                        .get_resource::<CameraState>()
+                        .copied()
+                        .unwrap_or_default()
+                        .world_to_screen(Vec2::from_array(point)),
                 };
                 input(world)?.update_cursor_position(at.x, at.y);
             }

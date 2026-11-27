@@ -231,7 +231,10 @@ impl World {
     ///
     /// [`AreaError::Prefab`] as `prepare_map_objects`; [`AreaError::Name`]
     /// when a live entity holds an object's name or two objects share one.
-    /// Nothing changes on an error.
+    /// Nothing changes on those. A registered component that fails to
+    /// serialize at an object's naming ([`NameError::Serialize`]) fails it
+    /// past that point: the map is put back and the area loaded, and the
+    /// instance and the objects up to that one stay spawned.
     ///
     /// # Panics
     ///

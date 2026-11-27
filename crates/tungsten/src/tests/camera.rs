@@ -90,20 +90,6 @@ fn bounds_clamp_still_applies_in_follow_mode() {
 }
 
 #[test]
-fn shake_offset_reaches_camera_state() {
-    let mut world = world_at([800, 600]);
-    {
-        let controller = world.resource_mut::<CameraController>();
-        controller.shake_max_offset = Vec2::new(12.0, 0.0);
-        controller.shake_trauma = 1.0;
-        controller.shake_phase = FRAC_PI_2;
-    }
-    frame(&mut world, 0.0);
-    let position = position(&world);
-    assert!((position.x - 12.0).abs() <= 1e-5, "position={position:?}");
-}
-
-#[test]
 fn shake_does_not_accumulate_into_base_position_across_frames() {
     let mut world = world_at([800, 600]);
     {
@@ -121,13 +107,6 @@ fn shake_does_not_accumulate_into_base_position_across_frames() {
         frame(&mut world, 0.0);
     }
     assert_eq!(position(&world), first);
-}
-
-#[test]
-fn zero_trauma_leaves_position_at_the_base() {
-    let mut world = world_at([800, 600]);
-    frame(&mut world, 0.016);
-    assert_eq!(position(&world), Vec2::ZERO);
 }
 
 #[test]

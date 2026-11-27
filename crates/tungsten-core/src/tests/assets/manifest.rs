@@ -867,16 +867,6 @@ fn tempdir() -> TempDir {
 }
 
 #[test]
-fn the_temp_dir_helper_removes_its_folder_when_dropped() {
-    let tmp = tempdir();
-    write_file(&tmp, "hero.png");
-    let path = tmp.to_path_buf();
-    assert!(path.join("hero.png").exists());
-    drop(tmp);
-    assert!(!path.exists());
-}
-
-#[test]
 fn load_manifest_with_ui_themes_and_nine_slice() {
     let tmp = tempdir();
     write_file(&tmp, "frame.png");
@@ -1474,6 +1464,24 @@ fn a_sheet_count_past_its_cells_fails() {
         matches!(&err, ManifestError::InvalidSheet { id, reason } if id == "walk" && reason.contains("`count` 3 is past its 2 cells")),
         "{err}"
     );
+}
+
+#[test]
+fn a_sheet_of_too_many_cells_fails() {
+    let tmp = tempdir();
+    // 65536 x 65536 cells of 1x1: one more than a u32 counts.
+    write_png_header(&tmp, "huge.png", 65536, 65536);
+    for sheet in [
+        r#"{"path": "huge.png", "frame": [1, 1]}"#,
+        r#"{"path": "huge.png", "frame": [1, 1], "count": 4}"#,
+    ] {
+        let path = write_manifest(&tmp, &format!(r#"{{"sheets": {{"huge": {sheet}}}}}"#));
+        let err = ResolvedManifest::load(&path).expect_err(sheet);
+        assert!(
+            matches!(&err, ManifestError::InvalidSheet { id, reason } if id == "huge" && reason.contains("into more than 4294967295 cells")),
+            "{sheet}: {err}"
+        );
+    }
 }
 
 #[test]

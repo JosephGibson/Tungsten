@@ -16,13 +16,14 @@ pub(crate) const WORLD_CUES: &str = "world_cues";
 /// [`play`](Self::play) queues it; [`CuesPlugin`](crate::CuesPlugin)'s
 /// system plays each after every other source in the step, in send order,
 /// running the `world_cues` entry `name`'s actions at `at` with no subject:
-/// `prefab` and `roll` spawn there with no source, `sound` and `shake` play
-/// by the [`CueListener`](crate::CueListener), a `label` with a font floats
-/// the amount, and `counter` and `flag` act on the game's own with
-/// `target: game`. The load refuses the rest: `despawn`, `squash`, `flash`,
-/// `effect`, `ability`, `loop`, `stop`, a style-less label, and a counter
-/// or flag on a subject or the other. An unknown name plays nothing and
-/// warns once; the trace writes a world cue under `Entity::PLACEHOLDER`.
+/// `prefab` and `roll` spawn there with no source, `burst` fires there,
+/// `sound` and `shake` play by the [`CueListener`](crate::CueListener), a
+/// `label` with a font floats the amount, and `counter` and `flag` act on
+/// the game's own with `target: game`. The load refuses the rest:
+/// `despawn`, `squash`, `flash`, `effect`, `ability`, `loop`, `stop`,
+/// `clip`, `camera`, a style-less label, and a counter or flag on a subject
+/// or the other. An unknown name plays nothing and warns once; the trace
+/// writes a world cue under `Entity::PLACEHOLDER`.
 ///
 /// The first play registers its queue, so a World that plays none holds
 /// none.

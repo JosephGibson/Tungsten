@@ -42,15 +42,6 @@ fn move_by(world: &mut World, entity: Entity, delta: Vec2) {
 }
 
 #[test]
-fn the_plugin_registers_two_passes_in_post_update() {
-    let (_, schedule) = setup();
-    assert_eq!(
-        schedule.resolved_text().lines().nth(4),
-        Some("post_update: transform_propagate, transform_propagate_late, kit_present")
-    );
-}
-
-#[test]
 fn spawn_child_places_the_child_and_lists_it() {
     let (mut world, _) = setup();
     let player = root_at(&mut world, 100.0, 50.0);

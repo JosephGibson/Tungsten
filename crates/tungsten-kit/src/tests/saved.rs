@@ -469,6 +469,93 @@ fn queued_damage_heal_and_effect_requests_resolve_once_after_a_load() {
     }
 }
 
+/// The step's landed parts as `(amount, crit)` and heals as `(amount,
+/// source)`, each in send order.
+type Landed = (Vec<(f32, bool)>, Vec<(f32, Option<Entity>)>);
+
+fn landed(world: &World) -> Landed {
+    let parts = world
+        .resource::<tungsten_core::EventQueue<crate::DamagedPart>>()
+        .iter()
+        .map(|part| (part.amount, part.crit))
+        .collect();
+    let heals = world
+        .resource::<tungsten_core::EventQueue<crate::Healed>>()
+        .iter()
+        .map(|healed| (healed.amount, healed.source))
+        .collect();
+    (parts, heals)
+}
+
+#[test]
+fn a_queued_split_hit_sheet_hit_and_sourced_heal_come_back_whole() {
+    let level = |world: &mut World| -> (Entity, Entity) {
+        let golem = world.spawn_with((Health::new(100.0),));
+        let hero = world.spawn();
+        (
+            named(world, golem, None, "golem"),
+            named(world, hero, None, "hero"),
+        )
+    };
+    // A sheet that always crits on a fixed 10: a plain hit by its sourceless
+    // stats never would.
+    let zap = Ability::new().with_skill(
+        crate::Skill::new()
+            .with_damage("damage.fire", 10.0, 10.0)
+            .with_crit_chance(1.0),
+    );
+    let (mut a, mut schedule_a) = rig();
+    let (golem, hero) = level(&mut a);
+    step(&mut a, &mut schedule_a);
+    let delivery =
+        crate::intent::sheet::resolve(&a, hero, "zap", &zap, zap.skill().unwrap()).delivery;
+    let fire = crate::DamagePart::new(2.0).with_tags(crate::Tags::new(["damage.fire"]));
+    assert!(
+        DamageRequest::from_parts(golem, [fire, crate::DamagePart::new(3.0)])
+            .with_source(hero)
+            .queue(&mut a)
+    );
+    assert!(DamageRequest::from_delivery(&a, golem, &delivery).queue(&mut a));
+    assert!(HealRequest::new(golem, 1.0).with_source(hero).queue(&mut a));
+    let saved = capture_world(&a).unwrap();
+
+    let (mut b, mut schedule_b) = rig();
+    churn(&mut b, 25);
+    let (_, hero_b) = level(&mut b);
+    restore(&mut b, &saved);
+    step_keeping_events(&mut a, &mut schedule_a);
+    step_keeping_events(&mut b, &mut schedule_b);
+    // Two parts of the split hit, the sheet's crit (10 × 1.5), then the
+    // heal by its source.
+    let want = |hero| -> Landed {
+        (
+            vec![(2.0, false), (3.0, false), (15.0, true)],
+            vec![(1.0, Some(hero))],
+        )
+    };
+    assert_eq!(landed(&a), want(hero), "uninterrupted");
+    assert_eq!(landed(&b), want(hero_b), "after the load");
+
+    // Amounts a save holds that are not finite and at least 0 read as 0:
+    // the split hit's parts and the heal land nothing.
+    let mut edited = serde_json::to_value(&saved).unwrap();
+    let requests = &mut edited["resources"]["damage_requests"];
+    requests["damage"][0]["parts"][0]["amount"] = json!(1e39);
+    requests["damage"][0]["parts"][1]["amount"] = json!(-3.0);
+    requests["heals"][0]["amount"] = json!(1e39);
+    let edited: WorldSave = serde_json::from_value(edited).unwrap();
+    let (mut c, mut schedule_c) = rig();
+    let (golem_c, _) = level(&mut c);
+    restore(&mut c, &edited);
+    step_keeping_events(&mut c, &mut schedule_c);
+    assert_eq!(
+        landed(&c),
+        (vec![(15.0, true)], vec![]),
+        "only the sheet hit"
+    );
+    assert_eq!(c.get::<Health>(golem_c).unwrap().current(), 85.0);
+}
+
 #[test]
 fn a_queued_requests_context_and_direction_come_back_with_it() {
     let level = |world: &mut World| -> Entity {

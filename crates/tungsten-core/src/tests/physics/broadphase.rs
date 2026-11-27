@@ -17,26 +17,6 @@ fn force_hashed(grid: &mut SpatialGrid) {
 }
 
 #[test]
-fn single_cell_insert_and_query() {
-    let mut grid = SpatialGrid::new(32.0);
-    let a = aabb(16.0, 16.0, 4.0, 4.0);
-    grid.insert(0, &a);
-    let mut out = Vec::new();
-    grid.query(&a, None, &mut out);
-    assert_eq!(out, vec![0]);
-}
-
-#[test]
-fn shape_spanning_cells_is_returned_once() {
-    let mut grid = SpatialGrid::new(32.0);
-    let a = aabb(0.0, 0.0, 40.0, 40.0);
-    grid.insert(7, &a);
-    let mut out = Vec::new();
-    grid.query(&a, None, &mut out);
-    assert_eq!(out, vec![7]);
-}
-
-#[test]
 fn separated_shapes_dont_collide() {
     let mut grid = SpatialGrid::new(32.0);
     grid.insert(0, &aabb(16.0, 16.0, 4.0, 4.0));

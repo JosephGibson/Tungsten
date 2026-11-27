@@ -426,8 +426,10 @@ pub fn thermal_shock(world: &mut World, thing: Entity, from: Vec2) {
     heat(world, thing, from, credit);
 }
 
-/// `cascade_run`: counts the run and clears the step's lists; with
-/// chemistry's queue empty, the heated bodies' points go.
+/// `cascade_run`: counts the run and clears the step's lists and the
+/// handlers' bin, which a load or a new run, counting the same steps
+/// again, would else find; with chemistry's queue empty, the heated
+/// bodies' points go.
 pub fn run(world: &mut World) {
     let Some(cascades) = world.get_resource_mut::<Cascades>() else {
         return;
@@ -436,6 +438,9 @@ pub fn run(world: &mut World) {
     cascades.steamed.clear();
     cascades.detonated.clear();
     cascades.reacted.clear();
+    if let Some(bin) = world.get_resource_mut::<HandlerBin>() {
+        bin.0 = None;
+    }
     let idle = world
         .get_resource::<Chemistry>()
         .is_none_or(|chemistry| chemistry.pending() == 0);

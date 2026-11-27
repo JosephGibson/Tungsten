@@ -1,0 +1,91 @@
+[
+  {
+    "on": "immune_part",
+    "flags": {
+      "all": [
+        "show.damage_numbers"
+      ]
+    },
+    "periodic": false,
+    "kind": {
+      "all": [
+        "damage.fire"
+      ]
+    },
+    "filter": {
+      "none": [
+        "status.frozen"
+      ]
+    },
+    "do": [
+      {
+        "label": {
+          "text": "Immune",
+          "merge": 0.25,
+          "offset": [
+            0,
+            -18
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "on": "immune_part",
+    "flags": {
+      "all": [
+        "show.damage_numbers"
+      ]
+    },
+    "periodic": false,
+    "kind": {
+      "all": [
+        "damage.cold"
+      ]
+    },
+    "filter": {
+      "none": [
+        "status.burning"
+      ]
+    },
+    "do": [
+      {
+        "label": {
+          "text": "Immune",
+          "merge": 0.25,
+          "offset": [
+            0,
+            -18
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "on": "immune_part",
+    "flags": {
+      "all": [
+        "show.damage_numbers"
+      ]
+    },
+    "periodic": false,
+    "kind": {
+      "none": [
+        "damage.fire",
+        "damage.cold"
+      ]
+    },
+    "do": [
+      {
+        "label": {
+          "text": "Immune",
+          "merge": 0.25,
+          "offset": [
+            0,
+            -18
+          ]
+        }
+      }
+    ]
+  }
+]

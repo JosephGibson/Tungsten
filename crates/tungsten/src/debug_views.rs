@@ -1623,7 +1623,7 @@ pub(crate) fn write_rows(tree: &mut UiTree, window: &ViewWindow, rows: &[Vec<Str
 /// each, rising from the bottom against the larger of 33.3 ms and the
 /// tallest shown, in the budget ramp's colour against a 60 Hz frame; then,
 /// over them, a guide line one unit thick at 16.7 and at 33.3 ms for a
-/// graph `height` units tall (M58).
+/// graph `height` units tall, at most the graph's height (M58).
 pub(crate) fn graph_vertices(samples: &[f32], height: f32, out: &mut Vec<UiVertex>) {
     out.clear();
     let shown = &samples[samples.len().saturating_sub(GRAPH_SAMPLES)..];
@@ -1640,7 +1640,11 @@ pub(crate) fn graph_vertices(samples: &[f32], height: f32, out: &mut Vec<UiVerte
         let y0 = 1.0 - (ms / top).clamp(0.0, 1.0);
         quad(x0, y0, x0 + width, 1.0, ramp(*ms, FRAME_BUDGET_MS));
     }
-    let thickness = if height > 0.0 { 1.0 / height } else { 0.0 };
+    let thickness = if height > 0.0 {
+        (1.0 / height).min(1.0)
+    } else {
+        0.0
+    };
     for ms in GUIDES_MS {
         let y = 1.0 - (ms / top).clamp(0.0, 1.0);
         let y0 = (y - thickness * 0.5).clamp(0.0, 1.0 - thickness);

@@ -82,9 +82,9 @@ pub struct KitPlugins;
 impl KitPlugins {
     /// Tags, source, hierarchy, animation, lifetime, despawn outside,
     /// spawner, health, path follower, the platformer controller, the
-    /// top-down mover, zone, action input, the camera target, stats,
-    /// counters, cooldown, spawn children, cues, linear motion, the
-    /// oscillator, steering, follow, orbit, knockback, the speed limit,
+    /// top-down mover, zone, action input, the camera target, the camera
+    /// rigs, stats, counters, cooldown, spawn children, cues, linear motion,
+    /// the oscillator, steering, follow, orbit, knockback, the speed limit,
     /// wrap, stay in view, aim, facing, the character animator, depth sort,
     /// the hit shapes, contact damage, projectiles, pickups, impact damage,
     /// effects, looks by tags, health bars, particle bursts, chemistry,

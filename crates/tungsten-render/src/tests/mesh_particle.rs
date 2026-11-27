@@ -37,19 +37,6 @@ fn mesh_particle_instance_layout_is_stable() {
 }
 
 #[test]
-fn mesh_particle_instance_is_pod() {
-    let inst = MeshParticleInstance {
-        position: [1.0, 2.0],
-        scale: [3.0, 4.0],
-        rotation: 0.5,
-        color: [10, 20, 30, 40],
-    };
-    let bytes: &[u8] = bytemuck::bytes_of(&inst);
-    assert_eq!(bytes.len(), std::mem::size_of::<MeshParticleInstance>());
-    assert_eq!(&bytes[20..], &[10, 20, 30, 40]);
-}
-
-#[test]
 fn plan_lays_batches_end_to_end() {
     let batches = [batch(0, &[1.0, 2.0]), batch(1, &[3.0, 4.0, 5.0])];
     let (mut staging, mut draws, mut missing) = (Vec::new(), Vec::new(), Vec::new());

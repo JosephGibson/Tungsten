@@ -53,6 +53,7 @@ use crate::features::props::{
     self,
     components::{Crate, Keg},
 };
+use crate::features::toys;
 use crate::features::toys::components::{BowlingBall, IronBlock};
 use crate::shared::{Saved, body_centre, spawn_burst};
 
@@ -112,9 +113,11 @@ pub fn held(world: &World, troll: Entity) -> Option<Entity> {
     carried_by(world, troll)
 }
 
-/// Whether a troll may lift `entity`: an iron block, a bowling ball, a
-/// crate, burning or not, a keg whose fuse is unlit (a lit one it kicks),
-/// or a live frozen enemy or dummy, not a troll, held or in flight.
+/// Whether a troll may lift `entity`: an iron block, a bowling ball slower
+/// than the strike's [`STRIKE_SPEED`](toys::STRIKE_SPEED) (a faster one is
+/// too fast to catch and strikes it), a crate, burning or not, a keg whose
+/// fuse is unlit (a lit one it kicks), or a live frozen enemy or dummy, not
+/// a troll, held or in flight.
 fn liftable(world: &World, entity: Entity) -> bool {
     let target = world.has::<Dummy>(entity)
         || world
@@ -126,8 +129,11 @@ fn liftable(world: &World, entity: Entity) -> bool {
             .get::<Health>(entity)
             .is_some_and(|health| !health.is_dead());
     let unlit = world.has::<Keg>(entity) && !props::burning(world, entity);
+    let catchable = world
+        .get::<Velocity>(entity)
+        .is_none_or(|velocity| velocity.0.length() < toys::STRIKE_SPEED);
     let thing = world.has::<IronBlock>(entity)
-        || world.has::<BowlingBall>(entity)
+        || (world.has::<BowlingBall>(entity) && catchable)
         || world.has::<Crate>(entity)
         || unlit;
     (thing || frozen_target)

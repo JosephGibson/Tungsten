@@ -7,39 +7,26 @@ fn preset_mode_off_returns_none() {
 }
 
 #[test]
-fn preset_low_matches_canonical_values() {
-    let p = SmaaPreset::from_mode(PostAaMode::SmaaLow).unwrap();
-    assert!((p.threshold - 0.15).abs() < 1e-6);
-    assert_eq!(p.max_search_steps, 4);
-    assert_eq!(p.max_search_steps_diag, 0);
-    assert_eq!(p.corner_rounding, u32::MAX);
-}
-
-#[test]
-fn preset_medium_matches_canonical_values() {
-    let p = SmaaPreset::from_mode(PostAaMode::SmaaMedium).unwrap();
-    assert!((p.threshold - 0.10).abs() < 1e-6);
-    assert_eq!(p.max_search_steps, 8);
-    assert_eq!(p.max_search_steps_diag, 0);
-    assert_eq!(p.corner_rounding, u32::MAX);
-}
-
-#[test]
-fn preset_high_matches_canonical_values() {
-    let p = SmaaPreset::from_mode(PostAaMode::SmaaHigh).unwrap();
-    assert!((p.threshold - 0.10).abs() < 1e-6);
-    assert_eq!(p.max_search_steps, 16);
-    assert_eq!(p.max_search_steps_diag, 8);
-    assert_eq!(p.corner_rounding, 25);
-}
-
-#[test]
-fn preset_ultra_matches_canonical_values() {
-    let p = SmaaPreset::from_mode(PostAaMode::SmaaUltra).unwrap();
-    assert!((p.threshold - 0.05).abs() < 1e-6);
-    assert_eq!(p.max_search_steps, 32);
-    assert_eq!(p.max_search_steps_diag, 16);
-    assert_eq!(p.corner_rounding, 25);
+fn each_preset_matches_its_canonical_values() {
+    for (mode, threshold, steps, diag, corner) in [
+        (PostAaMode::SmaaLow, 0.15, 4, 0, u32::MAX),
+        (PostAaMode::SmaaMedium, 0.10, 8, 0, u32::MAX),
+        (PostAaMode::SmaaHigh, 0.10, 16, 8, 25),
+        (PostAaMode::SmaaUltra, 0.05, 32, 16, 25),
+    ] {
+        let p = SmaaPreset::from_mode(mode).unwrap();
+        assert!(
+            (p.threshold - threshold).abs() < 1e-6,
+            "{mode:?}: threshold {}",
+            p.threshold
+        );
+        assert_eq!(p.max_search_steps, steps, "{mode:?}: max_search_steps");
+        assert_eq!(
+            p.max_search_steps_diag, diag,
+            "{mode:?}: max_search_steps_diag"
+        );
+        assert_eq!(p.corner_rounding, corner, "{mode:?}: corner_rounding");
+    }
 }
 
 #[test]

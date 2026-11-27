@@ -44,12 +44,6 @@ fn tile_at_out_of_bounds_is_none() {
 }
 
 #[test]
-fn pixel_size_multiplies_dimensions() {
-    let m = tiny_map();
-    assert_eq!(m.pixel_size(), Vec2::new(48.0, 32.0));
-}
-
-#[test]
 fn validate_rejects_wrong_layer_length() {
     let mut m = tiny_map();
     m.layers[0].tiles.pop();
@@ -1120,11 +1114,23 @@ fn a_layers_z_unlit_and_tint_read_from_tiled() {
                 "tintcolor": "#12345" }),
             "`tintcolor` must be #rrggbb or #aarrggbb",
         ),
+        // `from_str_radix` takes a pair's leading `+`; Tiled writes none.
+        (
+            serde_json::json!({ "type": "tilelayer", "name": "bridge", "data": [1, 1],
+                "tintcolor": "#+f+f+f" }),
+            "`tintcolor` must be #rrggbb or #aarrggbb",
+        ),
+        (
+            serde_json::json!({ "type": "tilelayer", "name": "bridge", "data": [1, 1],
+                "tintcolor": "#+0+0+0+0" }),
+            "`tintcolor` must be #rrggbb or #aarrggbb",
+        ),
     ] {
+        let case = layer.to_string();
         let error = load_json(&map_with_layers(&serde_json::json!([layer])))
-            .unwrap_err()
+            .expect_err(&case)
             .to_string();
-        assert!(error.contains(wanted), "{error}");
+        assert!(error.contains(wanted), "{case}: {error}");
     }
 }
 

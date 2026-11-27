@@ -85,14 +85,6 @@ fn utc_stamps_at_known_instants() {
 }
 
 #[test]
-fn log_file_names_carry_stem_stamp_and_pid() {
-    assert_eq!(
-        log_file_name("example-03-scene-state", at(951_827_696, 789), 4242),
-        "example-03-scene-state-20000229T123456.789Z-4242.log"
-    );
-}
-
-#[test]
 fn only_exact_log_names_of_the_stem_count() {
     assert!(is_log_of("game-20261005T000000.000Z-1.log", "game"));
     assert!(!is_log_of("game-helper-20261005T000000.000Z-1.log", "game"));

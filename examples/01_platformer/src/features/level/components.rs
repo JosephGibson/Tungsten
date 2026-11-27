@@ -95,9 +95,40 @@ pub struct Glow {
     /// How far the light reaches; 1.4 times the halo's radius when left out.
     #[serde(default)]
     pub reach: Option<f32>,
+    /// The hot core's tint, its sprite's and its light's, warmer than the
+    /// halo's; `color` when left out.
+    #[serde(default)]
+    pub core_color: Option<[u8; 4]>,
+    /// A slow pulse of the halo, the core and the lights in place of the
+    /// level's quick one; the level's when left out.
+    #[serde(default)]
+    pub pulse: Option<GlowPulse>,
+    /// A second light, wider and dimmer, in `color`, under the first, so
+    /// the light falls off softly; none when left out.
+    #[serde(default)]
+    pub tail: Option<GlowTail>,
     /// Hidden while the player's lantern is off, or the player is dead.
     #[serde(skip)]
     pub hidden: bool,
+}
+
+/// A glow's slow pulse: its period in seconds and how far it swings the
+/// halo's and the core's radii and the lights' intensities, each a share
+/// either way.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GlowPulse {
+    pub period: f32,
+    pub radius: f32,
+    pub light: f32,
+}
+
+/// A glow's second light: how far it reaches and its intensity.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GlowTail {
+    pub reach: f32,
+    pub light: f32,
 }
 
 fn default_light() -> f32 {
@@ -119,7 +150,8 @@ impl Glow {
 }
 
 /// What a glow draws with, on its owner: the halo's and the core's sprite
-/// entities and its light, its children (the kit's), which leave with it.
+/// entities, its light and its tail's, its children (the kit's), which
+/// leave with it.
 /// A prefab's `glow` gives it empty beside the [`Glow`], in the spawn's own
 /// move; `level_glows` fills it the first frame it sees the glow.
 #[derive(Debug, Clone, Copy, Default)]
@@ -127,6 +159,7 @@ pub struct GlowParts {
     pub halo: Option<Entity>,
     pub core: Option<Entity>,
     pub light: Option<Entity>,
+    pub tail: Option<Entity>,
     /// The pulse's phase, from the owner's save ID or its column.
     pub phase: f32,
     /// Whether its parts have spawned.

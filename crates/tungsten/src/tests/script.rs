@@ -408,6 +408,37 @@ fn the_game_camera_reads_the_same_after_an_overridden_run() {
 }
 
 #[test]
+fn a_world_cursor_maps_through_a_turned_camera() {
+    let camera = CameraState {
+        position: Vec2::new(5.0, 5.0),
+        zoom: 2.0,
+        rotation: 0.5,
+        ..CameraState::new()
+    };
+    let mut app = app();
+    // No controller writes the view, so the state stays the game's own.
+    app.world_mut()
+        .remove_resource::<tungsten_core::CameraController>();
+    app.world_mut().insert_resource(camera);
+    let mut harness = Harness::new(app);
+    let report = harness.run_script(&script(
+        1,
+        &json!([{ "frame": 1, "cursor": { "world": [20.0, 10.0] } }]),
+    ));
+    assert!(report.passed, "{report:#?}");
+    let expected = camera.world_to_screen(Vec2::new(20.0, 10.0));
+    let (x, y) = harness
+        .world()
+        .resource::<InputState>()
+        .cursor_position()
+        .expect("the cursor step placed the cursor");
+    assert!(
+        (Vec2::new(x, y) - expected).length() < 1e-4,
+        "a world cursor on a camera turned 0.5 rad: at ({x}, {y}), the point drawn at {expected}"
+    );
+}
+
+#[test]
 fn ui_false_leaves_the_frames_paint_list_empty() {
     let painted = |ui: bool| {
         let mut harness = UiHarness::new(app());

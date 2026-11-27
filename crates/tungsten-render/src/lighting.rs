@@ -247,11 +247,19 @@ pub fn cull_to_cap(
     if kept.len() > cap {
         let centre = (min + max) * 0.5;
         let rank = |(pos, light): &(Vec2, Light)| {
+            // A point that is not a number ranks the farthest from the
+            // centre, so the order stays total and the sort can move a
+            // light past it.
+            let centre_sq = pos.distance_squared(centre);
             (
                 u8::MAX - light.priority,
                 !directional(light),
                 distance_to_aabb_sq(*pos, min, max),
-                pos.distance_squared(centre),
+                if centre_sq.is_nan() {
+                    f32::INFINITY
+                } else {
+                    centre_sq
+                },
             )
         };
         let mut order: Vec<usize> = (0..kept.len()).collect();

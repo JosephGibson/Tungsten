@@ -264,7 +264,8 @@ fn line_height<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f32>
 pub(crate) fn parse_color(text: &str) -> Result<[u8; 4], String> {
     let invalid = || format!("colour '{text}' is not #rrggbb or #rrggbbaa");
     let hex = text.strip_prefix('#').ok_or_else(invalid)?;
-    if hex.len() != 6 && hex.len() != 8 || !hex.is_ascii() {
+    // Hex digits alone: `from_str_radix` would take a pair's leading `+`.
+    if hex.len() != 6 && hex.len() != 8 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(invalid());
     }
     let mut out = [0, 0, 0, 255];

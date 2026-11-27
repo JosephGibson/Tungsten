@@ -591,6 +591,28 @@ fn the_graph_takes_six_vertices_per_interval_up_to_240() {
     assert_eq!(out[1].position.y, 1.0 - 60.0 / 299.0, "against the tallest");
 }
 
+#[test]
+fn graph_guides_on_a_graph_under_a_unit_tall_do_not_panic() {
+    let out = std::panic::catch_unwind(|| {
+        let mut out = Vec::new();
+        graph_vertices(&[10.0, 20.0], 0.5, &mut out);
+        out
+    })
+    .unwrap_or_else(|_| panic!("a graph half a unit tall panicked drawing its guide lines"));
+    assert_eq!(
+        out.len(),
+        6 * (2 + GUIDES_MS.len()),
+        "a graph half a unit tall: two bars and both guide lines"
+    );
+    for vertex in &out {
+        assert!(
+            (0.0..=1.0).contains(&vertex.position.y),
+            "a graph half a unit tall: a vertex at y {} outside the graph",
+            vertex.position.y
+        );
+    }
+}
+
 // ---- step 5: the log console and the UI inspector ----
 
 #[test]

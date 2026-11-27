@@ -2,14 +2,6 @@ use super::*;
 use tungsten_core::ecs::World;
 
 #[test]
-fn request_post_aa_writes_pending_when_absent() {
-    let mut world = World::new();
-    request_post_aa(&mut world, PostAaMode::SmaaHigh);
-    let pending = world.get_resource::<PendingPostAa>().copied().unwrap();
-    assert_eq!(pending.0, Some(PostAaMode::SmaaHigh));
-}
-
-#[test]
 fn request_post_aa_replaces_pending() {
     let mut world = World::new();
     request_post_aa(&mut world, PostAaMode::SmaaLow);

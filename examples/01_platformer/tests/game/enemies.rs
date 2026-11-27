@@ -5270,3 +5270,136 @@ fn corroded_beetles_and_armoured_trolls_show_their_stripped_clips_under_the_reac
         "stripped for good"
     );
 }
+
+#[test]
+fn a_tossed_bowling_ball_leaves_the_hand_at_its_toss_speed() {
+    let (mut harness, player) = arena();
+    let from = super::centre(&harness, player);
+    // Level, back over the shoulder, and steeper than the toss allows.
+    for aim in [Vec2::X, Vec2::new(-1.0, -0.3), Vec2::new(0.5, -1.0)] {
+        let ball = toys::toss_bowling_ball(harness.world_mut(), from, aim).expect("a ball");
+        let launch = harness.world().get::<Velocity>(ball).unwrap().0;
+        assert!((launch.length() - 1120.0).abs() < 1e-3, "{aim}: {launch}");
+        assert_eq!(launch.x.signum(), aim.x.signum(), "{aim}: toward the aim");
+    }
+}
+
+/// What a bowling ball sent at a foe did over 40 frames: each `stunned`
+/// that landed on the foe, the frames of the strike's and of the thud's
+/// sounds, the frame it first hurt the foe and the health it lost.
+struct Sent {
+    stuns: usize,
+    strikes: Vec<u32>,
+    thuds: Vec<u32>,
+    hit_at: u32,
+    lost: f32,
+    /// The first blow's amount, its impact.
+    blow: f32,
+}
+
+/// A bowling ball sent level at `foe`'s centre from 12 px off its left
+/// side: tossed from the hand, at the toss's own speed, or at `speed`.
+fn send_ball(harness: &mut UiHarness, foe: Entity, speed: Option<f32>) -> Sent {
+    let centre = at(harness, foe);
+    let half = harness
+        .world()
+        .get::<Collider>(foe)
+        .expect("a body")
+        .shape
+        .half_extents();
+    let start = centre - Vec2::X * (half.x + prefab_box("bowling_ball").0.x + 12.0);
+    let world = harness.world_mut();
+    let ball = toys::toss_bowling_ball(world, start - Vec2::X * toys::TOSS_OFFSET, Vec2::X)
+        .expect("a ball");
+    if let Some(speed) = speed {
+        world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::X * speed;
+    }
+    let before = health(harness, foe);
+    let mut sent = Sent {
+        stuns: 0,
+        strikes: Vec::new(),
+        thuds: Vec::new(),
+        hit_at: 0,
+        lost: 0.0,
+        blow: 0.0,
+    };
+    for frame in 1..=40 {
+        harness.step(1);
+        sent.stuns += harness
+            .harness()
+            .events::<tungsten::kit::EffectApplied>()
+            .filter(|applied| applied.entity == foe && applied.id.as_deref() == Some("stunned"))
+            .count();
+        let played = |sound| {
+            harness
+                .harness()
+                .events::<Sounded>()
+                .filter(|sounded| sounded.sound == sound)
+                .count()
+        };
+        sent.strikes
+            .extend(std::iter::repeat_n(frame, played(Sound::BallStruck)));
+        sent.thuds
+            .extend(std::iter::repeat_n(frame, played(Sound::BallThudded)));
+        if sent.hit_at == 0 && health(harness, foe) < before {
+            sent.hit_at = frame;
+            sent.blow = harness
+                .harness()
+                .events::<Damaged>()
+                .find(|hit| hit.entity == foe && !hit.periodic)
+                .map_or(0.0, |hit| hit.amount);
+        }
+    }
+    sent.lost = before - health(harness, foe);
+    sent
+}
+
+#[test]
+fn a_fast_bowling_ball_stuns_a_foe_once_and_a_slow_roll_does_not() {
+    for kind in [EnemyKind::Goblin, EnemyKind::Troll] {
+        // A fresh toss, at the hand's 1,120 px/s: stunned once, its crash
+        // in place of the thud.
+        let (mut harness, _) = arena();
+        let foe = walker(&mut harness, kind, 900.0, TOP);
+        still(&mut harness, foe);
+        harness.step(1);
+        let fast = send_ball(&mut harness, foe, None);
+        println!(
+            "STRIKE {kind:?}: a fresh toss's blow {} at frame {}, strikes {:?}, thuds {:?}",
+            fast.blow, fast.hit_at, fast.strikes, fast.thuds
+        );
+        assert!(fast.hit_at > 0, "{kind:?}: the toss reached it");
+        assert_eq!(fast.stuns, 1, "{kind:?}: one stun a contact");
+        assert_eq!(fast.strikes.len(), 1, "{kind:?}: {:?}", fast.strikes);
+        let strike = fast.strikes[0];
+        assert!(
+            !fast.thuds.iter().any(|&thud| thud.abs_diff(strike) <= 2),
+            "{kind:?}: no thud for the strike's contact: {:?} at {strike}",
+            fast.thuds
+        );
+        if kind == EnemyKind::Troll {
+            // A chasing troll lifts what it can within its reach, but a ball
+            // at the strike's speed is too fast to catch: it strikes it.
+            let (mut harness, _) = arena();
+            let troll = walker(&mut harness, kind, 900.0, TOP);
+            assert!(until(&mut harness, 120, |h| state(h, troll) == EnemyState::Chase));
+            let chased = send_ball(&mut harness, troll, None);
+            assert_eq!(chased.stuns, 1, "a chasing troll: struck, not caught");
+        }
+        // A roll at 700 px/s hurts it, under the strike's 800: no stun.
+        let (mut harness, _) = arena();
+        let foe = walker(&mut harness, kind, 900.0, TOP);
+        still(&mut harness, foe);
+        harness.step(1);
+        let slow = send_ball(&mut harness, foe, Some(700.0));
+        assert!(
+            slow.hit_at > 0 && slow.lost > 0.0,
+            "{kind:?}: the roll hurts it"
+        );
+        assert_eq!(
+            (slow.stuns, slow.strikes.len()),
+            (0, 0),
+            "{kind:?}: no stun under 800 px/s"
+        );
+    }
+}

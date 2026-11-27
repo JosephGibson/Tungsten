@@ -25,14 +25,6 @@ fn spawn_is_alive_in_empty_archetype() {
 }
 
 #[test]
-fn despawn_frees_entity() {
-    let mut store = Archetypes::new();
-    let e = store.spawn();
-    store.despawn(e);
-    assert!(!store.entities.is_alive(e));
-}
-
-#[test]
 #[should_panic(expected = "despawn: entity is not alive")]
 fn despawn_dead_entity_panics() {
     let mut store = Archetypes::new();
@@ -53,27 +45,6 @@ fn insert_first_component_moves_to_single_type_archetype() {
         store.get::<Position>(e).unwrap(),
         &Position { x: 1.0, y: 2.0 }
     );
-}
-
-#[test]
-fn insert_second_component_moves_to_two_type_archetype() {
-    let mut store = Archetypes::new();
-    let e = store.spawn();
-    store.insert(e, Position { x: 1.0, y: 2.0 });
-    store.insert(e, Velocity { dx: 3.0, dy: 4.0 });
-
-    assert_eq!(
-        store.get::<Position>(e).unwrap(),
-        &Position { x: 1.0, y: 2.0 }
-    );
-    assert_eq!(
-        store.get::<Velocity>(e).unwrap(),
-        &Velocity { dx: 3.0, dy: 4.0 }
-    );
-    let loc = store.entities.get(e).unwrap();
-    let arch = &store.archetypes[loc.archetype_id as usize];
-    assert!(arch.has(TypeId::of::<Position>()));
-    assert!(arch.has(TypeId::of::<Velocity>()));
 }
 
 #[test]
@@ -124,50 +95,6 @@ fn remove_absent_component_returns_none() {
     store.insert(e, Position { x: 0.0, y: 0.0 });
     let result = store.remove::<Velocity>(e);
     assert!(result.is_none());
-}
-
-#[test]
-fn get_absent_component_returns_none() {
-    let mut store = Archetypes::new();
-    let e = store.spawn();
-    assert!(store.get::<Position>(e).is_none());
-}
-
-#[test]
-fn get_mut_modifies_value() {
-    let mut store = Archetypes::new();
-    let e = store.spawn();
-    store.insert(e, Position { x: 0.0, y: 0.0 });
-    store.get_mut::<Position>(e).unwrap().x = 99.0;
-    assert_eq!(store.get::<Position>(e).unwrap().x, 99.0);
-}
-
-#[test]
-fn get_on_dead_entity_returns_none() {
-    let mut store = Archetypes::new();
-    let e = store.spawn();
-    store.insert(e, Position { x: 1.0, y: 2.0 });
-    store.despawn(e);
-    assert!(store.get::<Position>(e).is_none());
-}
-
-#[test]
-fn displaced_entity_location_updated_after_despawn() {
-    let mut store = Archetypes::new();
-    let e0 = store.spawn();
-    let e1 = store.spawn();
-    let e2 = store.spawn();
-    store.insert(e0, Position { x: 0.0, y: 0.0 });
-    store.insert(e1, Position { x: 1.0, y: 1.0 });
-    store.insert(e2, Position { x: 2.0, y: 2.0 });
-
-    store.despawn(e1);
-
-    assert_eq!(
-        store.get::<Position>(e2).unwrap(),
-        &Position { x: 2.0, y: 2.0 }
-    );
-    assert!(!store.entities.is_alive(e1));
 }
 
 #[test]

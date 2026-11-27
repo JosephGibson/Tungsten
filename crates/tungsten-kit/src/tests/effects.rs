@@ -429,6 +429,49 @@ fn a_with_line_is_kept_for_reads_in_context_and_leaves_with_its_instance() {
 }
 
 #[test]
+fn a_line_on_a_stat_spent_at_use_that_waits_for_the_hit_is_refused_at_load() {
+    let load = |line: serde_json::Value| {
+        serde_json::from_value::<Effect>(json!({ "modifiers": [line] })).map(|_| ())
+    };
+    // A sheet spends these at the use, before any hit: `against`, or a state
+    // tag in `with`, only the hit knows.
+    for stat in [Stats::SKILL_LEVEL, Stats::COST, Stats::COOLDOWN] {
+        for (field, filter) in [("against", "team.enemy"), ("with", "delivery.chained")] {
+            let line =
+                json!({ "stat": stat, "modifier": { "add": 1 }, field: { "all": [filter] } });
+            let loaded = load(line);
+            assert!(
+                loaded
+                    .as_ref()
+                    .is_err_and(|error| error.to_string().contains("may not wait for the hit")),
+                "a line on {stat} {field} {filter} loads: {loaded:?}"
+            );
+        }
+        let holder = json!({ "stat": stat, "modifier": { "add": 1 }, "while": { "all": ["status.burning"] } });
+        assert!(load(holder).is_ok(), "{stat} while the holder burns loads");
+        assert!(load(json!({ "stat": stat, "modifier": { "add": 1 } })).is_ok());
+    }
+    let armor =
+        json!({ "stat": "armor", "modifier": { "add": 1 }, "against": { "all": ["team.enemy"] } });
+    assert!(
+        load(armor).is_ok(),
+        "a stat read at the hit may wait for it"
+    );
+    // The Rust builder refuses it as it is built, not at the hit.
+    let built = std::panic::catch_unwind(|| {
+        Effect::new().with_line(
+            Stats::COST,
+            Line::new(Modifier::Add(1.0)).against(TagFilter::new().all(["team.enemy"])),
+        )
+    });
+    let Err(panic) = built else {
+        panic!("Effect::with_line builds a line on cost against an enemy");
+    };
+    let message = panic.downcast_ref::<String>().unwrap();
+    assert!(message.starts_with("Effect::with_line:"), "{message}");
+}
+
+#[test]
 fn a_resist_modifier_scopes_its_factor_and_moves_its_floor() {
     let (mut world, _) = rig();
     let knight = world.spawn_with((Resist::new()

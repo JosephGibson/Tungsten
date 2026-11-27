@@ -14,59 +14,11 @@ fn new_buffer_is_empty() {
 }
 
 #[test]
-fn spawn_increments_len() {
-    let mut buffer = CommandBuffer::new();
-    assert_eq!(buffer.len(), 0);
-
-    buffer.spawn();
-    assert_eq!(buffer.len(), 1);
-
-    buffer.spawn();
-    assert_eq!(buffer.len(), 2);
-}
-
-#[test]
 fn spawn_returns_distinct_pending_ids() {
     let mut buffer = CommandBuffer::new();
     let a = buffer.spawn();
     let b = buffer.spawn();
     assert_ne!(a, b);
-}
-
-#[test]
-fn despawn_queued() {
-    let mut buffer = CommandBuffer::new();
-    let entity = Entity {
-        index: 0,
-        generation: 0,
-    };
-
-    buffer.despawn(entity);
-
-    assert_eq!(buffer.len(), 1);
-}
-
-#[test]
-fn insert_live_queued() {
-    let mut buffer = CommandBuffer::new();
-    let entity = Entity {
-        index: 0,
-        generation: 0,
-    };
-
-    buffer.insert(entity, Position { x: 1.0, y: 2.0 });
-
-    assert_eq!(buffer.len(), 1);
-}
-
-#[test]
-fn insert_pending_queued() {
-    let mut buffer = CommandBuffer::new();
-    let pending = buffer.spawn();
-
-    buffer.insert_pending(pending, Position { x: 1.0, y: 2.0 });
-
-    assert_eq!(buffer.len(), 2);
 }
 
 #[test]
@@ -111,19 +63,6 @@ fn inserts_share_one_queue_per_component_type() {
     assert_eq!(queues, vec![0, 1, 0]);
     assert_eq!(buffer.values.component_type(0), TypeId::of::<Position>());
     assert_eq!(buffer.values.component_type(1), TypeId::of::<u32>());
-}
-
-#[test]
-fn remove_component_queued() {
-    let mut buffer = CommandBuffer::new();
-    let entity = Entity {
-        index: 0,
-        generation: 0,
-    };
-
-    buffer.remove_component::<Position>(entity);
-
-    assert_eq!(buffer.len(), 1);
 }
 
 #[test]

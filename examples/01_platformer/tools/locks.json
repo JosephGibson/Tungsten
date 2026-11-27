@@ -3775,7 +3775,7 @@
     }
   },
   "sounds": {
-    "date": "2026-11-01",
+    "date": "2026-11-26",
     "files": {
       "assets/sounds/air_jump.wav": "b11207ad89efd84a409087af6a42b47e93cb05364fa8312b8876fe5acbab163a",
       "assets/sounds/ball_thud.wav": "06f5eee0f9077cfd6842410e8ad3b98e52ffaa78cf39e2a90a03a8247757f386",
@@ -3788,6 +3788,7 @@
       "assets/sounds/black_hole_hum.wav": "fb6584db20acd34f5fc65dc4ed51bebabf9b1cb16e72869813fa7eca5f0e23c8",
       "assets/sounds/black_hole_open.wav": "aadd6682541bb18db3ed23b336111e512e4e71bb3409596c4bf52da4b9d359d3",
       "assets/sounds/bound.wav": "7da2fd8d449bb2920beca5d7f3106f2b7c65d266bfd3b85ff1dae401a56df45a",
+      "assets/sounds/bowling_strike.wav": "ae4859fe26f227812589cf9afdb172a2ea366bffd8a9427bc75bf6602784bc6e",
       "assets/sounds/corroded.wav": "9df2e6bf1539c2244a2ed5eae9e8c1a380ffdf29cc5e575b29bd0741e8b65287",
       "assets/sounds/crackle.wav": "71239c798f19cae7f0963b7be4dbb306c87b4be863bdc3e510b54f0b17d43053",
       "assets/sounds/crate_break.wav": "f2b4a1784c0207aa1006a08fcfbb663151c838392a1f8130f717124a698d24cc",

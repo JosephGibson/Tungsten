@@ -240,6 +240,21 @@ class Preflight(unittest.TestCase):
         out = self.run_tool("docs/plans/quiet.md")
         self.assertTrue(out.endswith("no files outside the list name what the plan changes.\n"), out)
 
+    def test_register_rows_read_the_redos_phase_8_rows(self):
+        # An 8.1 row naming P8-1, an 8.2 row naming P8-13 (P8-1's prefix) and a prose line naming P8-1.
+        (self.root / "docs/plans/roadmap-redo.md").write_text(
+            "| 8.1 | Story systems | Dialogue (P8-1); items with rolled lines (PA-12) |\n"
+            "| 8.2 | Shooter and AI systems | Bullet patterns and waves (P8-13) |\n"
+            "Since phase 7's close each Phase 8 row names its register rows by ID, P8-1 among them.\n")
+        (self.root / "docs/plans/rows.md").write_text(
+            QUIET.replace("which nothing names yet.", "which nothing names yet, for P8-1."))
+        report = self.report(plan="docs/plans/rows.md")
+        fired = {rule["id"]: rule for rule in report["rules"]["fired"]}
+        self.assertEqual(sorted(fired), ["R7"])
+        self.assertEqual(fired["R7"]["files"], ["docs/plans/roadmap-redo.md"])
+        hits = self.files(report)["docs/plans/roadmap-redo.md"]["hits"]
+        self.assertEqual([hit["line"] for hit in hits if any(s.get("rule") == "R7" for s in hit["sources"])], [1])
+
     def test_it_writes_nothing(self):
         before = {p: p.stat().st_mtime_ns for p in self.root.rglob("*")}
         self.run_tool()

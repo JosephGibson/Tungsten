@@ -582,7 +582,7 @@ fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
         .query::<&Light>()
         .filter(|light| light.intensity == 0.0)
         .count();
-    assert_eq!(dark, 1, "the lantern's light alone");
+    assert_eq!(dark, 2, "the lantern's two lights alone");
     assert_eq!(on - count(&harness), 2, "its halo and core go");
     harness.step(1);
     assert!(
@@ -625,8 +625,8 @@ fn the_lantern_keeps_its_slot_among_more_lamps_than_the_renderer_packs() {
             .query::<&Light>()
             .filter(|light| light.priority != 0)
             .count(),
-        1,
-        "the map's lamps and the moon stay at 0"
+        2,
+        "the lantern's two lights: the map's lamps and the moon stay at 0"
     );
     let window = world.resource::<WindowSize>();
     let (min, max) = world
@@ -663,12 +663,20 @@ fn the_lantern_keeps_its_slot_among_more_lamps_than_the_renderer_packs() {
         "the lantern's light is among the sixteen"
     );
     // The control: at the lamps' priority the twenty nearer the centre
-    // take its slot.
-    harness
-        .world_mut()
-        .get_mut::<Light>(lantern)
+    // take its lights' slots.
+    let tail = harness
+        .world()
+        .get::<GlowParts>(player)
         .unwrap()
-        .priority = 0;
+        .tail
+        .expect("the lantern's tail");
+    for light in [lantern, tail] {
+        harness
+            .world_mut()
+            .get_mut::<Light>(light)
+            .unwrap()
+            .priority = 0;
+    }
     harness.step(1);
     assert!(!packs_the_lantern(&harness));
 }
@@ -855,6 +863,9 @@ fn glows_draw_through_soft_materials_without_absorbing_other_sprites() {
             light: 0.8,
             core: 0.0,
             reach: None,
+            core_color: None,
+            pulse: None,
+            tail: None,
             hidden: false,
         };
         let lamp = (Transform::from_position(at + Vec2::X * x), glow);

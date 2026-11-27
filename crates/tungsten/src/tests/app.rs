@@ -316,21 +316,19 @@ fn runtime_display_mode_downgrades_exclusive_fullscreen() {
 }
 
 #[test]
-fn capped_frame_defers_its_redraw_to_the_frame_budget() {
+fn redraw_schedule_waits_out_a_cap_or_redraws_at_once() {
     let frame_start = Instant::now();
     let budget = Duration::from_millis(50);
-    assert_eq!(
-        redraw_schedule(Some(budget), frame_start),
-        RedrawSchedule::At(frame_start + budget)
-    );
-}
-
-#[test]
-fn uncapped_frame_redraws_immediately() {
-    assert_eq!(
-        redraw_schedule(None, Instant::now()),
-        RedrawSchedule::Immediate
-    );
+    for (case, cap, expected) in [
+        (
+            "capped at 50 ms",
+            Some(budget),
+            RedrawSchedule::At(frame_start + budget),
+        ),
+        ("uncapped", None, RedrawSchedule::Immediate),
+    ] {
+        assert_eq!(redraw_schedule(cap, frame_start), expected, "{case}");
+    }
 }
 
 #[test]
@@ -417,6 +415,21 @@ fn an_edit_to_any_root_manifest_routes_to_the_manifest_reload() {
         &roots
     ));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn hot_reload_kinds_ignore_extension_case() {
+    for ext in ["png", "jpg", "json", "ttf", "wav", "tmj", "wgsl"] {
+        let lower = super::reload_kind(&Path::new("a").join(format!("hero.{ext}")));
+        let upper = format!("hero.{}", ext.to_ascii_uppercase());
+        assert!(lower.is_some(), "a `.{ext}` file reloads");
+        assert_eq!(
+            super::reload_kind(&Path::new("a").join(&upper)),
+            lower,
+            "`{upper}` reloads as a `.{ext}` file does"
+        );
+    }
+    assert_eq!(super::reload_kind(Path::new("a/notes.txt")), None);
 }
 
 #[test]
@@ -589,9 +602,6 @@ fn headless_frame(app: &mut App) -> FrameEnd {
     app.run_frame(Instant::now(), FrameClock::Pinned(1.0 / 60.0), |_| {})
 }
 
-/// The dt the last frame's systems read.
-struct SeenDt(f32);
-
 #[test]
 fn startup_time_is_excluded_from_the_next_frame_dt() {
     // The `Startup` stage runs inside the first frame; its time must not
@@ -616,19 +626,6 @@ fn startup_time_is_excluded_from_the_next_frame_dt() {
 }
 
 #[test]
-fn a_pinned_dt_reaches_systems_as_given() {
-    let mut app = App::new(Config::default()).unwrap();
-    app.world.insert_resource(SeenDt(0.0));
-    app.add_system(|world| {
-        let dt = world.get_resource::<Time>().unwrap().delta();
-        world.get_resource_mut::<SeenDt>().unwrap().0 = dt;
-    });
-    let end = app.run_frame(Instant::now(), FrameClock::Pinned(0.25), |_| {});
-    assert_eq!(end, FrameEnd::Completed);
-    assert_eq!(app.world.get_resource::<SeenDt>().unwrap().0, 0.25);
-}
-
-#[test]
 fn clock_a_wall_frame_after_a_stall_reads_the_capped_real_dt() {
     // `D-088`: a stall reaches the clock capped. The previous frame time is
     // set a second back instead of sleeping.
@@ -648,27 +645,21 @@ fn clock_a_wall_frame_after_a_stall_reads_the_capped_real_dt() {
 }
 
 #[test]
-fn clock_a_pinned_frame_reads_its_dt_on_both_clocks() {
-    // `D-110`: a pinned dt is taken as given, above the window loop's cap.
-    let mut app = App::new(Config::default()).unwrap();
-    let end = app.run_frame(Instant::now(), FrameClock::Pinned(0.25), |_| {});
-    assert_eq!(end, FrameEnd::Completed);
-    let time = app.world.get_resource::<Time>().unwrap();
-    assert_eq!(time.real_delta(), 0.25);
-    assert_eq!(time.game_delta(), 0.25);
-    assert_eq!(time.delta(), 0.25);
-}
-
-#[test]
-fn clock_a_paused_pinned_frame_reads_real_time_and_zero_game_time() {
-    let mut app = App::new(Config::default()).unwrap();
-    app.world.get_resource_mut::<Time>().unwrap().pause();
-    let end = app.run_frame(Instant::now(), FrameClock::Pinned(0.25), |_| {});
-    assert_eq!(end, FrameEnd::Completed);
-    let time = app.world.get_resource::<Time>().unwrap();
-    assert_eq!(time.real_delta(), 0.25);
-    assert_eq!(time.game_delta(), 0.0);
-    assert_eq!(time.delta(), 0.0);
+fn clock_a_pinned_frame_reads_its_dt_running_or_paused() {
+    // `D-110`: a pinned dt is taken as given, above the window loop's cap; a paused game clock
+    // still reads the frame's real time.
+    for (case, paused, game) in [("running", false, 0.25), ("paused", true, 0.0)] {
+        let mut app = App::new(Config::default()).unwrap();
+        if paused {
+            app.world.get_resource_mut::<Time>().unwrap().pause();
+        }
+        let end = app.run_frame(Instant::now(), FrameClock::Pinned(0.25), |_| {});
+        assert_eq!(end, FrameEnd::Completed, "{case}");
+        let time = app.world.get_resource::<Time>().unwrap();
+        assert_eq!(time.real_delta(), 0.25, "{case}: real_delta");
+        assert_eq!(time.game_delta(), game, "{case}: game_delta");
+        assert_eq!(time.delta(), game, "{case}: delta");
+    }
 }
 
 #[test]

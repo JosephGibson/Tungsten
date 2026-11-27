@@ -1,5 +1,6 @@
-//! Timed world labels: a cue's `label` action floats an event's amount at
-//! its position, rising, popping and fading over seconds of game time.
+//! Timed world labels: a cue's `label` action floats an event's amount, or
+//! a text label's words, at its position, rising, popping and fading over
+//! seconds of game time.
 
 use std::collections::VecDeque;
 
@@ -27,10 +28,12 @@ pub const LABEL_TICK: &str = "label_tick";
 /// Data form, inside a `label` action:
 /// `{ "font": "sans", "size": 16, "color": [1, 1, 1, 1], "seconds": 0.8, "rise": 32, "pop": 1.5 }`,
 /// all but `font` optional with those defaults; a label that names any
-/// field names `font`. A `damaged_part` cue's `{ "label": {} }` names none
-/// and takes its part's type's style, a `damage_types` entry's
-/// `label_style` ([`CueAction::type_label`](crate::CueAction::type_label)),
-/// which `merge`, `ticks` and `crit` group.
+/// field names `font`. A `damaged_part` or `immune_part` cue's
+/// `{ "label": {} }` names none and takes its part's type's style, a
+/// `damage_types` entry's `label_style`
+/// ([`CueAction::type_label`](crate::CueAction::type_label)), which
+/// `merge`, `ticks` and `crit` group, `text` replaces with words and
+/// `offset` moves.
 ///
 /// # Examples
 ///
@@ -138,9 +141,10 @@ impl From<LabelStyle> for LabelStyleDef {
 }
 
 /// A `label` action as data writes it: `{}`, which floats a `damaged_part`
-/// occurrence's amount in its type's style, grouped when it names `merge`,
-/// `ticks` or `crit`, or a style that names its font, every other field
-/// defaulted.
+/// or `immune_part` occurrence's amount in its type's style, grouped when
+/// it names `merge`, `ticks` or `crit`, its own words in place of the
+/// amount with `text` and off the point by `offset`, or a style that names
+/// its font, every other field defaulted.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(try_from = "LabelFields", into = "LabelFields")]
 pub(crate) struct LabelDef(
@@ -148,14 +152,17 @@ pub(crate) struct LabelDef(
     pub(crate) Option<Box<PartLabel>>,
 );
 
-/// How a `damaged_part` type label groups a target's numbers: a merge
-/// window, a tick size and a crit style. Its open sums are presentation,
+/// How a type label groups a target's numbers: a merge window, a tick size
+/// and a crit style; or the words it floats in place of the amount; and
+/// where it floats from. Its open sums and windows are presentation,
 /// unsaved, aged on the fixed step.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PartLabel {
     /// Seconds a target's parts of a type sum over: the first plain part
     /// floats at once, the rest within the window as one sum when it
-    /// closes; without it, each part floats alone.
+    /// closes; without it, each part floats alone. A text label's window
+    /// floats nothing at its close and stays open while each repeat comes
+    /// within it of the last.
     pub(crate) merge: Option<f32>,
     /// Periodic parts whose kinds pass its filter sum on their own at its
     /// size.
@@ -163,6 +170,14 @@ pub(crate) struct PartLabel {
     /// A step's crit parts on a target float at once as one sum, in the
     /// first part's type's style at its size and colour.
     pub(crate) crit: Option<CritLabel>,
+    /// Words floated in place of the amount: a target's first part of a
+    /// type floats them at once, and with `merge` its repeats float none
+    /// while each comes within the window of the last, so a stream of
+    /// parts floats one label.
+    pub(crate) text: Option<Box<str>>,
+    /// UI units off the event's point the label floats from, right and
+    /// down: a text label's place beside a number of the same hit.
+    pub(crate) offset: Option<[f32; 2]>,
 }
 
 /// A part label's ticks as data writes them: `{ "size": 10, "kind": { "any": ["elemental"] }, "first": true }`,
@@ -238,6 +253,25 @@ struct LabelFields {
     ticks: Option<TickLabel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     crit: Option<CritLabel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "optional_pair",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<[f32; 2]>,
+}
+
+/// An optional pair of finite numbers, for a field's `deserialize_with`.
+fn optional_pair<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<[f32; 2]>, D::Error> {
+    let pair = Option::<[f32; 2]>::deserialize(deserializer)?;
+    if pair.is_some_and(|[x, y]| !(x.is_finite() && y.is_finite())) {
+        return Err(serde::de::Error::custom("must be two finite numbers"));
+    }
+    Ok(pair)
 }
 
 /// An optional finite number, for a field's `deserialize_with`.
@@ -274,9 +308,34 @@ impl TryFrom<LabelFields> for LabelDef {
             merge,
             ticks,
             crit,
+            text,
+            offset,
         } = fields;
-        let grouped = (merge.is_some() || ticks.is_some() || crit.is_some())
-            .then(|| Box::new(PartLabel { merge, ticks, crit }));
+        if let Some(text) = &text {
+            if text.is_empty() {
+                return Err("text: the words a text label floats, not empty".to_string());
+            }
+            if ticks.is_some() || crit.is_some() {
+                return Err(
+                    "ticks, crit: a number's grouping, which a text label takes none of"
+                        .to_string(),
+                );
+            }
+        }
+        let grouped = (merge.is_some()
+            || ticks.is_some()
+            || crit.is_some()
+            || text.is_some()
+            || offset.is_some())
+        .then(|| {
+            Box::new(PartLabel {
+                merge,
+                ticks,
+                crit,
+                text: text.map(String::into_boxed_str),
+                offset,
+            })
+        });
         let Some(font) = font else {
             let named = size.is_some()
                 || color.is_some()
@@ -290,7 +349,9 @@ impl TryFrom<LabelFields> for LabelDef {
             };
         };
         if grouped.is_some() {
-            return Err("merge, ticks, crit: a type label's, which names no font".to_string());
+            return Err(
+                "merge, ticks, crit, text, offset: a type label's, which names no font".to_string(),
+            );
         }
         let style = LabelStyle::try_from(LabelStyleDef {
             font,
@@ -307,14 +368,24 @@ impl TryFrom<LabelFields> for LabelDef {
 impl From<LabelDef> for LabelFields {
     fn from(def: LabelDef) -> Self {
         let LabelDef(style, part) = def;
-        let (merge, ticks, crit) = part.map_or((None, None, None), |part| {
-            (part.merge, part.ticks, part.crit)
-        });
+        let (merge, ticks, crit, text, offset) =
+            part.map_or((None, None, None, None, None), |part| {
+                let PartLabel {
+                    merge,
+                    ticks,
+                    crit,
+                    text,
+                    offset,
+                } = *part;
+                (merge, ticks, crit, text.map(String::from), offset)
+            });
         match style {
             None => Self {
                 merge,
                 ticks,
                 crit,
+                text,
+                offset,
                 ..Self::default()
             },
             Some(style) => Self {
@@ -327,6 +398,8 @@ impl From<LabelDef> for LabelFields {
                 merge,
                 ticks,
                 crit,
+                text,
+                offset,
             },
         }
     }
@@ -459,6 +532,8 @@ pub(crate) struct LiveLabels {
 struct Live {
     text: String,
     anchor: Vec2,
+    /// UI units off its anchor it floats from.
+    offset: Vec2,
     style: LabelStyle,
     /// Game seconds it has lived.
     age: f32,
@@ -534,9 +609,35 @@ pub fn float_label(world: &mut World, style: &LabelStyle, anchor: Vec2, amount: 
 
 /// [`float_label`] of a style the caller gives up, so it is not cloned.
 pub(crate) fn float_owned(world: &mut World, style: LabelStyle, anchor: Vec2, amount: f32) {
-    if !(amount.is_finite() && anchor.is_finite()) {
+    float_words(world, style, anchor, Vec2::ZERO, Words::Amount(amount));
+}
+
+/// What a label floats: an amount, whole as `3`, else to one decimal, or a
+/// text label's own words.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Words {
+    Amount(f32),
+    Text(Box<str>),
+}
+
+/// Floats `words` at `anchor`, `offset` UI units off it, in `style`, as
+/// [`float_owned`] floats an amount: nothing for a non-finite amount,
+/// anchor or offset.
+pub(crate) fn float_words(
+    world: &mut World,
+    style: LabelStyle,
+    anchor: Vec2,
+    offset: Vec2,
+    words: Words,
+) {
+    if !(anchor.is_finite() && offset.is_finite()) {
         return;
     }
+    let text = match words {
+        Words::Amount(amount) if amount.is_finite() => amount_text(amount),
+        Words::Amount(_) => return,
+        Words::Text(text) => text.into_string(),
+    };
     let Some(live) = world.get_resource_mut::<LiveLabels>() else {
         return;
     };
@@ -544,8 +645,9 @@ pub(crate) fn float_owned(world: &mut World, style: LabelStyle, anchor: Vec2, am
         live.labels.pop_front();
     }
     live.labels.push_back(Live {
-        text: amount_text(amount),
+        text,
         anchor,
+        offset,
         style,
         age: 0.0,
         fresh: true,
@@ -603,7 +705,7 @@ pub(crate) fn label_tick(world: &mut World) {
                     style.font.clone(),
                     style.size,
                 )
-                .with_offset(offset)
+                .with_offset(label.offset + offset)
                 .with_color(color)
                 .with_scale(scale),
             );

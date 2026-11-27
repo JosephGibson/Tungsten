@@ -10,8 +10,7 @@ Native Rust 2D game engine: `winit` + `wgpu` + `glam` + hand-rolled ECS + manife
 
 - Start here; open only the files the task touches. [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) maps tasks to files; open it before a broad search.
 - Rationale: matching rows in [`docs/DECISION_INDEX.md`](docs/DECISION_INDEX.md), then `rg -n 'D-0NN' DECISIONS.md`. Never read `DECISIONS.md`, `DESIGN.md` or `CHANGELOG.md` whole: `rg -n '^#' <file>`, then read one section.
-- **Never read, search or glob `docs/plans/archive/`** (done or abandoned plans). `.ignore` filters it; never bypass that with `rg -uu`.
-- Status: [`ROADMAP.md`](ROADMAP.md); the plan to 1.0: [the roadmap redo](docs/plans/roadmap-redo.md); how work runs: [operating rules](docs/operating-rules.md) (`D-215`). The 1.0 register, `roadmap.json` and the 1.0 README's fields are frozen.
+- Status: [`ROADMAP.md`](ROADMAP.md); the plan to 1.0: [the roadmap redo](docs/plans/roadmap-redo.md); how work runs: [operating rules](docs/operating-rules.md) (`D-215`). The 1.0 records and the plans archive are deleted (`D-314`); `just history <path>` reads one.
 - [Doc map](docs/README.md): canonical sources. Plans follow [`docs/plans/README.md`](docs/plans/README.md); client setup is in [`docs/agent-setup.md`](docs/agent-setup.md).
 
 ## Commands
@@ -20,7 +19,7 @@ Run from the repo root. `just --list` lists wrappers for the raw commands; [vali
 
 ## Tests
 
-[Validation](docs/validation.md) owns the detailed change-to-check matrix and targeted edit-loop commands. `just checks [PATH…]` prints recommendations; with no paths it reads Git changes including untracked files (`--base REF` includes committed work). It runs no checks. Finish substantial work with `just check`; milestone and release requirements still apply.
+[Validation](docs/validation.md) owns the detailed change-to-check matrix and targeted edit-loop commands. `just checks [PATH…]` prints recommendations; with no paths it reads Git changes including untracked files (`--base REF` includes committed work). It runs no checks. Finish substantial work with `just check`; plan and release requirements still apply.
 
 GPU smoke and pixel comparisons stay local. A CPU test run without `TUNGSTEN_VISUAL_REGRESSION=1` skips pixel comparisons; report them as not run.
 
@@ -64,4 +63,4 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 
 ## Not doing
 
-CI is CPU-only and informational (`D-070`; releases: `D-232`); GPU, audio and perf checks stay local. No `LEARNINGS.md`, no PR process beyond the release PR (`D-079`), no asset preprocessing. Add a scoped `AGENTS.md` only where a directory has unique rules.
+CI is CPU-only and informational (`D-070`; releases: `D-232`); GPU, audio and perf checks stay local. No `LEARNINGS.md`, no PR process beyond the release PR (`D-227`), no asset preprocessing. Add a scoped `AGENTS.md` only where a directory has unique rules.

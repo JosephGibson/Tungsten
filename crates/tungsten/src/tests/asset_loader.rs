@@ -2156,6 +2156,42 @@ fn a_manifest_hit_flash_material_is_kept() {
     );
 }
 
+#[test]
+fn a_manifest_reload_warns_of_no_reserved_entry() {
+    let dir = tempdir();
+    write(
+        &dir.join("tint.wgsl"),
+        "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+    );
+    image::RgbaImage::new(2, 2)
+        .save(dir.join("dot.png"))
+        .unwrap();
+    let manifest = dir.join("manifest.json");
+    write(
+        &manifest,
+        r#"{ "shaders": { "tint": { "path": "tint.wgsl" } },
+            "materials": { "tinted": { "shader": "tint" } },
+            "sprites": { "dot": { "path": "dot.png" } } }"#,
+    );
+    let manifest = ResolvedManifest::load(&manifest).unwrap();
+    let mut world = load_world();
+    let mut target = HeadlessTarget::default();
+    let mut plan = LoadPlan::new(manifest, &mut world);
+    while plan.run_next_into(&mut world, &mut target).unwrap() {}
+    // A new graph that lists nothing: the game's sprite and material warn,
+    // the engine's own entries, which no manifest lists, do not.
+    let mut lines = reload::removed_warnings(&world, &ResolvedManifest::default());
+    lines.sort();
+    assert_eq!(
+        lines,
+        [
+            "Manifest reload: material 'tinted' removed — keeping stale",
+            "Manifest reload: sprite 'dot' removed — keeping stale",
+        ],
+        "a reload dropping the game's entries warns of them alone, not of the engine's"
+    );
+}
+
 // ---- redo 7.20: screen files ----
 
 /// Writes `screens` (ID, file text) under `dir` and lists them in

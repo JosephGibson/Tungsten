@@ -494,6 +494,66 @@ fn check_reports_a_sheet_whose_frame_does_not_fit() {
 }
 
 #[test]
+fn a_prefab_naming_engine_white_passes_the_check() {
+    let game = Folder::new();
+    game.write(
+        "assets/prefabs/dot.json",
+        r#"{"sprite": {"asset_id": "engine_white"}}"#,
+    );
+    let root = game.write(
+        "assets/manifest.json",
+        r#"{"prefabs": {"dot": {"path": "prefabs/dot.json"}}}"#,
+    );
+    let mut app = game_world();
+    let errors = check_files(app.world_mut(), &[root], &game.0);
+    assert!(
+        errors.is_empty(),
+        "a prefab naming the reserved engine_white, which every load registers: {errors:#?}"
+    );
+    let white = app
+        .world()
+        .resource::<AssetRegistry>()
+        .get_sprite(crate::asset_loader::ENGINE_WHITE)
+        .map(|sprite| (sprite.width, sprite.height, sprite.alpha));
+    assert_eq!(
+        white,
+        Some((1, 1, tungsten_core::SpriteAlpha::Opaque)),
+        "the check registers engine_white's 1x1 opaque texel as a load does"
+    );
+}
+
+#[test]
+fn check_reports_a_reserved_sprite_and_material() {
+    let game = Folder::new();
+    game.write(
+        "assets/tint.wgsl",
+        "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+    );
+    game.png("assets/dot.png", 2);
+    let root = game.write(
+        "assets/manifest.json",
+        r#"{"shaders": {"tint": {"path": "tint.wgsl"}},
+            "materials": {"engine_glow": {"shader": "tint"}},
+            "sprites": {"engine_white": {"path": "dot.png"}}}"#,
+    );
+    let mut app = game_world();
+    let errors = check_files(app.world_mut(), &[root], &game.0);
+    let report: Vec<String> = errors
+        .iter()
+        .map(|e| format!("{}: {}", e.file.display(), e.message))
+        .collect();
+    for wanted in [
+        "assets/manifest.json: material 'engine_glow' is reserved by the engine; rename it",
+        "assets/dot.png: sprite 'engine_white' is reserved by the engine; rename it",
+    ] {
+        assert!(
+            report.iter().any(|line| line == wanted),
+            "a manifest declaring a name every load refuses: no `{wanted}` in {report:#?}"
+        );
+    }
+}
+
+#[test]
 fn a_prefab_variant_naming_no_sprite_is_a_check_error() {
     let game = Folder::new();
     game.png("assets/sprites/crate.png", 16);

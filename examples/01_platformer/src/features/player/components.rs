@@ -58,6 +58,15 @@ pub struct Moves {
     pub cast: f32,
     /// Game seconds the staff still flares from a spell.
     pub glow: f32,
+    /// Game seconds since the staff light last lit, which its kindling
+    /// flare runs over (`super::KINDLE_SECS`).
+    pub kindled: f32,
+    /// Game seconds since it guttered out, while its fade runs
+    /// (`super::GUTTER_SECS`).
+    pub guttering: Option<f32>,
+    /// Whether it burned the frame before: `None` before the first frame,
+    /// so a spawn or a load kindles nothing.
+    pub was_lit: Option<bool>,
     /// Game seconds a blow's red tint still shows, fading
     /// (`systems::HURT_SECS`).
     pub hurt: f32,

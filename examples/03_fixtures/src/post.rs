@@ -3,7 +3,7 @@
 //! sprites (varied speed, rotation, scale and tint) draws under a camera
 //! that follows one bouncer, over a three-layer parallax backdrop, with
 //! trauma shake and squash/stretch on every impact. Without a stack fixture
-//! the 17 stock effects cycle one at a time; keys (see workspace
+//! the 18 stock effects cycle one at a time; keys (see workspace
 //! `input.json`):
 //!
 //!   - `N` / `]`  → next effect
@@ -429,14 +429,6 @@ fn spawn_gradient_backdrop(world: &mut World) {
     }
 }
 
-/// Spawn one bright emissive quad in the upper-right of the playground arena.
-/// Acts as the visible bloom source for the LDR demo fixture: it is just a
-/// fully-white sprite (R/G/B = 1.0 after sRGB decode), so the playground
-/// fixture lowers the threshold below 1.0 to make it clip into the bright pass.
-///
-/// M30 screen-locks it (`ParallaxLayer::uniform(0.0)`): the camera now follows
-/// a bouncer around the arena, and a bloom source that wanders out of frame
-/// would make the M28 fixture useless to look at.
 /// The world registry's ID for sprite `name`.
 fn sprite_id(world: &mut World, name: &str) -> SpriteAssetId {
     world
@@ -445,6 +437,14 @@ fn sprite_id(world: &mut World, name: &str) -> SpriteAssetId {
         .intern_sprite(name)
 }
 
+/// Spawn one bright emissive quad in the upper-right of the playground arena.
+/// Acts as the visible bloom source for the LDR demo fixture: it is just a
+/// fully-white sprite (R/G/B = 1.0 after sRGB decode), so the playground
+/// fixture lowers the threshold below 1.0 to make it clip into the bright pass.
+///
+/// M30 screen-locks it (`ParallaxLayer::uniform(0.0)`): the camera now follows
+/// a bouncer around the arena, and a bloom source that wanders out of frame
+/// would make the M28 fixture useless to look at.
 fn spawn_emissive_quad(world: &mut World) {
     let entity = world.spawn();
     world.insert(
@@ -1402,8 +1402,9 @@ fn effect_label(i: usize) -> &'static str {
     ][i]
 }
 
-/// 17-entry roster of constructors the cycle walks through, in the order of
-/// the M26 stock-effect roster (`D-058`), so `N` moves top to bottom.
+/// 18-entry roster of constructors the cycle walks through, in the order of
+/// the M26 stock-effect roster (`D-058`) with M28's bloom last, so `N` moves
+/// top to bottom.
 ///
 /// Transition-style effects (`Fade`, `WipeRadial`, `Dissolve`) default to
 /// `progress = 0` on the engine side (the natural starting point for a

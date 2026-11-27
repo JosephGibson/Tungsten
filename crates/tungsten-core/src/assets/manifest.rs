@@ -56,7 +56,6 @@ pub enum ManifestError {
         /// The file the entry resolves to.
         path: String,
     },
-    /// A `data` entry names a file that does not exist (M61).
     /// A `rooms` entry names a file that does not exist (redo 7.12).
     #[error("room '{id}' references missing file: {path}")]
     MissingRoomFile {
@@ -80,6 +79,7 @@ pub enum ManifestError {
         /// The ID.
         id: String,
     },
+    /// A `data` entry names a file that does not exist (M61).
     #[error("data `{kind}` entry '{id}' references missing file: {path}")]
     MissingDataFile {
         /// The entry's kind.
@@ -660,7 +660,12 @@ fn sheet_frames(path: &Path, frame: [u32; 2], count: Option<u32>) -> Result<Vec<
         ));
     }
     let (columns, rows) = (width / frame_w, height / frame_h);
-    let cells = columns * rows;
+    let cells = columns.checked_mul(rows).ok_or_else(|| {
+        format!(
+            "`frame` {frame_w}x{frame_h} cuts its image ({width}x{height}) into more than {} cells",
+            u32::MAX
+        )
+    })?;
     let count = count.unwrap_or(cells);
     if count == 0 {
         return Err("`count` must be at least 1".into());

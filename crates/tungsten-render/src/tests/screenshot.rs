@@ -51,20 +51,18 @@ fn a_presented_frame_takes_its_armed_capture() {
 }
 
 #[test]
-fn a_capture_that_meets_a_skipped_frame_is_gone_unwritten() {
-    let mut slot = Some(pending("frame.png"));
-    assert_eq!(capture_for_frame(&mut slot, &SKIPPED), None);
-    assert_eq!(slot, None);
-    // The next presented frame gets none: no later frame writes it.
-    assert_eq!(capture_for_frame(&mut slot, &PRESENTED), None);
-}
-
-#[test]
-fn a_capture_that_meets_a_failed_frame_is_gone_unwritten() {
-    let mut slot = Some(pending("frame.png"));
-    assert_eq!(capture_for_frame(&mut slot, &FAILED), None);
-    assert_eq!(slot, None);
-    assert_eq!(capture_for_frame(&mut slot, &PRESENTED), None);
+fn a_capture_that_meets_an_unpresented_frame_is_gone_unwritten() {
+    for (case, acquired) in [("a skipped frame", &SKIPPED), ("a failed frame", &FAILED)] {
+        let mut slot = Some(pending("frame.png"));
+        assert_eq!(capture_for_frame(&mut slot, acquired), None, "{case}");
+        assert_eq!(slot, None, "{case}: the slot");
+        // The next presented frame gets none: no later frame writes it.
+        assert_eq!(
+            capture_for_frame(&mut slot, &PRESENTED),
+            None,
+            "{case}: the next presented frame"
+        );
+    }
 }
 
 #[test]

@@ -813,6 +813,25 @@ fn a_convert_or_extra_line_may_not_wait_for_the_hit() {
 }
 
 #[test]
+fn with_damage_panic_names_itself() {
+    for (kind, min, max) in [
+        ("Fire", 1.0, 2.0),
+        ("damage.fire", 3.0, 2.0),
+        ("damage.fire", -1.0, 2.0),
+    ] {
+        let refused = std::panic::catch_unwind(|| Skill::new().with_damage(kind, min, max));
+        let Err(panic) = refused else {
+            panic!("Skill::with_damage({kind}, {min}, {max}) builds");
+        };
+        let message = panic.downcast_ref::<String>().unwrap();
+        assert!(
+            message.starts_with("Skill::with_damage:"),
+            "Skill::with_damage({kind}, {min}, {max}) panics as another: {message}"
+        );
+    }
+}
+
+#[test]
 fn a_request_without_a_sheet_converts_as_before() {
     let (mut world, _) = rig();
     let target = world.spawn_with((Health::new(1000.0),));

@@ -561,7 +561,16 @@ impl Skill {
     #[must_use]
     #[track_caller]
     pub fn with_damage(mut self, kind: &str, min: f32, max: f32) -> Self {
-        if let Err(error) = SkillLine::added(kind, min, max).check() {
+        // Checked as the data form checks it: `SkillLine::added` would panic
+        // first, under its own name.
+        let base = SkillLine {
+            kind: LineKind::Added {
+                kind: kind.to_owned(),
+                range: [min, max],
+            },
+            scope: Scope::new(),
+        };
+        if let Err(error) = base.check() {
             panic!("Skill::with_damage: {error}");
         }
         let at = self

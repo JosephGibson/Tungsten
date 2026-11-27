@@ -216,49 +216,48 @@ class RepoChecks(unittest.TestCase):
         with patch.object(Path, "read_text", guarded):
             errors, notes = [], []
             qa.check_plans(self.root, errors, notes)
-        self.assertTrue(any("belongs in" in e for e in errors))
+        self.assertTrue(any("delete it with its citations" in e for e in errors))
         self.assertTrue(any("missing plan header" in e for e in errors))
 
-    def test_program_folder_plans_are_checked_and_archive_is_not_listed(self):
-        self.write("docs/plans/1.0/README.md", "# Folder map, not a plan\n")
-        self.write("docs/plans/1.0/finished.md", "\n".join(f"- **{f}:** {('done' if f == 'status' else 'work')}" for f in qa.FIELDS))
-        self.write("docs/plans/1.0/headless.md", "- **status:** draft\n")
-        self.write("docs/plans/1.0/deeper/nested.md", "not a plan\n")
+    def test_program_folder_plans_are_checked_and_deleted_records_are_not_listed(self):
+        self.write("docs/plans/program/README.md", "# Folder map, not a plan\n")
+        self.write("docs/plans/program/finished.md", "\n".join(f"- **{f}:** {('done' if f == 'status' else 'work')}" for f in qa.FIELDS))
+        self.write("docs/plans/program/headless.md", "- **status:** draft\n")
+        self.write("docs/plans/program/deeper/nested.md", "not a plan\n")
         self.write("docs/plans/archive/old.md", "- **status:** done\n")
         self.write("docs/plans/archive/1.0/old.md", "- **status:** done\n")
+        self.write("docs/plans/1.0/old.md", "- **status:** done\n")
         original_iterdir, original_glob = Path.iterdir, Path.glob
 
         def guarded_iterdir(path):
-            if "archive" in path.parts:
-                raise AssertionError("archive listed")
+            if "archive" in path.parts or "1.0" in path.parts:
+                raise AssertionError("a deleted record's folder listed")
             return original_iterdir(path)
 
         def guarded_glob(path, pattern):
-            if "archive" in path.parts or "**" in pattern:
-                raise AssertionError("archive or recursive glob")
+            if "archive" in path.parts or "1.0" in path.parts or "**" in pattern:
+                raise AssertionError("a deleted record's folder or a recursive glob")
             return original_glob(path, pattern)
 
         with patch.object(Path, "iterdir", guarded_iterdir), patch.object(Path, "glob", guarded_glob):
             errors, notes = [], []
             qa.check_plans(self.root, errors, notes)
-        self.assertIn("docs/plans/1.0/finished.md: done plan belongs in docs/plans/archive/1.0/", errors)
-        self.assertTrue(any(e.startswith("docs/plans/1.0/headless.md: missing plan header") for e in errors))
-        self.assertFalse(any("README" in e or "nested" in e or "archive/old" in e for e in errors))
+        self.assertIn("docs/plans/program/finished.md: done plan: delete it with its citations", errors)
+        self.assertTrue(any(e.startswith("docs/plans/program/headless.md: missing plan header") for e in errors))
+        self.assertFalse(any("README" in e or "nested" in e or "old.md" in e for e in errors))
         self.assertEqual(len(errors), 6)  # finished.md once, headless.md's five missing headers
 
     def test_agent_config_detects_filter_drift(self):
-        self.write(".claude/settings.json", json.dumps({"env": {"CLAUDE_CODE_GLOB_NO_IGNORE": "false"}, "permissions": {"deny": ["Read(./docs/plans/archive/**)"]}}))
-        self.write(".ignore", "docs/plans/archive/\n")
+        self.write(".claude/settings.json", json.dumps({"env": {"CLAUDE_CODE_GLOB_NO_IGNORE": "false"}, "permissions": {}}))
         errors = []
         qa.check_agent_config(self.root, errors)
         self.assertEqual(errors, [])
-        self.write(".ignore", "target/\n")
+        self.write(".claude/settings.json", json.dumps({"env": {}, "permissions": {}}))
         qa.check_agent_config(self.root, errors)
         self.assertTrue(errors)
 
     def test_agent_config_rejects_blanket_execution_allow(self):
-        self.write(".claude/settings.json", json.dumps({"env": {"CLAUDE_CODE_GLOB_NO_IGNORE": "false"}, "permissions": {"deny": ["Read(./docs/plans/archive/**)"], "allow": ["Bash(just *)"]}}))
-        self.write(".ignore", "docs/plans/archive/\n")
+        self.write(".claude/settings.json", json.dumps({"env": {"CLAUDE_CODE_GLOB_NO_IGNORE": "false"}, "permissions": {"allow": ["Bash(just *)"]}}))
         errors = []
         qa.check_agent_config(self.root, errors)
         self.assertTrue(any("exact commands" in e for e in errors))
@@ -266,21 +265,22 @@ class RepoChecks(unittest.TestCase):
     def test_plan_citations_flag_missing_plans_but_not_archive_or_history(self):
         self.write("docs/plans/live.md", "plan")
         self.write("crates/demo/src/lib.rs", "// docs/plans/live.md, then docs/plans/gone.md.\n")
-        self.write("DESIGN.md", "Archived at `docs/plans/archive/old.md`.\n")
+        self.write("DESIGN.md", "Archived at `docs/plans/archive/old.md`, frozen at `docs/plans/1.0/old.md`.\n")
         self.write("CHANGELOG.md", "Shipped docs/plans/gone.md.\n")
         self.write("scripts/test-demo.py", "FIXTURE = 'docs/plans/fixture.md'\n")
         original = Path.read_text
 
         def guarded(path, *args, **kwargs):
-            if "archive" in path.parts:
-                raise AssertionError("archive read")
+            if "archive" in path.parts or "1.0" in path.parts:
+                raise AssertionError("a deleted record read")
             return original(path, *args, **kwargs)
 
         with patch.object(Path, "read_text", guarded):
             errors, notes = [], []
             qa.check_plan_citations(self.root, errors, notes)
         self.assertEqual(errors, ["crates/demo/src/lib.rs: cites missing plan docs/plans/gone.md"])
-        self.assertIn("archive citation left unread: DESIGN.md: docs/plans/archive/old.md", notes)
+        self.assertIn("a deleted record's citation, a note (D-314): DESIGN.md: docs/plans/archive/old.md", notes)
+        self.assertIn("a deleted record's citation, a note (D-314): DESIGN.md: docs/plans/1.0/old.md", notes)
 
     def test_docs_find_unknown_decisions_and_broken_links_skip_archive(self):
         self.write("DECISIONS.md", "## D-001 — test\n")
@@ -291,50 +291,35 @@ class RepoChecks(unittest.TestCase):
         errors, notes = [], []
         qa.check_docs(self.root, errors, notes)
         self.assertEqual(len(errors), 2)
-        self.assertTrue(any("archive link left unread" in n for n in notes))
+        self.assertTrue(any("a deleted record's link" in n for n in notes))
 
     def test_active_program_links_and_fragments_fail_for_the_destination(self):
         self.write("DECISIONS.md", "## D-001 — test\n")
         for doc in qa.DOCS:
             self.write(doc, "# Doc\n")
         self.write("scripts/check-agent-context.py", "def check(root): return []\n")
-        self.write("docs/plans/1.0/README.md", "[plan](work.md#acceptance)\n[missing](gone.md)\n")
-        self.write("docs/plans/1.0/work.md", "# Work\n\n## Acceptance\n[bad](#old-checks)\n")
+        self.write("docs/plans/program/README.md", "[plan](work.md#acceptance)\n[missing](gone.md)\n")
+        self.write("docs/plans/program/work.md", "# Work\n\n## Acceptance\n[bad](#old-checks)\n")
         errors, notes = [], []
         qa.check_docs(self.root, errors, notes)
-        self.assertEqual(errors, ["docs/plans/1.0/README.md: broken link gone.md",
-                                  "docs/plans/1.0/work.md: broken fragment #old-checks"])
-
-    def test_frozen_records_dead_links_are_notes_and_live_docs_errors(self):
-        self.write("DECISIONS.md", "## D-001 — test\n## D-215 — freeze\n")
-        for doc in qa.DOCS:
-            self.write(doc, "# Doc\n")
-        self.write("scripts/check-agent-context.py", "def check(root): return []\n")
-        self.write("docs/plans/1.0/workflow.md", "# Workflow\n\n**Frozen 2026-10-25 (`D-215`):** ROADMAP.md replaces it.\n\n"
-                   "[skill](../../../.claude/skills/gone/SKILL.md)\n[guide](live.md#old-heading)\n")
-        self.write("docs/plans/1.0/live.md", "# Live\n\n[skill](../../../.claude/skills/gone/SKILL.md)\n[self](#old-heading)\n")
-        errors, notes = [], []
-        qa.check_docs(self.root, errors, notes)
-        self.assertEqual(errors, ["docs/plans/1.0/live.md: broken link ../../../.claude/skills/gone/SKILL.md",
-                                  "docs/plans/1.0/live.md: broken fragment #old-heading"])
-        self.assertIn("frozen record's dead link left as is: docs/plans/1.0/workflow.md: "
-                      "../../../.claude/skills/gone/SKILL.md", notes)
-        self.assertIn("frozen record's dead fragment left as is: docs/plans/1.0/workflow.md: live.md#old-heading", notes)
+        self.assertEqual(errors, ["docs/plans/program/README.md: broken link gone.md",
+                                  "docs/plans/program/work.md: broken fragment #old-checks"])
 
     def test_links_skip_archive_and_template_examples_without_probing_them(self):
         self.write("DECISIONS.md", "## D-001 — test\n")
         for doc in qa.DOCS:
             self.write(doc, "# Doc\n")
         self.write("scripts/check-agent-context.py", "def check(root): return []\n")
-        self.write("docs/plans/1.0/README.md", "[history](../archive/unread.md#anything)\n"
+        self.write("docs/plans/program/README.md", "[history](../archive/unread.md#anything)\n"
+                   "[record](../1.0/README.md)\n"
                    "```md\n[placeholder](<future file.md>)\n```\n")
         self.write(".claude/skills/tungsten-plan/skeleton.md", "[rules](../README.md)\n")
         originals = {name: getattr(Path, name) for name in ("exists", "read_text", "glob", "iterdir")}
 
         def guard(name):
             def guarded(path, *args, **kwargs):
-                if "archive" in path.parts:
-                    raise AssertionError(f"archive {name}")
+                if "archive" in path.parts or "1.0" in path.parts:
+                    raise AssertionError(f"a deleted record's {name}")
                 return originals[name](path, *args, **kwargs)
             return guarded
 
@@ -343,7 +328,10 @@ class RepoChecks(unittest.TestCase):
             errors, notes = [], []
             qa.check_docs(self.root, errors, notes)
         self.assertEqual(errors, [])
-        self.assertIn("archive link left unread: docs/plans/1.0/README.md: ../archive/unread.md#anything", notes)
+        self.assertIn("a deleted record's link, a note (D-314): docs/plans/program/README.md: "
+                      "../archive/unread.md#anything", notes)
+        self.assertIn("a deleted record's link, a note (D-314): docs/plans/program/README.md: ../1.0/README.md",
+                      notes)
 
     def test_reference_links_spaces_and_duplicate_heading_fragments(self):
         path = self.write("docs/a.md", "# A\n[space](<with space.md#two-words-1>)\n[ref][dest]\n"
