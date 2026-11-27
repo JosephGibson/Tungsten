@@ -1,0 +1,28 @@
+{
+  "title": "Wolf pelts",
+  "start": "hunt",
+  "stages": {
+    "hunt": {
+      "journal": "Bring three wolf pelts.",
+      "objectives": [
+        {
+          "text": "Pelts",
+          "when": {
+            "counter": {
+              "name": "pelts",
+              "min": 3
+            }
+          }
+        }
+      ],
+      "rewards": [
+        {
+          "counter": {
+            "name": "coins",
+            "add": 10
+          }
+        }
+      ]
+    }
+  }
+}

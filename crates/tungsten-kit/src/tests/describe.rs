@@ -129,17 +129,18 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let kinds: BTreeSet<&str> = descriptions.kinds().map(|(kind, _)| kind).collect();
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
-    assert_eq!(described.len(), 52);
-    assert_eq!(kinds.len(), 13);
+    assert_eq!(described.len(), 53);
+    assert_eq!(kinds.len(), 14);
     assert_eq!(
         descriptions.shapes().count(),
-        101,
+        106,
         "7.10c's lob, the prefab and roll actions' object forms, the cone, the conduction, \
          the projectile's end and the place; 7.10g's clip rule, blink, path rider and tag look; \
          7.18's camera box, lead, follow and fixed, and the camera action; 7.13c's impact extra \
          and push; 7.13c's foes and cues' burst action; 7.13c's foes' overlay bob; 8.1's condition and its \
          flag, counter, stat and tags forms, the speaker, the conversation and its node, line, \
-         choice and branch, and the say action"
+         choice and branch, the say action, and the quest, its stage and objective and the quest \
+         action and condition"
     );
 }
 
@@ -174,6 +175,8 @@ fn every_shape_a_field_names_is_described() {
                     "effect",
                     "interaction",
                     "offers",
+                    "quest",
+                    "quest_stage",
                     "speaker",
                     "stat_bounds",
                     "weighted_table",
@@ -259,11 +262,11 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 69,
-        "the cue action's nineteen forms, the target's three, the hit shape's two, the modifier's \
+        probed, 71,
+        "the cue action's twenty forms, the target's three, the hit shape's two, the modifier's \
          four, the ability trigger's four, its target's four, its payload's seven, the offer's two, \
          a chemistry output's eleven, a projectile end's one, a fixed camera's three, a camera \
-         action's two and a condition's seven"
+         action's two and a condition's eight"
     );
 }
 
@@ -320,7 +323,11 @@ fn each_described_enum_variant_deserializes() {
             + 3
             + 2
             + 2
-            + 2,
+            + 2
+            + 3
+            + 3
+            + 4
+            + 3,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
          steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
          axes, the effect action's targets, the stack's refresh and expire policies, and the \
@@ -328,7 +335,8 @@ fn each_described_enum_variant_deserializes() {
          directions, a cap's past, a clip rule's motions, a hitbox's facings and credits, \
          a camera lead's sources, a blast's spare, point and land and an impact's land and four \
          actions' `at`, each with `aim`; a cue rule's reasons are a name or a list; the flag, \
-         counter, stat and tags conditions' targets and the say action's"
+         counter, stat and tags conditions' targets and the say action's; the quest action's ops \
+         and targets and the quest condition's states and targets"
     );
 }
 
@@ -456,9 +464,9 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let world = world();
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
-    assert_eq!(count("component "), 52);
-    assert_eq!(count("shape "), 101);
-    assert_eq!(count("kind "), 13);
+    assert_eq!(count("component "), 53);
+    assert_eq!(count("shape "), 106);
+    assert_eq!(count("kind "), 14);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));
     assert!(text.contains("  field invulnerability: f32 (>= 0) = 0.0 "));

@@ -365,6 +365,9 @@ pub use react::loot::WeightedTable;
 pub use react::world_cues::WorldCue;
 pub use story::condition::Condition;
 pub use story::dialogue::{Conversation, DialoguePlugin, Speaker};
+pub use story::quests::{
+    QUEST_TICK, Quest, QuestChanged, QuestState, QuestStatus, Quests, QuestsPlugin,
+};
 pub use story::runner::{Dialogue, DialogueEnded, DialogueStarted, Talk, TalkLine, talk};
 pub use story::say::{Barks, SAY_TICK, SayPlugin};
 pub use transform::hierarchy::{

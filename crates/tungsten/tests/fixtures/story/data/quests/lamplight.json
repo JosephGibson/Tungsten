@@ -1,0 +1,33 @@
+{
+  "title": "Lamplight",
+  "start": "light",
+  "stages": {
+    "light": {
+      "journal": "Light the lamp by the steps.",
+      "objectives": [
+        {
+          "text": "Lamp lit",
+          "when": {
+            "flag": {
+              "name": "lamp.lit",
+              "target": "game"
+            }
+          }
+        }
+      ],
+      "next": "report"
+    },
+    "report": {
+      "journal": "Tell Tamsin it burns.",
+      "rewards": [
+        {
+          "counter": {
+            "name": "coins",
+            "add": 5,
+            "target": "game"
+          }
+        }
+      ]
+    }
+  }
+}

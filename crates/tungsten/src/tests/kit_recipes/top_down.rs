@@ -36,7 +36,7 @@
 //! and cues' ogre, whose kill's key burst takes a full budget's oldest
 //! cosmetic slot; 8.1's reader, who takes the nearer of two notices, and
 //! the notice board's conversation, read and its errand taken, and its
-//! bark.
+//! bark; the reader's pelt errand, paid once its count reaches three.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -3805,5 +3805,51 @@ fn a_read_notice_barks_once() {
             1,
             "dt {dt}: the second read replaces the first"
         );
+    }
+}
+
+#[test]
+fn an_errand_pays_once_its_count_reaches_three() {
+    use crate::kit::{QuestStatus, Quests};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let reader = spawn(&mut harness, "reader", [100.0, 100.0]);
+        let errand = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Quests>(reader)
+                .unwrap()
+                .get("errand")
+                .unwrap()
+                .status()
+        };
+        let coins = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Counters>(reader)
+                .map_or(0, |counters| counters.get("coins"))
+        };
+        harness
+            .world_mut()
+            .insert(reader, Counters::new().with("pelts", 2));
+        harness.step(2);
+        assert_eq!(
+            (errand(&harness), coins(&harness)),
+            (QuestStatus::Active, 0),
+            "dt {dt}"
+        );
+        harness
+            .world_mut()
+            .get_mut::<Counters>(reader)
+            .unwrap()
+            .add("pelts", 1);
+        harness.step(1);
+        assert_eq!(
+            (errand(&harness), coins(&harness)),
+            (QuestStatus::Done, 10),
+            "dt {dt}"
+        );
+        harness.step(3);
+        assert_eq!(coins(&harness), 10, "dt {dt}: paid once");
     }
 }

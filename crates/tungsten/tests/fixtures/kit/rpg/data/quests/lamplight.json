@@ -1,0 +1,29 @@
+{
+  "title": "Lamplight",
+  "start": "light",
+  "stages": {
+    "light": {
+      "journal": "Light the lamp by the steps.",
+      "objectives": [
+        {
+          "text": "Lamp lit",
+          "when": {
+            "flag": {
+              "name": "lamp.lit",
+              "target": "game"
+            }
+          }
+        }
+      ],
+      "rewards": [
+        {
+          "counter": {
+            "name": "coins",
+            "add": 5,
+            "target": "game"
+          }
+        }
+      ]
+    }
+  }
+}

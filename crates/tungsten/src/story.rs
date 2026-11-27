@@ -8,10 +8,11 @@ use tungsten_core::ui::{
     Visibility, WidgetId, screen_build,
 };
 use tungsten_core::{
-    AssetRegistry, EventQueue, Plugin, Schedule, SpriteAssetId, Stage, Time, World, system,
+    AssetRegistry, DataRegistry, Entity, EventQueue, Plugin, Schedule, SpriteAssetId, Stage, Time,
+    World, system,
 };
 
-use crate::kit::{Dialogue, Talk};
+use crate::kit::{Dialogue, Quest, QuestStatus, Quests, Talk};
 use crate::screens::{self, ModalScreen};
 use crate::state::{GameState, StateContext, StateId};
 
@@ -19,6 +20,10 @@ use crate::state::{GameState, StateContext, StateId};
 pub const DIALOGUE_SCREEN: StateId = "dialogue";
 /// [`StoryUiPlugin`]'s system, in `update`: opens the box over a talk.
 pub const DIALOGUE_OPEN: &str = "dialogue_open";
+
+/// The journal's screen ID and the `ui_screens` file [`open_journal`]
+/// opens.
+pub const JOURNAL_SCREEN: &str = "journal";
 
 /// The key of the box file's node that reveals: its line.
 pub const TEXT_KEY: &str = "text";
@@ -46,6 +51,12 @@ const PORTRAIT_SIZE: Vec2 = Vec2::new(64.0, 64.0);
 /// its speaker's pace on the real clock; Cancel takes the node's `back`
 /// choice when it is offered, else does nothing; the talk's end closes the
 /// box. Whether play stops under it is the covered state's `holds_clock`.
+///
+/// The journal (redo 8.1, P8-2), a `ui_screens` file `journal` that
+/// [`open_journal`] opens as a data screen, reads rows `quests.active`
+/// (fields `title`, `journal`, the stage's line, and `objectives`, a line
+/// an objective, "Lamp lit 0/1") and `quests.done` (`title`), from the
+/// holder [`JournalView`] names, else the game's quests.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StoryUiPlugin;
 
@@ -62,7 +73,12 @@ impl Plugin for StoryUiPlugin {
             .rows("dialogue.choices", choice_rows)
             .mount("dialogue.portrait", portrait_mount)
             .action("dialogue.continue", continue_action)
-            .action("dialogue.choose", choose_action);
+            .action("dialogue.choose", choose_action)
+            .rows("quests.active", active_rows)
+            .rows("quests.done", done_rows);
+        if !world.has_resource::<JournalView>() {
+            world.insert_resource(JournalView::default());
+        }
         screens::register(world, DIALOGUE_SCREEN, make_box);
         schedule.add(Stage::Update, system(DIALOGUE_OPEN, dialogue_open));
     }
@@ -397,6 +413,78 @@ fn show_portrait(world: &mut World) {
         }
         None => tree.set_visibility(image, Visibility::Collapsed),
     }
+}
+
+/// Whose quests the journal shows, a World resource [`StoryUiPlugin`]
+/// inserts: a holder's, or the game's while none is named.
+#[derive(Debug, Default)]
+pub struct JournalView {
+    holder: Option<Entity>,
+}
+
+impl JournalView {
+    /// The holder the journal reads; `None` for the game's quests.
+    #[must_use]
+    pub fn holder(&self) -> Option<Entity> {
+        self.holder
+    }
+}
+
+/// Opens the journal over `holder`'s quests, `None` for the game's: sets
+/// [`JournalView`] and opens the game's `ui_screens` file `journal` as a
+/// data screen ([`screens::open`]); `false` when it does not open.
+pub fn open_journal(world: &mut World, holder: Option<Entity>) -> bool {
+    if !world.has_resource::<JournalView>() {
+        world.insert_resource(JournalView::default());
+    }
+    world.resource_mut::<JournalView>().holder = holder;
+    screens::open(world, JOURNAL_SCREEN)
+}
+
+/// The journal's holder's quests and each one's data, in ID order, with
+/// the status asked for.
+fn journal_quests(world: &World, status: QuestStatus) -> Vec<(&str, &Quest, &str)> {
+    let holder = world
+        .get_resource::<JournalView>()
+        .and_then(JournalView::holder);
+    let quests = match holder {
+        Some(entity) => world.get::<Quests>(entity),
+        None => world.get_resource::<Quests>(),
+    };
+    let (Some(quests), Some(data)) = (quests, world.get_resource::<DataRegistry>()) else {
+        return Vec::new();
+    };
+    quests
+        .iter()
+        .filter(|(_, state)| state.status() == status)
+        .filter_map(|(id, state)| Some((id, data.get::<Quest>(id)?, state.stage())))
+        .collect()
+}
+
+fn active_rows(world: &World) -> Vec<UiRow> {
+    let holder = world
+        .get_resource::<JournalView>()
+        .and_then(JournalView::holder);
+    journal_quests(world, QuestStatus::Active)
+        .into_iter()
+        .map(|(id, quest, stage)| {
+            let objectives: Vec<String> = quest
+                .progress(world, holder, stage)
+                .map(|(text, have, need)| format!("{text} {have}/{need}"))
+                .collect();
+            UiRow::new(id)
+                .with("title", quest.title())
+                .with("journal", quest.journal(stage).unwrap_or_default())
+                .with("objectives", objectives.join("\n"))
+        })
+        .collect()
+}
+
+fn done_rows(world: &World) -> Vec<UiRow> {
+    journal_quests(world, QuestStatus::Done)
+        .into_iter()
+        .map(|(id, quest, _)| UiRow::new(id).with("title", quest.title()))
+        .collect()
 }
 
 #[cfg(test)]

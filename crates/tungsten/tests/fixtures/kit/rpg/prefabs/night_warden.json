@@ -20,6 +20,11 @@
     },
     "interactor": {
       "reach": 40
+    },
+    "quests": {
+      "lamplight": {
+        "stage": "light"
+      }
     }
   }
 }

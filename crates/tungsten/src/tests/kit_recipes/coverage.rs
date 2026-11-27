@@ -82,8 +82,8 @@ fn every_registered_scene_name_and_kind_appears_in_two_genres() {
         }
     }
     assert!(short.is_empty(), "under two genres: {}", short.join(", "));
-    assert_eq!(registered.len(), 52);
-    assert_eq!(kinds.len(), 13);
+    assert_eq!(registered.len(), 53);
+    assert_eq!(kinds.len(), 14);
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn every_component_claims_the_genres_whose_fixtures_name_it() {
         }
     }
     assert!(wrong.is_empty(), "claims: {}", wrong.join("; "));
-    assert_eq!(descriptions.iter().count(), 52);
+    assert_eq!(descriptions.iter().count(), 53);
 }
 
 /// The damage types every fixture's `damage_types` entries declare.

@@ -1223,6 +1223,10 @@ pub fn tungsten_kit::CueAction::label(tungsten_kit::LabelStyle) -> Self
 pub fn tungsten_kit::CueAction::looping(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::name(&self) -> &'static str
 pub fn tungsten_kit::CueAction::prefab(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::quest_advance(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::quest_fail(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::quest_stage(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::quest_start(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::raise_camera(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::refill_ability(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::release_camera(impl core::convert::Into<alloc::string::String>) -> Self
@@ -4826,6 +4830,34 @@ impl core::marker::Unpin for tungsten_kit::Phase
 impl core::marker::UnsafeUnpin for tungsten_kit::Phase
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Phase
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Phase
+pub enum tungsten_kit::QuestStatus
+pub tungsten_kit::QuestStatus::Active
+pub tungsten_kit::QuestStatus::Done
+pub tungsten_kit::QuestStatus::Failed
+impl tungsten_kit::QuestStatus
+pub fn tungsten_kit::QuestStatus::name(self) -> &'static str
+impl core::clone::Clone for tungsten_kit::QuestStatus
+pub fn tungsten_kit::QuestStatus::clone(&self) -> tungsten_kit::QuestStatus
+impl core::cmp::Eq for tungsten_kit::QuestStatus
+impl core::cmp::PartialEq for tungsten_kit::QuestStatus
+pub fn tungsten_kit::QuestStatus::eq(&self, &tungsten_kit::QuestStatus) -> bool
+impl core::default::Default for tungsten_kit::QuestStatus
+pub fn tungsten_kit::QuestStatus::default() -> tungsten_kit::QuestStatus
+impl core::fmt::Debug for tungsten_kit::QuestStatus
+pub fn tungsten_kit::QuestStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::QuestStatus
+impl core::marker::StructuralPartialEq for tungsten_kit::QuestStatus
+impl serde_core::ser::Serialize for tungsten_kit::QuestStatus
+pub fn tungsten_kit::QuestStatus::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::QuestStatus
+pub fn tungsten_kit::QuestStatus::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::QuestStatus
+impl core::marker::Send for tungsten_kit::QuestStatus
+impl core::marker::Sync for tungsten_kit::QuestStatus
+impl core::marker::Unpin for tungsten_kit::QuestStatus
+impl core::marker::UnsafeUnpin for tungsten_kit::QuestStatus
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::QuestStatus
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::QuestStatus
 pub enum tungsten_kit::ReadAt
 pub tungsten_kit::ReadAt::Hit
 pub tungsten_kit::ReadAt::Use
@@ -6113,6 +6145,10 @@ pub fn tungsten_kit::CueAction::label(tungsten_kit::LabelStyle) -> Self
 pub fn tungsten_kit::CueAction::looping(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::name(&self) -> &'static str
 pub fn tungsten_kit::CueAction::prefab(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::quest_advance(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::quest_fail(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::quest_stage(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::quest_start(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::raise_camera(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::refill_ability(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::release_camera(impl core::convert::Into<alloc::string::String>) -> Self
@@ -8855,6 +8891,120 @@ impl core::marker::Unpin for tungsten_kit::ProjectilePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::ProjectilePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ProjectilePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectilePlugin
+pub struct tungsten_kit::Quest
+impl tungsten_kit::Quest
+pub fn tungsten_kit::Quest::has_stage(&self, &str) -> bool
+pub fn tungsten_kit::Quest::journal(&self, &str) -> core::option::Option<&str>
+pub fn tungsten_kit::Quest::objectives(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::Condition)>
+pub fn tungsten_kit::Quest::progress<'a>(&'a self, &'a tungsten_core::ecs::world::World, core::option::Option<tungsten_core::ecs::entity::Entity>, &str) -> impl core::iter::traits::iterator::Iterator<Item = (&'a str, i64, i64)> + 'a
+pub fn tungsten_kit::Quest::start(&self) -> &str
+pub fn tungsten_kit::Quest::title(&self) -> &str
+impl core::clone::Clone for tungsten_kit::Quest
+pub fn tungsten_kit::Quest::clone(&self) -> tungsten_kit::Quest
+impl core::cmp::PartialEq for tungsten_kit::Quest
+pub fn tungsten_kit::Quest::eq(&self, &tungsten_kit::Quest) -> bool
+impl core::fmt::Debug for tungsten_kit::Quest
+pub fn tungsten_kit::Quest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Quest
+impl serde_core::ser::Serialize for tungsten_kit::Quest
+pub fn tungsten_kit::Quest::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Quest
+pub fn tungsten_kit::Quest::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Quest
+impl core::marker::Send for tungsten_kit::Quest
+impl core::marker::Sync for tungsten_kit::Quest
+impl core::marker::Unpin for tungsten_kit::Quest
+impl core::marker::UnsafeUnpin for tungsten_kit::Quest
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Quest
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Quest
+#[non_exhaustive] pub struct tungsten_kit::QuestChanged
+pub tungsten_kit::QuestChanged::holder: core::option::Option<tungsten_core::ecs::entity::Entity>
+pub tungsten_kit::QuestChanged::quest: alloc::string::String
+pub tungsten_kit::QuestChanged::stage: alloc::string::String
+pub tungsten_kit::QuestChanged::status: tungsten_kit::QuestStatus
+impl core::clone::Clone for tungsten_kit::QuestChanged
+pub fn tungsten_kit::QuestChanged::clone(&self) -> tungsten_kit::QuestChanged
+impl core::cmp::PartialEq for tungsten_kit::QuestChanged
+pub fn tungsten_kit::QuestChanged::eq(&self, &tungsten_kit::QuestChanged) -> bool
+impl core::fmt::Debug for tungsten_kit::QuestChanged
+pub fn tungsten_kit::QuestChanged::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::QuestChanged
+impl core::marker::Freeze for tungsten_kit::QuestChanged
+impl core::marker::Send for tungsten_kit::QuestChanged
+impl core::marker::Sync for tungsten_kit::QuestChanged
+impl core::marker::Unpin for tungsten_kit::QuestChanged
+impl core::marker::UnsafeUnpin for tungsten_kit::QuestChanged
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::QuestChanged
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::QuestChanged
+pub struct tungsten_kit::QuestState
+impl tungsten_kit::QuestState
+pub fn tungsten_kit::QuestState::stage(&self) -> &str
+pub fn tungsten_kit::QuestState::status(&self) -> tungsten_kit::QuestStatus
+impl core::clone::Clone for tungsten_kit::QuestState
+pub fn tungsten_kit::QuestState::clone(&self) -> tungsten_kit::QuestState
+impl core::cmp::Eq for tungsten_kit::QuestState
+impl core::cmp::PartialEq for tungsten_kit::QuestState
+pub fn tungsten_kit::QuestState::eq(&self, &tungsten_kit::QuestState) -> bool
+impl core::fmt::Debug for tungsten_kit::QuestState
+pub fn tungsten_kit::QuestState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::QuestState
+impl serde_core::ser::Serialize for tungsten_kit::QuestState
+pub fn tungsten_kit::QuestState::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::QuestState
+pub fn tungsten_kit::QuestState::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::QuestState
+impl core::marker::Send for tungsten_kit::QuestState
+impl core::marker::Sync for tungsten_kit::QuestState
+impl core::marker::Unpin for tungsten_kit::QuestState
+impl core::marker::UnsafeUnpin for tungsten_kit::QuestState
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::QuestState
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::QuestState
+pub struct tungsten_kit::Quests
+impl tungsten_kit::Quests
+pub fn tungsten_kit::Quests::any_active(&self) -> bool
+pub fn tungsten_kit::Quests::get(&self, &str) -> core::option::Option<&tungsten_kit::QuestState>
+pub fn tungsten_kit::Quests::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_kit::QuestState)>
+pub fn tungsten_kit::Quests::new() -> Self
+impl core::clone::Clone for tungsten_kit::Quests
+pub fn tungsten_kit::Quests::clone(&self) -> tungsten_kit::Quests
+impl core::cmp::Eq for tungsten_kit::Quests
+impl core::cmp::PartialEq for tungsten_kit::Quests
+pub fn tungsten_kit::Quests::eq(&self, &tungsten_kit::Quests) -> bool
+impl core::default::Default for tungsten_kit::Quests
+pub fn tungsten_kit::Quests::default() -> tungsten_kit::Quests
+impl core::fmt::Debug for tungsten_kit::Quests
+pub fn tungsten_kit::Quests::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Quests
+impl serde_core::ser::Serialize for tungsten_kit::Quests
+pub fn tungsten_kit::Quests::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Quests
+pub fn tungsten_kit::Quests::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Quests
+pub fn tungsten_kit::Quests::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Quests
+impl core::marker::Send for tungsten_kit::Quests
+impl core::marker::Sync for tungsten_kit::Quests
+impl core::marker::Unpin for tungsten_kit::Quests
+impl core::marker::UnsafeUnpin for tungsten_kit::Quests
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Quests
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Quests
+pub struct tungsten_kit::QuestsPlugin
+impl core::clone::Clone for tungsten_kit::QuestsPlugin
+pub fn tungsten_kit::QuestsPlugin::clone(&self) -> tungsten_kit::QuestsPlugin
+impl core::default::Default for tungsten_kit::QuestsPlugin
+pub fn tungsten_kit::QuestsPlugin::default() -> tungsten_kit::QuestsPlugin
+impl core::fmt::Debug for tungsten_kit::QuestsPlugin
+pub fn tungsten_kit::QuestsPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::QuestsPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::QuestsPlugin
+pub fn tungsten_kit::QuestsPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::QuestsPlugin
+impl core::marker::Send for tungsten_kit::QuestsPlugin
+impl core::marker::Sync for tungsten_kit::QuestsPlugin
+impl core::marker::Unpin for tungsten_kit::QuestsPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::QuestsPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::QuestsPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::QuestsPlugin
 pub struct tungsten_kit::Reaction
 impl tungsten_kit::Reaction
 pub fn tungsten_kit::Reaction::amount(&self) -> f32
@@ -10290,6 +10440,7 @@ pub const tungsten_kit::PICKUP_MAGNET: &str
 pub const tungsten_kit::PICKUP_TICK: &str
 pub const tungsten_kit::PLATFORMER_CONTROLLER: &str
 pub const tungsten_kit::PROJECTILE_TICK: &str
+pub const tungsten_kit::QUEST_TICK: &str
 pub const tungsten_kit::SAY_TICK: &str
 pub const tungsten_kit::SHIELD_TICK: &str
 pub const tungsten_kit::SPAWNER_TICK: &str

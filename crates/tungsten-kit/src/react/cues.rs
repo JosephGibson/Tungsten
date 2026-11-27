@@ -55,6 +55,7 @@ use crate::react::level::LevelUp;
 use crate::react::loot::{LOOT_TABLES, WeightedTable, register_loot_tables};
 use crate::react::world_cues::{WORLD_CUES, WorldCue, WorldCueActions};
 use crate::story::dialogue::{Conversation, DIALOGUE};
+use crate::story::quests::{QuestActionDef, QuestOp, act, check_quest_ref};
 use crate::story::runner::{start_talk, talking};
 use crate::story::say::{SayDef, SayStyle, bark, say_round_trip};
 use crate::transform::hierarchy::despawn_recursive;
@@ -430,6 +431,9 @@ pub(crate) enum ActionKind {
     /// A bark over the subject or the other, boxed so the action keeps its
     /// size.
     Say(Box<SayDef>),
+    /// A quest of the subject, the other or the game started, advanced,
+    /// failed or moved, boxed so the action keeps its size.
+    Quest(Box<QuestActionDef>),
 }
 
 /// A counter action's change.
@@ -800,6 +804,7 @@ impl CueAction {
                 *target = to;
             }
             ActionKind::Say(say) if to == Target::Other => say.other = true,
+            ActionKind::Quest(quest) => quest.target = to,
             _ => panic!("CueAction::{method}: a `{name}` action takes no target"),
         }
         self
@@ -1171,6 +1176,62 @@ impl CueAction {
         })))
     }
 
+    /// Starts the subject's quest `id` at its start, a `quests` entry (redo
+    /// 8.1); a quest taken once stays as it is.
+    /// [`for_other`](Self::for_other) and [`for_game`](Self::for_game) take
+    /// the other entity's or the game's. Data form
+    /// `{ "quest": { "id": "lamplight", "op": "start" } }`, `op` also
+    /// `advance` (the stage completes with its rewards) or `fail`, or
+    /// `"stage": "report"` in its place (straight there, no rewards).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let start = CueAction::quest_start("lamplight").for_game();
+    /// assert_eq!(
+    ///     serde_json::to_value(&start).unwrap(),
+    ///     serde_json::json!({ "quest": { "id": "lamplight", "op": "start", "target": "game" } })
+    /// );
+    /// let back: CueAction =
+    ///     serde_json::from_str(r#"{ "quest": { "id": "lamplight", "op": "advance" } }"#).unwrap();
+    /// assert_eq!(back, CueAction::quest_advance("lamplight"));
+    /// ```
+    #[must_use]
+    pub fn quest_start(id: impl Into<String>) -> Self {
+        Self::quest(id.into(), QuestOp::Start)
+    }
+
+    /// Completes the subject's quest `id`'s stage, its rewards run, as
+    /// [`quest_start`](Self::quest_start) names its forms.
+    #[must_use]
+    pub fn quest_advance(id: impl Into<String>) -> Self {
+        Self::quest(id.into(), QuestOp::Advance)
+    }
+
+    /// Fails the subject's quest `id`, as [`quest_start`](Self::quest_start)
+    /// names its forms.
+    #[must_use]
+    pub fn quest_fail(id: impl Into<String>) -> Self {
+        Self::quest(id.into(), QuestOp::Fail)
+    }
+
+    /// Moves the subject's quest `id` straight to `stage` with no rewards,
+    /// as [`quest_start`](Self::quest_start) names its forms.
+    #[must_use]
+    pub fn quest_stage(id: impl Into<String>, stage: impl Into<String>) -> Self {
+        Self::quest(id.into(), QuestOp::Stage(stage.into()))
+    }
+
+    fn quest(id: String, op: QuestOp) -> Self {
+        Self::of(ActionKind::Quest(Box::new(QuestActionDef {
+            id,
+            op,
+            target: Target::Subject,
+        })))
+    }
+
     /// Uses the subject's ability `name` now, as [`use_ability`] uses it;
     /// [`for_other`](Self::for_other) uses the other entity's. Data form
     /// `{ "ability": "wand" }` or
@@ -1282,6 +1343,7 @@ impl CueAction {
             ActionKind::Camera { .. } => "camera",
             ActionKind::Dialogue(_) => "dialogue",
             ActionKind::Say(_) => "say",
+            ActionKind::Quest(_) => "quest",
         }
     }
 }
@@ -1335,6 +1397,7 @@ pub(crate) enum CueActionDef {
     Camera(CameraActionDef),
     Dialogue(DataRef<Conversation>),
     Say(SayDef),
+    Quest(QuestActionDef),
 }
 
 /// A `camera` action as data writes it: exactly one of `raise` and
@@ -2035,6 +2098,7 @@ impl TryFrom<CueActionDef> for CueAction {
             },
             CueActionDef::Dialogue(conversation) => ActionKind::Dialogue(conversation),
             CueActionDef::Say(say) => ActionKind::Say(Box::new(say)),
+            CueActionDef::Quest(quest) => ActionKind::Quest(Box::new(quest)),
         };
         Ok(Self { kind })
     }
@@ -2141,6 +2205,7 @@ impl From<CueAction> for CueActionDef {
             }),
             ActionKind::Dialogue(conversation) => CueActionDef::Dialogue(conversation),
             ActionKind::Say(say) => CueActionDef::Say(*say),
+            ActionKind::Quest(quest) => CueActionDef::Quest(*quest),
         }
     }
 }
@@ -3474,6 +3539,20 @@ fn check_actions(
             }
             ActionKind::Clip(clips) => check_clips(world, &at, clips)?,
             ActionKind::Dialogue(conversation) => conversation.check(world, &at)?,
+            ActionKind::Quest(quest) => {
+                let stage = match &quest.op {
+                    QuestOp::Stage(stage) => Some(stage.as_str()),
+                    _ => None,
+                };
+                check_quest_ref(world, &at, &quest.id, stage)?;
+                if quest.target == Target::Other && !event.other {
+                    return Err(MissingAsset::new(
+                        format!("{at}.target"),
+                        "cue event with an other entity",
+                        event.name,
+                    ));
+                }
+            }
             ActionKind::Say(say) if say.other && !event.other => {
                 return Err(MissingAsset::new(
                     format!("{at}.target"),
@@ -3549,6 +3628,20 @@ pub(crate) struct ListQueue {
     depth: u8,
     /// Whether the call bound has warned.
     warned: bool,
+}
+
+/// How deep a story list may be for its `quest` actions to act: past it
+/// they are skipped and traced, so rewards that advance each other stop.
+pub(crate) const MAX_QUEST_DEPTH: u8 = 8;
+
+impl ListQueue {
+    /// The depth of the list running now: 0 for a call's own, or none.
+    pub(crate) fn depth(world: &World) -> u8 {
+        world
+            .get_resource::<ListQueue>()
+            .filter(|queue| queue.running)
+            .map_or(0, |queue| queue.depth)
+    }
 }
 
 /// Runs `actions` now, outside the cue system (redo 8.1): a conversation's
@@ -3648,6 +3741,7 @@ fn needs_subject(action: &CueAction) -> bool {
             | ActionKind::Stop { .. }
             | ActionKind::Dialogue(_)
     ) || matches!(&action.kind, ActionKind::Say(say) if !say.other)
+        || matches!(&action.kind, ActionKind::Quest(quest) if quest.target == Target::Subject)
 }
 
 /// Checks a list a story item runs at once, outside the cue system (redo
@@ -3957,6 +4051,8 @@ const TALKING: &str = "a conversation runs";
 const NO_CONVERSATION: &str = "no `dialogue` entry holds the ID";
 const NO_SUBJECT: &str = "the list runs with no subject";
 const TOO_MANY_LISTS: &str = "one call ran its 64 lists";
+const TOO_DEEP: &str = "a quest action 8 lists deep";
+const NO_QUEST: &str = "the quest changed nothing";
 const NO_AMOUNT: &str = "the event has no amount";
 const NO_COMMANDS: &str = "the World has no CommandBuffer";
 const NO_QUEUE: &str = "the World has no queue for it";
@@ -4714,6 +4810,21 @@ impl Reactor {
                     return skip(world, NO_OTHER);
                 };
                 bark(world, speaker, &say.style);
+            }
+            ActionKind::Quest(quest) => {
+                let holder = match quest.target {
+                    Target::Game => None,
+                    to => match target(to, world) {
+                        Some(entity) => Some(entity),
+                        None => return skip(world, NO_OTHER),
+                    },
+                };
+                if ListQueue::depth(world) >= MAX_QUEST_DEPTH {
+                    return skip(world, TOO_DEEP);
+                }
+                if !act(world, holder, &quest.id, &quest.op) {
+                    return skip(world, NO_QUEST);
+                }
             }
             ActionKind::Label(Some(style)) => {
                 let Some(amount) = occurrence.amount else {
@@ -5547,6 +5658,11 @@ fn describe_cues(world: &mut World) {
                 "say",
                 FieldType::Shape("say_action"),
                 "a bark over the subject or the other, replacing its last, fading at its end; a text alone reads as `{ \"text\": .. }`; never in a world cue",
+            ))
+            .field(FieldDescription::new(
+                "quest",
+                FieldType::Shape("quest_action"),
+                "a quest started, advanced with its stage's rewards, failed or moved to a stage, at once; 8 story lists deep, a traced skip",
             ))
             .field(FieldDescription::new(
                 "dialogue",

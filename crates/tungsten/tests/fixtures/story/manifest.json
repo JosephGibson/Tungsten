@@ -2,6 +2,9 @@
   "ui_screens": {
     "dialogue": {
       "path": "ui/screens/dialogue.json"
+    },
+    "journal": {
+      "path": "ui/screens/journal.json"
     }
   },
   "data": {
@@ -13,6 +16,11 @@
     "dialogue": {
       "keeper.evening": {
         "path": "data/dialogue/keeper_evening.json"
+      }
+    },
+    "quests": {
+      "lamplight": {
+        "path": "data/quests/lamplight.json"
       }
     }
   }

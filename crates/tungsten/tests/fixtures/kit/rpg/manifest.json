@@ -190,6 +190,11 @@
       "keeper.evening": {
         "path": "data/dialogue/keeper_evening.json"
       }
+    },
+    "quests": {
+      "lamplight": {
+        "path": "data/quests/lamplight.json"
+      }
     }
   },
   "animations": {

@@ -18,7 +18,7 @@ use super::*;
 use crate::{
     Ability, ContactDamage, ContactTouch, Counters, Curve, DamageRequest, Effect, EffectRequest,
     Effects, Flags, HealRequest, Health, HitShape, Hitbox, KitDescriptions, KitPlugins, KitRng,
-    Lifetime, Modifier, Source, SpawnChildren, Spawner, Stats, TagsPlugin,
+    Lifetime, Modifier, Quest, Source, SpawnChildren, Spawner, Stats, TagsPlugin,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -55,6 +55,13 @@ fn rig() -> (World, Schedule) {
     data.insert("wand", Ability::new());
     data.insert("regen", Effect::new().with_duration(2.0));
     data.insert("hero_xp", Curve::new([(1.0, 0.0), (2.0, 10.0)]));
+    data.insert(
+        "lamplight",
+        serde_json::from_value::<Quest>(
+            json!({ "title": "Lamplight", "start": "light", "stages": { "light": { "journal": "Light it." } } }),
+        )
+        .unwrap(),
+    );
     (world, schedule)
 }
 

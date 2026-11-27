@@ -421,15 +421,15 @@ fn registered(world: &World) -> BTreeSet<&'static str> {
     use tungsten::core::{Collider, PrevPosition, RigidBody, Spin, Visibility};
     use tungsten::kit::{
         Aim, Cooldown, Counters, Delivery, Facing, Flags, Follow, Hurtbox, ImpactDamage, Knockback,
-        Level, Lifetime, LinearMotion, Orbit, Pickup, PlatformerController, Projectile, Resist,
-        Source, Spawner, Steering, TopDownMover,
+        Level, Lifetime, LinearMotion, Orbit, Pickup, PlatformerController, Projectile, Quests,
+        Resist, Source, Spawner, Steering, TopDownMover,
     };
     let registry = world.resource::<SaveRegistry>();
     let (mut types, mut names) = registered!(registry;
         Transform, Visibility, Position, PrevPosition, Velocity, Spin, Collider, RigidBody,
         Abilities, Aim, ContactDamage, Cooldown, Counters, Delivery, Effects, Facing, Flags,
         Follow, Health, Hitbox, Hurtbox, ImpactDamage, Knockback, Level, Lifetime, LinearMotion, Orbit,
-        Oscillator, PathFollower, Pickup, PlatformerController, Projectile, Resist, Shield,
+        Oscillator, PathFollower, Pickup, PlatformerController, Projectile, Quests, Resist, Shield,
         Source, Spawner, Stats, Steering, Tags, TopDownMover, Tomes, Geyser, Lava,
         Spellbook, Lantern, Bullet, Reload, Enemy, Brain, Sight, StateMachine<EnemyState>,
         StateMachine<GeyserPhase>, Displaced, Orb, Holding, BlackHole, IronScrap, MapProp, Plank,

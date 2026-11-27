@@ -18,6 +18,11 @@
         "interact": "interact"
       }
     },
-    "interactor": {}
+    "interactor": {},
+    "quests": {
+      "errand": {
+        "stage": "hunt"
+      }
+    }
   }
 }

@@ -14,7 +14,8 @@
 //! health bar waits for a hurt; 8.1's night warden, who talks to the
 //! keeper in reach and lights the lamp post once, and the keeper's evening
 //! conversation with its speakers, which the keeper's `interacted` cue
-//! starts; the lit lamp's bark.
+//! starts; the lit lamp's bark; the warden's lamplight quest, done once the
+//! lamp is lit.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1192,6 +1193,41 @@ fn the_lit_lamp_barks_over_its_post() {
         assert!(
             harness.world().resource::<Barks>().is_empty(),
             "dt {dt}: gone after 2.5 s"
+        );
+    }
+}
+
+#[test]
+fn the_wardens_lamplight_quest_completes_when_the_lamp_is_lit() {
+    use crate::kit::{QuestStatus, Quests};
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "night_warden", [64.0, 64.0]);
+        spawn(&mut harness, "lamp_post", [84.0, 64.0]);
+        harness.step(1);
+        let status = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Quests>(warden)
+                .unwrap()
+                .get("lamplight")
+                .unwrap()
+                .status()
+        };
+        assert_eq!(status(&harness), QuestStatus::Active, "dt {dt}");
+        harness.tap_action("interact");
+        harness.step(1);
+        assert_eq!(status(&harness), QuestStatus::Done, "dt {dt}: the lamp lit");
+        assert_eq!(
+            harness.world().resource::<Counters>().get("coins"),
+            5,
+            "dt {dt}: its reward"
+        );
+        harness.step(3);
+        assert_eq!(
+            harness.world().resource::<Counters>().get("coins"),
+            5,
+            "dt {dt}: once"
         );
     }
 }

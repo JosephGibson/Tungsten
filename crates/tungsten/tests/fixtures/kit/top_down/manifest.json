@@ -423,6 +423,11 @@
       "notice_board": {
         "path": "data/dialogue/notice_board.json"
       }
+    },
+    "quests": {
+      "errand": {
+        "path": "data/quests/errand.json"
+      }
     }
   },
   "animations": {

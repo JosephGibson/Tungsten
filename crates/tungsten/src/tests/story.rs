@@ -6,7 +6,7 @@ use tungsten_core::{Config, Entity, KeyCode};
 
 use super::*;
 use crate::App;
-use crate::kit::{Flags, KitPlugins, talk as start_talk};
+use crate::kit::{Counters, Flags, KitPlugins, Quest, Quests, talk as start_talk};
 use crate::screens::ScreensPlugin;
 use crate::state::StateStack;
 use crate::testing::UiHarness;
@@ -309,3 +309,91 @@ fn a_restore_pops_the_box() {
 /// What a restore's spawns take.
 #[derive(Debug, Clone, Copy)]
 struct Restored;
+
+/// The warden, holding lamplight at `light`.
+fn holder(harness: &mut UiHarness) -> Entity {
+    let quests: Quests =
+        serde_json::from_value(serde_json::json!({ "lamplight": { "stage": "light" } })).unwrap();
+    harness.world_mut().spawn_with((quests,))
+}
+
+#[test]
+fn the_journal_lists_active_quests_with_their_objectives() {
+    let (mut harness, ..) = rig(true);
+    let warden = holder(&mut harness);
+    let pelts: Quest = serde_json::from_value(serde_json::json!({
+        "title": "Wolf pelts", "start": "hunt", "stages": { "hunt": { "journal": "Bring three.",
+            "objectives": [{ "text": "Pelts", "when": { "counter": { "name": "pelts", "min": 3 } } }] } } }))
+    .unwrap();
+    harness
+        .world_mut()
+        .resource_mut::<DataRegistry>()
+        .insert("pelts", pelts);
+    harness.world_mut().insert(
+        warden,
+        serde_json::from_value::<Quests>(serde_json::json!({
+            "lamplight": { "stage": "light" }, "pelts": { "stage": "hunt" }, "old": { "stage": "x", "status": "done" }
+        }))
+        .unwrap(),
+    );
+    harness
+        .world_mut()
+        .insert(warden, Counters::new().with("pelts", 5));
+    harness.world_mut().resource_mut::<JournalView>().holder = Some(warden);
+    let rows = active_rows(harness.world());
+    let fields: Vec<(String, String, String)> = rows
+        .iter()
+        .map(|row| {
+            let field = |name: &str| row.fields.get(name).cloned().unwrap_or_default();
+            (field("title"), field("journal"), field("objectives"))
+        })
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            (
+                "Lamplight".into(),
+                "Light the lamp by the steps.".into(),
+                "Lamp lit 0/1".into()
+            ),
+            (
+                "Wolf pelts".into(),
+                "Bring three.".into(),
+                "Pelts 3/3".into()
+            ),
+        ],
+        "a count held to its goal; the done quest with no data left out"
+    );
+    harness
+        .world_mut()
+        .resource_mut::<Flags>()
+        .set("lamp.lit", true);
+    let rows = active_rows(harness.world());
+    assert_eq!(rows[0].fields["objectives"], "Lamp lit 1/1");
+    // The game's quests while no holder is named.
+    harness.world_mut().resource_mut::<JournalView>().holder = None;
+    assert!(active_rows(harness.world()).is_empty());
+}
+
+#[test]
+fn open_journal_shows_the_holders_quests() {
+    let (mut harness, ..) = rig(true);
+    let warden = holder(&mut harness);
+    harness.step(1);
+    assert!(open_journal(harness.world_mut(), Some(warden)));
+    harness.step(12);
+    assert_eq!(top(&harness), Some(JOURNAL_SCREEN));
+    assert!(harness.shows("Lamplight"));
+    assert!(harness.shows("Lamp lit 0/1"));
+    assert_eq!(
+        harness.world().resource::<JournalView>().holder(),
+        Some(warden)
+    );
+    let close = harness
+        .find_key(UiKey::new("close"))
+        .expect("the close button");
+    assert!(harness.focus(close));
+    tap(&mut harness, KeyCode::Enter);
+    harness.step(12);
+    assert_ne!(top(&harness), Some(JOURNAL_SCREEN), "closed");
+}

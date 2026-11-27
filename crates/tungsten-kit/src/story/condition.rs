@@ -12,6 +12,7 @@ use crate::foundation::stats::{Stats, check_stat};
 use crate::foundation::tags::{TagFilter, Tags, valid_tag};
 use crate::react::counters::{Counters, Flags};
 use crate::react::cues::Target;
+use crate::story::quests::{QuestStatus, check_quest_ref, quests_of};
 
 /// How deep conditions nest, the outermost counting as one.
 pub(crate) const MAX_DEPTH: usize = 8;
@@ -29,6 +30,7 @@ pub(crate) const MAX_LIST: usize = 32;
 /// | tags | `{ "tags": { "all": [..], "any": [..], "none": [..] } }` | the target's [`Tags`] pass the filter |
 /// | all, any | `{ "all": [..] }`, `{ "any": [..] }`, each at least one | every one, at least one |
 /// | not | `{ "not": { .. } }` | the inner fails |
+/// | quest | `{ "quest": { "id": "lamplight", "is": "active", "stage": "light" } }` | the target's quest is new (not taken), active (at `stage` when given), done or failed |
 ///
 /// Each form but the lists takes a `target`: `self` (the default), `other`
 /// or `game`, the words of the cue actions beside it; `game` reads the
@@ -92,6 +94,9 @@ enum Form {
     All(Vec<Condition>),
     Any(Vec<Condition>),
     Not(Box<Condition>),
+    /// A quest's status, or its stage while active: boxed, so the form
+    /// keeps its size.
+    Quest(Box<QuestConditionDef>),
 }
 
 impl Condition {
@@ -230,6 +235,7 @@ impl Condition {
             Form::Stat { target, .. } | Form::Tags { target, .. } if to == Target::Other => {
                 *target = to;
             }
+            Form::Quest(quest) => quest.target = to,
             form => panic!(
                 "Condition::{method}: a `{}` condition takes no such target",
                 form.name()
@@ -301,6 +307,29 @@ impl Condition {
                 .iter()
                 .any(|condition| condition.holds(world, subject, other)),
             Form::Not(inner) => !inner.holds(world, subject, other),
+            Form::Quest(quest) => {
+                let holder = match quest.target {
+                    Target::Game => None,
+                    target => match entity(target) {
+                        Some(entity) => Some(entity),
+                        None => return false,
+                    },
+                };
+                let state = quests_of(world, holder).and_then(|quests| quests.get(&quest.id));
+                match (quest.is, state) {
+                    (QuestIs::New, state) => state.is_none(),
+                    (QuestIs::Active, Some(state)) => {
+                        state.status() == QuestStatus::Active
+                            && quest
+                                .stage
+                                .as_deref()
+                                .is_none_or(|stage| stage == state.stage())
+                    }
+                    (QuestIs::Done, Some(state)) => state.status() == QuestStatus::Done,
+                    (QuestIs::Failed, Some(state)) => state.status() == QuestStatus::Failed,
+                    _ => false,
+                }
+            }
         }
     }
 
@@ -320,6 +349,40 @@ impl Condition {
                 Ok(())
             }
             Form::Not(inner) => inner.check(world, &format!("{field}.not")),
+            Form::Quest(quest) => check_quest_ref(
+                world,
+                &format!("{field}.quest"),
+                &quest.id,
+                quest.stage.as_deref(),
+            ),
+        }
+    }
+
+    /// Whether any form reads the event's other entity: a check for lists
+    /// and objectives that run with none.
+    pub(crate) fn reads_other(&self) -> bool {
+        match &self.form {
+            Form::Flag { target, .. }
+            | Form::Counter { target, .. }
+            | Form::Stat { target, .. }
+            | Form::Tags { target, .. } => *target == Target::Other,
+            Form::Quest(quest) => quest.target == Target::Other,
+            Form::All(list) | Form::Any(list) => list.iter().any(Condition::reads_other),
+            Form::Not(inner) => inner.reads_other(),
+        }
+    }
+
+    /// The lone `counter` form's name, target and least bound, when it is
+    /// one with a `min`: a journal shows its count against it.
+    pub(crate) fn counter_goal(&self) -> Option<(&str, Target, i64)> {
+        match &self.form {
+            Form::Counter {
+                name,
+                min: Some(min),
+                target,
+                ..
+            } => Some((name, *target, *min)),
+            _ => None,
         }
     }
 
@@ -369,6 +432,7 @@ impl Form {
             Form::All(_) => "all",
             Form::Any(_) => "any",
             Form::Not(_) => "not",
+            Form::Quest(_) => "quest",
         }
     }
 }
@@ -406,6 +470,35 @@ pub(crate) enum ConditionDef {
     All(Vec<Condition>),
     Any(Vec<Condition>),
     Not(Box<Condition>),
+    Quest(QuestConditionDef),
+}
+
+/// A quest form's object.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct QuestConditionDef {
+    id: String,
+    #[serde(default)]
+    is: QuestIs,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stage: Option<String>,
+    #[serde(default)]
+    target: Target,
+}
+
+/// What a quest form asks of its quest.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum QuestIs {
+    /// Not taken.
+    New,
+    /// Under way, at `stage` when given.
+    #[default]
+    Active,
+    /// Done.
+    Done,
+    /// Failed.
+    Failed,
 }
 
 /// A flag form: its name alone, or the object.
@@ -571,6 +664,14 @@ impl TryFrom<ConditionDef> for Condition {
             ConditionDef::All(list) => Form::All(list),
             ConditionDef::Any(list) => Form::Any(list),
             ConditionDef::Not(inner) => Form::Not(inner),
+            ConditionDef::Quest(quest) => {
+                if quest.stage.is_some() && quest.is != QuestIs::Active {
+                    return Err(
+                        "quest: a `stage` reads an active quest; `is` must be `active`".into(),
+                    );
+                }
+                Form::Quest(Box::new(quest))
+            }
         };
         if let Form::Flag { name, .. } | Form::Counter { name, .. } = &form
             && !valid_tag(name)
@@ -629,6 +730,7 @@ impl From<Condition> for ConditionDef {
             Form::All(list) => ConditionDef::All(list),
             Form::Any(list) => ConditionDef::Any(list),
             Form::Not(inner) => ConditionDef::Not(inner),
+            Form::Quest(quest) => ConditionDef::Quest(*quest),
         }
     }
 }
@@ -680,6 +782,11 @@ pub(crate) fn describe_conditions(world: &mut World) {
             "not",
             FieldType::Shape("condition"),
             "the inner fails",
+        ))
+        .field(FieldDescription::new(
+            "quest",
+            FieldType::Shape("quest_condition"),
+            "the target's quest has the status, or the stage while active; the load checks both",
         ))
         .sample(r#"{ "flag": "door.open" }"#)
         .roundtrip(round_trip::<Condition>),
