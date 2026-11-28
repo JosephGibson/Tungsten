@@ -338,6 +338,24 @@ Owns the story systems over a field of NPCs (8.1's first plan): `interact` (each
 - **Owned:** `system.interact`, `system.interact_prompt`, `system.say_tick`, `system.quest_tick` and `stage.update` p50/p95.
 - **Guards:** `bench.focused constant` (every walker focused), `bench.barks <= 64` (the barks' cap) and `bench.stages >= 300`, its first valid reading, 384, rounded down to a hundred.
 
+## `items`
+
+Owns the items over swapping holders and a field of ground items (8.1's second plan): `pickup_tick` (each collector's sweep over the ground items, each taken whole into its bag), `ground_item_labels` (a world label over each ground item in its rarity's style), `effect_tick` and `stats_apply` (the equipment statuses each swap ends and applies, and the stats their lines move). Warm-up 60 frames. Module: `items.rs`.
+
+- **Workload.** `holders` inventories of 24 cells and four worn slots (`hood`, `charm`, `ring`, `belt`), each wearing one of its slot kind's two bases with its spare in the bag; every `period` frames each holder, staggered, swaps its next slot's worn item for its spare through `move_item` in the bench's own system in `Phase::Intent`, one equipment status ended and one applied, their `warmth` and `luck` lines moving between them. `ground` labelled flasks lie on a square grid 24 px apart; `collectors` walk seeded closed paths over it, a sine on each axis, each with a bag of four cells, the pickup's tag and a hurtbox, and every unit a bag took is dropped back a unit at a time by `drop_item` at the next frame's start, in `PreUpdate` before the fixed steps, so the ground and the bags keep every unit and each frame labels as many ground items however many steps it runs (a collected flask lies, labelled, until the frame's command flush). The kit's tags, stats, counters, cues, effects, abilities, hit, pickup and items plugins run in the app's schedule with their phases (no `KitPlugins::set()`); the lean view draws the collectors and the grid's flasks, and the labels draw as world labels.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `holders` | 64 | 1–4,096 | yes | Inventories of 24 cells and 4 worn slots, each slot's spare in the bag |
+| `ground` | 400 | 1–20,000 | yes | Labelled ground items on a square grid 24 px apart |
+| `collectors` | 8 | 1–64 | yes | Collectors on seeded closed paths over the ground |
+| `period` | 10 | 1–600 | | Frames between a holder's swaps |
+
+- **Presets:** `min` (2 holders, 20 ground items, 1 collector) and `default`.
+- **Counters:** `bench:` `holders`, `worn` (the items worn), `swaps` (so far), `ground` (the ground items), `labels` (pushed by the frame), `collectors`, `held` (the units the bags hold) and `taken` (the units dropped back so far), read from the frame's final state.
+- **Owned:** `system.pickup_tick`, `system.ground_item_labels`, `system.effect_tick`, `system.stats_apply` and `stage.update` p50/p95.
+- **Guards:** `bench.worn constant` (every slot worn), `bench.swaps >= 300` and `bench.taken >= 80`, their first valid readings, 384 and 81, rounded down, and `bench.labels constant` (every ground item labelled).
+
 ## `e01-pit`
 
 Example 01's heaviest frame: the full ball pit under the rope bridge with six enemies awake about the player (`features/run/pit.rs`). The script: `start_run` at frame 2, `fill_pit` to 12,000 balls at 30, `wake_foes` at 630, then 180 warm-up frames (warm-up 810 in all) and 300 measured; it ends asserting the `pit` probe (`balls` = 12,000, `foes_alive` = 6, `foes_awake` ≥ 5). 1920×1080, CPU, five repeats.
@@ -466,6 +484,7 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `saves` | `guards_saves` | `saves` at `min` | records = `objects` + 1 + `spawns`; view instances |
 | `spread` | `guards_spread` | `spread` at `min` | the receivers tagged and every one lit; each window frame every one burning, chemistry's queue at most one entry a receiver, nothing dropped; view instances |
 | `story` | `guards_story` | `story` at `min` | the walkers, interactables and holders spawned; each window frame every walker focused and at most 64 barks; by the window's end barks, talks and completed stages; view instances |
+| `items` | `guards_items` | `items` at `min` | every slot worn, the ground and the counters; each window frame every slot still worn, every unit on the ground or in a collector's bag and as many labels as ground items; by the window's end swaps and units taken; view instances |
 | `rooms` | `guards_rooms` | `rooms` at `min` | `RigidBody` count = `bodies`, one map; each window frame `moves` bodies spawned again and `paints` cells written in place; instances = bodies in view plus visible art tiles |
 | `generate` | `guards_generate` | `generate` at `min` | the template and the generator registered; each window frame `rooms` rooms generated and spawned, `rooms` × (`objects` + 1) entities, `rooms` removed; instances = bodies in view plus visible art tiles; after the frames, `the_generate_row_keeps_only_the_live_runs_rooms_and_areas` finds the template and the live run's rooms alone, the other prefix's areas neither loaded nor kept |
 | `boot` | `guards_boot` | `boot` at `min`, its assets' load run by `LoadPlan::run_headless`, no frame stepped | the plan's units = `bench.units`; every sound the manifests name loaded, no sprite packed (the reading is the load's: its sprite batches read 0, and its bytes, which carry the checkout's canonical path, are not pinned) |

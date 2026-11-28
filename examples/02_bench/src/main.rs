@@ -21,6 +21,7 @@ mod ecs;
 mod r#gen;
 mod generate;
 mod gpu;
+mod items;
 mod knobs;
 mod particles;
 mod physics;
@@ -58,6 +59,7 @@ const BENCHES: &[&Bench] = &[
     &generate::BENCH,
     &blast::BENCH,
     &story::BENCH,
+    &items::BENCH,
 ];
 
 fn main() -> anyhow::Result<()> {

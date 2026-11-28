@@ -989,6 +989,83 @@
       "workload_version": 1
     },
     {
+      "name": "items",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "items",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 60,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.pickup_tick",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.ground_item_labels",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.effect_tick",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.stats_apply",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "worn",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "swaps",
+          "kind": "counter_min",
+          "min": 300
+        },
+        {
+          "counter": "labels",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "taken",
+          "kind": "counter_min",
+          "min": 80
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
       "name": "e01-pit",
       "package": "example-01-platformer",
       "folder": "examples/01_platformer",

@@ -23,6 +23,7 @@ use crate::churn::Life;
 use crate::counters::BenchCounters;
 use crate::r#gen::{self, TextureSink};
 use crate::generate::{self, GenerateCounts, GenerateState};
+use crate::items::{self, ItemsCounts};
 use crate::knobs::{self, BenchConfig};
 use crate::physics::Ball;
 use crate::piles::{self, PileCounts};
@@ -80,7 +81,7 @@ fn harness(cfg: &BenchConfig) -> Harness {
         .collect();
     let mut textures = HeadlessTextures(handles.into_iter());
     match cfg.bench.name {
-        "physics" | "ecs" | "churn" | "saves" | "spread" | "story" => {
+        "physics" | "ecs" | "churn" | "saves" | "spread" | "story" | "items" => {
             r#gen::register_view_textures(harness.world_mut(), &mut textures);
         }
         "particles" => {
@@ -786,6 +787,60 @@ fn guards_story() {
         "story: the guard drew nothing"
     );
     reading.check(manifest_path("src/tests/guards/story.json"));
+}
+
+/// `items` at `min` (8.1's second plan): the holders wearing every slot,
+/// the ground and the counters; each window frame every slot still worn,
+/// every unit on the ground or in a collector's bag, and as many labels as
+/// ground items; by the window's end swaps and units taken.
+#[test]
+fn guards_items() {
+    use tungsten::kit::GroundItem;
+    let bench = knobs::select(BENCHES, Some("items")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    assert_eq!(cfg.row(), "items");
+    let mut harness = harness(&cfg);
+    let slots = knob(&cfg, "holders") as usize * 4;
+    let ground = knob(&cfg, "ground");
+    {
+        let world = harness.world();
+        assert_eq!(items::worn(world), slots, "every slot worn");
+        assert_eq!(count::<GroundItem>(world), ground, "the ground");
+        assert!(
+            world.has_resource::<BenchCounters<ItemsCounts>>(),
+            "the counters"
+        );
+    }
+    let reading = measure_checking(
+        &mut harness,
+        cfg.bench.warmup,
+        view_drawable,
+        |world, frame| {
+            assert_eq!(
+                items::worn(world),
+                slots,
+                "window frame {frame}: every slot worn"
+            );
+            assert_eq!(
+                count::<GroundItem>(world) + u64::from(items::held(world)),
+                ground,
+                "window frame {frame}: every unit on the ground or in a bag"
+            );
+            assert_eq!(
+                items::labels(world) as u64,
+                ground,
+                "window frame {frame}: every ground item labelled"
+            );
+        },
+    );
+    let world = harness.world();
+    assert!(items::swaps(world) > 0, "the holders swapped");
+    assert!(items::taken(world) > 0, "the collectors took");
+    assert!(
+        reading.max_sprite_instances > 0,
+        "items: the guard drew nothing"
+    );
+    reading.check(manifest_path("src/tests/guards/items.json"));
 }
 
 /// `boot` at `min` (redo 7.9): the row's assets written as it writes them,
