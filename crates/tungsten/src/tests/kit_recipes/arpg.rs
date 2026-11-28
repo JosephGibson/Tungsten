@@ -4,12 +4,16 @@
 //! status's lines, beside a chilled fen brute. The fixture's damage types
 //! are `elemental.fire` and `elemental.cold`, names the other fixtures
 //! declare, so coverage's set holds. 7.10g's adept casts cinder in the aim
-//! pose nearest its aim's elevation, and cinder names its icon.
+//! pose nearest its aim's elevation, and cinder names its icon. 8.1's
+//! second plan: §9.2's ashwood wand and iron band with the wand's five
+//! affixes, `honed` local.
 
 use tungsten_core::Entity;
 
 use super::{DTS, recipe, spawn};
-use crate::kit::{Damaged, DamagedPart, KitPlugins, KitRng, Stats};
+use crate::kit::{
+    Affix, Damaged, DamagedPart, Item, ItemBase, KitPlugins, KitRng, Modifier, Stats, built,
+};
 use crate::testing::Harness;
 
 const GENRE: &str = "arpg";
@@ -156,4 +160,79 @@ fn the_caster_casts_cinder_in_its_aim_pose() {
         cast(&mut harness);
         assert_eq!(shown(&harness), ("adept_cast_fwd".into(), true), "dt {dt}");
     }
+}
+
+#[test]
+fn the_wand_and_its_affixes_load() {
+    let harness = recipe(GENRE, KitPlugins::set(), DTS[0]);
+    let world = harness.world();
+    let data = world.resource::<tungsten_core::DataRegistry>();
+    let wand = data.get::<ItemBase>("ashwood_wand").unwrap();
+    assert_eq!(
+        (wand.name(), wand.slot()),
+        ("Ashwood Wand", Some("main_hand"))
+    );
+    let block = wand.weapon().unwrap();
+    assert_eq!(
+        block.damage().collect::<Vec<_>>(),
+        [("elemental.fire", [3.0, 7.0])]
+    );
+    assert_eq!(
+        data.get::<ItemBase>("iron_band").unwrap().slot(),
+        Some("ring")
+    );
+    let mut affixes: Vec<&str> = data.ids("affixes").collect();
+    affixes.sort_unstable();
+    assert_eq!(
+        affixes,
+        ["honed", "quickened", "searing", "spellwoven", "warded_fire"]
+    );
+    assert_eq!(
+        data.get::<Affix>("searing").unwrap().tiers()[1].values(),
+        [[17.0, 24.0]]
+    );
+    // §4.6's wand, its affixes on the fixture's damage types.
+    let rare: Item = serde_json::from_value(serde_json::json!({
+        "uid": 9137, "base": "ashwood_wand", "level": 42, "rarity": "rare", "seed": "0x9e3779b97f4a7c15",
+        "affixes": [
+            { "id": "searing", "tier": 2, "values": [22] },
+            { "id": "quickened", "tier": 2, "values": [11] },
+            { "id": "spellwoven", "tier": 2, "values": [26] },
+            { "id": "warded_fire", "tier": 3, "values": [19] }
+        ],
+        "name": ["Ember", "Coil"]
+    }))
+    .unwrap();
+    let made = built(world, &rare).unwrap();
+    assert_eq!(made.name(), "Ember Coil");
+    let texts: Vec<&str> = made
+        .lines()
+        .iter()
+        .map(crate::kit::BuiltLine::text)
+        .collect();
+    assert_eq!(
+        texts,
+        [
+            "+8% damage with skill.spell",
+            "+22% damage with elemental.fire",
+            "+11% use_speed with skill.spell",
+            "+26% damage with skill.spell",
+            "+19% fire resistance",
+        ]
+    );
+    let (tag, line, _) = made.lines()[4].as_resist().unwrap();
+    assert_eq!(tag, "elemental.fire");
+    assert!(matches!(line.unwrap().modifier(), Modifier::Add(v) if (v + 0.19).abs() < 1e-6));
+    // `honed` folds into the block: a cold part beside the fire.
+    let honed = Item::new("ashwood_wand")
+        .with_level(30)
+        .with_affix(crate::kit::RolledAffix::new("honed", 2, [4.0, 7.0]));
+    let made = built(world, &honed).unwrap();
+    assert_eq!(
+        made.block().unwrap().damage().collect::<Vec<_>>(),
+        [
+            ("elemental.fire", [3.0, 7.0]),
+            ("elemental.cold", [4.0, 7.0])
+        ]
+    );
 }

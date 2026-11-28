@@ -195,6 +195,22 @@
       "lamplight": {
         "path": "data/quests/lamplight.json"
       }
+    },
+    "item_bases": {
+      "oilskin_hood": {
+        "path": "data/item_bases/oilskin_hood.json"
+      },
+      "oil_flask": {
+        "path": "data/item_bases/oil_flask.json"
+      },
+      "brass_charm": {
+        "path": "data/item_bases/brass_charm.json"
+      }
+    },
+    "affixes": {
+      "fine": {
+        "path": "data/affixes/fine.json"
+      }
     }
   },
   "animations": {

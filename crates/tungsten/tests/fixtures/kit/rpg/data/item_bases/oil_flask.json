@@ -1,0 +1,7 @@
+{
+  "name": "Oil Flask",
+  "icon": "oil_flask",
+  "tags": ["item", "item.flask"],
+  "stack": 5,
+  "price": 3
+}

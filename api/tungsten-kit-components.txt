@@ -459,6 +459,23 @@ shape ability_trigger: What fires an ability.
   field interval: f32 (> 0) — seconds of game time between uses, at most once a step
   field manual: {} — `use_ability` and the `ability` cue action alone
   sample: { "manual": {} }
+shape affix: An `affixes` entry: a prefix or suffix of a group, its weights, tiers and lines.
+  field kind: one of prefix | suffix — where it goes on an item's name
+  field group: text — an item takes one affix of a group, `[a-z][a-z0-9_]*`
+  field weights: list of shape affix_weight = [] — at most 16; 8.7's roll takes the first whose tag a base carries, none or 0 leaving it out
+  field tiers: list of shape affix_tier — 1 to 16, ascending by level; tier 1 the first
+  field lines: list of shape item_line — 1 to 8 lines, each rolled value one every tier rolls; the load checks their names
+  sample: { "kind": "prefix", "group": "fire", "tiers": [{ "level": 1, "weight": 1000, "values": [[10, 16]] }], "lines": [{ "stat": "damage", "modifier": { "pct": { "value": 0, "times": 0.01 } } }] }
+shape affix_tier: An affix's tier: the least item level that rolls it, its weight, its ranges and step.
+  field level: u32 (>= 1, <= 100) — the least item level that rolls it
+  field weight: f32 (> 0) — its share among the affix's tiers at a roll
+  field values: list of [min, max] — 1 to 4 ranges, min <= max, one rolled value each
+  field step: f32 (> 0) = 1.0 — a rolled value lands on a range's least plus whole steps
+  sample: { "level": 1, "weight": 1000, "values": [[10, 16]] }
+shape affix_weight: An affix's weight for bases carrying a tag.
+  field tag: tag — the base tag; the load checks it
+  field weight: f32 (>= 0) — its weight; 0 leaves the affix out of such bases
+  sample: { "tag": "item.wand", "weight": 1000 }
 shape apply_output: A status applied, with a damage-over-time rate and lines.
   field status: effects ID or entry — the status; the load checks it
   field dot: f32 (>= 0) = null — its damage over time a second: this times the hit's base, the drawn amount before the factors times the `delivery.dot` sums and the status effect
@@ -788,6 +805,45 @@ shape interaction_output: One thing a rule, a status's end or a band's entry doe
   field blast: shape blast_output — hurts, pushes and sets off what lies within a radius of the receiver's point, by a linear falloff, after the run's reactions
   field handler: text — a game's Rust handler by name; the load refuses one no plugin registered
   sample: { "remove": "burning" }
+shape item: An item instance: its base, level, rarity, seed, rolled affixes, name and count.
+  field uid: u32 = 0 — its uid, 0 until a bag first takes it
+  field base: text — its `item_bases` ID; the load checks it
+  field level: u32 (>= 1, <= 100) = 1 — its item level, at or above each affix tier's
+  field rarity: text = "normal" — its rarity's name, which the theme's `rarity.<name>` text style shows
+  field seed: text = "0x0" — a hex u64 kept for 8.7's reroll
+  field affixes: list of shape rolled_affix = [] — at most 12, no group twice; the load checks each against its affix
+  field name: list of text = [] — at most 4 words shown in place of its base's name
+  field count: u32 (>= 1, <= 9999) = 1 — how many it stands for, within its base's stack
+  sample: { "base": "ashwood_wand" }
+shape item_base: An `item_bases` entry: its name, icon, slot, stack, price, requirement, grants, implicit lines, weapon block, use and drop.
+  field name: text — shown for an item with no words of its own; 1 to 200 characters
+  field icon: text — a manifest sprite ID; the load checks it
+  field text: text = null — a line under its name; 1 to 200 characters
+  field tags: list of tag = [] — its tags, which affix weights read; the load checks each
+  field slot: text = null — the slot kind it is worn in, `[a-z][a-z0-9_]*`; none: never worn
+  field stack: u32 (>= 1, <= 9999) = 1 — how many stack in a cell; past 1 refuses `slot` and `weapon`
+  field price: u32 = 0 — whole coins a shop asks by default
+  field requires: shape condition = null — what its wearer meets to wear it, the wearer the subject with no other
+  field grant: list of tag = [] — at most 8 tags its wearer carries while it is worn; the load checks each
+  field implicit: list of shape item_line = [] — at most 8 lines every item of it gives, none reading a rolled value
+  field weapon: shape weapon_block = null — its block, which local lines fold into; read by no attack yet
+  field use: list of shape cue_action = [] — at most 16 actions run at a use, a story list on whoever it is used on, with no other; no `ability`, `loop`, `stop`, `label` or `target: other`
+  field consume: bool = null — whether a use spends one; true when it has a `use`
+  field ground: prefab ID = null — the prefab a drop of it spawns, carrying `ground_item` and `pickup`; none: it drops nothing
+  sample: { "name": "Oil flask", "icon": "flask" }
+shape item_line: A line of an item: a stat's modifier, an `added` range, a `pen` or a `resist` modifier, on its wearer or, `local`, folded into its base's block.
+  field stat: text = null — the stat its `modifier` changes; the load checks it is declared; a local line's is the block's `damage`, `use_time` or `crit_chance`
+  field modifier: shape modifier = null — the change, with `stat` or `resist`; in an affix's line its number may be a rolled_value; a local or scoped line may not override
+  field added: one damage type → [min, max] = null — flat damage of that type on the wearer's skills, or, local, added to the block's part of it; may not wait for the hit
+  field pen: one damage type → points = null — penetration on the wearer's skills for that type's parts
+  field resist: tag = null — the damage tag whose resistance its `modifier` (an `add` of -0.19 is 19 % more resistance) or `floor` changes; the load checks it
+  field floor: shape modifier = null — with `resist`: a change to the tag's floor
+  field with: tag filter = null — read only where it passes the read's context; a local `damage` line folds into the parts it passes
+  field while: tag filter = null — read only while it passes the wearer's tags; refused on a local or `resist` line
+  field against: tag filter = null — read only at a hit whose other party passes it; refused on a local line
+  field local: bool = false — folded into the base's weapon block when the item is built, in the kit's modifier order; refused on a base without a block
+  field text: text = null — shown in place of the generic text, `{0}` to `{3}` the affix's rolled values; at most 200 characters
+  sample: { "stat": "damage", "modifier": { "pct": 0.1 } }
 shape label_action: A `label` action: a `label_style` that names its font, or on `damaged_part` and `immune_part` none, its part's type's style, which the grouping fields, `text` and `offset` take.
   field font: text = null — a manifest font face, and with it a `label_style`'s other fields; without it, a `damaged_part`'s or `immune_part`'s type's style
   field merge: f32 (> 0) = null — seconds a target's parts of a type sum over: the first plain part floats at once, the rest as one sum when the window closes; without it each part floats alone; a text label's window floats nothing at its close and each repeat holds it open
@@ -953,6 +1009,15 @@ shape roll_action: A weighted table drawn, each prefab drawn spawned from the su
   field at: one of event | centre | aim = null — the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out
   field offset: [x, y] = null — moved from that point, its x mirrored while the subject faces left; unmoved when left out
   sample: { "table": "drops" }
+shape rolled_affix: One affix of an item: its ID, tier and rolled values.
+  field id: text — the `affixes` entry; the load checks it
+  field tier: u32 (>= 1, <= 16) — its tier, 1 the lowest, at or below the item's level
+  field values: list of f32 — one a range of the tier, each inside it on its step
+  sample: { "id": "searing", "tier": 2, "values": [22] }
+shape rolled_value: A number an affix's line reads from its rolled values: the `value`-th times `times`.
+  field value: u32 (>= 0, <= 3) — which rolled value, 0 the first; every tier rolls it
+  field times: f32 = 1.0 — what the value is multiplied by: 0.01 turns 22 into 22 %
+  sample: { "value": 0, "times": 0.01 }
 shape say_action: A bark: a line over an entity's centre, aged by the game clock.
   field text: text — 1 to 2,000 characters
   field seconds: f32 (> 0) = 2.5 — game seconds it shows, the last 0.2 fading
@@ -1053,6 +1118,11 @@ shape wave: A rotation or scale channel: amplitude · sin(2π(t / period + phase
   field amplitude: f32 — the peak: radians for `rotation`, a fraction in [0, 1) of the base for `scale`
   field period: f32 (> 0) — seconds of game time a swing takes
   sample: { "amplitude": 0.3, "period": 0.8 }
+shape weapon_block: A base's weapon block: its damage parts, use time and crit chance.
+  field damage: damage type → [min, max] — 1 to 8 parts, each a known damage type's range with 0 <= min <= max
+  field use_time: f32 (> 0) — seconds a use takes
+  field crit_chance: f32 (>= 0, <= 1) = 0.0 — its chance to crit
+  sample: { "damage": { "damage.fire": [4, 8] }, "use_time": 0.8 }
 shape weighted_entry: A prefab, or nothing, and its weight.
   field prefab: prefab ID = null — spawned when drawn; the load checks the ID; nothing is drawn when left out
   field weight: f32 (> 0) — its share of the draws
@@ -1062,12 +1132,14 @@ shape weighted_table: Rolls that each draw one entry by weight: a prefab, or not
   field entries: list of shape weighted_entry — what a draw may give, each by its weight over the total
   sample: { "entries": [] }
 kind abilities: An `ability`: what an entity's `abilities` list owns, a trigger or the `ability` cue action uses.
+kind affixes: An `affix`: a prefix or suffix, its weights by base tag, its tiers of ranges and its lines.
 kind cue_rules: A list of `cue_rule`: shared reactions to an event, run after the entity's own cues.
 kind curves: A `curve`: what an effect's `scale` reads and a `level` climbs.
 kind damage_types: An object of `damage_type` by damage type: each key a declared tag, defined by one entry; a World holds 64.
 kind dialogue: A `conversation`: nodes of lines, choices and branches that a talk walks.
 kind effects: An `effect`: what a cue's `effect` action, a chemistry rule, an ability or an offer applies.
 kind interactions: An `interaction`: a chemistry rule from a stimulus to outputs on what receives it.
+kind item_bases: An `item_base`: what every item of it shares, its slot, stack, price, lines, block and use.
 kind loot_tables: A `weighted_table`: what a `roll` cue action draws and spawns.
 kind offers: An `offers`: what a `level` draws at each level up.
 kind quests: A `quest`: stages of a journal line, objectives on conditions and rewards a holder takes.

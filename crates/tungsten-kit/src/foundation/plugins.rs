@@ -12,6 +12,7 @@ use crate::foundation::tags::TagsPlugin;
 use crate::intent::ability::AbilitiesPlugin;
 use crate::intent::action_input::ActionInputPlugin;
 use crate::intent::aim::AimPlugin;
+use crate::items::ItemsPlugin;
 use crate::lifecycle::cap::CapPlugin;
 use crate::lifecycle::children::SpawnChildrenPlugin;
 use crate::lifecycle::cooldown::CooldownPlugin;
@@ -93,7 +94,7 @@ impl KitPlugins {
     /// the hit shapes, contact damage, projectiles, pickups, impact damage,
     /// effects, looks by tags, health bars, particle bursts, chemistry,
     /// abilities, levels, caps, the interactor, the dialogue kinds, barks,
-    /// quests and the debug drawing, in that order.
+    /// quests, the item kinds and the debug drawing, in that order.
     #[must_use]
     pub fn set() -> PluginSet {
         PluginSet::new()
@@ -147,6 +148,7 @@ impl KitPlugins {
             .with(DialoguePlugin)
             .with(SayPlugin)
             .with(QuestsPlugin)
+            .with(ItemsPlugin)
             .with(KitDebugPlugin)
     }
 }

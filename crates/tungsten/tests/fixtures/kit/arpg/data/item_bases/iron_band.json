@@ -1,0 +1,10 @@
+{
+  "name": "Iron Band",
+  "icon": "cinder_icon",
+  "tags": ["item", "item.ring"],
+  "slot": "ring",
+  "price": 25,
+  "implicit": [
+    { "resist": "elemental.cold", "modifier": { "add": -0.05 } }
+  ]
+}

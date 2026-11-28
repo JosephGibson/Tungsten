@@ -7,5 +7,9 @@
   "skill.melee",
   "status.chilled",
   "elemental.fire",
-  "elemental.cold"
+  "elemental.cold",
+  "item.weapon",
+  "item.wand",
+  "item.one_hand",
+  "item.ring"
 ]

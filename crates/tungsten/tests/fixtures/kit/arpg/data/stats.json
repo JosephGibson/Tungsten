@@ -1,5 +1,8 @@
 {
   "mana": {
     "min": 0
+  },
+  "use_speed": {
+    "min": 0
   }
 }

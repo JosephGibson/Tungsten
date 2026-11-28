@@ -1,0 +1,13 @@
+{
+  "kind": "prefix",
+  "group": "fire_damage_pct",
+  "weights": [{ "tag": "item.wand", "weight": 1000 }, { "tag": "item.ring", "weight": 500 }],
+  "tiers": [
+    { "level": 1, "weight": 1000, "values": [[10, 16]] },
+    { "level": 20, "weight": 600, "values": [[17, 24]] },
+    { "level": 46, "weight": 300, "values": [[25, 32]] }
+  ],
+  "lines": [
+    { "stat": "damage", "modifier": { "pct": { "value": 0, "times": 0.01 } }, "with": { "any": ["elemental.fire"] } }
+  ]
+}

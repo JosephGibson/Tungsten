@@ -1,0 +1,13 @@
+{
+  "kind": "suffix",
+  "group": "fire_resist",
+  "weights": [{ "tag": "item", "weight": 1000 }],
+  "tiers": [
+    { "level": 1, "weight": 1000, "values": [[6, 11]] },
+    { "level": 18, "weight": 800, "values": [[12, 17]] },
+    { "level": 36, "weight": 500, "values": [[18, 23]] }
+  ],
+  "lines": [
+    { "resist": "elemental.fire", "modifier": { "add": { "value": 0, "times": -0.01 } }, "text": "+{0}% fire resistance" }
+  ]
+}

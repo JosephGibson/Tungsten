@@ -1,0 +1,11 @@
+{
+  "name": "Ashwood Wand",
+  "icon": "cinder_icon",
+  "tags": ["item", "item.weapon", "item.wand", "item.one_hand"],
+  "slot": "main_hand",
+  "price": 40,
+  "implicit": [
+    { "stat": "damage", "modifier": { "pct": 0.08 }, "with": { "all": ["skill.spell"] } }
+  ],
+  "weapon": { "damage": { "elemental.fire": [3, 7] }, "use_time": 0.8, "crit_chance": 0.07 }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Oilskin Hood",
+  "icon": "warden",
+  "text": "Keeps the rain off a lantern's flame.",
+  "tags": ["item", "item.hood"],
+  "slot": "hood",
+  "price": 12,
+  "grant": ["status.hooded"],
+  "implicit": [
+    { "resist": "damage.blade", "modifier": { "add": -0.1 } }
+  ]
+}

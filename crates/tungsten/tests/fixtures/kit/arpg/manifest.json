@@ -30,6 +30,31 @@
       "cinder": {
         "path": "data/abilities/cinder.json"
       }
+    },
+    "item_bases": {
+      "ashwood_wand": {
+        "path": "data/item_bases/ashwood_wand.json"
+      },
+      "iron_band": {
+        "path": "data/item_bases/iron_band.json"
+      }
+    },
+    "affixes": {
+      "searing": {
+        "path": "data/affixes/searing.json"
+      },
+      "spellwoven": {
+        "path": "data/affixes/spellwoven.json"
+      },
+      "quickened": {
+        "path": "data/affixes/quickened.json"
+      },
+      "warded_fire": {
+        "path": "data/affixes/warded_fire.json"
+      },
+      "honed": {
+        "path": "data/affixes/honed.json"
+      }
     }
   },
   "animations": {

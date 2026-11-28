@@ -15,7 +15,8 @@
 //! keeper in reach and lights the lamp post once, and the keeper's evening
 //! conversation with its speakers, which the keeper's `interacted` cue
 //! starts; the lit lamp's bark; the warden's lamplight quest, done once the
-//! lamp is lit.
+//! lamp is lit. 8.1's second plan: the oilskin hood, the oil flask and the
+//! brass charm, with the `fine` affix.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -27,7 +28,8 @@ use super::{
 };
 use crate::kit::{
     Abilities, Barks, Conversation, Cooldown, Counters, Dialogue, Effects, Flags, Health, Hit,
-    Interactor, KitPlugins, KitRng, Level, Source, Speaker, Tags, TopDownMover, damage,
+    Interactor, Item, ItemBase, KitPlugins, KitRng, Level, RolledAffix, Source, Speaker, Tags,
+    TopDownMover, built, damage,
 };
 use crate::testing::Harness;
 
@@ -1230,4 +1232,36 @@ fn the_wardens_lamplight_quest_completes_when_the_lamp_is_lit() {
             "dt {dt}: once"
         );
     }
+}
+
+#[test]
+fn the_hood_the_flask_and_the_charm_load() {
+    let harness = recipe(GENRE, KitPlugins::set(), DTS[0]);
+    let world = harness.world();
+    let data = world.resource::<tungsten_core::DataRegistry>();
+    let hood = data.get::<ItemBase>("oilskin_hood").unwrap();
+    assert_eq!(
+        (hood.slot(), hood.stack(), hood.price()),
+        (Some("hood"), 1, 12)
+    );
+    assert_eq!(hood.grant().collect::<Vec<_>>(), ["status.hooded"]);
+    let flask = data.get::<ItemBase>("oil_flask").unwrap();
+    assert_eq!((flask.slot(), flask.stack()), (None, 5));
+    let lines = |item: &Item| -> Vec<String> {
+        built(world, item)
+            .unwrap()
+            .lines()
+            .iter()
+            .map(|line| line.text().to_owned())
+            .collect()
+    };
+    assert_eq!(
+        lines(&Item::new("oilskin_hood")),
+        ["damage.blade resist +10%"]
+    );
+    let charm = Item::new("brass_charm")
+        .with_rarity("magic")
+        .with_affix(RolledAffix::new("fine", 1, [7.0]));
+    assert_eq!(lines(&charm), ["+8 pickup_radius", "+7% move_speed"]);
+    assert_eq!(built(world, &charm).unwrap().rarity(), "magic");
 }

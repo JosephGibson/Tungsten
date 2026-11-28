@@ -1,0 +1,13 @@
+{
+  "kind": "suffix",
+  "group": "cast_speed_pct",
+  "weights": [{ "tag": "item.wand", "weight": 800 }],
+  "tiers": [
+    { "level": 1, "weight": 1000, "values": [[5, 9]] },
+    { "level": 25, "weight": 600, "values": [[10, 14]] },
+    { "level": 55, "weight": 300, "values": [[15, 19]] }
+  ],
+  "lines": [
+    { "stat": "use_speed", "modifier": { "pct": { "value": 0, "times": 0.01 } }, "with": { "all": ["skill.spell"] } }
+  ]
+}

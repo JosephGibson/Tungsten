@@ -617,6 +617,132 @@ fn check_reports_a_post_effect_whose_shader_is_missing() {
 
 #[cfg(feature = "kit")]
 #[test]
+fn a_broken_item_base_or_affix_fails_the_check_with_its_field_path() {
+    let rod = serde_json::json!({
+        "name": "Rod", "icon": "rod", "tags": ["item.rod"], "slot": "main_hand",
+        "implicit": [{ "stat": "damage", "modifier": { "pct": 0.1 } }],
+        "weapon": { "damage": { "damage.fire": [1, 2] }, "use_time": 1 }
+    });
+    let bright = serde_json::json!({
+        "kind": "prefix", "group": "bright", "weights": [{ "tag": "item.rod", "weight": 10 }],
+        "tiers": [{ "level": 1, "weight": 1, "values": [[1, 3]] }],
+        "lines": [{ "stat": "damage", "modifier": { "add": { "value": 0 } } }]
+    });
+    let edited = |good: &serde_json::Value, edit: &dyn Fn(&mut serde_json::Value)| {
+        let mut value = good.clone();
+        edit(&mut value);
+        value
+    };
+    let cases = [
+        (rod.clone(), bright.clone(), None),
+        (
+            edited(&rod, &|v| v["icon"] = "wand".into()),
+            bright.clone(),
+            Some(("rod", "field `icon`: unknown sprite `wand`")),
+        ),
+        (
+            edited(&rod, &|v| v["tags"][0] = "item.staff".into()),
+            bright.clone(),
+            Some(("rod", "field `tags.0`: unknown tag `item.staff`")),
+        ),
+        (
+            edited(&rod, &|v| v["implicit"][0]["stat"] = "glow".into()),
+            bright.clone(),
+            Some(("rod", "field `implicit.0.stat`: unknown stat `glow`")),
+        ),
+        (
+            edited(&rod, &|v| {
+                v["weapon"]["damage"] = serde_json::json!({ "damage.cold": [1, 2] });
+            }),
+            bright.clone(),
+            Some((
+                "rod",
+                "field `weapon.damage.damage.cold`: unknown damage type `damage.cold`",
+            )),
+        ),
+        (
+            edited(&rod, &|v| {
+                v.as_object_mut().unwrap().remove("weapon");
+                v["implicit"][0]["local"] = true.into();
+            }),
+            bright.clone(),
+            Some((
+                "rod",
+                "implicit.0: a local line folds into a `weapon` block",
+            )),
+        ),
+        (
+            edited(&rod, &|v| v["stack"] = 5.into()),
+            bright.clone(),
+            Some((
+                "rod",
+                "stack: an item worn or with a weapon block stacks to 1",
+            )),
+        ),
+        (
+            rod.clone(),
+            edited(&bright, &|v| {
+                v["tiers"] = serde_json::json!([
+                    { "level": 5, "weight": 1, "values": [[1, 3]] },
+                    { "level": 1, "weight": 1, "values": [[4, 6]] }
+                ]);
+            }),
+            Some(("bright", "tiers.1.level: 1 after 5; tiers ascend by level")),
+        ),
+        (
+            rod.clone(),
+            edited(&bright, &|v| v["weights"][0]["tag"] = "item.staff".into()),
+            Some(("bright", "field `weights.0.tag`: unknown tag `item.staff`")),
+        ),
+        (
+            rod.clone(),
+            edited(&bright, &|v| {
+                v["lines"][0]["modifier"]["add"]["value"] = 1.into();
+            }),
+            Some((
+                "bright",
+                "lines.0: reads rolled value 1, past the 1 every tier rolls",
+            )),
+        ),
+    ];
+    for (base, affix, expected) in cases {
+        let game = Folder::new();
+        game.png("assets/sprites/rod.png", 16);
+        game.write("assets/data/tags.json", r#"["item.rod", "damage.fire"]"#);
+        game.write("assets/data/types.json", r#"{ "damage.fire": {} }"#);
+        game.write("assets/data/rod.json", &base.to_string());
+        game.write("assets/data/bright.json", &affix.to_string());
+        let root = game.write(
+            "assets/manifest.json",
+            r#"{ "sprites": { "rod": { "path": "sprites/rod.png" } },
+                 "data": { "tags": { "game": { "path": "data/tags.json" } },
+                           "damage_types": { "fire": { "path": "data/types.json" } },
+                           "item_bases": { "rod": { "path": "data/rod.json" } },
+                           "affixes": { "bright": { "path": "data/bright.json" } } } }"#,
+        );
+        let mut app = game_world();
+        let errors = check_files(app.world_mut(), &[root], &game.0);
+        match expected {
+            None => assert!(errors.is_empty(), "{errors:#?}"),
+            Some((file, message)) => {
+                assert_eq!(errors.len(), 1, "{message}: {errors:#?}");
+                assert_eq!(
+                    errors[0].file,
+                    Path::new(&format!("assets/data/{file}.json")),
+                    "{message}"
+                );
+                assert!(
+                    errors[0].message.contains(message),
+                    "{message}: {}",
+                    errors[0].message
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "kit")]
+#[test]
 fn a_broken_conversation_fails_the_check_with_its_field_path() {
     let good = serde_json::json!({
         "speaker": "keeper",

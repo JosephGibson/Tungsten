@@ -1,0 +1,13 @@
+{
+  "kind": "prefix",
+  "group": "spell_damage_pct",
+  "weights": [{ "tag": "item.wand", "weight": 1000 }],
+  "tiers": [
+    { "level": 1, "weight": 1000, "values": [[10, 19]] },
+    { "level": 24, "weight": 600, "values": [[20, 29]] },
+    { "level": 50, "weight": 300, "values": [[30, 39]] }
+  ],
+  "lines": [
+    { "stat": "damage", "modifier": { "pct": { "value": 0, "times": 0.01 } }, "with": { "all": ["skill.spell"] } }
+  ]
+}

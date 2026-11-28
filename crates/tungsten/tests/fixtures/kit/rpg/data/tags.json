@@ -3,5 +3,9 @@
   "team.enemy",
   "damage.blade",
   "breakable",
-  "status.blessed"
+  "status.blessed",
+  "item.hood",
+  "item.flask",
+  "item.charm",
+  "status.hooded"
 ]
