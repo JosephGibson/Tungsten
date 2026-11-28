@@ -6,13 +6,15 @@
 //! declare, so coverage's set holds. 7.10g's adept casts cinder in the aim
 //! pose nearest its aim's elevation, and cinder names its icon. 8.1's
 //! second plan: §9.2's ashwood wand and iron band with the wand's five
-//! affixes, `honed` local.
+//! affixes, `honed` local; the exile, who wears §4.6's wand, its lines on
+//! the exile, and keeps it through a save (§16's check).
 
 use tungsten_core::Entity;
 
 use super::{DTS, recipe, spawn};
 use crate::kit::{
-    Affix, Damaged, DamagedPart, Item, ItemBase, KitPlugins, KitRng, Modifier, Stats, built,
+    Affix, Damaged, DamagedPart, Inventory, Item, ItemBase, ItemPlace, KitPlugins, KitRng,
+    Modifier, Read, Resist, Stats, TagSet, Tags, built, give_item, move_item,
 };
 use crate::testing::Harness;
 
@@ -192,17 +194,7 @@ fn the_wand_and_its_affixes_load() {
         [[17.0, 24.0]]
     );
     // §4.6's wand, its affixes on the fixture's damage types.
-    let rare: Item = serde_json::from_value(serde_json::json!({
-        "uid": 9137, "base": "ashwood_wand", "level": 42, "rarity": "rare", "seed": "0x9e3779b97f4a7c15",
-        "affixes": [
-            { "id": "searing", "tier": 2, "values": [22] },
-            { "id": "quickened", "tier": 2, "values": [11] },
-            { "id": "spellwoven", "tier": 2, "values": [26] },
-            { "id": "warded_fire", "tier": 3, "values": [19] }
-        ],
-        "name": ["Ember", "Coil"]
-    }))
-    .unwrap();
+    let rare = rare_wand();
     let made = built(world, &rare).unwrap();
     assert_eq!(made.name(), "Ember Coil");
     let texts: Vec<&str> = made
@@ -235,4 +227,132 @@ fn the_wand_and_its_affixes_load() {
             ("elemental.cold", [4.0, 7.0])
         ]
     );
+}
+
+/// §4.6's wand as JSON, its affixes on the fixture's damage types.
+fn rare_wand() -> Item {
+    serde_json::from_value(serde_json::json!({
+        "uid": 9137, "base": "ashwood_wand", "level": 42, "rarity": "rare", "seed": "0x9e3779b97f4a7c15",
+        "affixes": [
+            { "id": "searing", "tier": 2, "values": [22] },
+            { "id": "quickened", "tier": 2, "values": [11] },
+            { "id": "spellwoven", "tier": 2, "values": [26] },
+            { "id": "warded_fire", "tier": 3, "values": [19] }
+        ],
+        "name": ["Ember", "Coil"]
+    }))
+    .unwrap()
+}
+
+/// The exile's reads with the wand worn: damage in a spell's context and
+/// in a fire part's, use speed in a spell's, and its fire factor.
+fn wand_reads(harness: &Harness, exile: Entity) -> [f32; 4] {
+    let stats = harness.world().get::<Stats>(exile).unwrap();
+    let spell = [TagSet::Name("skill.spell")];
+    let fire = [TagSet::Name("elemental.fire")];
+    let factor = harness
+        .world()
+        .get::<Resist>(exile)
+        .unwrap()
+        .factor(&Tags::new(["elemental.fire"]));
+    [
+        stats.read(Stats::DAMAGE, &Read::new(&spell)).unwrap(),
+        stats.read(Stats::DAMAGE, &Read::new(&fire)).unwrap(),
+        stats.read("use_speed", &Read::new(&spell)).unwrap(),
+        factor,
+    ]
+}
+
+/// §16's check: an item from §4.6's JSON equips, shows its lines and saves
+/// round trip.
+#[test]
+fn the_wand_from_its_json_equips_shows_its_lines_and_saves_round_trip() {
+    use tungsten_core::save::{self, capture_world, restore_world};
+
+    #[derive(Debug, Clone, Copy)]
+    struct Restored;
+
+    let level = |dt: f32| {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let exile = spawn(&mut harness, "exile", [0.0, 0.0]);
+        save::name(harness.world_mut(), exile, None, "exile").unwrap();
+        (harness, exile)
+    };
+    let close =
+        |got: [f32; 4], want: [f32; 4]| got.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-4);
+    // 10 × (1 + 0.08 + 0.26) with spells, 10 × 1.22 with fire, 1 × 1.11,
+    // and fire's factor 1 − 0.19.
+    let worn = [13.4, 12.2, 1.11, 0.81];
+    for dt in DTS {
+        let (mut kept, exile) = level(dt);
+        assert!(
+            close(wand_reads(&kept, exile), [10.0, 10.0, 1.0, 1.0]),
+            "dt {dt}: bare"
+        );
+        give_item(kept.world_mut(), exile, rare_wand()).unwrap();
+        move_item(
+            kept.world_mut(),
+            exile,
+            ItemPlace::Cell(0),
+            ItemPlace::worn("main_hand"),
+        )
+        .unwrap();
+        kept.step(2);
+        assert!(
+            close(wand_reads(&kept, exile), worn),
+            "dt {dt}: {:?}",
+            wand_reads(&kept, exile)
+        );
+        let shown = |harness: &Harness, exile: Entity| -> (String, Vec<String>) {
+            let item = harness
+                .world()
+                .get::<Inventory>(exile)
+                .unwrap()
+                .worn("main_hand")
+                .unwrap()
+                .clone();
+            let made = built(harness.world(), &item).unwrap();
+            (
+                made.name().to_owned(),
+                made.lines()
+                    .iter()
+                    .map(|line| line.text().to_owned())
+                    .collect(),
+            )
+        };
+        let (name, lines) = shown(&kept, exile);
+        assert_eq!(name, "Ember Coil");
+        assert_eq!(lines.len(), 5, "dt {dt}: {lines:?}");
+        let saved = capture_world(kept.world()).unwrap();
+        let (mut loaded, _) = level(dt);
+        restore_world(loaded.world_mut(), &saved, &(Restored,)).unwrap();
+        let back: Vec<Entity> = loaded
+            .world()
+            .query::<(Entity, &Inventory)>()
+            .map(|(entity, _)| entity)
+            .collect();
+        assert_eq!(back.len(), 1, "dt {dt}: the exile came back");
+        let restored = back[0];
+        assert_eq!(
+            loaded
+                .world()
+                .get::<Inventory>(restored)
+                .unwrap()
+                .worn("main_hand"),
+            kept.world()
+                .get::<Inventory>(exile)
+                .unwrap()
+                .worn("main_hand"),
+            "dt {dt}: the wand as it was saved"
+        );
+        assert!(
+            close(wand_reads(&loaded, restored), worn),
+            "dt {dt}: its lines on the exile again"
+        );
+        assert_eq!(
+            shown(&loaded, restored),
+            (name, lines),
+            "dt {dt}: shown the same"
+        );
+    }
 }

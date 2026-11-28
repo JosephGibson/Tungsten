@@ -1287,6 +1287,11 @@ impl ItemBase {
     pub(crate) fn implicit(&self) -> &[ItemLine] {
         &self.implicit
     }
+
+    /// Its `use` list.
+    pub(crate) fn use_list(&self) -> &[CueAction] {
+        &self.use_list
+    }
 }
 
 /// The `item_bases` kind's check: the icon a manifest sprite, the tags and

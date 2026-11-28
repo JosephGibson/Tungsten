@@ -2237,3 +2237,57 @@ fn statuses_round_trip_their_data_and_save() {
     .unwrap();
     assert_eq!(plain, json!({ "effect": "smoulder", "scale": 1.0 }));
 }
+
+#[test]
+fn an_apart_request_never_merges_and_ends_by_serial() {
+    let (mut world, _) = rig();
+    let golem = world.spawn_with((Stats::new().with(Stats::MOVE_SPEED, 80.0),));
+    let ring = DataRef::inline(
+        Effect::new()
+            .with_modifier("move_speed", Modifier::Add(10.0))
+            .with_grant(["status.warm"]),
+    );
+    let (first, one) = EffectRequest::new(golem, ring.clone()).apply_apart(&mut world);
+    let (second, two) = EffectRequest::new(golem, ring.clone()).apply_apart(&mut world);
+    assert_eq!((first, second), (Applied::Applied, Applied::Applied));
+    let (one, two) = (one.unwrap(), two.unwrap());
+    assert_ne!(one, two);
+    let instances = |world: &World| world.get::<Effects>(golem).unwrap().instances().count();
+    assert_eq!(
+        instances(&world),
+        2,
+        "two equal inline effects, two instances"
+    );
+    assert_eq!(
+        world.get::<Stats>(golem).unwrap().get("move_speed"),
+        Some(100.0)
+    );
+    let applied = |world: &World| world.resource::<EventQueue<EffectApplied>>().iter().count();
+    let expired = |world: &World| world.resource::<EventQueue<EffectExpired>>().iter().count();
+    assert_eq!(applied(&world), 2);
+    assert!(end_effect_serial(&mut world, golem, one));
+    assert!(!end_effect_serial(&mut world, golem, one), "ended once");
+    assert_eq!(instances(&world), 1);
+    assert_eq!(
+        world.get::<Stats>(golem).unwrap().get("move_speed"),
+        Some(90.0)
+    );
+    assert!(
+        world.get::<Tags>(golem).unwrap().has("status.warm"),
+        "the other instance still grants it"
+    );
+    assert_eq!(expired(&world), 1);
+    // The quiet forms send nothing and trace nothing.
+    let traced = world.resource::<KitTrace>().iter().count();
+    let serial = apply_apart_quietly(&mut world, &EffectRequest::new(golem, ring.clone())).unwrap();
+    assert_eq!(instances(&world), 2);
+    assert!(end_effect_serial_quietly(&mut world, golem, serial));
+    assert_eq!((applied(&world), expired(&world)), (2, 1));
+    assert_eq!(world.resource::<KitTrace>().iter().count(), traced);
+    assert!(end_effect_serial(&mut world, golem, two));
+    assert!(!world.get::<Tags>(golem).unwrap().has("status.warm"));
+    assert_eq!(
+        world.get::<Stats>(golem).unwrap().get("move_speed"),
+        Some(80.0)
+    );
+}

@@ -10,6 +10,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::stats::{Stats, check_stat};
 use crate::foundation::tags::{TagFilter, Tags, valid_tag};
+use crate::items::inventory::{check_base_ref, count_of};
 use crate::react::counters::{Counters, Flags};
 use crate::react::cues::Target;
 use crate::story::quests::{QuestStatus, check_quest_ref, quests_of};
@@ -31,10 +32,12 @@ pub(crate) const MAX_LIST: usize = 32;
 /// | all, any | `{ "all": [..] }`, `{ "any": [..] }`, each at least one | every one, at least one |
 /// | not | `{ "not": { .. } }` | the inner fails |
 /// | quest | `{ "quest": { "id": "lamplight", "is": "active", "stage": "light" } }` | the target's quest is new (not taken), active (at `stage` when given), done or failed |
+/// | item | `{ "item": { "id": "net", "min": 3, "max": 9 } }`, none, one or both, inclusive | the target holds that many of the base, bag and worn; with neither bound, at least 1 |
 ///
 /// Each form but the lists takes a `target`: `self` (the default), `other`
 /// or `game`, the words of the cue actions beside it; `game` reads the
-/// World's own counters and flags, so a `stat` or `tags` form refuses it.
+/// World's own counters and flags, so a `stat`, `tags` or `item` form
+/// refuses it.
 /// A target that is absent or dead holds no form, so a `not` of it holds.
 /// Conditions nest at most 8 deep and a list holds at most 32, refused at
 /// parse past either. The load checks a `stat` form's stat and a `tags`
@@ -97,6 +100,9 @@ enum Form {
     /// A quest's status, or its stage while active: boxed, so the form
     /// keeps its size.
     Quest(Box<QuestConditionDef>),
+    /// How many of an item base the target holds: boxed, as the quest
+    /// form is.
+    Item(Box<ItemConditionDef>),
 }
 
 impl Condition {
@@ -151,6 +157,29 @@ impl Condition {
             max,
             target: Target::Subject,
         })
+    }
+
+    /// Holds when the subject holds a count of item base `id`, bag and
+    /// worn, in the inclusive bounds given; at least 1 with neither.
+    ///
+    /// # Panics
+    ///
+    /// When `min` exceeds `max`.
+    #[must_use]
+    #[track_caller]
+    pub fn item(id: impl Into<String>, min: Option<i64>, max: Option<i64>) -> Self {
+        if let (Some(min), Some(max)) = (min, max) {
+            assert!(
+                min <= max,
+                "Condition::item: `min` {min} exceeds `max` {max}"
+            );
+        }
+        Self::of(Form::Item(Box::new(ItemConditionDef {
+            id: id.into(),
+            min,
+            max,
+            target: Target::Subject,
+        })))
     }
 
     /// Holds when the subject's [`Tags`] pass `filter`.
@@ -236,6 +265,7 @@ impl Condition {
                 *target = to;
             }
             Form::Quest(quest) => quest.target = to,
+            Form::Item(item) if to == Target::Other => item.target = to,
             form => panic!(
                 "Condition::{method}: a `{}` condition takes no such target",
                 form.name()
@@ -330,6 +360,15 @@ impl Condition {
                     _ => false,
                 }
             }
+            Form::Item(item) => entity(item.target).is_some_and(|entity| {
+                let count = i64::from(count_of(world, entity, &item.id));
+                match (item.min, item.max) {
+                    (None, None) => count >= 1,
+                    (min, max) => {
+                        min.is_none_or(|min| count >= min) && max.is_none_or(|max| count <= max)
+                    }
+                }
+            }),
         }
     }
 
@@ -355,6 +394,7 @@ impl Condition {
                 &quest.id,
                 quest.stage.as_deref(),
             ),
+            Form::Item(item) => check_base_ref(world, &format!("{field}.item.id"), &item.id),
         }
     }
 
@@ -367,6 +407,7 @@ impl Condition {
             | Form::Stat { target, .. }
             | Form::Tags { target, .. } => *target == Target::Other,
             Form::Quest(quest) => quest.target == Target::Other,
+            Form::Item(item) => item.target == Target::Other,
             Form::All(list) | Form::Any(list) => list.iter().any(Condition::reads_other),
             Form::Not(inner) => inner.reads_other(),
         }
@@ -433,6 +474,7 @@ impl Form {
             Form::Any(_) => "any",
             Form::Not(_) => "not",
             Form::Quest(_) => "quest",
+            Form::Item(_) => "item",
         }
     }
 }
@@ -471,6 +513,64 @@ pub(crate) enum ConditionDef {
     Any(Vec<Condition>),
     Not(Box<Condition>),
     Quest(QuestConditionDef),
+    Item(ItemConditionDef),
+}
+
+/// An item form's object: a base, inclusive bounds and an entity's bag.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "ItemConditionFields", into = "ItemConditionFields")]
+pub(crate) struct ItemConditionDef {
+    id: String,
+    min: Option<i64>,
+    max: Option<i64>,
+    target: Target,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ItemConditionFields {
+    id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    min: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max: Option<i64>,
+    #[serde(default)]
+    target: Target,
+}
+
+impl TryFrom<ItemConditionFields> for ItemConditionDef {
+    type Error = String;
+
+    fn try_from(fields: ItemConditionFields) -> Result<Self, Self::Error> {
+        if fields.id.is_empty() {
+            return Err("item: `id` names an `item_bases` entry".into());
+        }
+        if fields.target == Target::Game {
+            return Err("item: a bag is an entity's; `target` is `self` or `other`".into());
+        }
+        if let (Some(min), Some(max)) = (fields.min, fields.max)
+            && min > max
+        {
+            return Err(format!("item: `min` {min} exceeds `max` {max}"));
+        }
+        Ok(Self {
+            id: fields.id,
+            min: fields.min,
+            max: fields.max,
+            target: fields.target,
+        })
+    }
+}
+
+impl From<ItemConditionDef> for ItemConditionFields {
+    fn from(def: ItemConditionDef) -> Self {
+        Self {
+            id: def.id,
+            min: def.min,
+            max: def.max,
+            target: def.target,
+        }
+    }
 }
 
 /// A quest form's object.
@@ -672,6 +772,7 @@ impl TryFrom<ConditionDef> for Condition {
                 }
                 Form::Quest(Box::new(quest))
             }
+            ConditionDef::Item(item) => Form::Item(Box::new(item)),
         };
         if let Form::Flag { name, .. } | Form::Counter { name, .. } = &form
             && !valid_tag(name)
@@ -731,6 +832,7 @@ impl From<Condition> for ConditionDef {
             Form::Any(list) => ConditionDef::Any(list),
             Form::Not(inner) => ConditionDef::Not(inner),
             Form::Quest(quest) => ConditionDef::Quest(*quest),
+            Form::Item(item) => ConditionDef::Item(*item),
         }
     }
 }
@@ -787,6 +889,11 @@ pub(crate) fn describe_conditions(world: &mut World) {
             "quest",
             FieldType::Shape("quest_condition"),
             "the target's quest has the status, or the stage while active; the load checks both",
+        ))
+        .field(FieldDescription::new(
+            "item",
+            FieldType::Shape("item_condition"),
+            "the target holds that many of the base, bag and worn; the load checks the base",
         ))
         .sample(r#"{ "flag": "door.open" }"#)
         .roundtrip(round_trip::<Condition>),

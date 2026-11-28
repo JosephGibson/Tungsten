@@ -16,7 +16,8 @@
 //! conversation with its speakers, which the keeper's `interacted` cue
 //! starts; the lit lamp's bark; the warden's lamplight quest, done once the
 //! lamp is lit. 8.1's second plan: the oilskin hood, the oil flask and the
-//! brass charm, with the `fine` affix.
+//! brass charm, with the `fine` affix; the satchel warden, hooded while it
+//! wears the hood, whose flask refuels its lantern.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -28,8 +29,8 @@ use super::{
 };
 use crate::kit::{
     Abilities, Barks, Conversation, Cooldown, Counters, Dialogue, Effects, Flags, Health, Hit,
-    Interactor, Item, ItemBase, KitPlugins, KitRng, Level, RolledAffix, Source, Speaker, Tags,
-    TopDownMover, built, damage,
+    Interactor, Inventory, Item, ItemBase, ItemPlace, KitPlugins, KitRng, Level, RolledAffix,
+    Source, Speaker, Tags, TopDownMover, built, count_of, damage, move_item, use_item,
 };
 use crate::testing::Harness;
 
@@ -1264,4 +1265,71 @@ fn the_hood_the_flask_and_the_charm_load() {
         .with_affix(RolledAffix::new("fine", 1, [7.0]));
     assert_eq!(lines(&charm), ["+8 pickup_radius", "+7% move_speed"]);
     assert_eq!(built(world, &charm).unwrap().rarity(), "magic");
+}
+
+#[test]
+fn the_warden_wears_the_hood_and_is_hooded_until_it_comes_off() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "satchel_warden", [64.0, 64.0]);
+        let hooded = |harness: &Harness| {
+            harness
+                .world()
+                .get::<Tags>(warden)
+                .unwrap()
+                .has("status.hooded")
+        };
+        assert!(!hooded(&harness));
+        move_item(
+            harness.world_mut(),
+            warden,
+            ItemPlace::Cell(1),
+            ItemPlace::worn("hood"),
+        )
+        .unwrap();
+        for _ in 0..3 {
+            harness.step(frames_for(1.0, dt));
+            assert!(hooded(&harness), "dt {dt}: hooded while worn");
+        }
+        let bag = harness.world().get::<Inventory>(warden).unwrap();
+        assert!(bag.cell(1).is_none() && bag.worn("hood").is_some());
+        move_item(
+            harness.world_mut(),
+            warden,
+            ItemPlace::worn("hood"),
+            ItemPlace::Cell(5),
+        )
+        .unwrap();
+        harness.step(1);
+        assert!(!hooded(&harness), "dt {dt}: off with the hood");
+        assert_eq!(
+            count_of(harness.world(), warden, "oilskin_hood"),
+            1,
+            "back in the bag"
+        );
+    }
+}
+
+#[test]
+fn a_flask_from_the_bag_refuels_the_lantern() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "satchel_warden", [64.0, 64.0]);
+        let oil = |harness: &Harness| harness.world().get::<Counters>(warden).unwrap().get("oil");
+        harness.step(1);
+        assert_eq!(oil(&harness), 0);
+        assert!(use_item(harness.world_mut(), warden, 0), "dt {dt}");
+        assert_eq!(oil(&harness), 10, "dt {dt}: at the call");
+        assert_eq!(
+            count_of(harness.world(), warden, "oil_flask"),
+            0,
+            "dt {dt}: the flask spent"
+        );
+        assert!(
+            !use_item(harness.world_mut(), warden, 0),
+            "dt {dt}: nothing left there"
+        );
+        harness.step(1);
+        assert_eq!(oil(&harness), 10);
+    }
 }

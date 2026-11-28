@@ -236,6 +236,12 @@ component interactor: Whoever interacts: a press of its intent slot uses the nea
   events: Interacted
   genres: top_down, rpg
   sample: {}
+component inventory: A bag of stacked cells and worn slots: a worn item's lines on its wearer through one equipment status.
+  field cells: u32 (>= 1, <= 256) — how many cells the bag has
+  field slots: slot name → slot kind = {} — at most 32 worn slots, each `[a-z][a-z0-9_]*` and the slot kind an item's base names to be worn there
+  field items: list of shape item = [] — the bag's first cells at spawn: an item, or its base's ID for one of it; the load checks each
+  genres: rpg, arpg
+  sample: { "cells": 24 }
 component knockback: How the entity takes a push from `knock_back`: a push that falls to 0 over its seconds.
   field seconds: f32 (> 0) = 0.2 — seconds of game time a push lasts, and a platformer's input stays locked
   field resist: f32 (>= 0, <= 1) = 0.0 — the part of each push it ignores
@@ -566,6 +572,7 @@ shape condition: A test of the World: one form, no expressions; a target absent 
   field any: list of shape condition — at least one holds: 1 to 32, nested at most 8 deep
   field not: shape condition — the inner fails
   field quest: shape quest_condition — the target's quest has the status, or the stage while active; the load checks both
+  field item: shape item_condition — the target holds that many of the base, bag and worn; the load checks the base
   sample: { "flag": "door.open" }
 shape conduct_payload: A strike on the use's target that jumps on, one receiver a step, from its last receiver to the nearest live receiver within reach, not yet struck, weaker each jump, each jump sending `Conducted`; an immune or stopping receiver ends it unstruck, or struck with `stop_struck`; each strike a blast's hit, in its context, its preparation run before its crit.
   field damage: f32 (>= 0) — the first strike's damage, a request from the user at the receiver's centre, on a receiver with live health alone
@@ -639,6 +646,8 @@ shape cue_action: One reaction to an event.
   field camera: shape camera_action — every camera rig whose `id` is the name raised, the latest raised winning a tie, or lowered; none holding it, a traced skip
   field say: shape say_action — a bark over the subject or the other, replacing its last, fading at its end; a text alone reads as `{ "text": .. }`; never in a world cue
   field quest: shape quest_action — a quest started, advanced with its stage's rewards, failed or moved to a stage, at once; 8 story lists deep, a traced skip
+  field give: shape item_action — some of an item base given to a bag at once, stacked then into empty cells; what does not fit, a traced skip; never in a world cue
+  field take: shape item_action — some of an item base taken from a bag's cells at once, never a worn one; fewer held, a traced skip; never in a world cue
   field dialogue: dialogue ID or entry — a conversation started at once, the subject speaking and the other listening; without an other or while a talk runs, a traced skip; never in a world cue
   sample: { "despawn": {} }
 shape cue_amount: A rule's range over an occurrence's amount, each end inclusive and optional.
@@ -815,6 +824,11 @@ shape item: An item instance: its base, level, rarity, seed, rolled affixes, nam
   field name: list of text = [] — at most 4 words shown in place of its base's name
   field count: u32 (>= 1, <= 9999) = 1 — how many it stands for, within its base's stack
   sample: { "base": "ashwood_wand" }
+shape item_action: Some of a base given to, or taken from, the subject's or the other's bag.
+  field item: text — the `item_bases` entry; the load checks it
+  field count: u32 (>= 1, <= 9999) = 1 — how many: a give stacks then fills empty cells, a take counts from the bag's cells in order, never a worn one
+  field target: one of self | other = "self" — the subject's bag or the other entity's
+  sample: { "item": "oil_flask" }
 shape item_base: An `item_bases` entry: its name, icon, slot, stack, price, requirement, grants, implicit lines, weapon block, use and drop.
   field name: text — shown for an item with no words of its own; 1 to 200 characters
   field icon: text — a manifest sprite ID; the load checks it
@@ -831,6 +845,12 @@ shape item_base: An `item_bases` entry: its name, icon, slot, stack, price, requ
   field consume: bool = null — whether a use spends one; true when it has a `use`
   field ground: prefab ID = null — the prefab a drop of it spawns, carrying `ground_item` and `pickup`; none: it drops nothing
   sample: { "name": "Oil flask", "icon": "flask" }
+shape item_condition: How many of a base the target holds, bag and worn, within inclusive bounds; with none, at least 1.
+  field id: text — the `item_bases` entry; the load checks it
+  field min: i64 = null — the least count that holds
+  field max: i64 = null — the greatest count that holds
+  field target: one of self | other = "self" — the subject's bag or the other entity's
+  sample: { "id": "net" }
 shape item_line: A line of an item: a stat's modifier, an `added` range, a `pen` or a `resist` modifier, on its wearer or, `local`, folded into its base's block.
   field stat: text = null — the stat its `modifier` changes; the load checks it is declared; a local line's is the block's `damage`, `use_time` or `crit_chance`
   field modifier: shape modifier = null — the change, with `stat` or `resist`; in an affix's line its number may be a rolled_value; a local or scoped line may not override

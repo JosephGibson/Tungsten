@@ -8,6 +8,9 @@
     },
     "adept": {
       "path": "prefabs/adept.json"
+    },
+    "exile": {
+      "path": "prefabs/exile.json"
     }
   },
   "data": {

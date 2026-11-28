@@ -3,5 +3,8 @@
   "icon": "oil_flask",
   "tags": ["item", "item.flask"],
   "stack": 5,
-  "price": 3
+  "price": 3,
+  "use": [
+    { "counter": { "name": "oil", "add": 10 } }
+  ]
 }

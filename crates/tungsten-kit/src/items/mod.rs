@@ -4,6 +4,7 @@
 
 pub(crate) mod affix;
 pub(crate) mod base;
+pub(crate) mod inventory;
 pub(crate) mod item;
 
 use tungsten_core::{Plugin, Schedule, World};
@@ -17,8 +18,11 @@ use crate::items::base::{ITEM_BASES, ItemBase, ItemLine, RolledValueDef, WeaponB
 use crate::items::item::{Item, ItemWarnings, RolledAffix};
 
 /// Registers the `item_bases` and `affixes` data kinds with their checks
-/// and descriptions, and the record that warns once of each part of a
-/// saved item the data no longer holds. It adds no system.
+/// and descriptions, the record that warns once of each part of a saved
+/// item the data no longer holds, the `inventory` component and the
+/// [`ItemLedger`](crate::ItemLedger), both saved at version 1, and the
+/// restore hook that rebuilds worn items' statuses quietly. It adds no
+/// system.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ItemsPlugin;
 
@@ -30,6 +34,7 @@ impl Plugin for ItemsPlugin {
             world.insert_resource(ItemWarnings::default());
         }
         describe_items(world);
+        inventory::build_inventory(world);
     }
 }
 

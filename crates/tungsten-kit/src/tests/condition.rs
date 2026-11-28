@@ -221,3 +221,75 @@ fn the_load_refuses_an_undeclared_stat_a_game_stat_and_a_deep_nest() {
     let error = parse(json!({ "any": long })).unwrap_err();
     assert!(error.contains("at most 32"), "{error}");
 }
+
+#[test]
+fn the_item_form_counts_the_bag_and_the_worn() {
+    use crate::{Inventory, Item, ItemBase, ItemPlace, KitPlugins, move_item};
+    let mut world = World::new();
+    let mut schedule = Schedule::new();
+    KitPlugins::set().build(&mut schedule, &mut world);
+    for (id, base) in [
+        ("net", json!({ "name": "Net", "icon": "net", "stack": 9 })),
+        (
+            "ring",
+            json!({ "name": "Ring", "icon": "ring", "slot": "ring" }),
+        ),
+    ] {
+        let base: ItemBase = serde_json::from_value(base).unwrap();
+        world
+            .resource_mut::<tungsten_core::DataRegistry>()
+            .insert(id, base);
+    }
+    let fisher = world.spawn_with((Inventory::new(4)
+        .with_slot("hand", "ring")
+        .with_item(Item::new("net").with_count(3))
+        .with_item(Item::new("ring")),));
+    move_item(
+        &mut world,
+        fisher,
+        ItemPlace::Cell(1),
+        ItemPlace::worn("hand"),
+    )
+    .unwrap();
+    let keeper = world.spawn_with((Inventory::new(2).with_item(Item::new("net")),));
+    let at = |value: serde_json::Value| condition(value).holds(&world, Some(fisher), Some(keeper));
+    assert!(at(json!({ "item": { "id": "net", "min": 3 } })));
+    assert!(!at(json!({ "item": { "id": "net", "min": 4 } })));
+    assert!(at(json!({ "item": { "id": "net", "min": 1, "max": 3 } })));
+    assert!(
+        at(json!({ "item": { "id": "ring" } })),
+        "the worn count, at least 1 with no bound"
+    );
+    assert!(!at(json!({ "item": { "id": "ring", "max": 0 } })));
+    assert!(
+        at(json!({ "item": { "id": "net", "max": 1, "target": "other" } })),
+        "the other's bag"
+    );
+    assert!(!at(json!({ "item": { "id": "lure" } })));
+    assert!(
+        !condition(json!({ "item": { "id": "net" } })).holds(&world, None, None),
+        "no subject holds no form"
+    );
+    assert_eq!(
+        condition(json!({ "item": { "id": "net", "min": 3 } })),
+        Condition::item("net", Some(3), None)
+    );
+    for (value, why) in [
+        (
+            json!({ "item": { "id": "net", "target": "game" } }),
+            "a bag is an entity's",
+        ),
+        (
+            json!({ "item": { "id": "net", "min": 4, "max": 3 } }),
+            "`min` 4 exceeds `max` 3",
+        ),
+    ] {
+        let error = parse(value.clone()).unwrap_err();
+        assert!(error.contains(why), "{value}: {error}");
+    }
+    let missing = condition(json!({ "all": [{ "item": { "id": "lure" } }] }))
+        .check(&world, "when")
+        .unwrap_err();
+    assert_eq!(missing.field, "when.all.0.item.id");
+    assert!(condition(json!({ "item": { "id": "net", "target": "other" } })).reads_other());
+}

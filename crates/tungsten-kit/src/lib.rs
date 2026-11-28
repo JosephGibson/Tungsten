@@ -271,7 +271,7 @@ pub use chemistry::{
 pub use damage::defense::{Resist, SHIELD_TICK, Shield};
 pub use damage::effects::{
     Applied, EFFECT_RESOLVE, EFFECT_TICK, Effect, EffectApplied, EffectExpired, EffectInstance,
-    EffectRequest, Effects, EffectsPlugin, Expire, Refresh, Scaled, end_effect,
+    EffectRequest, Effects, EffectsPlugin, Expire, Refresh, Scaled, end_effect, end_effect_serial,
 };
 pub use damage::health::{
     Damaged, DamagedPart, HEALTH_TICK, HIT_FLASH_MATERIAL, HIT_FLASH_TICK, Health, HealthPlugin,
@@ -317,6 +317,10 @@ pub use intent::state_machine::{StateMachine, StateMachinePlugin};
 pub use items::ItemsPlugin;
 pub use items::affix::{Affix, AffixKind, AffixTier, AffixWeight};
 pub use items::base::{BuiltLine, ItemBase, WeaponBlock};
+pub use items::inventory::{
+    Inventory, ItemLedger, ItemPlace, ItemRefusal, WornSlot, count_of, give, give_item, inventory,
+    move_item, take, use_item, use_item_on,
+};
 pub use items::item::{BuiltItem, Item, RolledAffix, built};
 pub use lifecycle::cap::{Admission, Cap, CapPlugin, Past, admit_spawn, cap_refuses};
 pub use lifecycle::children::{SPAWN_CHILDREN, SpawnChildren, SpawnChildrenPlugin};

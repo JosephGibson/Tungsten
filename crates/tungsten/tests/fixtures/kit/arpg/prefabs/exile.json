@@ -1,0 +1,25 @@
+{
+  "tag": "exile",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "stats": {
+      "damage": 10,
+      "use_speed": 1,
+      "mana": 100
+    },
+    "resist": {},
+    "abilities": [
+      "cinder"
+    ],
+    "inventory": {
+      "cells": 12,
+      "slots": {
+        "main_hand": "main_hand",
+        "ring_1": "ring",
+        "ring_2": "ring"
+      }
+    }
+  }
+}

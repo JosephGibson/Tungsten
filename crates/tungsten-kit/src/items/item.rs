@@ -445,6 +445,14 @@ impl Item {
             && self.name.is_empty()
             && other.name.is_empty()
     }
+
+    pub(crate) fn set_uid(&mut self, uid: u32) {
+        self.uid = uid;
+    }
+
+    pub(crate) fn set_count(&mut self, count: u32) {
+        self.count = count;
+    }
 }
 
 /// The load's check of an item data holds, at `field`: its base and each
@@ -452,7 +460,6 @@ impl Item {
 /// range, each inside its range on the tier's step, no group twice, a
 /// local line only on a base with a block, and the count within the base's
 /// stack.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn check_item(world: &World, field: &str, item: &Item) -> Result<(), MissingAsset> {
     let Some(data) = world.get_resource::<DataRegistry>() else {
         return Ok(());

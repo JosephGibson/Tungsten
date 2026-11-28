@@ -2848,6 +2848,15 @@ impl EffectRequest {
         resolve_effect(world, &self)
     }
 
+    /// Applies the effect now as an instance of its own: it never stacks
+    /// on an instance of an equal effect, so two equal inline effects keep
+    /// two instances, each ended by its serial ([`end_effect_serial`]),
+    /// as worn items' statuses are. The outcome and the new instance's
+    /// serial; none when it was blocked, ignored or instant.
+    pub fn apply_apart(self, world: &mut World) -> (Applied, Option<u64>) {
+        resolve_with(world, &self, Resolve::APART)
+    }
+
     /// Queues the request for [`EFFECT_RESOLVE`], this step's when it has
     /// not run yet, else the next step's. False, queueing nothing, when the
     /// World has no [`EffectsPlugin`] queue.
@@ -2862,6 +2871,58 @@ impl EffectRequest {
 /// there was one.
 pub fn end_effect(world: &mut World, entity: Entity, effect: &DataRef<Effect>) -> bool {
     end_effect_at(world, entity, effect, 0)
+}
+
+/// Ends the instance numbered `serial` on `entity` early, as
+/// [`end_effect`] ends one by its effect: what an
+/// [`apply_apart`](EffectRequest::apply_apart) instance is ended by.
+/// Whether there was one.
+pub fn end_effect_serial(world: &mut World, entity: Entity, serial: u64) -> bool {
+    end_by_serial(world, entity, serial, false)
+}
+
+/// [`end_effect_serial`] with no [`EffectExpired`], no `on_end` outputs and
+/// no trace: a restore's rebuild of a worn item's status, which no cue may
+/// hear.
+pub(crate) fn end_effect_serial_quietly(world: &mut World, entity: Entity, serial: u64) -> bool {
+    end_by_serial(world, entity, serial, true)
+}
+
+/// [`EffectRequest::apply_apart`] with no [`EffectApplied`] and no trace;
+/// the new instance's serial.
+pub(crate) fn apply_apart_quietly(world: &mut World, request: &EffectRequest) -> Option<u64> {
+    resolve_with(
+        world,
+        request,
+        Resolve {
+            apart: true,
+            quiet: true,
+        },
+    )
+    .1
+}
+
+/// Ends the instance numbered `serial` on `entity`, quietly or not.
+fn end_by_serial(world: &mut World, entity: Entity, serial: u64, quiet: bool) -> bool {
+    let Some(slot) = world.get_mut::<Effects>(entity) else {
+        return false;
+    };
+    let Some(at) = slot
+        .instances
+        .iter()
+        .position(|instance| instance.serial == serial)
+    else {
+        return false;
+    };
+    let mut effects = std::mem::take(slot);
+    let instance = effects.instances.remove(at);
+    release(world, entity, &mut effects, &instance);
+    put_back(world, entity, effects);
+    if !quiet {
+        send_expired(world, entity, instance.effect.id().map(str::to_owned), true);
+        queue_on_end(world, entity, &instance, 0);
+    }
+    true
 }
 
 /// [`end_effect`], its `on_end` outputs queued `depth` reactions deep: a
@@ -3627,31 +3688,67 @@ pub(crate) fn built(prior: f32, amount: f32, status_effect: f32, max: f32) -> f3
     (f64::from(prior) + f64::from(amount) * f64::from(status_effect)).min(f64::from(max)) as f32
 }
 
+/// How a request resolves: `apart` never finds an instance already there,
+/// so each makes its own; `quiet` sends no [`EffectApplied`] and traces
+/// nothing. The queued path sets neither, so an [`EffectInstance`] needs no
+/// field for them.
+#[derive(Debug, Clone, Copy, Default)]
+struct Resolve {
+    apart: bool,
+    quiet: bool,
+}
+
+impl Resolve {
+    const APART: Self = Self {
+        apart: true,
+        quiet: false,
+    };
+}
+
 /// [`EffectRequest`]'s resolution.
 fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
+    resolve_with(world, request, Resolve::default()).0
+}
+
+/// [`EffectRequest`]'s resolution in `mode`: the outcome and, for a new
+/// instance, its serial.
+fn resolve_with(
+    world: &mut World,
+    request: &EffectRequest,
+    mode: Resolve,
+) -> (Applied, Option<u64>) {
     let target = request.target;
+    let skipped = |world: &mut World, why: &'static str| {
+        if !mode.quiet {
+            skip(world, target, "apply", why);
+        }
+    };
     let gone = !world.is_alive(target)
         || world.has::<Despawning>(target)
         || world.get::<Health>(target).is_some_and(Health::is_dead);
     if gone {
-        skip(world, target, "apply", GONE);
-        return Applied::Ignored;
+        skipped(world, GONE);
+        return (Applied::Ignored, None);
     }
     let Some(effect) = definition(world, &request.effect).cloned() else {
-        skip(world, target, "apply", NO_EFFECT);
-        return Applied::Ignored;
+        skipped(world, NO_EFFECT);
+        return (Applied::Ignored, None);
     };
     if !effect.blocked_by.is_empty()
         && let Some(carried) = world.get::<Tags>(target)
         && effect.blocked_by.iter().any(|tag| carried.has(tag))
     {
-        skip(world, target, "apply", BLOCKED);
-        return Applied::Blocked;
+        skipped(world, BLOCKED);
+        return (Applied::Blocked, None);
     }
     let status_effect = status_effect_of(world, request);
-    let existing = world
-        .get::<Effects>(target)
-        .and_then(|effects| effects.find(&request.effect));
+    let existing = if mode.apart {
+        None
+    } else {
+        world
+            .get::<Effects>(target)
+            .and_then(|effects| effects.find(&request.effect))
+    };
     // A status's curve reads its intensity after the build; any other
     // effect's, the request's scale.
     let intensity = effect.intensity.map(|spec| {
@@ -3661,8 +3758,8 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
         built(prior, request.amount, status_effect, spec.max)
     });
     if existing.is_none() && intensity.is_some_and(|intensity| intensity <= 0.0) {
-        skip(world, target, "apply", NO_BUILD);
-        return Applied::Ignored;
+        skipped(world, NO_BUILD);
+        return (Applied::Ignored, None);
     }
     let factor = match intensity {
         Some(intensity) => factor_of(world, &effect, intensity),
@@ -3677,6 +3774,10 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
         // An instant effect lands and expires at once: its `on_expire` and
         // its `on_end` outputs at the request's depth, so a cycle through
         // them deepens and ends at chemistry's depth limit.
+        if mode.quiet {
+            land_payload(world, &effect, target, request.source, factor);
+            return (Applied::Applied, None);
+        }
         send_applied(world, target, request.source, 1, id.clone(), true);
         land_payload(world, &effect, target, request.source, factor);
         send_expired(world, target, id, false);
@@ -3700,7 +3801,7 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
                 request.source,
             );
         }
-        return Applied::Applied;
+        return (Applied::Applied, None);
     }
     if !world.has::<Effects>(target) {
         world.insert(target, Effects::new());
@@ -3712,7 +3813,7 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
         granted,
         ..
     } = &mut effects;
-    let (outcome, stacks) = match existing {
+    let (outcome, stacks, made) = match existing {
         None => {
             let serial = *next_serial;
             *next_serial += 1;
@@ -3732,7 +3833,7 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
                 emit_left: effect.emit.as_ref().map(|emit| emit.period),
                 slot: CountSlot::default(),
             };
-            place_modifiers(world, target, &effect, &instance, true);
+            place_modifiers(world, target, &effect, &instance, !mode.quiet);
             grant(world, target, granted, &mut instance, &effect.grant);
             reach_bands(
                 world,
@@ -3743,7 +3844,7 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
                 request.depth,
             );
             instances.push(instance);
-            (Applied::Applied, 1)
+            (Applied::Applied, 1, Some(serial))
         }
         Some(at) => {
             let instance = &mut instances[at];
@@ -3771,22 +3872,24 @@ fn resolve_effect(world: &mut World, request: &EffectRequest) -> Applied {
             remove_modifiers(world, target, instance.serial);
             place_modifiers(world, target, &effect, instance, false);
             reach_bands(world, target, granted, instance, &effect, request.depth);
-            (Applied::Stacked, instance.stacks)
+            (Applied::Stacked, instance.stacks, None)
         }
     };
     put_back(world, target, effects);
-    send_applied(
-        world,
-        target,
-        request.source,
-        stacks,
-        id,
-        outcome == Applied::Applied,
-    );
+    if !mode.quiet {
+        send_applied(
+            world,
+            target,
+            request.source,
+            stacks,
+            id,
+            outcome == Applied::Applied,
+        );
+    }
     if outcome == Applied::Applied && effect.period.is_none() {
         land_payload(world, &effect, target, request.source, factor);
     }
-    outcome
+    (outcome, made)
 }
 
 /// [`EFFECT_RESOLVE`]'s state between steps: the drained lists, kept so a

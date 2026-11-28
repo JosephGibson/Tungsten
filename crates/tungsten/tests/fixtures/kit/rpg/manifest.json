@@ -119,6 +119,9 @@
     },
     "night_warden": {
       "path": "prefabs/night_warden.json"
+    },
+    "satchel_warden": {
+      "path": "prefabs/satchel_warden.json"
     }
   },
   "data": {

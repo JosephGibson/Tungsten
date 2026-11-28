@@ -1,0 +1,38 @@
+{
+  "tag": "satchel_warden",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "counters": {
+      "oil": 0
+    },
+    "inventory": {
+      "cells": 24,
+      "slots": {
+        "hood": "hood",
+        "charm_1": "charm",
+        "charm_2": "charm"
+      },
+      "items": [
+        "oil_flask",
+        {
+          "base": "oilskin_hood"
+        },
+        {
+          "base": "brass_charm",
+          "rarity": "magic",
+          "affixes": [
+            {
+              "id": "fine",
+              "tier": 1,
+              "values": [
+                7
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

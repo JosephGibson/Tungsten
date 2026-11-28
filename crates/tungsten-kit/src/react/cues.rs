@@ -33,6 +33,7 @@ use crate::foundation::trace::{TraceKind, trace};
 use crate::foundation::{non_negative, optional_positive};
 use crate::intent::ability::{Abilities, AbilityUsed, Used, use_ability};
 use crate::intent::aim::Aim;
+use crate::items::inventory::{ItemActionDef, check_base_ref, give, take};
 use crate::lifecycle::cap::admit;
 use crate::lifecycle::cooldown::CooldownElapsed;
 use crate::lifecycle::ended::{Despawning, mark_despawning};
@@ -434,6 +435,12 @@ pub(crate) enum ActionKind {
     /// A quest of the subject, the other or the game started, advanced,
     /// failed or moved, boxed so the action keeps its size.
     Quest(Box<QuestActionDef>),
+    /// Some of an item base given to the subject's or the other's bag,
+    /// boxed so the action keeps its size.
+    Give(Box<ItemActionDef>),
+    /// Some of an item base taken from the subject's or the other's bag,
+    /// boxed as `Give` is.
+    Take(Box<ItemActionDef>),
 }
 
 /// A counter action's change.
@@ -805,6 +812,9 @@ impl CueAction {
             }
             ActionKind::Say(say) if to == Target::Other => say.other = true,
             ActionKind::Quest(quest) => quest.target = to,
+            ActionKind::Give(item) | ActionKind::Take(item) if to == Target::Other => {
+                item.target = to;
+            }
             _ => panic!("CueAction::{method}: a `{name}` action takes no target"),
         }
         self
@@ -1232,6 +1242,64 @@ impl CueAction {
         })))
     }
 
+    /// Gives the subject `count` of item base `item` at once, as
+    /// [`give`](crate::give) does (redo 8.1); [`for_other`](Self::for_other)
+    /// gives the other entity. Data form
+    /// `{ "give": { "item": "oil_flask", "count": 2, "target": "other" } }`,
+    /// `count` 1 by default; never in a world cue.
+    ///
+    /// # Panics
+    ///
+    /// When `count` is outside 1 to 9,999.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let gift = CueAction::give("oil_flask", 2).for_other();
+    /// assert_eq!(
+    ///     serde_json::to_value(&gift).unwrap(),
+    ///     serde_json::json!({ "give": { "item": "oil_flask", "count": 2, "target": "other" } })
+    /// );
+    /// let back: CueAction = serde_json::from_str(r#"{ "take": { "item": "net" } }"#).unwrap();
+    /// assert_eq!(back, CueAction::take("net", 1));
+    /// ```
+    #[must_use]
+    #[track_caller]
+    pub fn give(item: impl Into<String>, count: u32) -> Self {
+        Self::of(ActionKind::Give(Box::new(Self::item_action(
+            "give", item, count,
+        ))))
+    }
+
+    /// Takes `count` of item base `item` from the subject's bag at once, as
+    /// [`take`](crate::take) does, as [`give`](Self::give) names its forms.
+    ///
+    /// # Panics
+    ///
+    /// When `count` is outside 1 to 9,999.
+    #[must_use]
+    #[track_caller]
+    pub fn take(item: impl Into<String>, count: u32) -> Self {
+        Self::of(ActionKind::Take(Box::new(Self::item_action(
+            "take", item, count,
+        ))))
+    }
+
+    #[track_caller]
+    fn item_action(method: &str, item: impl Into<String>, count: u32) -> ItemActionDef {
+        assert!(
+            (1..=9_999).contains(&count),
+            "CueAction::{method}: 1 to 9,999, not {count}"
+        );
+        ItemActionDef {
+            item: item.into(),
+            count,
+            target: Target::Subject,
+        }
+    }
+
     /// Uses the subject's ability `name` now, as [`use_ability`] uses it;
     /// [`for_other`](Self::for_other) uses the other entity's. Data form
     /// `{ "ability": "wand" }` or
@@ -1344,6 +1412,8 @@ impl CueAction {
             ActionKind::Dialogue(_) => "dialogue",
             ActionKind::Say(_) => "say",
             ActionKind::Quest(_) => "quest",
+            ActionKind::Give(_) => "give",
+            ActionKind::Take(_) => "take",
         }
     }
 }
@@ -1398,6 +1468,8 @@ pub(crate) enum CueActionDef {
     Dialogue(DataRef<Conversation>),
     Say(SayDef),
     Quest(QuestActionDef),
+    Give(ItemActionDef),
+    Take(ItemActionDef),
 }
 
 /// A `camera` action as data writes it: exactly one of `raise` and
@@ -2099,6 +2171,8 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Dialogue(conversation) => ActionKind::Dialogue(conversation),
             CueActionDef::Say(say) => ActionKind::Say(Box::new(say)),
             CueActionDef::Quest(quest) => ActionKind::Quest(Box::new(quest)),
+            CueActionDef::Give(item) => ActionKind::Give(Box::new(item)),
+            CueActionDef::Take(item) => ActionKind::Take(Box::new(item)),
         };
         Ok(Self { kind })
     }
@@ -2206,6 +2280,8 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Dialogue(conversation) => CueActionDef::Dialogue(conversation),
             ActionKind::Say(say) => CueActionDef::Say(*say),
             ActionKind::Quest(quest) => CueActionDef::Quest(*quest),
+            ActionKind::Give(item) => CueActionDef::Give(*item),
+            ActionKind::Take(item) => CueActionDef::Take(*item),
         }
     }
 }
@@ -3539,6 +3615,16 @@ fn check_actions(
             }
             ActionKind::Clip(clips) => check_clips(world, &at, clips)?,
             ActionKind::Dialogue(conversation) => conversation.check(world, &at)?,
+            ActionKind::Give(item) | ActionKind::Take(item) => {
+                check_base_ref(world, &format!("{at}.item"), &item.item)?;
+                if item.target == Target::Other && !event.other {
+                    return Err(MissingAsset::new(
+                        format!("{at}.target"),
+                        "cue event with an other entity",
+                        event.name,
+                    ));
+                }
+            }
             ActionKind::Quest(quest) => {
                 let stage = match &quest.op {
                     QuestOp::Stage(stage) => Some(stage.as_str()),
@@ -3742,6 +3828,7 @@ fn needs_subject(action: &CueAction) -> bool {
             | ActionKind::Dialogue(_)
     ) || matches!(&action.kind, ActionKind::Say(say) if !say.other)
         || matches!(&action.kind, ActionKind::Quest(quest) if quest.target == Target::Subject)
+        || matches!(&action.kind, ActionKind::Give(item) | ActionKind::Take(item) if item.target == Target::Subject)
 }
 
 /// Checks a list a story item runs at once, outside the cue system (redo
@@ -4053,6 +4140,10 @@ const NO_SUBJECT: &str = "the list runs with no subject";
 const TOO_MANY_LISTS: &str = "one call ran its 64 lists";
 const TOO_DEEP: &str = "a quest action 8 lists deep";
 const NO_QUEST: &str = "the quest changed nothing";
+/// Why a `give` left some out.
+const NO_ROOM: &str = "the bag had no room for all of them, or no inventory";
+/// Why a `take` took fewer.
+const TOO_FEW: &str = "the bag held fewer of them, or no inventory";
 const NO_AMOUNT: &str = "the event has no amount";
 const NO_COMMANDS: &str = "the World has no CommandBuffer";
 const NO_QUEUE: &str = "the World has no queue for it";
@@ -4824,6 +4915,22 @@ impl Reactor {
                 }
                 if !act(world, holder, &quest.id, &quest.op) {
                     return skip(world, NO_QUEST);
+                }
+            }
+            ActionKind::Give(item) => {
+                let Some(holder) = target(item.target, world) else {
+                    return skip(world, NO_OTHER);
+                };
+                if give(world, holder, &item.item, item.count) < item.count {
+                    return skip(world, NO_ROOM);
+                }
+            }
+            ActionKind::Take(item) => {
+                let Some(holder) = target(item.target, world) else {
+                    return skip(world, NO_OTHER);
+                };
+                if take(world, holder, &item.item, item.count) < item.count {
+                    return skip(world, TOO_FEW);
                 }
             }
             ActionKind::Label(Some(style)) => {
@@ -5663,6 +5770,16 @@ fn describe_cues(world: &mut World) {
                 "quest",
                 FieldType::Shape("quest_action"),
                 "a quest started, advanced with its stage's rewards, failed or moved to a stage, at once; 8 story lists deep, a traced skip",
+            ))
+            .field(FieldDescription::new(
+                "give",
+                FieldType::Shape("item_action"),
+                "some of an item base given to a bag at once, stacked then into empty cells; what does not fit, a traced skip; never in a world cue",
+            ))
+            .field(FieldDescription::new(
+                "take",
+                FieldType::Shape("item_action"),
+                "some of an item base taken from a bag's cells at once, never a worn one; fewer held, a traced skip; never in a world cue",
             ))
             .field(FieldDescription::new(
                 "dialogue",

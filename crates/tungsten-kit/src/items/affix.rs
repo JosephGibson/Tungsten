@@ -21,7 +21,6 @@ pub(crate) const MAX_TIERS: usize = 16;
 pub(crate) const MAX_LEVEL: u32 = 100;
 /// How far a value may sit off its step and still be on it, as a share of
 /// the step.
-#[cfg_attr(not(test), allow(dead_code))]
 const STEP_SLACK: f32 = 1e-3;
 
 /// Where an affix goes on an item's name.
@@ -184,7 +183,6 @@ impl AffixTier {
     }
 
     /// Whether `value` lies in range `i` on its step.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn holds(&self, i: usize, value: f32) -> bool {
         let Some([min, max]) = self.values.get(i) else {
             return false;
@@ -340,7 +338,6 @@ impl Affix {
     }
 
     /// Whether a line folds into the base's block.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn has_local(&self) -> bool {
         self.lines.iter().any(ItemLine::is_local)
     }

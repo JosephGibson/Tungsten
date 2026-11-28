@@ -3822,3 +3822,105 @@ mod centred_spawns {
         assert!(refused.is_err(), "a flash spawns nothing");
     }
 }
+
+#[test]
+fn give_and_take_run_from_a_cue_and_a_story_list() {
+    use crate::{Health, Inventory, ItemBase, KitPlugins, count_of, damage};
+    let mut world = World::new();
+    world.insert_resource(tungsten_core::Time::new());
+    world.insert_resource(tungsten_core::CommandBuffer::new());
+    world.insert_resource(crate::KitTrace::default());
+    let mut schedule = Schedule::new();
+    KitPlugins::set().build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    let flask: ItemBase =
+        serde_json::from_value(json!({ "name": "Oil Flask", "icon": "flask", "stack": 5 }))
+            .unwrap();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("oil_flask", flask);
+    let warden = world.spawn_with((
+        Inventory::new(2),
+        Health::new(10.0),
+        Cues::new().on("damaged", [CueAction::give("oil_flask", 2)]),
+    ));
+    damage(&mut world, warden, 1.0);
+    world
+        .resource_mut::<tungsten_core::Time>()
+        .advance_frame(1.0 / 60.0);
+    schedule.run_stage(tungsten_core::Stage::FixedUpdate, &mut world, |_, _| {});
+    world.flush_events();
+    assert_eq!(count_of(&world, warden, "oil_flask"), 2, "the cue gave two");
+    run_list(
+        &mut world,
+        &[CueAction::take("oil_flask", 1)],
+        Some(warden),
+        None,
+        Vec2::ZERO,
+    );
+    assert_eq!(
+        count_of(&world, warden, "oil_flask"),
+        1,
+        "the list took one, at the call"
+    );
+    let keeper = world.spawn_with((Inventory::new(1),));
+    run_list(
+        &mut world,
+        &[CueAction::give("oil_flask", 7).for_other()],
+        Some(warden),
+        Some(keeper),
+        Vec2::ZERO,
+    );
+    assert_eq!(
+        count_of(&world, keeper, "oil_flask"),
+        5,
+        "the other's bag, up to its room"
+    );
+    let skipped = world
+        .resource::<crate::KitTrace>()
+        .iter()
+        .filter(|entry| matches!(entry.kind, TraceKind::Skipped { why, .. } if why == NO_ROOM))
+        .count();
+    assert_eq!(skipped, 1, "what did not fit, a traced skip");
+    // The load checks the base and an other entity's presence.
+    let missing = check_list(&world, "do", &[CueAction::give("nets", 1)], false).unwrap_err();
+    assert_eq!(missing.field, "do.0.give.item");
+    let missing = check_list(
+        &world,
+        "do",
+        &[CueAction::take("oil_flask", 1).for_other()],
+        false,
+    )
+    .unwrap_err();
+    assert_eq!(missing.field, "do.0.take.target");
+    check_list(
+        &world,
+        "do",
+        &[CueAction::take("oil_flask", 1).for_other()],
+        true,
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_world_cue_refuses_give_and_take() {
+    let (world, _) = rig();
+    for (value, field) in [
+        (json!([{ "give": { "item": "oil_flask" } }]), "0.give"),
+        (
+            json!([{ "shake": 0.2 }, { "take": { "item": "oil_flask", "count": 2 } }]),
+            "1.take",
+        ),
+    ] {
+        let cue: WorldCueActions = serde_json::from_value(value.clone()).unwrap();
+        let error = check_world_cue(&cue, &world).unwrap_err();
+        assert_eq!(error.field, field, "{value}");
+    }
+    let game: Result<CueAction, _> =
+        serde_json::from_value(json!({ "give": { "item": "oil_flask", "target": "game" } }));
+    assert!(
+        game.unwrap_err()
+            .to_string()
+            .contains("a bag is an entity's")
+    );
+}
