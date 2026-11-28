@@ -1,0 +1,23 @@
+{
+  "tag": "chandler",
+  "components": {
+    "counters": {
+      "trust": 3
+    },
+    "interactable": {
+      "verb": "Trade",
+      "who": {
+        "all": [
+          "team.player"
+        ]
+      }
+    },
+    "cues": {
+      "interacted": [
+        {
+          "shop": "chandlery"
+        }
+      ]
+    }
+  }
+}

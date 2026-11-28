@@ -18,7 +18,8 @@
 //! lamp is lit. 8.1's second plan: the oilskin hood, the oil flask and the
 //! brass charm, with the `fine` affix; the satchel warden, hooded while it
 //! wears the hood, whose flask refuels its lantern, and whose dropped flask
-//! lies until its bag has room.
+//! lies until its bag has room; the chandler, whose `interacted` cue opens
+//! its chandlery, the hood stocked from day four at its trusted price.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1376,5 +1377,42 @@ fn a_dropped_flask_lies_until_the_bag_has_room() {
             5,
             "dt {dt}: back in the bag"
         );
+    }
+}
+
+#[test]
+fn the_chandler_sells_the_hood_from_day_four_at_the_trusted_price() {
+    use crate::kit::{buy, price_of, visit};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "night_warden", [64.0, 64.0]);
+        let chandler = spawn(&mut harness, "chandler", [96.0, 64.0]);
+        let world = harness.world_mut();
+        world.insert(warden, Inventory::new(4));
+        world.insert_resource(Counters::new().with("coins", 50).with("day", 3));
+        harness.step(1);
+        harness.tap_action("interact");
+        let open = visit(harness.world()).expect("the cue opened it");
+        assert_eq!(
+            (open.shop(), open.keeper(), open.customer()),
+            ("chandlery", chandler, warden),
+            "dt {dt}"
+        );
+        let world = harness.world_mut();
+        assert_eq!(
+            price_of(world, "oilskin_hood"),
+            None,
+            "dt {dt}: not before day four"
+        );
+        world.resource_mut::<Counters>().set("day", 4);
+        assert_eq!(
+            price_of(world, "oilskin_hood"),
+            Some(8),
+            "dt {dt}: 12 × (1 − 0.1 × 3 trust), rounded"
+        );
+        buy(world, "oilskin_hood").unwrap();
+        assert_eq!(world.resource::<Counters>().get("coins"), 42, "dt {dt}");
+        assert_eq!(count_of(world, warden, "oilskin_hood"), 1, "dt {dt}");
     }
 }

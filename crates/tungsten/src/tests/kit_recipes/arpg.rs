@@ -8,7 +8,7 @@
 //! second plan: §9.2's ashwood wand and iron band with the wand's five
 //! affixes, `honed` local; the exile, who wears §4.6's wand, its lines on
 //! the exile, and keeps it through a save (§16's check); a rare wand lying
-//! labelled, picked up whole.
+//! labelled, picked up whole; the vendor, who buys the wand back.
 
 use tungsten_core::Entity;
 
@@ -404,6 +404,40 @@ fn a_rare_wand_on_the_ground_is_labelled_and_picked_up() {
         assert!(
             !harness.world().is_alive(wand),
             "dt {dt}: gone from the ground"
+        );
+    }
+}
+
+#[test]
+fn the_vendor_buys_the_wand_back() {
+    use crate::kit::{Counters, ShopRefusal, open_shop, sell};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let exile = spawn(&mut harness, "exile", [0.0, 0.0]);
+        let vendor = spawn(&mut harness, "vendor", [32.0, 0.0]);
+        harness.step(1);
+        let world = harness.world_mut();
+        give_item(world, exile, rare_wand()).unwrap();
+        assert!(open_shop(world, "vendor", vendor, exile), "dt {dt}");
+        assert_eq!(
+            sell(world, 0, 1),
+            Ok(10),
+            "dt {dt}: floor(40 × 0.25) to the exile"
+        );
+        assert_eq!(
+            world.get::<Counters>(exile).unwrap().get("coins"),
+            10,
+            "dt {dt}"
+        );
+        assert!(
+            world.get::<Inventory>(exile).unwrap().cell(0).is_none(),
+            "dt {dt}: sold"
+        );
+        assert_eq!(
+            sell(world, 0, 1),
+            Err(ShopRefusal::NotBought),
+            "dt {dt}: nothing there"
         );
     }
 }

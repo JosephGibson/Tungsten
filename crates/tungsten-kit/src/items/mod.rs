@@ -7,6 +7,7 @@ pub(crate) mod base;
 pub(crate) mod ground;
 pub(crate) mod inventory;
 pub(crate) mod item;
+pub(crate) mod shop;
 
 use tungsten_core::{Plugin, Schedule, World};
 

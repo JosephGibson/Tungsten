@@ -323,6 +323,10 @@ pub use items::inventory::{
     move_item, take, use_item, use_item_on,
 };
 pub use items::item::{BuiltItem, Item, RolledAffix, built};
+pub use items::shop::{
+    Pays, PriceScale, Shop, ShopClosed, ShopEntry, ShopOpened, ShopRefusal, ShopVisit, ShopsPlugin,
+    buy, end_shop, open_shop, price_of, sell, shop_stock, visit,
+};
 pub use lifecycle::cap::{Admission, Cap, CapPlugin, Past, admit_spawn, cap_refuses};
 pub use lifecycle::children::{SPAWN_CHILDREN, SpawnChildren, SpawnChildrenPlugin};
 pub use lifecycle::cooldown::{COOLDOWN_TICK, Cooldown, CooldownElapsed, CooldownPlugin};

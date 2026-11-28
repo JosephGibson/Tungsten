@@ -656,6 +656,7 @@ shape cue_action: One reaction to an event.
   field quest: shape quest_action — a quest started, advanced with its stage's rewards, failed or moved to a stage, at once; 8 story lists deep, a traced skip
   field give: shape item_action — some of an item base given to a bag at once, stacked then into empty cells; what does not fit, a traced skip; never in a world cue
   field take: shape item_action — some of an item base taken from a bag's cells at once, never a worn one; fewer held, a traced skip; never in a world cue
+  field shop: text — a `shops` entry's visit opened at once, the subject keeping it for the other; while one is open, a traced skip; never in a world cue
   field dialogue: dialogue ID or entry — a conversation started at once, the subject speaking and the other listening; without an other or while a talk runs, a traced skip; never in a world cue
   sample: { "despawn": {} }
 shape cue_amount: A rule's range over an occurrence's amount, each end inclusive and optional.
@@ -993,6 +994,13 @@ shape prefab_action: A prefab spawned from the subject at the event's position, 
   field at: one of event | centre | aim = null — the event's point, the subject's body centre, its `Position` plus its collider's offset, or the point the subject's `aim` aims at, else the event's; the event's point when left out
   field offset: [x, y] = null — moved from that point, its x mirrored while the subject faces left; unmoved when left out
   sample: { "id": "puff" }
+shape price_scale: A shop's price factor: clamp(1 + per × count, min, max), the count a counter of the keeper's, the customer's or the game's.
+  field counter: text — the counter read, 0 when its holder holds none
+  field target: one of self | other | game = "self" — the keeper's, the customer's or the game's
+  field per: f32 — the factor's change for each count
+  field min: f32 (> 0, <= 10) — the least factor, at most `max`
+  field max: f32 (> 0, <= 10) — the greatest factor
+  sample: { "counter": "trust", "per": -0.05, "min": 0.5, "max": 10 }
 shape projectile_end: What a projectile sets off at its own end: a hit past its pierce, a wall it neither passes nor turns at, or its range.
   exactly one of its fields
   field blast: shape blast_output — a blast at its hitbox's centre there, from its source, else itself, which it neither hurts nor pushes, in chemistry's run that step
@@ -1064,6 +1072,21 @@ shape shake_action: Camera trauma added: whole within `near` of the cue listener
   field near: f32 (>= 0) = 0.0 — world pixels from the listener within which it is whole
   field far: f32 (> 0) = null — world pixels from the listener at which it is none; above `near`
   sample: { "trauma": 0.3 }
+shape shop: A `shops` entry: stock, a currency counter, prices scaled by a counter, and what it buys back.
+  field name: text — its name, shown
+  field currency: text = "coins" — the counter its prices are paid in, dotted, undeclared
+  field pays: one of game | other = "game" — whose counters hold the currency: the game's or the customer's
+  field stock: list of shape shop_entry = [] — at most 256 entries, a base listed once; the load checks each
+  field buys: tag filter = null — a filter over a base's tags: what it buys; none buys nothing; the load checks its tags
+  field sell: f32 (>= 0, <= 1) = 0.5 — the share of its buy price now a sale pays a unit, floored
+  field scale: shape price_scale = null — a counter that scales every price; none: 1
+  sample: { "name": "Chandlery" }
+shape shop_entry: A base a shop sells: how many, its price, and when it shows, the keeper `self` and the customer `other`.
+  field item: text — the `item_bases` entry; the load checks it
+  field count: u32 (>= 1, <= 9999) = null — how many it holds, less what the ledger has sold; none: unlimited
+  field price: u32 = null — whole coins before the scale; none: the base's; 0 is free
+  field when: shape condition = null — it shows, and sells, only while this holds
+  sample: { "item": "oil_flask" }
 shape skill: An ability's skill sheet: its bases, the curves its level reads them through, and its skill-local lines.
   field bases: shape skill_bases = { "damage": {}, "crit_chance": null, "cost": null, "cooldown": null } — the sheet's own values before any line
   field levels: base (`damage`, `crit_chance`, `cost` or `cooldown`) → curves ID = {} — each read at the skill's level, its owner's entry's plus `add` lines on `skill_level`, 1 to 40; a damage range scaled about its midpoint to the curve's value
@@ -1171,6 +1194,7 @@ kind item_bases: An `item_base`: what every item of it shares, its slot, stack, 
 kind loot_tables: A `weighted_table`: what a `roll` cue action draws and spawns.
 kind offers: An `offers`: what a `level` draws at each level up.
 kind quests: A `quest`: stages of a journal line, objectives on conditions and rewards a holder takes.
+kind shops: A `shop`: its stock, scaled prices, what it buys and the share of its price a sale pays.
 kind speakers: A `speaker`: the name a conversation shows, its portraits by mood and its reveal pace.
 kind stats: An object of `stat_bounds` by stat name: each declares a game stat and its clamp.
 kind tags: A JSON array of tag names; each declares itself and its dotted ancestors.

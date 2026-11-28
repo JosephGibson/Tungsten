@@ -303,14 +303,25 @@ impl ItemLedger {
             .copied()
             .unwrap_or(0)
     }
+
+    /// Counts `count` more of `base` sold by `shop`.
+    pub(crate) fn add_sold(&mut self, shop: &str, base: &str, count: u32) {
+        let sold = self.sold.entry(format!("{shop}/{base}")).or_insert(0);
+        *sold = sold.saturating_add(count);
+    }
+}
+
+/// The World's ledger, inserted when it has none.
+pub(crate) fn ledger_mut(world: &mut World) -> &mut ItemLedger {
+    if !world.has_resource::<ItemLedger>() {
+        world.insert_resource(ItemLedger::default());
+    }
+    world.resource_mut::<ItemLedger>()
 }
 
 /// The next uid, from the World's ledger, inserted when it has none.
 fn next_uid(world: &mut World) -> u32 {
-    if !world.has_resource::<ItemLedger>() {
-        world.insert_resource(ItemLedger::default());
-    }
-    let ledger = world.resource_mut::<ItemLedger>();
+    let ledger = ledger_mut(world);
     let uid = ledger.next_uid;
     ledger.next_uid = ledger.next_uid.saturating_add(1).max(1);
     uid

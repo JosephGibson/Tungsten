@@ -1,0 +1,9 @@
+{
+  "name": "Ashgate Vendor",
+  "pays": "other",
+  "stock": [
+    { "item": "iron_band" }
+  ],
+  "buys": { "any": ["item.weapon", "item.ring"] },
+  "sell": 0.25
+}

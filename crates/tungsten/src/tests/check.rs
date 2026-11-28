@@ -743,6 +743,91 @@ fn a_broken_item_base_or_affix_fails_the_check_with_its_field_path() {
 
 #[cfg(feature = "kit")]
 #[test]
+fn a_broken_shop_fails_the_check_with_its_field_path() {
+    let good = serde_json::json!({
+        "name": "Chandlery",
+        "stock": [
+            { "item": "rod" },
+            { "item": "flask", "count": 2, "when": { "counter": { "name": "day", "min": 4, "target": "game" } } }
+        ],
+        "buys": { "any": ["item.rod"] },
+        "scale": { "counter": "trust", "per": -0.1, "min": 0.5, "max": 1 }
+    });
+    let edited = |edit: &dyn Fn(&mut serde_json::Value)| {
+        let mut value = good.clone();
+        edit(&mut value);
+        value
+    };
+    let cases = [
+        (good.clone(), None),
+        (
+            edited(&|v| v["stock"][0]["item"] = "lantern".into()),
+            Some("field `stock.0.item`: unknown item base `lantern`"),
+        ),
+        (
+            edited(&|v| v["stock"][1]["when"] = serde_json::json!({ "stat": { "name": "glow" } })),
+            Some("field `stock.1.when.stat.name`: unknown stat `glow`"),
+        ),
+        (
+            edited(&|v| v["buys"] = serde_json::json!({ "any": ["item.staff"] })),
+            Some("field `buys.any.0`: unknown tag `item.staff`"),
+        ),
+        (
+            edited(&|v| v["stock"][1]["item"] = "rod".into()),
+            Some("stock.1: `rod` listed twice"),
+        ),
+        (
+            edited(&|v| v["currency"] = "Coins!".into()),
+            Some("currency: `Coins!` is not a counter name"),
+        ),
+        (
+            edited(&|v| v["scale"]["min"] = 2.into()),
+            Some("min: 2 exceeds `max` 1"),
+        ),
+    ];
+    for (shop, expected) in cases {
+        let game = Folder::new();
+        game.png("assets/sprites/rod.png", 16);
+        game.write("assets/data/tags.json", r#"["item.rod"]"#);
+        game.write(
+            "assets/data/rod.json",
+            r#"{ "name": "Rod", "icon": "rod", "tags": ["item.rod"] }"#,
+        );
+        game.write(
+            "assets/data/flask.json",
+            r#"{ "name": "Flask", "icon": "rod", "stack": 5 }"#,
+        );
+        game.write("assets/data/chandlery.json", &shop.to_string());
+        let root = game.write(
+            "assets/manifest.json",
+            r#"{ "sprites": { "rod": { "path": "sprites/rod.png" } },
+                 "data": { "tags": { "game": { "path": "data/tags.json" } },
+                           "item_bases": { "rod": { "path": "data/rod.json" }, "flask": { "path": "data/flask.json" } },
+                           "shops": { "chandlery": { "path": "data/chandlery.json" } } } }"#,
+        );
+        let mut app = game_world();
+        let errors = check_files(app.world_mut(), &[root], &game.0);
+        match expected {
+            None => assert!(errors.is_empty(), "{errors:#?}"),
+            Some(message) => {
+                assert_eq!(errors.len(), 1, "{message}: {errors:#?}");
+                assert_eq!(
+                    errors[0].file,
+                    Path::new("assets/data/chandlery.json"),
+                    "{message}"
+                );
+                assert!(
+                    errors[0].message.contains(message),
+                    "{message}: {}",
+                    errors[0].message
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "kit")]
+#[test]
 fn a_broken_conversation_fails_the_check_with_its_field_path() {
     let good = serde_json::json!({
         "speaker": "keeper",

@@ -14,6 +14,9 @@
     },
     "wand_drop": {
       "path": "prefabs/wand_drop.json"
+    },
+    "vendor": {
+      "path": "prefabs/vendor.json"
     }
   },
   "data": {
@@ -60,6 +63,11 @@
       },
       "honed": {
         "path": "data/affixes/honed.json"
+      }
+    },
+    "shops": {
+      "vendor": {
+        "path": "data/shops/vendor.json"
       }
     }
   },

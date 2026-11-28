@@ -1,0 +1,13 @@
+{
+  "name": "Tamsin's Chandlery",
+  "stock": [
+    { "item": "oil_flask" },
+    {
+      "item": "oilskin_hood",
+      "count": 2,
+      "when": { "counter": { "name": "day", "min": 4, "target": "game" } }
+    }
+  ],
+  "buys": { "any": ["item.flask", "item.hood"] },
+  "scale": { "counter": "trust", "per": -0.1, "min": 0.5, "max": 1 }
+}

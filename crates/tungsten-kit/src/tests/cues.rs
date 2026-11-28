@@ -3924,3 +3924,16 @@ fn a_world_cue_refuses_give_and_take() {
             .contains("a bag is an entity's")
     );
 }
+
+#[test]
+fn a_world_cue_refuses_the_shop_action() {
+    let (world, _) = rig();
+    for (value, field) in [
+        (json!([{ "shop": "chandlery" }]), "0.shop"),
+        (json!([{ "shake": 0.2 }, { "shop": "vendor" }]), "1.shop"),
+    ] {
+        let cue: WorldCueActions = serde_json::from_value(value.clone()).unwrap();
+        let error = check_world_cue(&cue, &world).unwrap_err();
+        assert_eq!(error.field, field, "{value}");
+    }
+}

@@ -125,6 +125,9 @@
     },
     "flask_drop": {
       "path": "prefabs/flask_drop.json"
+    },
+    "chandler": {
+      "path": "prefabs/chandler.json"
     }
   },
   "data": {
@@ -216,6 +219,11 @@
     "affixes": {
       "fine": {
         "path": "data/affixes/fine.json"
+      }
+    },
+    "shops": {
+      "chandlery": {
+        "path": "data/shops/chandlery.json"
       }
     }
   },

@@ -34,6 +34,7 @@ use crate::foundation::{non_negative, optional_positive};
 use crate::intent::ability::{Abilities, AbilityUsed, Used, use_ability};
 use crate::intent::aim::Aim;
 use crate::items::inventory::{ItemActionDef, check_base_ref, give, take};
+use crate::items::shop::{check_shop_ref, open_shop};
 use crate::lifecycle::cap::admit;
 use crate::lifecycle::cooldown::CooldownElapsed;
 use crate::lifecycle::ended::{Despawning, mark_despawning};
@@ -441,6 +442,9 @@ pub(crate) enum ActionKind {
     /// Some of an item base taken from the subject's or the other's bag,
     /// boxed as `Give` is.
     Take(Box<ItemActionDef>),
+    /// A shop visit opened, the subject keeping it for the other: a
+    /// `String`, `Dialogue`'s size.
+    Shop(String),
 }
 
 /// A counter action's change.
@@ -1287,6 +1291,24 @@ impl CueAction {
         ))))
     }
 
+    /// Opens a visit of shop `id`, a `shops` entry, at once, the subject
+    /// keeping it and the other entity its customer (redo 8.1), as
+    /// [`open_shop`](crate::open_shop) does. Data form
+    /// `{ "shop": "chandlery" }`; never in a world cue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let trade = CueAction::shop("chandlery");
+    /// assert_eq!(serde_json::to_value(&trade).unwrap(), serde_json::json!({ "shop": "chandlery" }));
+    /// ```
+    #[must_use]
+    pub fn shop(id: impl Into<String>) -> Self {
+        Self::of(ActionKind::Shop(id.into()))
+    }
+
     #[track_caller]
     fn item_action(method: &str, item: impl Into<String>, count: u32) -> ItemActionDef {
         assert!(
@@ -1414,6 +1436,7 @@ impl CueAction {
             ActionKind::Quest(_) => "quest",
             ActionKind::Give(_) => "give",
             ActionKind::Take(_) => "take",
+            ActionKind::Shop(_) => "shop",
         }
     }
 }
@@ -1470,6 +1493,7 @@ pub(crate) enum CueActionDef {
     Quest(QuestActionDef),
     Give(ItemActionDef),
     Take(ItemActionDef),
+    Shop(String),
 }
 
 /// A `camera` action as data writes it: exactly one of `raise` and
@@ -2173,6 +2197,7 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Quest(quest) => ActionKind::Quest(Box::new(quest)),
             CueActionDef::Give(item) => ActionKind::Give(Box::new(item)),
             CueActionDef::Take(item) => ActionKind::Take(Box::new(item)),
+            CueActionDef::Shop(id) => ActionKind::Shop(id),
         };
         Ok(Self { kind })
     }
@@ -2282,6 +2307,7 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Quest(quest) => CueActionDef::Quest(*quest),
             ActionKind::Give(item) => CueActionDef::Give(*item),
             ActionKind::Take(item) => CueActionDef::Take(*item),
+            ActionKind::Shop(id) => CueActionDef::Shop(id),
         }
     }
 }
@@ -3615,6 +3641,16 @@ fn check_actions(
             }
             ActionKind::Clip(clips) => check_clips(world, &at, clips)?,
             ActionKind::Dialogue(conversation) => conversation.check(world, &at)?,
+            ActionKind::Shop(id) => {
+                check_shop_ref(world, &at, id)?;
+                if !event.other {
+                    return Err(MissingAsset::new(
+                        at,
+                        "cue event with an other entity, the customer",
+                        event.name,
+                    ));
+                }
+            }
             ActionKind::Give(item) | ActionKind::Take(item) => {
                 check_base_ref(world, &format!("{at}.item"), &item.item)?;
                 if item.target == Target::Other && !event.other {
@@ -3826,6 +3862,7 @@ fn needs_subject(action: &CueAction) -> bool {
             | ActionKind::Loop { .. }
             | ActionKind::Stop { .. }
             | ActionKind::Dialogue(_)
+            | ActionKind::Shop(_)
     ) || matches!(&action.kind, ActionKind::Say(say) if !say.other)
         || matches!(&action.kind, ActionKind::Quest(quest) if quest.target == Target::Subject)
         || matches!(&action.kind, ActionKind::Give(item) | ActionKind::Take(item) if item.target == Target::Subject)
@@ -4144,6 +4181,8 @@ const NO_QUEST: &str = "the quest changed nothing";
 const NO_ROOM: &str = "the bag had no room for all of them, or no inventory";
 /// Why a `take` took fewer.
 const TOO_FEW: &str = "the bag held fewer of them, or no inventory";
+/// Why a `shop` opened nothing.
+const NO_SHOP: &str = "a visit is open, or the shop is unknown";
 const NO_AMOUNT: &str = "the event has no amount";
 const NO_COMMANDS: &str = "the World has no CommandBuffer";
 const NO_QUEUE: &str = "the World has no queue for it";
@@ -4915,6 +4954,14 @@ impl Reactor {
                 }
                 if !act(world, holder, &quest.id, &quest.op) {
                     return skip(world, NO_QUEST);
+                }
+            }
+            ActionKind::Shop(id) => {
+                let Some(customer) = target(Target::Other, world) else {
+                    return skip(world, NO_OTHER);
+                };
+                if !open_shop(world, id, subject, customer) {
+                    return skip(world, NO_SHOP);
                 }
             }
             ActionKind::Give(item) => {
@@ -5780,6 +5827,11 @@ fn describe_cues(world: &mut World) {
                 "take",
                 FieldType::Shape("item_action"),
                 "some of an item base taken from a bag's cells at once, never a worn one; fewer held, a traced skip; never in a world cue",
+            ))
+            .field(FieldDescription::new(
+                "shop",
+                FieldType::Text,
+                "a `shops` entry's visit opened at once, the subject keeping it for the other; while one is open, a traced skip; never in a world cue",
             ))
             .field(FieldDescription::new(
                 "dialogue",
