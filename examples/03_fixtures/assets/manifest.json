@@ -45,6 +45,10 @@
   "ui_screens": {
     "dialogue": { "path": "story/dialogue.json" },
     "journal": { "path": "story/journal.json" },
-    "name_card": { "path": "story/name_card.json" }
+    "name_card": { "path": "story/name_card.json" },
+    "inventory": { "path": "items/inventory.json" },
+    "shop": { "path": "items/shop.json" },
+    "item_tooltip": { "path": "items/item_tooltip.json" },
+    "cell_menu": { "path": "items/cell_menu.json" }
   }
 }

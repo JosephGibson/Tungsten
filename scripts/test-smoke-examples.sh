@@ -101,7 +101,7 @@ if run_case "all pass" 0; then
   for line in "Passed: 3/3" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 4/4" \
     "Post-AA passed: 1/1" "Bloom passed: 1/1" "HDR passed: 5/5" "Lighting passed: 2/2" "Seams passed: 1/1" \
     "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "UI screens passed: 1/1" \
-    "Debug views passed: 1/1" "Story passed: 1/1" "Benchmarks passed: 29/29" \
+    "Debug views passed: 1/1" "Story passed: 1/1" "Items passed: 1/1" "Benchmarks passed: 29/29" \
     "Frame cap passed: 1/1"; do
     expect_output "all pass" "$line"
   done
@@ -138,6 +138,7 @@ example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=16 timing= bench= 
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=150 timing= bench= preset= scene=ui ui=menus
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=120 timing= bench= preset= scene=ui ui=debug
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=30 timing= bench= preset= scene=story
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=30 timing= bench= preset= scene=items
 example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=physics preset=min
 example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=physics preset=default
 example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=physics preset=sparse-min

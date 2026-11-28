@@ -24,13 +24,18 @@
 //!   pixels `just visual` checks; no variables of its own.
 //! - `story` ([`story`]): redo 8.1's sketch of the kit's story systems, a
 //!   talk, a quest, a bark, the journal and a name typed into a text field;
-//!   no variables of its own. The one scene on the kit, so its data is
-//!   inline JSON and the manifest lists its screen files alone.
+//!   no variables of its own. A scene on the kit, so its data is inline
+//!   JSON and the manifest lists its screen files alone.
+//! - `items` ([`items`]): redo 8.1's second sketch, the kit's items: ground
+//!   items labelled by rarity, the chandler's shop and the inventory, with
+//!   its tooltips, cell menu and drags; no variables of its own. On the kit
+//!   as `story` is.
 //!
 //! Like `02_bench`, every scene runs from the repository root on the root
 //! `tungsten.json` and `input.json`, and composes the root manifest with
 //! `examples/03_fixtures/assets/manifest.json`.
 
+pub mod items;
 pub mod lighting;
 pub mod post;
 pub mod seams;
@@ -39,7 +44,7 @@ pub mod transition;
 pub mod ui;
 
 /// The scenes `TUNGSTEN_FIXTURE` accepts.
-const SCENES: &str = "post, transition, ui, lighting, seams, story";
+const SCENES: &str = "post, transition, ui, lighting, seams, story, items";
 
 /// Runs the scene `TUNGSTEN_FIXTURE` names, `ui` when it is unset; any other
 /// value fails with the list of scenes.
@@ -52,6 +57,7 @@ pub fn run() -> anyhow::Result<()> {
         "lighting" => lighting::run(),
         "seams" => seams::run(),
         "story" => story::run(),
+        "items" => items::run(),
         _ => anyhow::bail!("invalid TUNGSTEN_FIXTURE='{scene}': expected one of {SCENES}"),
     }
 }

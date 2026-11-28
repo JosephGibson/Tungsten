@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "screen",
+    "width": 720,
+    "children": [
+      { "kind": "heading", "key": "name", "bind": { "text": "shop.name" } },
+      {
+        "kind": "row",
+        "layout": { "gap": 8 },
+        "children": [
+          { "kind": "small", "text": "Coins" },
+          { "kind": "small", "key": "coins", "bind": { "text": "shop.coins" } }
+        ]
+      },
+      {
+        "kind": "row",
+        "layout": { "gap": 12 },
+        "children": [
+          {
+            "kind": "column",
+            "layout": { "width": 200, "gap": 6 },
+            "children": [
+              { "kind": "small", "text": "For sale: drag onto your bag" },
+              {
+                "kind": "repeat",
+                "key": "stock",
+                "rows": "shop.stock",
+                "layout": { "gap": 6 },
+                "row": {
+                  "kind": "button",
+                  "field": "name",
+                  "style_field": "style",
+                  "drag": true,
+                  "tooltip": { "screen": "item_tooltip" },
+                  "on": { "action": "shop.buy" },
+                  "layout": { "direction": "row", "gap": 8, "align_items": "center" },
+                  "children": [
+                    { "kind": "image", "field": "icon" },
+                    { "kind": "small", "field": "price" },
+                    { "kind": "small", "field": "count" }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "column",
+            "layout": { "gap": 6 },
+            "children": [
+              { "kind": "small", "text": "Your bag" },
+              {
+                "kind": "repeat",
+                "key": "cells",
+                "rows": "inventory.cells",
+                "layout": { "columns": ["auto", "auto", "auto", "auto", "auto", "auto", "auto", "auto"], "gap": 6 },
+                "row": {
+                  "kind": "button",
+                  "field": "count",
+                  "style_field": "style",
+                  "drag": true,
+                  "drop": true,
+                  "tooltip": { "screen": "item_tooltip" },
+                  "on": { "popup": "cell_menu" },
+                  "layout": { "width": 52, "height": 52, "align_items": "center" },
+                  "children": [{ "kind": "image", "field": "icon" }]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "kind": "row",
+        "layout": { "gap": 8 },
+        "children": [
+          { "kind": "button", "key": "sell", "text": "Sell here", "drop": true },
+          { "kind": "button", "key": "leave", "text": "Leave", "on": { "action": "shop.leave" } }
+        ]
+      }
+    ]
+  }
+}

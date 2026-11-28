@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "root",
+    "layer": "game_popup",
+    "children": [
+      {
+        "kind": "panel",
+        "layout": { "max_width": 320, "padding": "spacing.sm", "gap": 2 },
+        "children": [
+          { "kind": "label", "key": "name", "bind": { "text": "item.name", "style": "item.style" } },
+          { "kind": "small", "key": "slot", "bind": { "text": "item.slot" } },
+          { "kind": "repeat", "key": "block", "rows": "item.block", "row": { "kind": "small", "field": "text" } },
+          { "kind": "repeat", "key": "lines", "rows": "item.lines", "row": { "kind": "small", "field": "text" } },
+          { "kind": "small", "key": "requires", "bind": { "text": "item.requires" } },
+          { "kind": "small", "key": "price", "bind": { "text": "item.price", "visible": "item.priced" } }
+        ]
+      }
+    ]
+  }
+}

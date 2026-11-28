@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "screen",
+    "width": 520,
+    "children": [
+      { "kind": "heading", "text": "Satchel" },
+      {
+        "kind": "row",
+        "layout": { "gap": 8 },
+        "children": [
+          { "kind": "small", "text": "Coins" },
+          { "kind": "small", "key": "coins", "bind": { "text": "inventory.coins" } }
+        ]
+      },
+      {
+        "kind": "repeat",
+        "key": "worn",
+        "rows": "inventory.worn",
+        "layout": { "direction": "row", "gap": 6 },
+        "row": {
+          "kind": "button",
+          "field": "slot",
+          "style": "small",
+          "drag": true,
+          "drop": true,
+          "tooltip": { "screen": "item_tooltip" },
+          "on": { "popup": "cell_menu" },
+          "layout": { "width": 80, "height": 60, "align_items": "center" },
+          "children": [{ "kind": "image", "field": "icon" }]
+        }
+      },
+      {
+        "kind": "repeat",
+        "key": "cells",
+        "rows": "inventory.cells",
+        "layout": { "columns": ["auto", "auto", "auto", "auto", "auto", "auto", "auto", "auto"], "gap": 6 },
+        "row": {
+          "kind": "button",
+          "field": "count",
+          "style_field": "style",
+          "drag": true,
+          "drop": true,
+          "tooltip": { "screen": "item_tooltip" },
+          "on": { "popup": "cell_menu" },
+          "layout": { "width": 52, "height": 52, "align_items": "center" },
+          "children": [{ "kind": "image", "field": "icon" }]
+        }
+      },
+      {
+        "kind": "small",
+        "key": "holding",
+        "text": "Accept on a cell or a slot to put it there",
+        "bind": { "visible": "inventory.holding" }
+      },
+      {
+        "kind": "row",
+        "layout": { "gap": 8 },
+        "children": [
+          { "kind": "button", "key": "ground", "text": "Drop on the ground", "drop": true },
+          { "kind": "button", "key": "close", "text": "Close", "on": "pop" }
+        ]
+      }
+    ]
+  }
+}
