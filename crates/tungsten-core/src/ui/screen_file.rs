@@ -493,6 +493,102 @@ pub(crate) struct LayoutFile {
     pub(crate) justify_content: Option<JustifyName>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) anchor: Option<AnchorFile>,
+    /// A grid's columns (`D-31[6]`): 1 to 32 tracks.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "grid_columns"
+    )]
+    pub(crate) columns: Option<Vec<TrackFile>>,
+    /// A grid's rows, from the first: `auto` or a length each.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "grid_rows"
+    )]
+    pub(crate) rows: Option<Vec<TrackFile>>,
+}
+
+/// A grid track: `auto`, a length, or `<n>fr` for a column.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum TrackFile {
+    Auto,
+    Length(Length),
+    Fr(f32),
+}
+
+impl TrackFile {
+    fn named(text: &str) -> Result<Self, String> {
+        if text == "auto" {
+            return Ok(Self::Auto);
+        }
+        if let Some(share) = text.strip_suffix("fr") {
+            let share = share
+                .parse::<f32>()
+                .ok()
+                .filter(|v| v.is_finite() && *v > 0.0);
+            return share
+                .map(Self::Fr)
+                .ok_or_else(|| format!("'{text}' is not a share above 0 (`<n>fr`)"));
+        }
+        Ok(Self::Length(Length::named(text)?))
+    }
+}
+
+impl Serialize for TrackFile {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Auto => serializer.serialize_str("auto"),
+            Self::Length(length) => length.serialize(serializer),
+            Self::Fr(share) => serializer.serialize_str(&format!("{share}fr")),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TrackFile {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(Forms {
+            expecting: "a length, auto or a share (`<n>fr`)",
+            number: |value| {
+                let units = units(value)?;
+                if units < 0.0 {
+                    return Err(format!("{value} is not a size at least 0"));
+                }
+                Ok(Self::Length(Length::Units(units)))
+            },
+            text: Self::named,
+        })
+    }
+}
+
+/// `layout.columns`: 1 to 32 tracks.
+fn grid_columns<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<TrackFile>>, D::Error> {
+    let columns = Vec::<TrackFile>::deserialize(deserializer)?;
+    if columns.is_empty() || columns.len() > 32 {
+        return Err(serde::de::Error::custom(format!(
+            "a grid has 1 to 32 columns, not {}",
+            columns.len()
+        )));
+    }
+    Ok(Some(columns))
+}
+
+/// `layout.rows`: `auto` or a length each, no share.
+fn grid_rows<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<TrackFile>>, D::Error> {
+    let rows = Vec::<TrackFile>::deserialize(deserializer)?;
+    if let Some(at) = rows
+        .iter()
+        .position(|track| matches!(track, TrackFile::Fr(_)))
+    {
+        return Err(serde::de::Error::custom(format!(
+            "row {at}: a row takes `auto` or a length, not a share"
+        )));
+    }
+    Ok(Some(rows))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -872,6 +968,13 @@ impl LayoutFile {
         }
         if let Some(gap) = &self.gap {
             length(&mut out, "gap".into(), gap);
+        }
+        for (field, tracks) in [("columns", &self.columns), ("rows", &self.rows)] {
+            for (at, track) in tracks.iter().flatten().enumerate() {
+                if let TrackFile::Length(each) = track {
+                    length(&mut out, format!("{field}[{at}]"), each);
+                }
+            }
         }
         if let Some(offset) = self
             .anchor
@@ -1593,9 +1696,25 @@ pub fn json_schema() -> Value {
                     json!({ "enum": ["start", "center", "end", "space_between", "space_around", "space_evenly"] }),
                 ),
                 ("anchor", reference("anchor")),
+                (
+                    "columns",
+                    json!({ "type": "array", "items": reference("track"), "minItems": 1, "maxItems": 32 }),
+                ),
+                (
+                    "rows",
+                    json!({ "type": "array", "items": { "anyOf": [reference("length"), { "const": "auto" }] } }),
+                ),
             ],
             &[],
         ),
+    );
+    defs.insert(
+        "track".into(),
+        json!({ "anyOf": [
+            reference("length"),
+            { "const": "auto" },
+            { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?fr$" },
+        ] }),
     );
     let corners = [
         "top_start",

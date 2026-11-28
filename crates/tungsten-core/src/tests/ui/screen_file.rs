@@ -650,3 +650,46 @@ fn a_text_field_node_parses_and_refuses_an_unknown_field() {
         );
     }
 }
+
+#[test]
+fn columns_and_rows_parse_and_refuse_a_bad_track() {
+    let json = screen(
+        r#"{"kind": "group", "layout": {"columns": ["auto", "1fr", 24, "spacing.sm", "cell_w", "2.5fr"], "rows": ["auto", 30]}}"#,
+    );
+    let file = read(&json);
+    let canonical = file.to_canonical();
+    assert_eq!(
+        read(&canonical).to_canonical(),
+        canonical,
+        "it reads back as itself"
+    );
+    assert!(canonical.contains(r#""columns": ["#), "{canonical}");
+    assert!(
+        canonical.contains(r#""2.5fr""#) && canonical.contains(r#""cell_w""#),
+        "{canonical}"
+    );
+    for (layout, why) in [
+        (r#"{"columns": []}"#, "1 to 32 columns, not 0"),
+        (r#"{"columns": ["0fr"]}"#, "'0fr' is not a share above 0"),
+        (r#"{"columns": ["-1fr"]}"#, "'-1fr' is not a share above 0"),
+        (r#"{"columns": ["fr"]}"#, "'fr' is not a share above 0"),
+        (r#"{"columns": [-5]}"#, "-5 is not a size at least 0"),
+        (
+            r#"{"columns": ["auto"], "rows": ["1fr"]}"#,
+            "row 0: a row takes `auto` or a length, not a share",
+        ),
+        (r#"{"columns": [true]}"#, "a length, auto or a share"),
+    ] {
+        let message = error(&screen(&format!(
+            r#"{{"kind": "group", "layout": {layout}}}"#
+        )))
+        .to_string();
+        assert!(message.contains(why), "{layout}: {message}");
+    }
+    let many = vec!["\"auto\""; 33].join(", ");
+    let message = error(&screen(&format!(
+        r#"{{"kind": "group", "layout": {{"columns": [{many}]}}}}"#
+    )))
+    .to_string();
+    assert!(message.contains("1 to 32 columns, not 33"), "{message}");
+}

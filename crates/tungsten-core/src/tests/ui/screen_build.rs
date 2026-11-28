@@ -732,3 +732,53 @@ fn a_changed_layer_waits_for_the_next_build() {
         "y"
     );
 }
+
+#[test]
+fn a_repeat_with_columns_lays_its_rows_out_as_cells() {
+    let mut world = world(&[(
+        "menu",
+        &screen(
+            r#"{"kind": "repeat", "key": "slots", "rows": "rows", "layout": {"columns": ["auto", "1fr"], "gap": 4},
+                "row": {"kind": "label", "field": "name"}}"#,
+        ),
+    )]);
+    world.resource_mut::<Values>().rows = vec![
+        UiRow::new("a").with("name", "Alpha"),
+        UiRow::new("b").with("name", "B"),
+        UiRow::new("c").with("name", "Gamma"),
+    ];
+    let built = build(&mut world, "menu").expect("built");
+    let container = keyed(&world, built.root, "slots");
+    assert!(
+        tree(&world).grid(container).is_some(),
+        "the repeat's container holds the grid"
+    );
+    layout(&mut world);
+    let tree = tree(&world);
+    let rects: Vec<_> = tree
+        .children(container)
+        .iter()
+        .map(|row| tree.rect(*row).unwrap())
+        .collect();
+    let at = tree.rect(container).unwrap().min;
+    let (alpha, b, gamma) = (rects[0], rects[1], rects[2]);
+    assert_eq!(alpha.min, at, "the first row the first cell");
+    assert_eq!(b.min.y, alpha.min.y, "the second beside it");
+    assert_eq!(
+        b.min.x,
+        alpha.max.x + 4.0,
+        "after the auto column and the gap"
+    );
+    assert_eq!(gamma.min.x, at.x, "the third starts the next row");
+    assert_eq!(gamma.min.y, alpha.max.y + 4.0);
+    assert_eq!(
+        gamma.width(),
+        alpha.width(),
+        "one auto column, as wide as its widest"
+    );
+    assert_eq!(
+        b.max.x,
+        tree.rect(container).unwrap().max.x,
+        "the 1fr column takes the rest"
+    );
+}

@@ -1037,3 +1037,201 @@ fn a_label_sized_to_its_text_commits_one_line_at_an_inexact_advance() {
         "{rect:?}"
     );
 }
+
+/// A grid root of `columns`, `width` wide with `gap`, holding a label of
+/// each text.
+fn grid_root(
+    columns: Vec<crate::ui::Track>,
+    width: f32,
+    gap: f32,
+    texts: &[&str],
+) -> (UiTree, WidgetId) {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(
+        UiLayer::Game,
+        LayoutStyle::column()
+            .with_size(Sizing::Px(width), Sizing::Auto)
+            .with_gap(gap),
+    );
+    assert!(tree.set_grid(root, Some(crate::ui::Grid::new(columns))));
+    for text in texts {
+        tree.label(root, *text);
+    }
+    (tree, root)
+}
+
+#[test]
+fn a_grid_places_its_children_in_rows_of_its_columns() {
+    use crate::ui::Track;
+    let (mut tree, _) = grid_root(
+        vec![Track::Px(50.0), Track::Px(30.0)],
+        200.0,
+        4.0,
+        &["a", "b", "c", "d", "e"],
+    );
+    let mut store = store();
+    tree.layout(VIEWPORT, &mut store);
+    assert_eq!(
+        tree.dump_layout(),
+        "Panel None Visible (0.0, 0.0) 200.0×68.0\n\
+         \x20 Label Label Visible (0.0, 0.0) 50.0×20.0\n\
+         \x20 Label Label Visible (54.0, 0.0) 30.0×20.0\n\
+         \x20 Label Label Visible (0.0, 24.0) 50.0×20.0\n\
+         \x20 Label Label Visible (54.0, 24.0) 30.0×20.0\n\
+         \x20 Label Label Visible (0.0, 48.0) 50.0×20.0\n"
+    );
+    assert_commits_fit(&tree, &mut store);
+}
+
+#[test]
+fn auto_and_fr_columns_line_up_across_rows() {
+    use crate::ui::Track;
+    let (mut tree, _) = grid_root(
+        vec![Track::Auto, Track::Fr(1.0), Track::Fr(2.0)],
+        300.0,
+        0.0,
+        &["ab", "x", "y", "abcd", "z", "w"],
+    );
+    let mut store = store();
+    tree.layout(VIEWPORT, &mut store);
+    assert_eq!(
+        tree.dump_layout(),
+        "Panel None Visible (0.0, 0.0) 300.0×40.0\n\
+         \x20 Label Label Visible (0.0, 0.0) 32.0×20.0\n\
+         \x20 Label Label Visible (32.0, 0.0) 89.3×20.0\n\
+         \x20 Label Label Visible (121.3, 0.0) 178.7×20.0\n\
+         \x20 Label Label Visible (0.0, 20.0) 32.0×20.0\n\
+         \x20 Label Label Visible (32.0, 20.0) 89.3×20.0\n\
+         \x20 Label Label Visible (121.3, 20.0) 178.7×20.0\n",
+        "the auto column as wide as its widest cell in every row"
+    );
+    assert_commits_fit(&tree, &mut store);
+}
+
+#[test]
+fn a_grid_cell_fills_or_keeps_its_own_size() {
+    use crate::ui::{Grid, Track};
+    let mut tree = UiTree::new();
+    let root = tree.add_root(
+        UiLayer::Game,
+        LayoutStyle::column().with_size(Sizing::Px(120.0), Sizing::Auto),
+    );
+    tree.set_grid(
+        root,
+        Some(Grid::new([Track::Px(60.0), Track::Px(60.0)]).with_rows([Track::Px(50.0)])),
+    );
+    tree.panel(
+        root,
+        LayoutStyle::default().with_size(Sizing::Auto, Sizing::Px(40.0)),
+    );
+    tree.panel(
+        root,
+        LayoutStyle::default().with_size(Sizing::Auto, Sizing::Fill),
+    );
+    tree.label(root, "ab");
+    tree.panel(
+        root,
+        LayoutStyle::default().with_size(Sizing::Auto, Sizing::Fill),
+    );
+    let mut store = store();
+    tree.layout(VIEWPORT, &mut store);
+    assert_eq!(
+        tree.dump_layout(),
+        "Panel None Visible (0.0, 0.0) 120.0×70.0\n\
+         \x20 Panel None Visible (0.0, 0.0) 60.0×40.0\n\
+         \x20 Panel None Visible (60.0, 0.0) 60.0×50.0\n\
+         \x20 Label Label Visible (0.0, 50.0) 60.0×20.0\n\
+         \x20 Panel None Visible (60.0, 50.0) 60.0×20.0\n",
+        "a fill stretches to its row, the first fixed at 50; a fixed cell keeps its own"
+    );
+}
+
+#[test]
+fn a_grids_second_layout_does_nothing() {
+    use crate::ui::Track;
+    let (mut tree, root) = grid_root(
+        vec![Track::Auto, Track::Fr(1.0)],
+        200.0,
+        2.0,
+        &["ab", "c", "abcd", "e"],
+    );
+    let mut store = store();
+    let first = tree.layout(VIEWPORT, &mut store);
+    assert_eq!(first.roots_laid_out, 1);
+    let laid = tree.dump_layout();
+    let second = tree.layout(VIEWPORT, &mut store);
+    assert_eq!(
+        (
+            second.roots_laid_out,
+            second.nodes_laid_out,
+            second.measure_calls
+        ),
+        (0, 0, 0)
+    );
+    assert_eq!(tree.dump_layout(), laid);
+    // A changed cell relays the grid out to the same columns.
+    let cell = tree.children(root)[1];
+    tree.set_text(cell, "cc");
+    assert_eq!(tree.layout(VIEWPORT, &mut store).roots_laid_out, 1);
+    assert_eq!(
+        tree.rect(cell).map(|rect| rect.min.x),
+        Some(34.0),
+        "after the auto column's 32 and the gap"
+    );
+}
+
+#[test]
+fn a_root_without_a_grid_builds_the_tree_it_built() {
+    use crate::ui::Track;
+    let (mut tree, column, ..) = case_a();
+    let mut store = store();
+    tree.resolve_styles();
+    tree.prepare_text(column, 1.0, &mut store);
+    let plain =
+        crate::ui::layout::taffy::lay_out_root(&mut tree, column, VIEWPORT, 1.0, &mut store);
+    assert_eq!(
+        (plain.nodes, plain.taffy_nodes),
+        (4, 5),
+        "its widgets and the viewport, no more"
+    );
+    let (mut tree, root) = grid_root(
+        vec![Track::Px(20.0), Track::Px(20.0)],
+        100.0,
+        0.0,
+        &["a", "b", "c"],
+    );
+    tree.resolve_styles();
+    tree.prepare_text(root, 1.0, &mut store);
+    let gridded =
+        crate::ui::layout::taffy::lay_out_root(&mut tree, root, VIEWPORT, 1.0, &mut store);
+    assert_eq!(
+        (gridded.nodes, gridded.taffy_nodes),
+        (4, 7),
+        "and a grid's two synthetic rows"
+    );
+}
+
+#[test]
+fn a_node_with_a_control_takes_no_grid() {
+    use crate::ui::{Grid, SliderRange, Track};
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::Game, LayoutStyle::column());
+    let grid = || Some(Grid::new([Track::Auto]));
+    let toggle = tree.toggle(root, false);
+    let slider = tree.slider(root, SliderRange::new(0.0, 1.0), 0.5);
+    let field = tree.text_field(root, "");
+    let label = tree.label(root, "x");
+    for refused in [toggle, slider, field, label] {
+        assert!(!tree.set_grid(refused, grid()), "{:?}", tree.kind(refused));
+        assert!(tree.grid(refused).is_none());
+    }
+    assert_eq!(tree.toggled(toggle), Some(false), "its control kept");
+    let panel = tree.panel(root, LayoutStyle::column());
+    assert!(tree.set_grid(panel, grid()));
+    assert_eq!(
+        tree.grid(panel).map(Grid::columns),
+        Some(&[Track::Auto][..])
+    );
+    assert!(tree.set_grid(panel, None));
+    assert!(tree.grid(panel).is_none());
+}

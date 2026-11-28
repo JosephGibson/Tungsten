@@ -24,7 +24,7 @@ use super::node::{
 };
 use super::prompt::Prompt;
 use super::style::LayoutStyle;
-use super::style::{Anchor, Sizing};
+use super::style::{Anchor, Grid, Sizing};
 use super::theme::{self, ResolvedStyle, StyleOverrides, Theme, ThemeEpoch, WidgetState};
 
 /// The key of the root that draws the pointer sprite (redo 7.17).
@@ -812,6 +812,37 @@ impl UiTree {
     #[must_use]
     pub fn layout_style(&self, id: WidgetId) -> Option<&LayoutStyle> {
         self.node(id).map(|node| &node.layout_style)
+    }
+
+    /// Lays `id`'s flowed children out in `grid`'s rows and columns, or
+    /// clears its grid with `None`; marks layout when it changes. False,
+    /// changing nothing, for an invalid ID, a leaf kind or a node holding a
+    /// toggle, slider or text field.
+    pub fn set_grid(&mut self, id: WidgetId, grid: Option<Grid>) -> bool {
+        let Some(node) = self.node_mut(id) else {
+            return false;
+        };
+        if node.kind.is_leaf()
+            || node
+                .control
+                .as_ref()
+                .is_some_and(|control| control.grid().is_none())
+        {
+            return false;
+        }
+        let next = grid.map(|grid| super::control::Control::Grid(Box::new(grid)));
+        if node.control == next {
+            return true;
+        }
+        node.control = next;
+        self.mark_layout_dirty(id);
+        true
+    }
+
+    /// The grid `id` lays its children out in, when it has one.
+    #[must_use]
+    pub fn grid(&self, id: WidgetId) -> Option<&Grid> {
+        self.node(id)?.control.as_ref()?.grid()
     }
 
     /// Edits the layout style in place: `edit` runs on a copy, which is set,

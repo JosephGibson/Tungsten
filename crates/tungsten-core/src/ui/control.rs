@@ -168,13 +168,15 @@ impl SliderRange {
     }
 }
 
-/// A toggle's state, a slider's value and range, or a text field's state,
-/// boxed so the control keeps its size in every node (redo 8.1).
+/// A toggle's state, a slider's value and range, a text field's state, or
+/// a grid's tracks, the last two boxed so the control keeps its size in
+/// every node (redo 8.1).
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Control {
     Toggle(bool),
     Slider { value: f32, range: SliderRange },
     Field(Box<FieldState>),
+    Grid(Box<Grid>),
 }
 
 impl Control {
@@ -185,12 +187,21 @@ impl Control {
         match self {
             Self::Toggle(_) => (line, line),
             Self::Slider { .. } => (line * 10.0, line),
-            Self::Field(_) => (0.0, 0.0),
+            Self::Field(_) | Self::Grid(_) => (0.0, 0.0),
+        }
+    }
+
+    /// Its grid, for a grid's container.
+    pub(crate) fn grid(&self) -> Option<&Grid> {
+        match self {
+            Self::Grid(grid) => Some(grid),
+            _ => None,
         }
     }
 }
 
 use super::field::FieldState;
+use super::style::Grid;
 
 /// The side of the square thumb of a slider whose box is `rect`: its
 /// height, or its width when narrower.
@@ -300,7 +311,7 @@ impl UiTree {
     pub fn toggled(&self, id: WidgetId) -> Option<bool> {
         match self.node(id)?.control.as_ref()? {
             Control::Toggle(on) => Some(*on),
-            Control::Slider { .. } | Control::Field(_) => None,
+            Control::Slider { .. } | Control::Field(_) | Control::Grid(_) => None,
         }
     }
 
@@ -325,7 +336,7 @@ impl UiTree {
     pub fn slider_value(&self, id: WidgetId) -> Option<f32> {
         match self.node(id)?.control.as_ref()? {
             Control::Slider { value, .. } => Some(*value),
-            Control::Toggle(_) | Control::Field(_) => None,
+            Control::Toggle(_) | Control::Field(_) | Control::Grid(_) => None,
         }
     }
 
@@ -357,7 +368,7 @@ impl UiTree {
     pub fn slider_range(&self, id: WidgetId) -> Option<SliderRange> {
         match self.node(id)?.control.as_ref()? {
             Control::Slider { range, .. } => Some(*range),
-            Control::Toggle(_) | Control::Field(_) => None,
+            Control::Toggle(_) | Control::Field(_) | Control::Grid(_) => None,
         }
     }
 

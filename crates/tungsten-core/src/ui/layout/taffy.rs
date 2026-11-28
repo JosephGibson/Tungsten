@@ -11,7 +11,10 @@
 //! landed a rounding error under it, so a box sized to its text never wraps
 //! it. A shrinking label (its named style's `shrink`) keeps to one line and
 //! commits at the largest scale its content box holds, never under its
-//! least share.
+//! least share. A grid's container (`D-31[6]`) holds synthetic flex rows
+//! of its cells, which only its root's tree builds and [`place`] adds back
+//! to their cells' locations; its `Auto` columns are solved at max-content
+//! first and fixed at their widest cell.
 
 use std::collections::HashMap;
 
@@ -26,7 +29,7 @@ use super::super::geometry::Rect;
 use super::super::id::WidgetId;
 use super::super::node::{Visibility, WidgetKind};
 use super::super::style::{
-    Align, Anchor, Direction, Edges, Justify, LayoutStyle, Placement, Sizing,
+    Align, Anchor, Direction, Edges, Justify, LayoutStyle, Placement, Sizing, Track,
 };
 use super::super::tree::UiTree;
 
@@ -36,6 +39,17 @@ pub(crate) struct RootLayout {
     pub(crate) nodes: u32,
     pub(crate) measure_calls: u32,
     pub(crate) commits: u32,
+    /// Every node of the solver's tree: the widgets', the viewport's and a
+    /// grid's synthetic rows.
+    pub(crate) taffy_nodes: u32,
+}
+
+/// What a root's build adds beside its widgets: each grid cell's synthetic
+/// row, and each `Auto` column's cells, measured before the solve.
+#[derive(Default)]
+struct GridParts {
+    rows: HashMap<WidgetId, NodeId>,
+    autos: Vec<Vec<NodeId>>,
 }
 
 /// Which way an anchor sits on one axis.
@@ -237,13 +251,15 @@ fn scroll_style(style: &mut Style, layout: &LayoutStyle, parent_dir: Direction) 
 
 /// Builds `id`'s subtree into `taffy`, skipping collapsed subtrees. Labels,
 /// images, toggles, sliders and meshes are leaves carrying their widget as
-/// context.
+/// context. A grid's container is a column of synthetic rows of its
+/// flowed children (`grid`), its anchored ones its own.
 fn build(
     tree: &UiTree,
     taffy: &mut TaffyTree<WidgetId>,
     id: WidgetId,
     parent_dir: Direction,
     map: &mut HashMap<WidgetId, NodeId>,
+    grids: &mut GridParts,
 ) -> Option<NodeId> {
     let node = tree.node(id)?;
     if node.visibility == Visibility::Collapsed {
@@ -253,19 +269,144 @@ fn build(
     if node.scroll.is_some() {
         scroll_style(&mut style, &node.layout_style, parent_dir);
     }
+    let grid = node.control.as_ref().and_then(|control| control.grid());
     let taffy_node = if node.kind.is_leaf() {
         taffy.new_leaf_with_context(style, id)
+    } else if let Some(grid) = grid {
+        return Some(grid_node(tree, taffy, id, style, grid, map, grids));
     } else {
         let children: Vec<NodeId> = node
             .children
             .iter()
-            .filter_map(|child| build(tree, taffy, *child, node.layout_style.direction, map))
+            .filter_map(|child| build(tree, taffy, *child, node.layout_style.direction, map, grids))
             .collect();
         taffy.new_with_children(style, &children)
     }
     .expect("taffy tree building cannot fail");
     map.insert(id, taffy_node);
     Some(taffy_node)
+}
+
+/// A grid's container: a flex column, its gap between rows, of one
+/// synthetic flex row a `columns.len()` of its flowed children in order,
+/// the gap between cells, a `Px` row track fixing the row's height, its
+/// cells aligned by the grid's `align_items` (`Stretch` as `Start`); its
+/// anchored children stay its own. A cell's width is its column's: `Px`
+/// fixed, `Fr(n)` growing by `n` from 0, `Auto` measured before the solve.
+fn grid_node(
+    tree: &UiTree,
+    taffy: &mut TaffyTree<WidgetId>,
+    id: WidgetId,
+    mut style: Style,
+    grid: &super::super::style::Grid,
+    map: &mut HashMap<WidgetId, NodeId>,
+    grids: &mut GridParts,
+) -> NodeId {
+    let node = tree.node(id).expect("built from the tree");
+    let gap = node.layout_style.gap;
+    // A cell keeps its own height in its row, aligned by the grid's
+    // `align_items`; `Stretch` is reserved for a `Fill` cell.
+    let cells_align = match node.layout_style.align_items {
+        Align::Stretch | Align::Start => AlignItems::START,
+        Align::Center => AlignItems::CENTER,
+        Align::End => AlignItems::END,
+    };
+    style.flex_direction = FlexDirection::Column;
+    style.align_items = Some(AlignItems::STRETCH);
+    let columns = grid.columns();
+    let mut autos: Vec<Option<usize>> = Vec::with_capacity(columns.len());
+    for track in columns {
+        if *track == Track::Auto {
+            autos.push(Some(grids.autos.len()));
+            grids.autos.push(Vec::new());
+        } else {
+            autos.push(None);
+        }
+    }
+    let mut children = Vec::new();
+    let mut cells: Vec<(WidgetId, NodeId)> = Vec::with_capacity(columns.len());
+    let mut row_tracks = grid.rows().iter();
+    let mut close_row = |taffy: &mut TaffyTree<WidgetId>,
+                         cells: &mut Vec<(WidgetId, NodeId)>,
+                         children: &mut Vec<NodeId>,
+                         grids: &mut GridParts| {
+        if cells.is_empty() {
+            return;
+        }
+        let height = match row_tracks.next() {
+            Some(Track::Px(v)) => length(*v),
+            _ => auto(),
+        };
+        let row_style = Style {
+            display: Display::Flex,
+            flex_direction: FlexDirection::Row,
+            align_items: Some(cells_align),
+            gap: length(gap),
+            size: Size {
+                width: auto(),
+                height,
+            },
+            flex_shrink: 0.0,
+            ..Style::default()
+        };
+        let nodes: Vec<NodeId> = cells.iter().map(|(_, cell)| *cell).collect();
+        let row = taffy
+            .new_with_children(row_style, &nodes)
+            .expect("taffy tree building cannot fail");
+        for (widget, _) in cells.drain(..) {
+            grids.rows.insert(widget, row);
+        }
+        children.push(row);
+    };
+    for child in &node.children {
+        let anchored = tree.node(*child).is_some_and(|child| {
+            matches!(child.layout_style.placement, Placement::Anchored { .. })
+        });
+        if anchored {
+            if let Some(built) = build(tree, taffy, *child, Direction::Column, map, grids) {
+                children.push(built);
+            }
+            continue;
+        }
+        let Some(cell) = build(tree, taffy, *child, Direction::Row, map, grids) else {
+            continue;
+        };
+        let column = cells.len();
+        let mut cell_style = taffy.style(cell).expect("built").clone();
+        match columns[column] {
+            Track::Px(width) => {
+                cell_style.size.width = length(width);
+                cell_style.flex_basis = auto();
+                cell_style.flex_grow = 0.0;
+                cell_style.flex_shrink = 0.0;
+            }
+            Track::Fr(share) => {
+                cell_style.size.width = auto();
+                cell_style.min_size.width = length(0.0);
+                cell_style.flex_basis = length(0.0);
+                cell_style.flex_grow = share;
+                cell_style.flex_shrink = 1.0;
+            }
+            Track::Auto => {
+                if let Some(at) = autos[column] {
+                    grids.autos[at].push(cell);
+                }
+            }
+        }
+        taffy
+            .set_style(cell, cell_style)
+            .expect("taffy tree building cannot fail");
+        cells.push((*child, cell));
+        if cells.len() == columns.len() {
+            close_row(taffy, &mut cells, &mut children, grids);
+        }
+    }
+    close_row(taffy, &mut cells, &mut children, grids);
+    let taffy_node = taffy
+        .new_with_children(style, &children)
+        .expect("taffy tree building cannot fail");
+    map.insert(id, taffy_node);
+    taffy_node
 }
 
 fn available(space: AvailableSpace) -> MeasureWidth {
@@ -283,10 +424,12 @@ fn available(space: AvailableSpace) -> MeasureWidth {
 /// scroll panel then takes its largest offset (M57): how far its lowest
 /// child's box, margin included, and its bottom padding and border reach
 /// past its box, at least 0.
+#[allow(clippy::too_many_arguments)]
 fn place(
     tree: &mut UiTree,
     taffy: &TaffyTree<WidgetId>,
     map: &HashMap<WidgetId, NodeId>,
+    rows: &HashMap<WidgetId, NodeId>,
     id: WidgetId,
     parent_pos: Vec2,
     parent_size: Vec2,
@@ -332,7 +475,15 @@ fn place(
         text_leaves.push((id, size));
     }
     for child in &children {
-        place(tree, taffy, map, *child, pos, size, text_leaves);
+        // A grid's cell sits in its synthetic row, which no map holds.
+        let (at, within) = match rows.get(child).and_then(|row| taffy.layout(*row).ok()) {
+            Some(row) => (
+                pos + Vec2::new(row.location.x, row.location.y),
+                Vec2::new(row.size.width, row.size.height),
+            ),
+            None => (pos, size),
+        };
+        place(tree, taffy, map, rows, *child, at, within, text_leaves);
     }
     if scrolls {
         let insets = (
@@ -448,18 +599,136 @@ pub(crate) fn lay_out_root(
     let mut taffy: TaffyTree<WidgetId> = TaffyTree::new();
     taffy.disable_rounding();
     let mut map = HashMap::new();
-    let Some(root_node) = build(tree, &mut taffy, root, Direction::Column, &mut map) else {
+    let mut grids = GridParts::default();
+    let Some(root_node) = build(
+        tree,
+        &mut taffy,
+        root,
+        Direction::Column,
+        &mut map,
+        &mut grids,
+    ) else {
         return result;
     };
     let viewport_node = taffy
         .new_with_children(viewport_style(viewport), &[root_node])
         .expect("taffy tree building cannot fail");
     result.nodes = map.len() as u32;
+    result.taffy_nodes = taffy.total_node_count() as u32;
 
     let mut measure_calls = 0_u32;
     // Each label's unwrapped width as the solve measured it, for the
     // commit.
     let mut natural: HashMap<WidgetId, TextMetrics> = HashMap::new();
+    let tree_ref: &UiTree = tree;
+    let mut measure = |inputs: taffy::LayoutInput,
+                       _node: NodeId,
+                       context: Option<&mut WidgetId>,
+                       style: &Style|
+     -> taffy::LayoutOutput {
+        let tree = tree_ref;
+        taffy::compute_leaf_layout(
+            inputs,
+            style,
+            |_, _| 0.0,
+            |known, space| {
+                let Some(id) = context.map(|id| *id) else {
+                    return Size::ZERO;
+                };
+                let Some(node) = tree.node(id) else {
+                    return Size::ZERO;
+                };
+                if let (Some(width), Some(height)) = (known.width, known.height) {
+                    return Size { width, height };
+                }
+                if let Some(image) = node.image {
+                    return Size {
+                        width: known.width.unwrap_or(image.natural_size.x),
+                        height: known.height.unwrap_or(image.natural_size.y),
+                    };
+                }
+                if let Some(control) = &node.control {
+                    // The text scale grows a control with its line
+                    // height (M56), on the game layers (M58).
+                    let line = node
+                        .resolved
+                        .as_ref()
+                        .map_or(0.0, |resolved| resolved.text.line_height)
+                        * text_scale;
+                    let (width, height) = control.natural_size(line);
+                    return Size {
+                        width: known.width.unwrap_or(width),
+                        height: known.height.unwrap_or(height),
+                    };
+                }
+                let Some(text_node) = node.text_id else {
+                    return Size::ZERO;
+                };
+                measure_calls += 1;
+                if let Some(least) = shrink_of(tree, id) {
+                    // One line at most the space's width, never
+                    // under its least share, its height in
+                    // proportion.
+                    let line = store.measure(text_node, None, MeasureWidth::MaxContent);
+                    natural.insert(id, line);
+                    let room = known.width.or(match space.width {
+                        AvailableSpace::Definite(width) => Some(width),
+                        AvailableSpace::MinContent => Some(0.0),
+                        AvailableSpace::MaxContent => None,
+                    });
+                    let fit = shrink_fit(line.size.x, room, least);
+                    return Size {
+                        width: known.width.unwrap_or(line.size.x * fit),
+                        height: known.height.unwrap_or(line.size.y * fit),
+                    };
+                }
+                // A known width is the border box's; the available
+                // width is then the content box's, where the text
+                // commits (M56).
+                let width = known.width.map(|width| match space.width {
+                    AvailableSpace::Definite(content) => content,
+                    _ => width,
+                });
+                let metrics = store.measure(text_node, width, available(space.width));
+                if width.is_none() && space.width == AvailableSpace::MaxContent {
+                    natural.insert(id, metrics);
+                }
+                Size {
+                    width: known.width.unwrap_or(metrics.size.x),
+                    height: known.height.unwrap_or(metrics.size.y),
+                }
+            },
+        )
+    };
+    // Each `Auto` column's cells solved alone at max-content, then fixed
+    // at the widest, before the root's solve.
+    for column in &grids.autos {
+        let mut widest = 0.0_f32;
+        for cell in column {
+            taffy
+                .compute_layout_with_measure(
+                    *cell,
+                    Size {
+                        width: AvailableSpace::MaxContent,
+                        height: AvailableSpace::MaxContent,
+                    },
+                    &mut measure,
+                )
+                .expect("layout of a built tree cannot fail");
+            let layout = taffy.layout(*cell).expect("solved");
+            widest = widest.max(layout.size.width);
+        }
+        for cell in column {
+            let mut style = taffy.style(*cell).expect("built").clone();
+            style.size.width = length(widest);
+            style.flex_basis = auto();
+            style.flex_grow = 0.0;
+            style.flex_shrink = 0.0;
+            taffy
+                .set_style(*cell, style)
+                .expect("taffy tree building cannot fail");
+        }
+    }
     taffy
         .compute_layout_with_measure(
             viewport_node,
@@ -467,80 +736,7 @@ pub(crate) fn lay_out_root(
                 width: AvailableSpace::Definite(viewport.x),
                 height: AvailableSpace::Definite(viewport.y),
             },
-            |inputs, _node, context, style| {
-                taffy::compute_leaf_layout(
-                    inputs,
-                    style,
-                    |_, _| 0.0,
-                    |known, space| {
-                        let Some(id) = context.map(|id| *id) else {
-                            return Size::ZERO;
-                        };
-                        let Some(node) = tree.node(id) else {
-                            return Size::ZERO;
-                        };
-                        if let (Some(width), Some(height)) = (known.width, known.height) {
-                            return Size { width, height };
-                        }
-                        if let Some(image) = node.image {
-                            return Size {
-                                width: known.width.unwrap_or(image.natural_size.x),
-                                height: known.height.unwrap_or(image.natural_size.y),
-                            };
-                        }
-                        if let Some(control) = &node.control {
-                            // The text scale grows a control with its line
-                            // height (M56), on the game layers (M58).
-                            let line = node
-                                .resolved
-                                .as_ref()
-                                .map_or(0.0, |resolved| resolved.text.line_height)
-                                * text_scale;
-                            let (width, height) = control.natural_size(line);
-                            return Size {
-                                width: known.width.unwrap_or(width),
-                                height: known.height.unwrap_or(height),
-                            };
-                        }
-                        let Some(text_node) = node.text_id else {
-                            return Size::ZERO;
-                        };
-                        measure_calls += 1;
-                        if let Some(least) = shrink_of(tree, id) {
-                            // One line at most the space's width, never
-                            // under its least share, its height in
-                            // proportion.
-                            let line = store.measure(text_node, None, MeasureWidth::MaxContent);
-                            natural.insert(id, line);
-                            let room = known.width.or(match space.width {
-                                AvailableSpace::Definite(width) => Some(width),
-                                AvailableSpace::MinContent => Some(0.0),
-                                AvailableSpace::MaxContent => None,
-                            });
-                            let fit = shrink_fit(line.size.x, room, least);
-                            return Size {
-                                width: known.width.unwrap_or(line.size.x * fit),
-                                height: known.height.unwrap_or(line.size.y * fit),
-                            };
-                        }
-                        // A known width is the border box's; the available
-                        // width is then the content box's, where the text
-                        // commits (M56).
-                        let width = known.width.map(|width| match space.width {
-                            AvailableSpace::Definite(content) => content,
-                            _ => width,
-                        });
-                        let metrics = store.measure(text_node, width, available(space.width));
-                        if width.is_none() && space.width == AvailableSpace::MaxContent {
-                            natural.insert(id, metrics);
-                        }
-                        Size {
-                            width: known.width.unwrap_or(metrics.size.x),
-                            height: known.height.unwrap_or(metrics.size.y),
-                        }
-                    },
-                )
-            },
+            &mut measure,
         )
         .expect("layout of a built tree cannot fail");
     result.measure_calls = measure_calls;
@@ -550,6 +746,7 @@ pub(crate) fn lay_out_root(
         tree,
         &taffy,
         &map,
+        &grids.rows,
         root,
         Vec2::ZERO,
         viewport,

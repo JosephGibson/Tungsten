@@ -21,9 +21,12 @@ use super::node::UiLayer;
 use super::route::UiRouter;
 use super::screen_file::{
     AlignName, CornerName, DirectionName, EdgesFile, JustifyName, Kind, LayerName, LayoutFile,
-    Length, LimitFile, Node, ScreenAction, ScreenNames, SizingFile, Spacing, UiScreenRegistry,
+    Length, LimitFile, Node, ScreenAction, ScreenNames, SizingFile, Spacing, TrackFile,
+    UiScreenRegistry,
 };
-use super::style::{Align, Anchor, Direction, Edges, Justify, LayoutStyle, Placement, Sizing};
+use super::style::{
+    Align, Anchor, Direction, Edges, Grid, Justify, LayoutStyle, Placement, Sizing, Track,
+};
 use super::theme_file::{Color, OverridesFile, resolve};
 use super::tree::UiTree;
 use super::widgets::{self, Meter};
@@ -1114,6 +1117,18 @@ fn apply_layout(tree: &mut UiTree, id: WidgetId, layout: &LayoutFile) {
         style.placement = Placement::Anchored { anchor, offset };
     }
     tree.set_layout_style(id, style);
+    if let Some(columns) = &layout.columns {
+        let track = |track: &TrackFile| match track {
+            TrackFile::Auto => Track::Auto,
+            TrackFile::Fr(share) => Track::Fr(*share),
+            TrackFile::Length(each) => Track::Px(length(tree, each).max(0.0)),
+        };
+        let columns = columns.iter().map(track).collect();
+        let rows = layout.rows.iter().flatten().map(track).collect();
+        if let Ok(grid) = Grid::try_new(columns, rows) {
+            tree.set_grid(id, Some(grid));
+        }
+    }
 }
 
 fn align_of(align: AlignName) -> Align {

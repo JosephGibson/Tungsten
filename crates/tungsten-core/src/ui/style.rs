@@ -251,6 +251,123 @@ impl LayoutStyle {
     }
 }
 
+/// One column or row of a [`Grid`].
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Track {
+    /// A column as wide as its widest cell's content, measured at
+    /// max-content; a row as tall as its tallest cell.
+    Auto,
+    /// A fixed size in UI units.
+    Px(f32),
+    /// A share of the width the fixed and `Auto` columns leave, by weight:
+    /// columns only, above 0.
+    Fr(f32),
+}
+
+/// The most columns a grid lays out.
+const MAX_COLUMNS: usize = 32;
+
+/// A grid's tracks (`D-124` as `D-31[6]` amends it): its flowed children
+/// fill rows of `columns.len()` cells in order, each cell as wide as its
+/// column, so the columns line up across rows; a row is as tall as its
+/// tallest cell, or its `rows` track's size. Laid out on the flex solver
+/// by rows core adds to that root's solve alone, so a root with no grid
+/// lays out as before.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_core::ui::{Grid, Track};
+///
+/// let keys = Grid::new([Track::Auto, Track::Fr(1.0), Track::Fr(1.0)]).with_rows([Track::Px(24.0)]);
+/// assert_eq!(keys.columns().len(), 3);
+/// assert_eq!(keys.rows(), [Track::Px(24.0)]);
+/// assert!(Grid::try_new(vec![], vec![]).is_err(), "at least one column");
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct Grid {
+    columns: Vec<Track>,
+    rows: Vec<Track>,
+}
+
+impl Grid {
+    /// A grid of `columns`, its rows sized by their cells.
+    ///
+    /// # Panics
+    ///
+    /// When there are no columns or more than 32, or a track is not
+    /// finite and at least 0, or an `Fr` not above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn new(columns: impl IntoIterator<Item = Track>) -> Self {
+        Self::try_new(columns.into_iter().collect(), Vec::new())
+            .unwrap_or_else(|error| panic!("Grid::new: {error}"))
+    }
+
+    /// This grid with `rows`, one track a row from the first, the rest
+    /// `Auto`.
+    ///
+    /// # Panics
+    ///
+    /// When a track is not finite and at least 0, or is an `Fr`.
+    #[must_use]
+    #[track_caller]
+    pub fn with_rows(self, rows: impl IntoIterator<Item = Track>) -> Self {
+        Self::try_new(self.columns, rows.into_iter().collect())
+            .unwrap_or_else(|error| panic!("Grid::with_rows: {error}"))
+    }
+
+    /// A grid of `columns` and `rows`, or why it cannot be one: 1 to 32
+    /// columns, every track finite and at least 0, an `Fr` above 0 and in a
+    /// column alone.
+    pub fn try_new(columns: Vec<Track>, rows: Vec<Track>) -> Result<Self, String> {
+        if columns.is_empty() || columns.len() > MAX_COLUMNS {
+            return Err(format!(
+                "a grid has 1 to {MAX_COLUMNS} columns, not {}",
+                columns.len()
+            ));
+        }
+        for (at, track) in columns.iter().enumerate() {
+            match *track {
+                Track::Px(v) if !(v.is_finite() && v >= 0.0) => {
+                    return Err(format!("column {at}: {v} is not a finite size at least 0"));
+                }
+                Track::Fr(v) if !(v.is_finite() && v > 0.0) => {
+                    return Err(format!("column {at}: {v}fr is not a share above 0"));
+                }
+                _ => {}
+            }
+        }
+        for (at, track) in rows.iter().enumerate() {
+            match *track {
+                Track::Px(v) if !(v.is_finite() && v >= 0.0) => {
+                    return Err(format!("row {at}: {v} is not a finite size at least 0"));
+                }
+                Track::Fr(_) => {
+                    return Err(format!(
+                        "row {at}: a row takes `auto` or a length, not a share"
+                    ));
+                }
+                _ => {}
+            }
+        }
+        Ok(Self { columns, rows })
+    }
+
+    /// Its columns.
+    #[must_use]
+    pub fn columns(&self) -> &[Track] {
+        &self.columns
+    }
+
+    /// Its rows' tracks, from the first; a row past them is `Auto`.
+    #[must_use]
+    pub fn rows(&self) -> &[Track] {
+        &self.rows
+    }
+}
+
 #[cfg(test)]
 #[path = "../tests/ui/style.rs"]
 mod tests;

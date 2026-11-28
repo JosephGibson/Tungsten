@@ -1,8 +1,8 @@
-//! Keybindings: a row per action `input.json`'s `labels` lists, under its
-//! label, with its Primary and Alternate key or mouse binding and its
-//! Gamepad binding (`ActionMap::binding_at`), sharing the row with its
-//! caption, and a Reset; the card scrolls only when the rows outgrow the
-//! viewport.
+//! Keybindings: a row per action `input.json`'s `labels` lists, on one grid
+//! under the card: its label, its Primary and Alternate key or mouse
+//! binding and its Gamepad binding (`ActionMap::binding_at`), and a Reset,
+//! each column as wide as its widest cell, so the cells line up; the card
+//! scrolls only when the rows outgrow the viewport.
 //! A cell captures the next press for 5 real seconds; a press of the other
 //! device class is refused, and a binding another listed action holds asks
 //! to swap. Each change persists through the action map's user layer;
@@ -10,7 +10,7 @@
 //! The action map refuses a label for a `ui_*` or `engine_*` action, so the
 //! menus cannot be lost.
 
-use tungsten::core::ui::{Sizing, UiEvent, UiKey, UiRouter, UiTree, Visibility, WidgetId, widgets};
+use tungsten::core::ui::{Track, UiEvent, UiKey, UiRouter, UiTree, WidgetId, widgets};
 use tungsten::core::{ActionMap, ActionMapError, Binding, BindingDevice, World};
 use tungsten::screens::{self, Confirm, ModalScreen, toast};
 use tungsten::{GameState, StateContext, StateId};
@@ -31,20 +31,17 @@ const CELLS: [(BindingDevice, usize); 3] = [
     (BindingDevice::Gamepad, 0),
 ];
 /// The card's design width, past the smallest viewport's, so a stick's
-/// name keeps one line there; and the least width of a row's caption at
-/// text 100 %, which the text scale scales, so the cells line up.
+/// name keeps one line there.
 const WIDTH: f32 = 760.0;
-const CAPTION: f32 = 88.0;
-
-/// A row under `card`: a caption at least [`CAPTION`] wide, scaled.
-fn row(tree: &mut UiTree, card: WidgetId, caption: &str) -> WidgetId {
-    let row = widgets::caption_row(tree, card, caption);
-    let label = tree.children(row)[0];
-    let mut style = tree.layout_style(label).cloned().unwrap_or_default();
-    (style.width, style.min_width) = (Sizing::Auto, Some(CAPTION * tree.text_scale()));
-    tree.set_layout_style(label, style);
-    row
-}
+/// The grid's columns: the captions, the three binding columns sharing
+/// what is left, and the Resets.
+const TRACKS: [Track; 5] = [
+    Track::Auto,
+    Track::Fr(1.0),
+    Track::Fr(1.0),
+    Track::Fr(1.0),
+    Track::Auto,
+];
 
 /// The key of `action`'s cell in `column`, its Reset at column 3, as
 /// `jump.primary`.
@@ -174,24 +171,20 @@ impl GameState for KeybindingsState {
         let tree = ctx.world.resource_mut::<UiTree>();
         let (root, card) = widgets::screen(tree, WIDTH);
         widgets::heading(tree, card, "Keybindings", false);
-        let header = row(tree, card, "");
+        let grid = widgets::grid(tree, card, TRACKS);
+        // The header: no caption, the columns' notes, no Reset.
+        widgets::note(tree, grid, "");
         for column in COLUMNS {
-            let label = widgets::note(tree, header, column);
-            widgets::set_width(tree, label, Sizing::Fill);
+            widgets::note(tree, grid, column);
         }
-        // A hidden Reset keeps the header's columns over the rows'.
-        let spacer = widgets::button(tree, header, "Reset");
-        tree.set_visibility(spacer, Visibility::Hidden);
+        widgets::note(tree, grid, "");
         let rows = labelled
             .iter()
             .map(|(action, label)| {
-                let row = row(tree, card, label);
+                tree.label(grid, label.as_str());
                 let [a, b, c] =
-                    COLUMNS.map(|column| widgets::button(tree, row, &format!("{label} {column}")));
-                for button in [a, b, c] {
-                    widgets::set_width(tree, button, Sizing::Fill);
-                }
-                let reset = widgets::button(tree, row, &format!("Reset {label}"));
+                    COLUMNS.map(|column| widgets::button(tree, grid, &format!("{label} {column}")));
+                let reset = widgets::button(tree, grid, &format!("Reset {label}"));
                 tree.set_text(reset, "Reset");
                 let cells = [a, b, c, reset];
                 for (column, cell) in cells.into_iter().enumerate() {

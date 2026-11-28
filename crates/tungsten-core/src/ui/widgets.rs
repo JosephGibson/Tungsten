@@ -166,6 +166,26 @@ pub fn group(tree: &mut UiTree, parent: WidgetId, style: LayoutStyle, align: Ali
     tree.group(parent, style)
 }
 
+/// A layout-only grid under `parent` (`D-31[6]`), as wide as its parent
+/// gives it, gapped the theme's `spacing.sm`: its flowed children fill
+/// rows of `columns.len()` cells in order, each as wide as its column, so
+/// the columns line up, each centred on its row.
+///
+/// # Panics
+///
+/// As [`Grid::new`](super::Grid::new).
+#[track_caller]
+pub fn grid(
+    tree: &mut UiTree,
+    parent: WidgetId,
+    columns: impl IntoIterator<Item = super::Track>,
+) -> WidgetId {
+    let style = LayoutStyle::column().with_size(Sizing::Fill, Sizing::Auto);
+    let id = group(tree, parent, style, Align::Center);
+    tree.set_grid(id, Some(super::Grid::new(columns)));
+    id
+}
+
 /// A layout-only column under `parent` that stretches its children.
 pub fn column(tree: &mut UiTree, parent: WidgetId) -> WidgetId {
     group(tree, parent, LayoutStyle::column(), Align::Stretch)
