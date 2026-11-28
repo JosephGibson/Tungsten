@@ -1,0 +1,10 @@
+{
+  "name": "Brass Charm",
+  "icon": "charm",
+  "tags": ["item.charm"],
+  "slot": "charm",
+  "price": 20,
+  "implicit": [
+    { "stat": "pickup_radius", "modifier": { "add": 8 } }
+  ]
+}

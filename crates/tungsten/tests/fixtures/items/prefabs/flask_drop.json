@@ -1,0 +1,13 @@
+{
+  "tag": "flask_drop",
+  "components": {
+    "pickup": {
+      "shape": { "circle": 5 },
+      "filter": { "all": ["team.player"] }
+    },
+    "ground_item": {
+      "item": "oil_flask",
+      "offset": [0, -10]
+    }
+  }
+}

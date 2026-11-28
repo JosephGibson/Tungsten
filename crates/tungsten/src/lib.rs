@@ -16,6 +16,8 @@ pub mod game_feel;
 pub mod hot_reload;
 mod input_bridge;
 pub mod inspector;
+#[cfg(feature = "kit")]
+pub mod items;
 mod level_editor;
 pub mod light_extract;
 mod logging;

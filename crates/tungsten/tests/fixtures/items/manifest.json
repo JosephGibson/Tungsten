@@ -1,0 +1,59 @@
+{
+  "ui_screens": {
+    "inventory": {
+      "path": "ui/screens/inventory.json"
+    },
+    "shop": {
+      "path": "ui/screens/shop.json"
+    },
+    "item_tooltip": {
+      "path": "ui/screens/item_tooltip.json"
+    },
+    "cell_menu": {
+      "path": "ui/screens/cell_menu.json"
+    }
+  },
+  "prefabs": {
+    "flask_drop": {
+      "path": "prefabs/flask_drop.json"
+    }
+  },
+  "data": {
+    "tags": {
+      "items": {
+        "path": "data/tags.json"
+      }
+    },
+    "item_bases": {
+      "oil_flask": {
+        "path": "data/item_bases/oil_flask.json"
+      },
+      "oilskin_hood": {
+        "path": "data/item_bases/oilskin_hood.json"
+      },
+      "brass_charm": {
+        "path": "data/item_bases/brass_charm.json"
+      }
+    },
+    "affixes": {
+      "fine": {
+        "path": "data/affixes/fine.json"
+      }
+    },
+    "shops": {
+      "chandlery": {
+        "path": "data/shops/chandlery.json"
+      }
+    },
+    "speakers": {
+      "chandler": {
+        "path": "data/speakers/chandler.json"
+      }
+    },
+    "dialogue": {
+      "chandler.greeting": {
+        "path": "data/dialogue/chandler_greeting.json"
+      }
+    }
+  }
+}

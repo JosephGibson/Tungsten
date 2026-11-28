@@ -1,0 +1,11 @@
+{
+  "name": "Oilskin Hood",
+  "icon": "hood",
+  "text": "Keeps the rain off a lantern's flame.",
+  "tags": ["item.hood"],
+  "slot": "hood",
+  "price": 12,
+  "implicit": [
+    { "stat": "move_speed", "modifier": { "add": 5 } }
+  ]
+}

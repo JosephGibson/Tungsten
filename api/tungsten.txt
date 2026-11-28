@@ -542,6 +542,43 @@ impl core::marker::UnsafeUnpin for tungsten::inspector::InspectorState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::inspector::InspectorState
 impl core::panic::unwind_safe::UnwindSafe for tungsten::inspector::InspectorState
 pub fn tungsten::inspector::default_inspect_registry() -> tungsten_core::inspect::InspectRegistry
+pub mod tungsten::items
+pub struct tungsten::items::ItemsUiPlugin
+impl core::clone::Clone for tungsten::items::ItemsUiPlugin
+pub fn tungsten::items::ItemsUiPlugin::clone(&self) -> tungsten::items::ItemsUiPlugin
+impl core::default::Default for tungsten::items::ItemsUiPlugin
+pub fn tungsten::items::ItemsUiPlugin::default() -> tungsten::items::ItemsUiPlugin
+impl core::fmt::Debug for tungsten::items::ItemsUiPlugin
+pub fn tungsten::items::ItemsUiPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::items::ItemsUiPlugin
+impl tungsten_core::schedule::Plugin for tungsten::items::ItemsUiPlugin
+pub fn tungsten::items::ItemsUiPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::items::ItemsUiPlugin
+impl core::marker::Send for tungsten::items::ItemsUiPlugin
+impl core::marker::Sync for tungsten::items::ItemsUiPlugin
+impl core::marker::Unpin for tungsten::items::ItemsUiPlugin
+impl core::marker::UnsafeUnpin for tungsten::items::ItemsUiPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::items::ItemsUiPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::items::ItemsUiPlugin
+pub struct tungsten::items::ItemsView
+impl tungsten::items::ItemsView
+pub fn tungsten::items::ItemsView::held(&self) -> core::option::Option<&tungsten_kit::items::inventory::ItemPlace>
+pub fn tungsten::items::ItemsView::holder(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+impl core::default::Default for tungsten::items::ItemsView
+pub fn tungsten::items::ItemsView::default() -> tungsten::items::ItemsView
+impl core::fmt::Debug for tungsten::items::ItemsView
+pub fn tungsten::items::ItemsView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::items::ItemsView
+impl core::marker::Send for tungsten::items::ItemsView
+impl core::marker::Sync for tungsten::items::ItemsView
+impl core::marker::Unpin for tungsten::items::ItemsView
+impl core::marker::UnsafeUnpin for tungsten::items::ItemsView
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::items::ItemsView
+impl core::panic::unwind_safe::UnwindSafe for tungsten::items::ItemsView
+pub const tungsten::items::INVENTORY_SCREEN: tungsten::state::StateId
+pub const tungsten::items::SHOP_OPEN: &str
+pub const tungsten::items::SHOP_SCREEN: tungsten::state::StateId
+pub fn tungsten::items::open_inventory(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> bool
 pub mod tungsten::light_extract
 pub fn tungsten::light_extract::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32, usize) -> tungsten_render::lighting::FrameLights
 pub mod tungsten::particles

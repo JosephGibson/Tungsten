@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "screen",
+    "width": 420,
+    "children": [
+      { "kind": "heading", "text": "Satchel" },
+      {
+        "kind": "row",
+        "children": [
+          { "kind": "small", "text": "Coins" },
+          { "kind": "small", "key": "coins", "bind": { "text": "inventory.coins" } }
+        ]
+      },
+      {
+        "kind": "repeat",
+        "key": "worn",
+        "rows": "inventory.worn",
+        "layout": { "direction": "row", "gap": 4 },
+        "row": {
+          "kind": "button",
+          "field": "name",
+          "style_field": "style",
+          "drag": true,
+          "drop": true,
+          "tooltip": { "screen": "item_tooltip" },
+          "on": { "popup": "cell_menu" },
+          "children": [
+            { "kind": "image", "field": "icon" },
+            { "kind": "small", "field": "slot" }
+          ]
+        }
+      },
+      {
+        "kind": "repeat",
+        "key": "cells",
+        "rows": "inventory.cells",
+        "layout": { "columns": ["1fr", "1fr", "1fr", "1fr"], "gap": 4 },
+        "row": {
+          "kind": "button",
+          "field": "name",
+          "style_field": "style",
+          "drag": true,
+          "drop": true,
+          "tooltip": { "screen": "item_tooltip" },
+          "on": { "popup": "cell_menu" },
+          "children": [
+            { "kind": "image", "field": "icon" },
+            { "kind": "small", "field": "count" }
+          ]
+        }
+      },
+      {
+        "kind": "small",
+        "key": "holding",
+        "text": "Accept on a cell or a slot to put it there",
+        "bind": { "visible": "inventory.holding" }
+      },
+      { "kind": "button", "key": "ground", "text": "Drop on the ground", "drop": true },
+      { "kind": "button", "key": "close", "text": "Close", "on": "pop" }
+    ]
+  }
+}

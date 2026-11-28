@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "screen",
+    "width": 560,
+    "children": [
+      { "kind": "heading", "key": "name", "bind": { "text": "shop.name" } },
+      {
+        "kind": "row",
+        "children": [
+          { "kind": "small", "text": "Coins" },
+          { "kind": "small", "key": "coins", "bind": { "text": "shop.coins" } }
+        ]
+      },
+      {
+        "kind": "row",
+        "layout": { "gap": 8 },
+        "children": [
+          {
+            "kind": "repeat",
+            "key": "stock",
+            "rows": "shop.stock",
+            "row": {
+              "kind": "button",
+              "field": "name",
+              "style_field": "style",
+              "drag": true,
+              "tooltip": { "screen": "item_tooltip" },
+              "on": { "action": "shop.buy" },
+              "children": [
+                { "kind": "image", "field": "icon" },
+                { "kind": "small", "field": "price" },
+                { "kind": "small", "field": "count" }
+              ]
+            }
+          },
+          {
+            "kind": "repeat",
+            "key": "cells",
+            "rows": "inventory.cells",
+            "layout": { "columns": ["1fr", "1fr", "1fr", "1fr"], "gap": 4 },
+            "row": {
+              "kind": "button",
+              "field": "name",
+              "style_field": "style",
+              "drag": true,
+              "drop": true,
+              "tooltip": { "screen": "item_tooltip" },
+              "on": { "popup": "cell_menu" },
+              "children": [
+                { "kind": "image", "field": "icon" },
+                { "kind": "small", "field": "count" }
+              ]
+            }
+          }
+        ]
+      },
+      { "kind": "button", "key": "sell", "text": "Sell here", "drop": true },
+      { "kind": "button", "key": "leave", "text": "Leave", "on": { "action": "shop.leave" } }
+    ]
+  }
+}

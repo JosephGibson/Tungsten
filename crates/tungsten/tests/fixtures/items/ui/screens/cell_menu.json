@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "root",
+    "layer": "game_popup",
+    "modal": true,
+    "children": [
+      {
+        "kind": "panel",
+        "layout": { "padding": "spacing.sm", "gap": 2 },
+        "children": [
+          { "kind": "small", "key": "name", "bind": { "text": "item.name", "style": "item.style" } },
+          { "kind": "button", "key": "use", "text": "Use", "on": { "action": "inventory.use" } },
+          { "kind": "button", "key": "wear", "text": "Wear or take off", "on": { "action": "inventory.wear" } },
+          { "kind": "button", "key": "drop", "text": "Drop", "on": { "action": "inventory.drop" } },
+          { "kind": "button", "key": "sell", "text": "Sell", "on": { "action": "shop.sell" } }
+        ]
+      }
+    ]
+  }
+}

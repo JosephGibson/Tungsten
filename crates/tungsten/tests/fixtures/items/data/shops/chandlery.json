@@ -1,0 +1,8 @@
+{
+  "name": "Tamsin's Chandlery",
+  "stock": [
+    { "item": "oil_flask" },
+    { "item": "oilskin_hood", "count": 2 }
+  ],
+  "buys": { "any": ["item.flask", "item.hood"] }
+}

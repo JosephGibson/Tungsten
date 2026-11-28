@@ -1,0 +1,11 @@
+{
+  "kind": "prefix",
+  "group": "fine",
+  "weights": [{ "tag": "item.charm", "weight": 1000 }],
+  "tiers": [
+    { "level": 1, "weight": 1000, "values": [[5, 10]] }
+  ],
+  "lines": [
+    { "stat": "move_speed", "modifier": { "pct": { "value": 0, "times": 0.01 } } }
+  ]
+}

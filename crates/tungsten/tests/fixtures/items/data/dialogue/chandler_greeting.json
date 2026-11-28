@@ -1,0 +1,15 @@
+{
+  "speaker": "chandler",
+  "start": "greet",
+  "nodes": {
+    "greet": {
+      "lines": ["Oil, hoods, a charm or two."],
+      "choices": [
+        { "text": "Show me.", "do": [{ "shop": "chandlery" }], "next": "after" }
+      ]
+    },
+    "after": {
+      "lines": ["Mind the steps on your way out."]
+    }
+  }
+}
