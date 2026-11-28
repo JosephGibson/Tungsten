@@ -809,6 +809,57 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten::post_aa::PostAaState
 impl core::panic::unwind_safe::UnwindSafe for tungsten::post_aa::PostAaState
 pub fn tungsten::post_aa::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten_core::config::PostAaMode)
 pub mod tungsten::screens
+pub mod tungsten::screens::popup
+pub struct tungsten::screens::popup::PopupAnchors(_)
+impl core::default::Default for tungsten::screens::popup::PopupAnchors
+pub fn tungsten::screens::popup::PopupAnchors::default() -> tungsten::screens::popup::PopupAnchors
+impl core::fmt::Debug for tungsten::screens::popup::PopupAnchors
+pub fn tungsten::screens::popup::PopupAnchors::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::screens::popup::PopupAnchors
+impl core::marker::Send for tungsten::screens::popup::PopupAnchors
+impl core::marker::Sync for tungsten::screens::popup::PopupAnchors
+impl core::marker::Unpin for tungsten::screens::popup::PopupAnchors
+impl core::marker::UnsafeUnpin for tungsten::screens::popup::PopupAnchors
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::popup::PopupAnchors
+impl core::panic::unwind_safe::UnwindSafe for tungsten::screens::popup::PopupAnchors
+pub struct tungsten::screens::popup::TooltipSettings
+pub tungsten::screens::popup::TooltipSettings::delay: f32
+impl core::clone::Clone for tungsten::screens::popup::TooltipSettings
+pub fn tungsten::screens::popup::TooltipSettings::clone(&self) -> tungsten::screens::popup::TooltipSettings
+impl core::cmp::PartialEq for tungsten::screens::popup::TooltipSettings
+pub fn tungsten::screens::popup::TooltipSettings::eq(&self, &tungsten::screens::popup::TooltipSettings) -> bool
+impl core::default::Default for tungsten::screens::popup::TooltipSettings
+pub fn tungsten::screens::popup::TooltipSettings::default() -> Self
+impl core::fmt::Debug for tungsten::screens::popup::TooltipSettings
+pub fn tungsten::screens::popup::TooltipSettings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::screens::popup::TooltipSettings
+impl core::marker::StructuralPartialEq for tungsten::screens::popup::TooltipSettings
+impl core::marker::Freeze for tungsten::screens::popup::TooltipSettings
+impl core::marker::Send for tungsten::screens::popup::TooltipSettings
+impl core::marker::Sync for tungsten::screens::popup::TooltipSettings
+impl core::marker::Unpin for tungsten::screens::popup::TooltipSettings
+impl core::marker::UnsafeUnpin for tungsten::screens::popup::TooltipSettings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::popup::TooltipSettings
+impl core::panic::unwind_safe::UnwindSafe for tungsten::screens::popup::TooltipSettings
+pub struct tungsten::screens::popup::Tooltips
+impl core::default::Default for tungsten::screens::popup::Tooltips
+pub fn tungsten::screens::popup::Tooltips::default() -> tungsten::screens::popup::Tooltips
+impl core::fmt::Debug for tungsten::screens::popup::Tooltips
+pub fn tungsten::screens::popup::Tooltips::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::screens::popup::Tooltips
+impl core::marker::Send for tungsten::screens::popup::Tooltips
+impl core::marker::Sync for tungsten::screens::popup::Tooltips
+impl core::marker::Unpin for tungsten::screens::popup::Tooltips
+impl core::marker::UnsafeUnpin for tungsten::screens::popup::Tooltips
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::screens::popup::Tooltips
+impl core::panic::unwind_safe::UnwindSafe for tungsten::screens::popup::Tooltips
+pub const tungsten::screens::popup::TOOLTIP_WIDTH: f32
+pub fn tungsten::screens::popup::open(&mut tungsten_core::ecs::world::World, &str, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten::screens::popup::popup_anchor(&tungsten_core::ecs::world::World) -> core::option::Option<(tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::id::UiKey>)>
+pub fn tungsten::screens::popup::set_tooltip(&mut tungsten_core::ecs::world::World, tungsten_core::ui::id::WidgetId, tungsten_core::ui::screen_build::Tooltip)
+pub fn tungsten::screens::popup::shown_tooltip(&tungsten_core::ecs::world::World) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten::screens::popup::tick(&mut tungsten_core::ecs::world::World, tungsten_core::ui::id::WidgetId)
+pub fn tungsten::screens::popup::tooltip_anchor(&tungsten_core::ecs::world::World) -> core::option::Option<(tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::id::UiKey>)>
 pub struct tungsten::screens::Confirm
 impl tungsten::screens::Confirm
 pub fn tungsten::screens::Confirm::countdown(self, f32) -> Self
@@ -1398,6 +1449,7 @@ pub fn tungsten::testing::UiHarness::front_modal(&self) -> core::option::Option<
 pub fn tungsten::testing::UiHarness::harness(&self) -> &tungsten::testing::Harness
 pub fn tungsten::testing::UiHarness::harness_mut(&mut self) -> &mut tungsten::testing::Harness
 pub fn tungsten::testing::UiHarness::hit(&self, f32, f32) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten::testing::UiHarness::hover(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten::testing::UiHarness::key_down(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten::testing::UiHarness::key_up(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten::testing::UiHarness::layout(&mut self) -> tungsten_core::ui::tree::LayoutStats
@@ -1418,6 +1470,7 @@ pub fn tungsten::testing::UiHarness::tree(&self) -> &tungsten_core::ui::tree::Ui
 pub fn tungsten::testing::UiHarness::tree_json(&self) -> alloc::string::String
 pub fn tungsten::testing::UiHarness::tree_mut(&mut self) -> &mut tungsten_core::ui::tree::UiTree
 pub fn tungsten::testing::UiHarness::type_text(&mut self, &str)
+pub fn tungsten::testing::UiHarness::wait(&mut self, f32) -> u32
 pub fn tungsten::testing::UiHarness::wheel(&mut self, f32)
 pub fn tungsten::testing::UiHarness::world(&self) -> &tungsten_core::ecs::world::World
 pub fn tungsten::testing::UiHarness::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World

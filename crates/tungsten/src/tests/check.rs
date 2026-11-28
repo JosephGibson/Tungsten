@@ -909,3 +909,30 @@ fn a_broken_conversation_fails_the_check_with_its_field_path() {
         }
     }
 }
+
+#[test]
+fn an_unknown_sprite_in_a_screen_fails_the_check() {
+    let game = Folder::new();
+    game.png("assets/gem.png", 16);
+    game.write(
+        "assets/ui/screens/bag.json",
+        r#"{"version": 1, "root": {"kind": "screen", "width": 200, "children": [
+            {"kind": "image", "sprite": "gem"},
+            {"kind": "image", "sprite": "engine_white"},
+            {"kind": "image", "sprite": "ruby"}]}}"#,
+    );
+    let root = game.write(
+        "assets/manifest.json",
+        r#"{"sprites": {"gem": {"path": "gem.png"}},
+            "ui_screens": {"bag": {"path": "ui/screens/bag.json"}}}"#,
+    );
+    let mut app = game_world();
+    let errors = check_files(app.world_mut(), &[root], &game.0);
+    assert_eq!(errors.len(), 1, "{errors:#?}");
+    assert_eq!(errors[0].file, Path::new("assets/ui/screens/bag.json"));
+    let message = &errors[0].message;
+    assert!(
+        message.contains("root.children[2].sprite") && message.contains("no sprite 'ruby'"),
+        "{message}"
+    );
+}

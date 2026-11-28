@@ -2,15 +2,15 @@
 //! `ui_screens` file in its `on_enter`, adopts the root as a
 //! [`ModalScreen`], runs each control's `on` action and refreshes the
 //! file's bindings each frame. [`open`](super::open) pushes one by the
-//! file's ID.
+//! file's ID, and [`popup::open`] one beside a control (`D-31[6]`).
 
 use tungsten_core::ui::{
-    KeyedAction, ScreenAction, ScreenSetting, UiAction, UiBindings, UiEvent, UiRouter, UiTree,
-    UiValue, WidgetId, screen_build,
+    KeyedAction, ScreenAction, ScreenSetting, UiAction, UiBindings, UiEvent, UiKey, UiRouter,
+    UiTree, UiValue, Visibility, WidgetId, screen_build,
 };
 use tungsten_core::{AudioBus, DisplayState, EventQueue, Settings, World};
 
-use super::{ModalScreen, open, pop};
+use super::{ModalScreen, open, pop, popup};
 use crate::settings::{ShippedConfig, apply_settings, shipped_volume};
 use crate::state::{GameState, StateContext, StateId, StateStack};
 
@@ -19,9 +19,11 @@ use crate::state::{GameState, StateContext, StateId, StateStack};
 /// file's actions run, its bindings refreshed each frame. A button's and a
 /// choice row's action runs at its activation, a toggle's and a slider's at
 /// its commit; `pop` closes the screen, `push` opens another by ID or name,
-/// `action` calls the game's registered action and `setting` writes
-/// `Settings` and applies them. A control that writes a setting shows the
-/// setting as set, else as it runs, unless a value binding names another.
+/// `action` calls the game's registered action, `setting` writes
+/// `Settings` and applies them and `popup` opens a file beside the control.
+/// A control that writes a setting shows the setting as set, else as it
+/// runs, unless a value binding names another. Its tooltips show
+/// ([`popup::tick`]).
 pub struct DataScreen {
     id: StateId,
     screen: Option<ModalScreen>,
@@ -32,6 +34,10 @@ pub struct DataScreen {
     revision: u32,
     /// The opener's key, to find it again after a reload.
     opener_key: Option<String>,
+    /// A popup's control and its key; `None` for a screen.
+    beside: Option<(WidgetId, Option<UiKey>)>,
+    /// Whether a layout has placed the popup, which shows from then.
+    placed: bool,
 }
 
 impl DataScreen {
@@ -46,6 +52,33 @@ impl DataScreen {
             settings: Vec::new(),
             revision: 0,
             opener_key: None,
+            beside: None,
+            placed: false,
+        }
+    }
+
+    /// The popup of `ui_screens` file `id` beside `beside`, keyed `key`:
+    /// [`popup::open`] makes one.
+    pub(super) fn popup(id: StateId, beside: WidgetId, key: Option<UiKey>) -> Self {
+        Self {
+            beside: Some((beside, key)),
+            ..Self::new(id)
+        }
+    }
+
+    /// A popup's turn before its actions: placed beside its control, shown
+    /// once placed; a press outside it pops it.
+    fn place(&mut self, world: &mut World, root: WidgetId) {
+        let Some((beside, _)) = self.beside else {
+            return;
+        };
+        let tree = world.resource_mut::<UiTree>();
+        if popup::place_beside(tree, root, beside) && !self.placed {
+            tree.set_visibility(root, Visibility::Visible);
+            self.placed = true;
+        }
+        if popup::pressed_outside(world, root) {
+            pop(world);
         }
     }
 
@@ -95,13 +128,25 @@ impl GameState for DataScreen {
             return;
         };
         let screen = ModalScreen::adopt(world, built.root, built.card);
+        if let Some((beside, key)) = self.beside {
+            // Hidden and anchored until placed, so the first layout gives
+            // its own size.
+            let tree = world.resource_mut::<UiTree>();
+            tree.set_window_position(built.root, glam::Vec2::ZERO);
+            tree.set_visibility(built.root, Visibility::Hidden);
+            popup::anchored(world, beside, key);
+        }
         self.settings = setting_controls(world, built.root);
         self.show_settings(world);
         screen.resume(world);
         self.screen = Some(screen);
     }
 
-    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+    fn on_exit(&mut self, ctx: &mut StateContext) {
+        if self.beside.is_some() && self.screen.is_some() {
+            popup::closed(ctx.world);
+        }
+    }
 
     fn on_resume(&mut self, ctx: &mut StateContext) {
         let Some(mut screen) = self.screen else {
@@ -117,6 +162,7 @@ impl GameState for DataScreen {
             return;
         };
         self.sync(world, &mut screen);
+        self.place(world, screen.root);
         if screen.ready(world)
             && let Some(activated) = run_actions(world, screen.root)
         {
@@ -127,6 +173,7 @@ impl GameState for DataScreen {
         self.screen = Some(screen);
         screen_build::refresh(world, screen.root);
         self.show_settings(world);
+        popup::tick(world, screen.root);
     }
 }
 
@@ -169,20 +216,23 @@ fn run_actions(world: &mut World, root: WidgetId) -> Option<WidgetId> {
             continue;
         };
         if keyed.on_commit == value.is_some() {
-            run(world, &keyed, value);
+            run(world, &keyed, widget, value);
         }
     }
     activated
 }
 
-/// Runs `keyed`'s action with the control's `value`.
-fn run(world: &mut World, keyed: &KeyedAction, value: Option<UiValue>) {
+/// Runs `keyed`'s action, the control `widget`'s, with its `value`.
+fn run(world: &mut World, keyed: &KeyedAction, widget: WidgetId, value: Option<UiValue>) {
     match &keyed.action {
         ScreenAction::Pop => {
             pop(world);
         }
         ScreenAction::Push(id) => {
             open(world, id);
+        }
+        ScreenAction::Popup(id) => {
+            popup::open(world, id, widget);
         }
         ScreenAction::Named(name) => {
             let action = world

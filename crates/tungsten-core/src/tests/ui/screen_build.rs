@@ -782,3 +782,197 @@ fn a_repeat_with_columns_lays_its_rows_out_as_cells() {
         "the 1fr column takes the rest"
     );
 }
+
+/// Gives `world` the 16×16 sprite `gem` and the 32×24 sprite `heart`.
+fn with_sprites(world: &mut World) {
+    let mut assets = AssetRegistry::new();
+    for (name, width, height) in [("gem", 16, 16), ("heart", 32, 24)] {
+        assets.register_sprite(
+            name.to_owned(),
+            crate::assets::FilterMode::Nearest,
+            width,
+            height,
+            std::path::PathBuf::from(format!("{name}.png")),
+            crate::assets::registry::TextureHandle(1),
+            crate::assets::UvRect {
+                min: [0.0, 0.0],
+                max: [1.0, 1.0],
+            },
+            None,
+            None,
+            None,
+        );
+    }
+    world.insert_resource(assets);
+}
+
+#[test]
+fn an_image_binding_sets_its_sprite_and_collapses_when_unknown() {
+    let mut world = world(&[(
+        "menu",
+        &screen(
+            r#"{"kind": "image", "key": "face", "bind": {"image": "text"}},
+               {"kind": "image", "key": "gem", "sprite": "gem", "layout": {"width": 40, "height": 40}},
+               {"kind": "image", "key": "lost", "sprite": "nope"},
+               {"kind": "repeat", "key": "cells", "rows": "rows",
+                "row": {"kind": "image", "field": "icon"}}"#,
+        ),
+    )]);
+    with_sprites(&mut world);
+    UiBindings::of(&mut world).image("text", text);
+    let values = world.resource_mut::<Values>();
+    values.text = "heart".to_owned();
+    values.rows = vec![
+        UiRow::new("a").with("icon", "gem"),
+        UiRow::new("b").with("icon", ""),
+    ];
+    let built = build(&mut world, "menu").expect("built");
+    let assets = world.resource::<AssetRegistry>();
+    let (gem, heart) = (
+        assets.sprite_id("gem").unwrap(),
+        assets.sprite_id("heart").unwrap(),
+    );
+    let [face, lit, lost, cells] =
+        ["face", "gem", "lost", "cells"].map(|key| keyed(&world, built.root, key));
+    let shown = |world: &World, id| tree(world).visibility(id) == Some(Visibility::Visible);
+    assert_eq!(tree(&world).image_sprite(face), Some(heart));
+    assert!(shown(&world, face) && shown(&world, lit));
+    layout(&mut world);
+    let size = |world: &World, id| tree(world).rect(id).unwrap().size();
+    assert_eq!(
+        size(&world, face),
+        Vec2::new(32.0, 24.0),
+        "the sprite's own"
+    );
+    assert_eq!(size(&world, lit), Vec2::splat(40.0), "its layout's");
+    assert_eq!(
+        tree(&world).visibility(lost),
+        Some(Visibility::Collapsed),
+        "an unknown sprite collapses"
+    );
+    assert!(warned(&world).contains("sprite menu nope"), "warned once");
+    let rows = tree(&world).children(cells).to_vec();
+    assert_eq!(
+        tree(&world).image_sprite(rows[0]),
+        Some(gem),
+        "a row's field"
+    );
+    assert_eq!(
+        tree(&world).visibility(rows[1]),
+        Some(Visibility::Collapsed),
+        "an empty name collapses"
+    );
+    assert!(!warned(&world).iter().any(|once| once == "sprite menu "));
+
+    // The binding writes on change: another sprite, an unknown one, back.
+    world.resource_mut::<Values>().text = "gem".to_owned();
+    refresh(&mut world, built.root);
+    assert_eq!(tree(&world).image_sprite(face), Some(gem));
+    world.resource_mut::<Values>().text = "ghost".to_owned();
+    refresh(&mut world, built.root);
+    assert_eq!(tree(&world).visibility(face), Some(Visibility::Collapsed));
+    assert!(warned(&world).contains("sprite menu ghost"));
+    world.resource_mut::<Values>().text = "heart".to_owned();
+    refresh(&mut world, built.root);
+    assert!(shown(&world, face));
+    assert_eq!(tree(&world).image_sprite(face), Some(heart));
+    layout(&mut world);
+    world.resource_mut::<UiTree>().clear_paint_dirty();
+    refresh(&mut world, built.root);
+    assert_eq!(
+        layout(&mut world),
+        LayoutStats::default(),
+        "an unchanged sprite marks nothing"
+    );
+}
+
+#[test]
+fn a_style_binding_or_row_field_names_the_text_style() {
+    let mut world = world(&[(
+        "menu",
+        &screen(
+            r#"{"kind": "small", "key": "name", "text": "Sword", "bind": {"style": "text"}},
+               {"kind": "repeat", "key": "items", "rows": "rows",
+                "row": {"kind": "label", "field": "name", "style_field": "rarity"}}"#,
+        ),
+    )]);
+    UiBindings::of(&mut world).style("text", text);
+    let values = world.resource_mut::<Values>();
+    values.text = "heading".to_owned();
+    values.rows = vec![
+        UiRow::new("a").with("name", "Axe").with("rarity", "note"),
+        UiRow::new("b").with("name", "Bow").with("rarity", ""),
+    ];
+    let built = build(&mut world, "menu").expect("built");
+    let name = keyed(&world, built.root, "name");
+    let items = keyed(&world, built.root, "items");
+    assert_eq!(tree(&world).text_style(name), Some("heading"));
+    let rows = tree(&world).children(items).to_vec();
+    assert_eq!(tree(&world).text_style(rows[0]), Some("note"), "its field");
+    assert_eq!(
+        tree(&world).text_style(rows[1]),
+        None,
+        "an empty field: none"
+    );
+
+    // An empty name gives the node back its own style.
+    world.resource_mut::<Values>().text = String::new();
+    refresh(&mut world, built.root);
+    assert_eq!(tree(&world).text_style(name), Some("small"));
+    world.resource_mut::<Values>().text = "note".to_owned();
+    refresh(&mut world, built.root);
+    assert_eq!(tree(&world).text_style(name), Some("note"));
+    layout(&mut world);
+    refresh(&mut world, built.root);
+    assert_eq!(
+        layout(&mut world),
+        LayoutStats::default(),
+        "an unchanged style marks nothing"
+    );
+}
+
+#[test]
+fn the_build_records_each_nodes_tooltip() {
+    let json = screen(
+        r#"{"kind": "button", "key": "use", "text": "Use", "tooltip": "Drink it"},
+           {"kind": "label", "key": "gem", "text": "Gem", "tooltip": {"screen": "item_tooltip"}},
+           {"kind": "label", "key": "plain", "text": "Plain"},
+           {"kind": "repeat", "key": "slots", "rows": "rows",
+            "row": {"kind": "button", "field": "name", "tooltip": "A slot"}}"#,
+    );
+    let mut world = world(&[("menu", &json)]);
+    world.resource_mut::<Values>().rows = vec![
+        UiRow::new("a").with("name", "A"),
+        UiRow::new("b").with("name", "B"),
+    ];
+    let built = build(&mut world, "menu").expect("built");
+    let [used, gem, plain, slots] =
+        ["use", "gem", "plain", "slots"].map(|key| keyed(&world, built.root, key));
+    let text = |line: &str| Some(Tooltip::Text(line.to_owned()));
+    assert_eq!(tooltip(&world, used).cloned(), text("Drink it"));
+    assert_eq!(
+        tooltip(&world, gem).cloned(),
+        Some(Tooltip::Screen("item_tooltip".to_owned()))
+    );
+    assert_eq!(tooltip(&world, plain), None);
+    assert_eq!(tooltip(&world, built.root), None);
+    let rows = tree(&world).children(slots).to_vec();
+    for row in &rows {
+        assert_eq!(tooltip(&world, *row).cloned(), text("A slot"));
+    }
+
+    // Rebuilt rows carry theirs; a reload records the file's new ones.
+    world.resource_mut::<Values>().rows = vec![UiRow::new("c").with("name", "C")];
+    refresh(&mut world, built.root);
+    let row = tree(&world).children(slots)[0];
+    assert_eq!(tooltip(&world, row).cloned(), text("A slot"));
+    assert_eq!(tooltip(&world, rows[0]), None, "the old rows' are gone");
+    replace(
+        &mut world,
+        "menu",
+        &json.replace(r#""tooltip": "Drink it""#, r#""tooltip": "Sip it""#),
+    );
+    reload(&mut world, "menu");
+    let used = keyed(&world, built.root, "use");
+    assert_eq!(tooltip(&world, used).cloned(), text("Sip it"));
+}

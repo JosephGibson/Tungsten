@@ -69,7 +69,7 @@ pub use route::{
     BACK_KEY, InputDevice, UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT,
     UI_UP, UiRouteSettings, UiRouter, ui_route_system,
 };
-pub use screen_build::{BuiltScreen, KeyedAction, UiAction, UiBindings, UiRow, UiScreens};
+pub use screen_build::{BuiltScreen, KeyedAction, Tooltip, UiAction, UiBindings, UiRow, UiScreens};
 pub use screen_file::{
     SCREEN_VERSION, ScreenAction, ScreenError, ScreenFile, ScreenFileError, ScreenNames,
     ScreenSetting, UiScreenRegistry,

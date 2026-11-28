@@ -15503,6 +15503,24 @@ pub const tungsten_core::ui::route::UI_RIGHT: &str
 pub const tungsten_core::ui::route::UI_UP: &str
 pub fn tungsten_core::ui::route::ui_route_system(&mut tungsten_core::World)
 pub mod tungsten_core::ui::screen_build
+#[non_exhaustive] pub enum tungsten_core::ui::screen_build::Tooltip
+pub tungsten_core::ui::screen_build::Tooltip::Screen(alloc::string::String)
+pub tungsten_core::ui::screen_build::Tooltip::Text(alloc::string::String)
+impl core::clone::Clone for tungsten_core::ui::screen_build::Tooltip
+pub fn tungsten_core::ui::screen_build::Tooltip::clone(&self) -> tungsten_core::ui::screen_build::Tooltip
+impl core::cmp::Eq for tungsten_core::ui::screen_build::Tooltip
+impl core::cmp::PartialEq for tungsten_core::ui::screen_build::Tooltip
+pub fn tungsten_core::ui::screen_build::Tooltip::eq(&self, &tungsten_core::ui::screen_build::Tooltip) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_build::Tooltip
+pub fn tungsten_core::ui::screen_build::Tooltip::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_build::Tooltip
+impl core::marker::Freeze for tungsten_core::ui::screen_build::Tooltip
+impl core::marker::Send for tungsten_core::ui::screen_build::Tooltip
+impl core::marker::Sync for tungsten_core::ui::screen_build::Tooltip
+impl core::marker::Unpin for tungsten_core::ui::screen_build::Tooltip
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::Tooltip
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::Tooltip
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::Tooltip
 pub struct tungsten_core::ui::screen_build::BuiltScreen
 pub tungsten_core::ui::screen_build::BuiltScreen::card: tungsten_core::ui::id::WidgetId
 pub tungsten_core::ui::screen_build::BuiltScreen::root: tungsten_core::ui::id::WidgetId
@@ -15566,10 +15584,12 @@ pub fn tungsten_core::ui::screen_build::UiBindings::action(&mut self, &'static s
 pub fn tungsten_core::ui::screen_build::UiBindings::action_named(&self, &str) -> core::option::Option<tungsten_core::ui::screen_build::ActionFn>
 pub fn tungsten_core::ui::screen_build::UiBindings::enabled(&mut self, &'static str, tungsten_core::ui::screen_build::FlagBinding) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::fill(&mut self, &'static str, tungsten_core::ui::screen_build::FillBinding) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::image(&mut self, &'static str, tungsten_core::ui::screen_build::TextBinding) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::mount(&mut self, &'static str, tungsten_core::ui::screen_build::MountFn) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::names(&self) -> tungsten_core::ui::screen_file::ScreenNames
 pub fn tungsten_core::ui::screen_build::UiBindings::of(&mut tungsten_core::World) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::rows(&mut self, &'static str, tungsten_core::ui::screen_build::RowProvider) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::style(&mut self, &'static str, tungsten_core::ui::screen_build::TextBinding) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::text(&mut self, &'static str, tungsten_core::ui::screen_build::TextBinding) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::value(&mut self, &'static str, tungsten_core::ui::screen_build::ValueBinding) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::visible(&mut self, &'static str, tungsten_core::ui::screen_build::FlagBinding) -> &mut Self
@@ -15630,6 +15650,7 @@ pub fn tungsten_core::ui::screen_build::node(&tungsten_core::World, tungsten_cor
 pub fn tungsten_core::ui::screen_build::refresh(&mut tungsten_core::World, tungsten_core::ui::id::WidgetId)
 pub fn tungsten_core::ui::screen_build::reload(&mut tungsten_core::World, &str)
 pub fn tungsten_core::ui::screen_build::revision(&tungsten_core::World, tungsten_core::ui::id::WidgetId) -> core::option::Option<u32>
+pub fn tungsten_core::ui::screen_build::tooltip(&tungsten_core::World, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::ui::screen_build::Tooltip>
 pub type tungsten_core::ui::screen_build::ActionFn = fn(&mut tungsten_core::World, tungsten_core::ui::screen_build::UiAction)
 pub type tungsten_core::ui::screen_build::FillBinding = fn(&tungsten_core::World) -> f32
 pub type tungsten_core::ui::screen_build::FlagBinding = fn(&tungsten_core::World) -> bool
@@ -15641,6 +15662,7 @@ pub mod tungsten_core::ui::screen_file
 pub enum tungsten_core::ui::screen_file::ScreenAction
 pub tungsten_core::ui::screen_file::ScreenAction::Named(alloc::string::String)
 pub tungsten_core::ui::screen_file::ScreenAction::Pop
+pub tungsten_core::ui::screen_file::ScreenAction::Popup(alloc::string::String)
 pub tungsten_core::ui::screen_file::ScreenAction::Push(alloc::string::String)
 pub tungsten_core::ui::screen_file::ScreenAction::Setting(tungsten_core::ui::screen_file::ScreenSetting)
 impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenAction
@@ -15746,7 +15768,10 @@ pub fn tungsten_core::ui::screen_file::ScreenFile::data_screen_refusal(&self) ->
 pub fn tungsten_core::ui::screen_file::ScreenFile::from_json(&str) -> core::result::Result<Self, tungsten_core::ui::screen_file::ScreenError>
 pub fn tungsten_core::ui::screen_file::ScreenFile::keys(&self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::ui::screen_file::ScreenFile::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::ui::screen_file::ScreenFileError>
+pub fn tungsten_core::ui::screen_file::ScreenFile::popup_refusal(&self) -> core::option::Option<&'static str>
+pub fn tungsten_core::ui::screen_file::ScreenFile::sprites(&self) -> alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
 pub fn tungsten_core::ui::screen_file::ScreenFile::to_canonical(&self) -> alloc::string::String
+pub fn tungsten_core::ui::screen_file::ScreenFile::tooltip_refusal(&self) -> core::option::Option<&'static str>
 pub fn tungsten_core::ui::screen_file::ScreenFile::uses(&self) -> tungsten_core::ui::screen_file::ScreenNames
 impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenFile
 pub fn tungsten_core::ui::screen_file::ScreenFile::clone(&self) -> tungsten_core::ui::screen_file::ScreenFile
@@ -15770,13 +15795,17 @@ pub struct tungsten_core::ui::screen_file::ScreenNames
 pub tungsten_core::ui::screen_file::ScreenNames::actions: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::enabled: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::fill: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::image: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::mounts: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::popups: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::refused: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::rows: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::screens: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::sizes: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::style: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::styles: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::text: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::screen_file::ScreenNames::tooltips: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::value: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::screen_file::ScreenNames::visible: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenNames
@@ -17184,6 +17213,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::Role
 pub enum tungsten_core::ui::ScreenAction
 pub tungsten_core::ui::ScreenAction::Named(alloc::string::String)
 pub tungsten_core::ui::ScreenAction::Pop
+pub tungsten_core::ui::ScreenAction::Popup(alloc::string::String)
 pub tungsten_core::ui::ScreenAction::Push(alloc::string::String)
 pub tungsten_core::ui::ScreenAction::Setting(tungsten_core::ui::screen_file::ScreenSetting)
 impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenAction
@@ -17302,6 +17332,24 @@ impl core::marker::Unpin for tungsten_core::ui::theme_file::ThemeFileError
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme_file::ThemeFileError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme_file::ThemeFileError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme_file::ThemeFileError
+#[non_exhaustive] pub enum tungsten_core::ui::Tooltip
+pub tungsten_core::ui::Tooltip::Screen(alloc::string::String)
+pub tungsten_core::ui::Tooltip::Text(alloc::string::String)
+impl core::clone::Clone for tungsten_core::ui::screen_build::Tooltip
+pub fn tungsten_core::ui::screen_build::Tooltip::clone(&self) -> tungsten_core::ui::screen_build::Tooltip
+impl core::cmp::Eq for tungsten_core::ui::screen_build::Tooltip
+impl core::cmp::PartialEq for tungsten_core::ui::screen_build::Tooltip
+pub fn tungsten_core::ui::screen_build::Tooltip::eq(&self, &tungsten_core::ui::screen_build::Tooltip) -> bool
+impl core::fmt::Debug for tungsten_core::ui::screen_build::Tooltip
+pub fn tungsten_core::ui::screen_build::Tooltip::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::screen_build::Tooltip
+impl core::marker::Freeze for tungsten_core::ui::screen_build::Tooltip
+impl core::marker::Send for tungsten_core::ui::screen_build::Tooltip
+impl core::marker::Sync for tungsten_core::ui::screen_build::Tooltip
+impl core::marker::Unpin for tungsten_core::ui::screen_build::Tooltip
+impl core::marker::UnsafeUnpin for tungsten_core::ui::screen_build::Tooltip
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::screen_build::Tooltip
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::screen_build::Tooltip
 #[non_exhaustive] pub enum tungsten_core::ui::Track
 pub tungsten_core::ui::Track::Auto
 pub tungsten_core::ui::Track::Fr(f32)
@@ -18078,7 +18126,10 @@ pub fn tungsten_core::ui::screen_file::ScreenFile::data_screen_refusal(&self) ->
 pub fn tungsten_core::ui::screen_file::ScreenFile::from_json(&str) -> core::result::Result<Self, tungsten_core::ui::screen_file::ScreenError>
 pub fn tungsten_core::ui::screen_file::ScreenFile::keys(&self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::ui::screen_file::ScreenFile::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::ui::screen_file::ScreenFileError>
+pub fn tungsten_core::ui::screen_file::ScreenFile::popup_refusal(&self) -> core::option::Option<&'static str>
+pub fn tungsten_core::ui::screen_file::ScreenFile::sprites(&self) -> alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
 pub fn tungsten_core::ui::screen_file::ScreenFile::to_canonical(&self) -> alloc::string::String
+pub fn tungsten_core::ui::screen_file::ScreenFile::tooltip_refusal(&self) -> core::option::Option<&'static str>
 pub fn tungsten_core::ui::screen_file::ScreenFile::uses(&self) -> tungsten_core::ui::screen_file::ScreenNames
 impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenFile
 pub fn tungsten_core::ui::screen_file::ScreenFile::clone(&self) -> tungsten_core::ui::screen_file::ScreenFile
@@ -18102,13 +18153,17 @@ pub struct tungsten_core::ui::ScreenNames
 pub tungsten_core::ui::ScreenNames::actions: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::enabled: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::fill: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::image: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::mounts: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::popups: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::refused: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::rows: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::screens: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::sizes: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::style: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::styles: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::text: alloc::collections::btree::set::BTreeSet<alloc::string::String>
+pub tungsten_core::ui::ScreenNames::tooltips: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::value: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub tungsten_core::ui::ScreenNames::visible: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 impl core::clone::Clone for tungsten_core::ui::screen_file::ScreenNames
@@ -18413,10 +18468,12 @@ pub fn tungsten_core::ui::screen_build::UiBindings::action(&mut self, &'static s
 pub fn tungsten_core::ui::screen_build::UiBindings::action_named(&self, &str) -> core::option::Option<tungsten_core::ui::screen_build::ActionFn>
 pub fn tungsten_core::ui::screen_build::UiBindings::enabled(&mut self, &'static str, tungsten_core::ui::screen_build::FlagBinding) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::fill(&mut self, &'static str, tungsten_core::ui::screen_build::FillBinding) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::image(&mut self, &'static str, tungsten_core::ui::screen_build::TextBinding) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::mount(&mut self, &'static str, tungsten_core::ui::screen_build::MountFn) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::names(&self) -> tungsten_core::ui::screen_file::ScreenNames
 pub fn tungsten_core::ui::screen_build::UiBindings::of(&mut tungsten_core::World) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::rows(&mut self, &'static str, tungsten_core::ui::screen_build::RowProvider) -> &mut Self
+pub fn tungsten_core::ui::screen_build::UiBindings::style(&mut self, &'static str, tungsten_core::ui::screen_build::TextBinding) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::text(&mut self, &'static str, tungsten_core::ui::screen_build::TextBinding) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::value(&mut self, &'static str, tungsten_core::ui::screen_build::ValueBinding) -> &mut Self
 pub fn tungsten_core::ui::screen_build::UiBindings::visible(&mut self, &'static str, tungsten_core::ui::screen_build::FlagBinding) -> &mut Self

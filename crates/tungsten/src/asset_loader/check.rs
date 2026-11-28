@@ -268,7 +268,9 @@ pub(crate) fn check_files(
 }
 
 /// Parses each `ui_screens` file, then holds every name it uses to the
-/// World's ([`screen_names`]), each error naming its field; inserts the
+/// World's ([`screen_names`]) and each image's literal `sprite` to the
+/// manifest's sprites or a reserved one (`D-31[6]`), each error naming its
+/// field; inserts the
 /// registry and paths when the manifests list screens, as a load does.
 fn check_screens(manifest: &ResolvedManifest, world: &mut World, errors: &mut Errors) {
     if manifest.ui_screens.is_empty() {
@@ -292,12 +294,22 @@ fn check_screens(manifest: &ResolvedManifest, world: &mut World, errors: &mut Er
     let names = screen_names(world, &registry);
     for id in registry.ids() {
         let path = &manifest.ui_screens[id].path;
-        for issue in registry
-            .get(id)
-            .map(|file| file.check(&names))
-            .unwrap_or_default()
-        {
+        let Some(file) = registry.get(id) else {
+            continue;
+        };
+        for issue in file.check(&names) {
             errors.push(path, format!("ui screen '{id}': {issue}"));
+        }
+        for (field, sprite) in file.sprites() {
+            let registered = world
+                .get_resource::<AssetRegistry>()
+                .is_some_and(|assets| assets.get_sprite(&sprite).is_some());
+            if !manifest.sprites.contains_key(&sprite) && !registered {
+                errors.push(
+                    path,
+                    format!("ui screen '{id}': {field}: no sprite '{sprite}' is in the manifest"),
+                );
+            }
         }
     }
     world.insert_resource(registry);
@@ -308,7 +320,8 @@ fn check_screens(manifest: &ResolvedManifest, world: &mut World, errors: &mut Er
 /// mounts and actions its [`UiBindings`] holds; the text styles and sizes
 /// the built-in theme, the tree's and every loaded theme name, with the
 /// widgets' size defaults; and the screens a `push` opens, the registered
-/// ones and `registry`'s files, those a data screen refuses apart.
+/// ones and `registry`'s files, those a data screen refuses apart, with
+/// the files a `popup` opens and a `tooltip` shows.
 pub(crate) fn screen_names(world: &World, registry: &UiScreenRegistry) -> ScreenNames {
     let mut names = world
         .get_resource::<UiBindings>()
@@ -334,12 +347,18 @@ pub(crate) fn screen_names(world: &World, registry: &UiScreenRegistry) -> Screen
     }
     for id in registry.ids() {
         names.screens.insert(id.to_owned());
-        if registry
-            .get(id)
-            .and_then(ScreenFile::data_screen_refusal)
-            .is_some()
-        {
-            names.refused.insert(id.to_owned());
+        let Some(file) = registry.get(id) else {
+            continue;
+        };
+        let sets = [
+            (file.data_screen_refusal().is_some(), &mut names.refused),
+            (file.popup_refusal().is_none(), &mut names.popups),
+            (file.tooltip_refusal().is_none(), &mut names.tooltips),
+        ];
+        for (member, set) in sets {
+            if member {
+                set.insert(id.to_owned());
+            }
         }
     }
     names

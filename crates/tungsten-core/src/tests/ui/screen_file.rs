@@ -711,6 +711,7 @@ fn drag_and_drop_flags_parse_on_every_kind() {
             r#""key": "slots", "rows": "slots", "row": { "kind": "button", "field": "name", "drag": true }"#
         }
         Kind::TextField => r#""text": """#,
+        Kind::Image => r#""sprite": "gem""#,
         _ => r#""children": []"#,
     };
     let mut kinds = 0;
@@ -730,10 +731,159 @@ fn drag_and_drop_flags_parse_on_every_kind() {
         );
         kinds += 1;
     }
-    assert_eq!(kinds, 19, "every kind a card holds");
+    assert_eq!(kinds, 20, "every kind a card holds");
     // The root kinds take them too.
     let root = r#"{"version": 1, "root": {"kind": "screen", "width": 260, "drop": true}}"#;
     assert!(read(root).to_canonical().contains(r#""drop": true"#));
     let message = error(&screen(r#"{"kind": "label", "drag": "yes"}"#)).to_string();
     assert!(message.contains("drag"), "{message}");
+}
+
+#[test]
+fn an_image_takes_a_sprite_a_field_or_a_binding() {
+    let file = read(&screen(
+        r##"{"kind": "image", "sprite": "gem", "tint": "#ff000080", "layout": {"width": 32, "height": 32}},
+           {"kind": "image", "key": "face", "bind": {"image": "portrait"}, "tint": "accent"},
+           {"kind": "repeat", "key": "cells", "rows": "cells",
+            "row": {"kind": "image", "field": "icon"}}"##,
+    ));
+    let canonical = file.to_canonical();
+    assert_eq!(read(&canonical).to_canonical(), canonical, "it reads back");
+    assert_eq!(
+        file.sprites(),
+        [("root.children[0].sprite".to_owned(), "gem".to_owned())],
+        "only a literal sprite is the check's"
+    );
+    let uses = file.uses();
+    assert!(uses.image.contains("portrait"), "{uses:?}");
+    assert!(file.check(&uses).is_empty());
+    for (json, field, why) in [
+        (
+            r#"{"kind": "image"}"#,
+            "root.children[0].sprite",
+            "an image takes exactly one of sprite, field and bind.image",
+        ),
+        (
+            r#"{"kind": "image", "sprite": "gem", "bind": {"image": "portrait"}}"#,
+            "root.children[0].sprite",
+            "an image takes exactly one of sprite, field and bind.image",
+        ),
+        (
+            r#"{"kind": "image", "field": "icon"}"#,
+            "root.children[0].field",
+            "a field is read only inside a repeat's row",
+        ),
+        (
+            r#"{"kind": "image", "sprite": "gem", "tint": "glow"}"#,
+            "root.children[0].tint",
+            "colour 'glow' is not",
+        ),
+        (
+            r#"{"kind": "image", "sprite": "gem", "text": "A"}"#,
+            "root.children[0].text",
+            "an image takes no text",
+        ),
+        (
+            r#"{"kind": "label", "text": "A", "bind": {"image": "portrait"}}"#,
+            "root.children[0].bind.image",
+            "a label takes no image binding",
+        ),
+    ] {
+        let error = error(&screen(json));
+        assert_eq!(error.field, field, "{json}: {error}");
+        assert!(error.message.contains(why), "{json}: {error}");
+    }
+}
+
+#[test]
+fn a_tooltip_and_a_popup_action_parse() {
+    let file = read(&screen(
+        r#"{"kind": "button", "key": "use", "text": "Use", "tooltip": "Drink it", "on": {"popup": "cell_menu"}},
+           {"kind": "label", "text": "Gem", "tooltip": {"screen": "item_tooltip"}}"#,
+    ));
+    let canonical = file.to_canonical();
+    assert_eq!(read(&canonical).to_canonical(), canonical, "it reads back");
+    let (button, label) = (&file.root.children[0], &file.root.children[1]);
+    assert_eq!(button.on, Some(ScreenAction::Popup("cell_menu".to_owned())));
+    assert_eq!(
+        button.tooltip,
+        Some(TooltipFile::Text("Drink it".to_owned()))
+    );
+    assert_eq!(
+        label.tooltip,
+        Some(TooltipFile::Screen {
+            screen: "item_tooltip".to_owned()
+        })
+    );
+    let uses = file.uses();
+    let set = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect();
+    assert_eq!(uses.screens, set(&["cell_menu", "item_tooltip"]));
+    assert_eq!(uses.popups, set(&["cell_menu"]));
+    assert_eq!(uses.tooltips, set(&["item_tooltip"]));
+    assert!(file.check(&uses).is_empty());
+
+    // A file that does not fit fails at its field; an unknown one too.
+    let mut known = uses.clone();
+    known.popups.clear();
+    let issues = file.check(&known);
+    assert_eq!(issues.len(), 1, "{issues:?}");
+    assert_eq!(issues[0].field, "root.children[0].on.popup");
+    assert!(
+        issues[0].message.contains("does not show as a popup"),
+        "{}",
+        issues[0]
+    );
+    let issues = file.check(&ScreenNames::default());
+    let fields: Vec<_> = issues.iter().map(|issue| issue.field.as_str()).collect();
+    assert_eq!(
+        fields,
+        [
+            "root.children[0].on.popup",
+            "root.children[1].tooltip.screen"
+        ]
+    );
+    assert!(
+        issues[0].message.contains("no screen file 'cell_menu'"),
+        "{}",
+        issues[0]
+    );
+
+    // Which roots fit: a popup's a modal bare root, a tooltip's not.
+    let popup =
+        read(r#"{"version": 1, "root": {"kind": "root", "layer": "game_popup", "modal": true}}"#);
+    assert_eq!(popup.popup_refusal(), None);
+    assert!(popup.tooltip_refusal().is_some());
+    let tip = read(r#"{"version": 1, "root": {"kind": "root", "layer": "game_popup"}}"#);
+    assert_eq!(tip.tooltip_refusal(), None);
+    assert!(tip.popup_refusal().is_some());
+    let card = read(&screen(""));
+    assert!(card.popup_refusal().is_some() && card.tooltip_refusal().is_some());
+    let hud = read(r#"{"version": 1, "root": {"kind": "root", "layer": "game", "modal": true}}"#);
+    assert!(hud.popup_refusal().is_some());
+
+    for (json, field) in [
+        (
+            r#"{"kind": "label", "text": "A", "tooltip": ""}"#,
+            "root.children[0].tooltip",
+        ),
+        (
+            r#"{"kind": "label", "text": "A", "tooltip": {"screen": ""}}"#,
+            "root.children[0].tooltip.screen",
+        ),
+        (
+            r#"{"kind": "label", "text": "A", "tooltip": {"scren": "tip"}}"#,
+            "root.children[0].tooltip",
+        ),
+        (
+            r#"{"kind": "label", "text": "A", "tooltip": {"screen": "tip", "delay": 1}}"#,
+            "root.children[0].tooltip",
+        ),
+        (
+            r#"{"kind": "button", "text": "A", "on": {"popup": 3}}"#,
+            "root.children[0].on",
+        ),
+    ] {
+        let error = error(&screen(json));
+        assert!(error.field.starts_with(field), "{json}: {error}");
+    }
 }

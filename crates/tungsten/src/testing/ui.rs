@@ -12,7 +12,7 @@ use tungsten_core::ui::{
     FixedAdvanceMeasure, LayoutStats, PaintList, Rect, UiDebug, UiKey, UiReveals, UiRouter, UiTree,
     Visibility, WidgetId,
 };
-use tungsten_core::{AssetRegistry, KeyCode, MouseButton, ScaleFactor, World};
+use tungsten_core::{AssetRegistry, KeyCode, MouseButton, ScaleFactor, Time, World};
 
 use super::Harness;
 use crate::app::{App, WindowSize};
@@ -155,6 +155,46 @@ impl UiHarness {
     /// would between redraws; the next frame routes it.
     pub fn pointer_to(&mut self, x: f32, y: f32) {
         self.harness.input_mut().update_cursor_position(x, y);
+    }
+
+    /// Moves the pointer to the centre of where `widget` last painted and is
+    /// hit, as [`Self::click`] does, pressing nothing; the next frame routes
+    /// it, and a tooltip's delay starts.
+    ///
+    /// # Panics
+    ///
+    /// When `widget` has no box: not laid out, collapsed or removed.
+    pub fn hover(&mut self, widget: WidgetId) {
+        let rect = self
+            .tree()
+            .visual_rect(widget)
+            .unwrap_or_else(|| panic!("UiHarness::hover: {widget:?} has no box"));
+        let centre = (rect.min + rect.max) * 0.5 * self.scale();
+        self.pointer_to(centre.x, centre.y);
+    }
+
+    /// Runs frames until `seconds` of the real clock have passed
+    /// ([`Time::real_delta`], the harness's dt), as a tooltip's delay
+    /// counts them (`D-31[6]`), laying the tree out after each; returns the
+    /// frames run, stopping where [`Self::step`] stops or the clock does not
+    /// move.
+    pub fn wait(&mut self, seconds: f32) -> u32 {
+        let (mut passed, mut frames) = (0.0, 0);
+        while passed < seconds {
+            if self.step(1) == 0 {
+                break;
+            }
+            frames += 1;
+            let dt = self
+                .world()
+                .get_resource::<Time>()
+                .map_or(0.0, Time::real_delta);
+            if dt <= 0.0 {
+                break;
+            }
+            passed += dt;
+        }
+        frames
     }
 
     /// Presses the primary button where the pointer is.

@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use glam::Vec2;
 
+use crate::assets::{AssetRegistry, SpriteAssetId};
 use crate::ecs::World;
 
 use super::event::UiValue;
@@ -21,8 +22,8 @@ use super::node::UiLayer;
 use super::route::UiRouter;
 use super::screen_file::{
     AlignName, CornerName, DirectionName, EdgesFile, JustifyName, Kind, LayerName, LayoutFile,
-    Length, LimitFile, Node, ScreenAction, ScreenNames, SizingFile, Spacing, TrackFile,
-    UiScreenRegistry,
+    Length, LimitFile, Node, ScreenAction, ScreenNames, SizingFile, Spacing, TooltipFile,
+    TrackFile, UiScreenRegistry,
 };
 use super::style::{
     Align, Anchor, Direction, Edges, Grid, Justify, LayoutStyle, Placement, Sizing, Track,
@@ -105,6 +106,8 @@ pub struct UiBindings {
     rows: HashMap<&'static str, RowProvider>,
     mounts: HashMap<&'static str, MountFn>,
     actions: HashMap<&'static str, ActionFn>,
+    image: HashMap<&'static str, TextBinding>,
+    style: HashMap<&'static str, TextBinding>,
 }
 
 impl UiBindings {
@@ -149,6 +152,21 @@ impl UiBindings {
         self
     }
 
+    /// Registers image binding `name` (`D-31[6]`): an image's sprite by its
+    /// manifest name; an empty or unknown name collapses the image.
+    pub fn image(&mut self, name: &'static str, read: TextBinding) -> &mut Self {
+        self.image.insert(name, read);
+        self
+    }
+
+    /// Registers style binding `name` (`D-31[6]`): a text kind's theme text
+    /// style by name; an empty name gives the node back the style it was
+    /// built with.
+    pub fn style(&mut self, name: &'static str, read: TextBinding) -> &mut Self {
+        self.style.insert(name, read);
+        self
+    }
+
     /// Registers row provider `name`, a repeat's rows.
     pub fn rows(&mut self, name: &'static str, read: RowProvider) -> &mut Self {
         self.rows.insert(name, read);
@@ -189,6 +207,8 @@ impl UiBindings {
             rows: names(&self.rows),
             mounts: names(&self.mounts),
             actions: names(&self.actions),
+            image: names(&self.image),
+            style: names(&self.style),
             ..ScreenNames::default()
         }
     }
@@ -279,11 +299,28 @@ impl Shape {
     }
 }
 
-/// What a build records of a file's body or of a repeat's rows.
+/// What a build records of a file's body or of a repeat's rows: the bound
+/// nodes, the actions, each node's tooltip, and the images whose sprite the
+/// file or a row names, which the build resolves once its tree is free.
 #[derive(Debug, Default)]
 struct Part {
     bound: Vec<Bound>,
     actions: Vec<(WidgetId, KeyedAction)>,
+    tooltips: Vec<(WidgetId, Tooltip)>,
+    sprites: Vec<Sprite>,
+    /// Each style-bound node's own style, which an empty name restores.
+    styles: Vec<(WidgetId, Option<String>)>,
+}
+
+/// What shows beside a screen's widget while it is hovered or holds
+/// visible focus (`D-31[6]`): a line of text, or a `ui_screens` file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Tooltip {
+    /// A line of text.
+    Text(String),
+    /// The `ui_screens` file with this ID.
+    Screen(String),
 }
 
 #[derive(Debug)]
@@ -307,6 +344,20 @@ enum Bound {
     Fill(Meter, [u8; 4], FillBinding),
     Visible(WidgetId, FlagBinding),
     Enabled(WidgetId, FlagBinding),
+    Image(WidgetId, TextBinding, [bool; 2]),
+    Style(WidgetId, TextBinding),
+}
+
+/// An image whose sprite a build resolves once the tree is free: its node,
+/// the sprite's name and which of its axes the file leaves to the sprite.
+type Sprite = (WidgetId, String, [bool; 2]);
+
+/// Which of an image node's axes, width then height, its file's `layout`
+/// leaves to the sprite's own size.
+fn auto_axes(node: &Node) -> [bool; 2] {
+    node.layout.as_ref().map_or([true, true], |layout| {
+        [layout.width.is_none(), layout.height.is_none()]
+    })
 }
 
 /// Builds the `ui_screens` file `id` as a new root, in file order, records
@@ -337,13 +388,14 @@ pub fn build(world: &mut World, id: &str) -> Option<BuiltScreen> {
     let mut builder = Builder::new(&bindings, id);
     let built = builder.root(tree, &file.root);
     let Builder {
-        part,
+        mut part,
         repeats,
         mounts,
         fields,
         warnings,
         ..
     } = builder;
+    let sprites = std::mem::take(&mut part.sprites);
     for (once, message) in warnings {
         screens.warn(once, &message);
     }
@@ -364,8 +416,77 @@ pub fn build(world: &mut World, id: &str) -> Option<BuiltScreen> {
         let text = read(world);
         world.resource_mut::<UiTree>().set_field_value(field, text);
     }
+    for (image, name, auto) in sprites {
+        show_sprite(world, image, &name, auto);
+    }
     refresh(world, built.root);
     Some(built)
+}
+
+/// Sets image `image`'s sprite to the one named `name` in the world's
+/// assets and shows it, each `auto` axis at the sprite's own size, so the
+/// parent's stretch leaves it whole; an empty name collapses it, an unknown
+/// one too, warned once a name (`D-31[6]`).
+fn show_sprite(world: &mut World, image: WidgetId, name: &str, auto: [bool; 2]) {
+    let found = if name.is_empty() {
+        None
+    } else {
+        world.get_resource::<AssetRegistry>().and_then(|assets| {
+            let sprite = assets.sprite_id(name)?;
+            let (w, h) = assets.sprite_size(sprite)?;
+            Some((sprite, Vec2::new(w as f32, h as f32)))
+        })
+    };
+    if found.is_none() && !name.is_empty() {
+        let root = world
+            .get_resource::<UiTree>()
+            .and_then(|tree| tree.root_of(image));
+        let screen = root
+            .and_then(|root| live(world, root))
+            .map(|live| live.id.clone())
+            .unwrap_or_default();
+        if let Some(screens) = world.get_resource_mut::<UiScreens>() {
+            screens.warn(
+                format!("sprite {screen} {name}"),
+                &format!("ui screen '{screen}': no sprite '{name}' is loaded; its image collapses"),
+            );
+        }
+    }
+    let tree = world.resource_mut::<UiTree>();
+    match found {
+        Some((sprite, size)) => {
+            tree.set_image(image, sprite, size);
+            tree.edit_layout(image, |style| {
+                if auto[0] {
+                    style.width = Sizing::Px(size.x);
+                }
+                if auto[1] {
+                    style.height = Sizing::Px(size.y);
+                }
+            });
+            if tree.visibility(image) == Some(Visibility::Collapsed) {
+                tree.set_visibility(image, Visibility::Visible);
+            }
+        }
+        None => {
+            if tree.visibility(image) != Some(Visibility::Collapsed) {
+                tree.set_visibility(image, Visibility::Collapsed);
+            }
+        }
+    }
+}
+
+/// The tooltip of `widget`, a node of a screen built from a file, as its
+/// file's `tooltip` gives it; `None` for a node with none (`D-31[6]`).
+#[must_use]
+pub fn tooltip(world: &World, widget: WidgetId) -> Option<&Tooltip> {
+    let root = world.get_resource::<UiTree>()?.root_of(widget)?;
+    let live = live(world, root)?;
+    std::iter::once(&live.part)
+        .chain(live.repeats.iter().map(|repeat| &repeat.part))
+        .flat_map(|part| &part.tooltips)
+        .find(|(id, _)| *id == widget)
+        .map(|(_, tooltip)| tooltip)
 }
 
 /// Writes every binding of the screen built at `root` from the world,
@@ -431,6 +552,7 @@ pub fn reload(world: &mut World, id: &str) {
     screens.live.retain(|live| tree.contains(live.root));
     let shape = Shape::of(&file.root);
     let (mut mounts, mut warnings, mut rebuilt) = (Vec::new(), Vec::new(), Vec::new());
+    let mut sprites: Vec<Sprite> = Vec::new();
     for live in screens.live.iter_mut().filter(|live| live.id == id) {
         if live.shape != shape {
             warnings.push((
@@ -455,6 +577,7 @@ pub fn reload(world: &mut World, id: &str) {
         }
         let mut builder = Builder::new(&bindings, id);
         builder.body(tree, live.root, live.card, &file.root);
+        sprites.append(&mut builder.part.sprites);
         live.part = std::mem::take(&mut builder.part);
         live.repeats = std::mem::take(&mut builder.repeats);
         live.revision += 1;
@@ -466,6 +589,9 @@ pub fn reload(world: &mut World, id: &str) {
         screens.warn(once, &message);
     }
     world.insert_resource(screens);
+    for (image, name, auto) in sprites {
+        show_sprite(world, image, &name, auto);
+    }
     for (mount, node) in mounts {
         mount(world, node);
     }
@@ -494,6 +620,18 @@ fn first_focusable(tree: &UiTree, root: WidgetId) -> Option<WidgetId> {
         stack.extend(tree.children(id).iter().rev());
     }
     None
+}
+
+/// The style style-bound node `id` was built with, which an empty name
+/// restores.
+fn own_style(world: &World, id: WidgetId) -> Option<&str> {
+    let root = world.get_resource::<UiTree>()?.root_of(id)?;
+    let live = live(world, root)?;
+    std::iter::once(&live.part)
+        .chain(live.repeats.iter().map(|repeat| &repeat.part))
+        .flat_map(|part| &part.styles)
+        .find(|(node, _)| *node == id)
+        .and_then(|(_, style)| style.as_deref())
 }
 
 /// The live screen built at `root`.
@@ -557,6 +695,25 @@ fn write(world: &mut World, bound: Bound, captured: Option<WidgetId>) {
         Bound::Enabled(id, read) => {
             let enabled = read(world);
             world.resource_mut::<UiTree>().set_enabled(id, enabled);
+        }
+        Bound::Image(id, read, auto) => {
+            let name = read(world);
+            show_sprite(world, id, &name, auto);
+        }
+        Bound::Style(id, read) => {
+            let name = read(world);
+            let shared: &World = world;
+            let want = if name.is_empty() {
+                own_style(shared, id)
+            } else {
+                Some(name.as_str())
+            };
+            if shared.resource::<UiTree>().text_style(id) != want {
+                let want = want.map(str::to_owned);
+                world
+                    .resource_mut::<UiTree>()
+                    .set_text_style(id, want.as_deref());
+            }
         }
     }
 }
@@ -624,11 +781,12 @@ fn rebuild_rows(world: &mut World, root: WidgetId, at: usize, rows: Vec<UiRow>) 
         }
     }
     let Builder {
-        part,
+        mut part,
         mounts,
         warnings,
         ..
     } = builder;
+    let sprites = std::mem::take(&mut part.sprites);
     let screens = world.resource_mut::<UiScreens>();
     for (once, message) in warnings {
         screens.warn(once, &message);
@@ -644,6 +802,9 @@ fn rebuild_rows(world: &mut World, root: WidgetId, at: usize, rows: Vec<UiRow>) 
     }
     for (mount, node) in mounts {
         mount(world, node);
+    }
+    for (image, name, auto) in sprites {
+        show_sprite(world, image, &name, auto);
     }
 }
 
@@ -846,6 +1007,29 @@ impl<'a> Builder<'a> {
             Kind::Group | Kind::Mount | Kind::Repeat | Kind::Screen | Kind::Root => {
                 widgets::group(tree, parent, LayoutStyle::default(), Align::Stretch)
             }
+            Kind::Image => {
+                let image = tree.image(
+                    parent,
+                    SpriteAssetId::new(0),
+                    Vec2::ZERO,
+                    LayoutStyle::default(),
+                );
+                tree.set_visibility(image, Visibility::Collapsed);
+                if let Some(tint) = &node.tint {
+                    let tint = color_of(tree, tint);
+                    tree.set_image_tint(image, tint);
+                }
+                // A literal sprite or a row's field, resolved once the tree
+                // is free; `bind.image` refreshes.
+                let named = node
+                    .sprite
+                    .clone()
+                    .or_else(|| node.field.as_ref().map(|_| text.clone()));
+                if let Some(name) = named {
+                    self.part.sprites.push((image, name, auto_axes(node)));
+                }
+                image
+            }
         };
         self.common(tree, id, node, row_node);
         for child in &node.children {
@@ -964,6 +1148,42 @@ impl<'a> Builder<'a> {
             .and_then(|name| self.find(name, "enabled binding", &bindings.enabled))
         {
             self.part.bound.push(Bound::Enabled(id, read));
+        }
+        if let Some(read) = bind
+            .image
+            .as_deref()
+            .and_then(|name| self.find(name, "image binding", &bindings.image))
+        {
+            self.part
+                .bound
+                .push(Bound::Image(id, read, auto_axes(node)));
+        }
+        if let Some(read) = bind
+            .style
+            .as_deref()
+            .and_then(|name| self.find(name, "style binding", &bindings.style))
+        {
+            self.part.bound.push(Bound::Style(id, read));
+            let own = tree.text_style(id).map(str::to_owned);
+            self.part.styles.push((id, own));
+        }
+        if let (Some(field), Some(scope)) = (&node.style_field, &self.row)
+            && let Some(style) = scope
+                .row
+                .fields
+                .get(field)
+                .filter(|style| !style.is_empty())
+        {
+            tree.set_text_style(id, Some(style.as_str()));
+        }
+        if let Some(tooltip) = &node.tooltip {
+            self.part.tooltips.push((
+                id,
+                match tooltip {
+                    TooltipFile::Text(text) => Tooltip::Text(text.clone()),
+                    TooltipFile::Screen { screen } => Tooltip::Screen(screen.clone()),
+                },
+            ));
         }
         if let Some(action) = &node.on {
             let (key, row) = match &self.row {

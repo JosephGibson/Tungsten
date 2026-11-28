@@ -220,8 +220,8 @@ fn make_box() -> Box<dyn GameState> {
 }
 
 /// The dialogue box: the file `dialogue` built and adopted as a modal
-/// screen, its actions run, its line revealed and its bindings refreshed
-/// each frame.
+/// screen, its actions run, its line revealed, its bindings refreshed and
+/// its tooltips shown ([`screens::popup::tick`]) each frame.
 #[derive(Default)]
 struct DialogueBox {
     screen: Option<ModalScreen>,
@@ -290,6 +290,7 @@ impl GameState for DialogueBox {
         screen_build::refresh(world, screen.root);
         reveal(world, screen.root);
         show_portrait(world);
+        screens::popup::tick(world, screen.root);
         let now = choosing(world);
         if now != self.choosing {
             self.choosing = now;

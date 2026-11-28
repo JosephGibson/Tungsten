@@ -9,7 +9,8 @@
 //! [`toast`] shows a short message above every screen, and [`register`]
 //! and [`open`] name screens for scripts and data; [`open`] also pushes a
 //! `ui_screens` file as a [`DataScreen`] (redo 7.20), which runs the file's
-//! actions.
+//! actions. [`popup`] shows tooltips on every modal screen and opens screen
+//! files beside a control (`D-31[6]`).
 //!
 //! Opt in with [`ScreensPlugin`], which inserts the resources and adds no
 //! system: each screen's own `update` drives its slide out and its
@@ -17,6 +18,7 @@
 
 mod confirm;
 mod data;
+pub mod popup;
 mod toast;
 
 use tungsten_core::ui::{UiEvent, UiKey, UiScreenRegistry, UiTrack, UiTree, WidgetId, widgets};
@@ -306,12 +308,13 @@ impl ModalScreen {
         }
     }
 
-    /// The screen's turn, from its state's `update`: pops the state once
-    /// its slide out ends; `None` while the screens are not [`idle`]; pops
-    /// on its root's `Cancel`, so a back button pops it; else the key of
-    /// the control on it activated at this routing, which becomes the
-    /// opener.
+    /// The screen's turn, from its state's `update`: its tooltips' turn
+    /// ([`popup::tick`]); pops the state once its slide out ends; `None`
+    /// while the screens are not [`idle`]; pops on its root's `Cancel`, so
+    /// a back button pops it; else the key of the control on it activated
+    /// at this routing, which becomes the opener.
     pub fn update(&mut self, world: &mut World) -> Option<UiKey> {
+        popup::tick(world, self.root);
         if !self.ready(world) {
             return None;
         }

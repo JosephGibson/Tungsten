@@ -108,6 +108,10 @@ pub enum ScreenAction {
     /// `{"setting": "<name>"}`: writes this setting from the control's
     /// value.
     Setting(ScreenSetting),
+    /// `{"popup": "<id>"}`: opens the `ui_screens` file with this ID beside
+    /// the control, a popup that a press outside it or a cancel closes
+    /// (`D-31[6]`).
+    Popup(String),
 }
 
 /// The settings a toggle or slider row writes: `vsync` from a toggle, the
@@ -186,10 +190,11 @@ pub(crate) enum Kind {
     Mount,
     Repeat,
     TextField,
+    Image,
 }
 
 /// The fields every kind takes.
-const COMMON: [&str; 10] = [
+const COMMON: [&str; 11] = [
     "kind",
     "key",
     "layout",
@@ -200,10 +205,11 @@ const COMMON: [&str; 10] = [
     "bind",
     "drag",
     "drop",
+    "tooltip",
 ];
 
 impl Kind {
-    const ALL: [Self; 21] = [
+    const ALL: [Self; 22] = [
         Self::Screen,
         Self::Root,
         Self::Group,
@@ -225,6 +231,7 @@ impl Kind {
         Self::Mount,
         Self::Repeat,
         Self::TextField,
+        Self::Image,
     ];
 
     const fn name(self) -> &'static str {
@@ -250,6 +257,7 @@ impl Kind {
             Self::Mount => "mount",
             Self::Repeat => "repeat",
             Self::TextField => "text_field",
+            Self::Image => "image",
         }
     }
 
@@ -264,10 +272,12 @@ impl Kind {
             Self::Screen => &["width", "children", "card", "over"],
             Self::Root => &["layer", "modal", "children"],
             Self::Group | Self::Row | Self::Column | Self::Panel => &["children"],
-            Self::Label | Self::Display | Self::Note | Self::Small => &["text", "field"],
-            Self::Heading => &["text", "field", "centred"],
+            Self::Label | Self::Display | Self::Note | Self::Small => {
+                &["text", "field", "style_field"]
+            }
+            Self::Heading => &["text", "field", "style_field", "centred"],
             Self::Prompt => &["template"],
-            Self::Button => &["text", "field", "children", "on"],
+            Self::Button => &["text", "field", "style_field", "children", "on"],
             Self::ChoiceRow => &["caption", "text", "field", "on"],
             Self::ToggleRow => &["caption", "on"],
             Self::SliderRow => &["caption", "range", "readout", "on"],
@@ -276,6 +286,7 @@ impl Kind {
             Self::Mount => &["mount"],
             Self::Repeat => &["rows", "row"],
             Self::TextField => &["text", "placeholder", "max", "on"],
+            Self::Image => &["sprite", "field", "tint"],
         }
     }
 
@@ -309,6 +320,11 @@ impl Kind {
         )
     }
 
+    /// The kind's article: `an` before `image`, else `a`.
+    fn article(self) -> &'static str {
+        if self == Self::Image { "an" } else { "a" }
+    }
+
     /// Whether `bind.<binding>` writes to it; `visible` and `enabled` write
     /// to every kind.
     fn binds(self, binding: &str) -> bool {
@@ -316,6 +332,8 @@ impl Kind {
             "text" => self.holds_text() || matches!(self, Self::ChoiceRow | Self::TextField),
             "value" => matches!(self, Self::ToggleRow | Self::SliderRow | Self::TabRail),
             "fill" => self == Self::Meter,
+            "image" => self == Self::Image,
+            "style" => self.holds_text(),
             _ => true,
         }
     }
@@ -392,6 +410,30 @@ pub(crate) struct Node {
     pub(crate) placeholder: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) max: Option<u32>,
+    /// An image's sprite (`D-31[6]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) sprite: Option<String>,
+    /// An image's tint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) tint: Option<Color>,
+    /// A row's field naming a text style, inside a repeat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) style_field: Option<String>,
+    /// What shows while the node is hovered or holds visible focus.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) tooltip: Option<TooltipFile>,
+}
+
+/// A node's `tooltip`: a line of text, or a `ui_screens` file shown beside
+/// it (`D-31[6]`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub(crate) enum TooltipFile {
+    Text(String),
+    Screen {
+        /// The `ui_screens` ID.
+        screen: String,
+    },
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)] // serde's skip_serializing_if passes a reference.
@@ -413,6 +455,12 @@ pub(crate) struct Bind {
     pub(crate) visible: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) enabled: Option<String>,
+    /// An image's sprite by name (`D-31[6]`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) image: Option<String>,
+    /// A text kind's text style by name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) style: Option<String>,
 }
 
 impl Bind {
@@ -428,6 +476,8 @@ impl Bind {
             ("fill", &self.fill),
             ("visible", &self.visible),
             ("enabled", &self.enabled),
+            ("image", &self.image),
+            ("style", &self.style),
         ]
         .into_iter()
         .filter_map(|(field, name)| name.as_deref().map(|name| (field, name)))
@@ -1074,6 +1124,8 @@ impl ScreenFile {
                 Use::Binding("value") => (&known.value, "value binding"),
                 Use::Binding("fill") => (&known.fill, "fill binding"),
                 Use::Binding("visible") => (&known.visible, "visible binding"),
+                Use::Binding("image") => (&known.image, "image binding"),
+                Use::Binding("style") => (&known.style, "style binding"),
                 Use::Binding(_) => (&known.enabled, "enabled binding"),
                 Use::Rows => (&known.rows, "row provider"),
                 Use::Mount => (&known.mounts, "mount"),
@@ -1091,6 +1143,22 @@ impl ScreenFile {
                         return;
                     }
                     (&known.screens, "screen to push")
+                }
+                Use::Popup | Use::Tooltip => {
+                    let (fits, what, modal) = match use_ {
+                        Use::Popup => (&known.popups, "a popup", "modal"),
+                        _ => (&known.tooltips, "a tooltip", "not modal"),
+                    };
+                    if known.screens.contains(name) && !fits.contains(name) {
+                        issues.push(ScreenError::new(
+                            path,
+                            format!(
+                                "screen '{name}' does not show as {what}: its root is not a bare `root`, {modal}, on the popup layer"
+                            ),
+                        ));
+                        return;
+                    }
+                    (fits, "screen file")
                 }
             };
             if !set.contains(name) {
@@ -1110,6 +1178,8 @@ impl ScreenFile {
                 Use::Binding("value") => &mut names.value,
                 Use::Binding("fill") => &mut names.fill,
                 Use::Binding("visible") => &mut names.visible,
+                Use::Binding("image") => &mut names.image,
+                Use::Binding("style") => &mut names.style,
                 Use::Binding(_) => &mut names.enabled,
                 Use::Rows => &mut names.rows,
                 Use::Mount => &mut names.mounts,
@@ -1117,10 +1187,31 @@ impl ScreenFile {
                 Use::Style => &mut names.styles,
                 Use::Size => &mut names.sizes,
                 Use::Push => &mut names.screens,
+                Use::Popup => {
+                    names.screens.insert(name.to_owned());
+                    &mut names.popups
+                }
+                Use::Tooltip => {
+                    names.screens.insert(name.to_owned());
+                    &mut names.tooltips
+                }
             };
             set.insert(name.to_owned());
         });
         names
+    }
+
+    /// Each image's literal `sprite`, with its path, in file order: what
+    /// `tungsten check` holds to the manifest's sprites (`D-31[6]`).
+    #[must_use]
+    pub fn sprites(&self) -> Vec<(String, String)> {
+        let mut sprites = Vec::new();
+        visit(&self.root, "root", false, &mut |node, path, _| {
+            if let Some(sprite) = &node.sprite {
+                sprites.push((format!("{path}.sprite"), sprite.clone()));
+            }
+        });
+        sprites
     }
 
     /// The file's keys in file order, tab keys included; the keys inside a
@@ -1148,6 +1239,33 @@ impl ScreenFile {
         (root.kind == Kind::Root && !popup).then_some("its root is not modal on the popup layer")
     }
 
+    /// Why the file does not open as a popup (`D-31[6]`), `None` when it
+    /// does: a popup's root is a bare `root`, modal, on the popup layer.
+    #[must_use]
+    pub fn popup_refusal(&self) -> Option<&'static str> {
+        self.beside_refusal(true)
+    }
+
+    /// Why the file does not show as a tooltip (`D-31[6]`), `None` when it
+    /// does: a tooltip's root is a bare `root`, not modal, on the popup
+    /// layer.
+    #[must_use]
+    pub fn tooltip_refusal(&self) -> Option<&'static str> {
+        self.beside_refusal(false)
+    }
+
+    fn beside_refusal(&self, modal: bool) -> Option<&'static str> {
+        let root = &self.root;
+        if root.kind != Kind::Root || root.layer == Some(LayerName::Game) {
+            return Some("its root is not a bare `root` on the popup layer");
+        }
+        match (modal, root.modal) {
+            (true, false) => Some("a popup's root is not modal"),
+            (false, true) => Some("a tooltip's root is modal"),
+            _ => None,
+        }
+    }
+
     /// Calls `each` with every name the file uses, its field's path and its
     /// use, in file order.
     fn walk(&self, each: &mut dyn FnMut(String, &str, Use)) {
@@ -1172,7 +1290,11 @@ impl ScreenFile {
                     each(format!("{path}.on.action"), name, Use::Action);
                 }
                 Some(ScreenAction::Push(id)) => each(format!("{path}.on.push"), id, Use::Push),
+                Some(ScreenAction::Popup(id)) => each(format!("{path}.on.popup"), id, Use::Popup),
                 _ => {}
+            }
+            if let Some(TooltipFile::Screen { screen }) = &node.tooltip {
+                each(format!("{path}.tooltip.screen"), screen, Use::Tooltip);
             }
             for (field, length) in [("width", &node.width), ("height", &node.height)] {
                 if let Some(name) = length.as_ref().and_then(Length::size) {
@@ -1205,6 +1327,8 @@ enum Use {
     Style,
     Size,
     Push,
+    Popup,
+    Tooltip,
 }
 
 /// Calls `each` with every node under `node`, `node` included, its path and
@@ -1238,7 +1362,7 @@ fn kind_fields(node: &Value, path: &str) -> Result<(), ScreenError> {
         if !COMMON.contains(&field.as_str()) && !kind.fields().contains(&field.as_str()) {
             return Err(ScreenError::new(
                 format!("{path}.{field}"),
-                format!("a {} takes no {field}", kind.name()),
+                format!("{} {} takes no {field}", kind.article(), kind.name()),
             ));
         }
     }
@@ -1282,14 +1406,20 @@ impl Checker {
             return fail("kind", "a file's root is a screen or a root".into());
         }
         if place != Place::Root && kind.is_root() {
-            return fail("kind", format!("a {} is only a file's root", kind.name()));
+            return fail(
+                "kind",
+                format!("{} {} is only a file's root", kind.article(), kind.name()),
+            );
         }
         if place == Place::InRow && kind == Kind::Repeat {
             return fail("kind", "a repeat cannot sit inside a repeat's row".into());
         }
         for field in kind.required() {
             if !node.has(field) {
-                return fail(field, format!("a {} needs its {field}", kind.name()));
+                return fail(
+                    field,
+                    format!("{} {} needs its {field}", kind.article(), kind.name()),
+                );
             }
         }
         if let Some(key) = &node.key {
@@ -1312,10 +1442,40 @@ impl Checker {
             return fail(
                 "text",
                 format!(
-                    "a {} takes {exactly} one of text, bind.text and field",
+                    "{} {} takes {exactly} one of text, bind.text and field",
+                    kind.article(),
                     kind.name()
                 ),
             );
+        }
+        let images = [
+            node.sprite.is_some(),
+            node.field.is_some(),
+            node.bind.image.is_some(),
+        ];
+        if kind == Kind::Image && images.into_iter().filter(|set| *set).count() != 1 {
+            return fail(
+                "sprite",
+                "an image takes exactly one of sprite, field and bind.image".into(),
+            );
+        }
+        if node.style_field.is_some() && place != Place::InRow {
+            return fail(
+                "style_field",
+                "a style_field is read only inside a repeat's row".into(),
+            );
+        }
+        if let Some(tint) = &node.tint {
+            color_check(tint, &format!("{path}.tint"))?;
+        }
+        match &node.tooltip {
+            Some(TooltipFile::Text(text)) if text.is_empty() => {
+                return fail("tooltip", "a tooltip's text is not empty".into());
+            }
+            Some(TooltipFile::Screen { screen }) => {
+                not_empty(screen, &format!("{path}.tooltip.screen"))?;
+            }
+            _ => {}
         }
         if kind == Kind::TextField && node.field.is_some() {
             return fail(
@@ -1333,7 +1493,11 @@ impl Checker {
             if !kind.binds(binding) {
                 return fail(
                     &format!("bind.{binding}"),
-                    format!("a {} takes no {binding} binding", kind.name()),
+                    format!(
+                        "{} {} takes no {binding} binding",
+                        kind.article(),
+                        kind.name()
+                    ),
                 );
             }
             not_empty(name, &format!("{path}.bind.{binding}"))?;
@@ -1345,6 +1509,8 @@ impl Checker {
             ("readout", &node.readout),
             ("mount", &node.mount),
             ("rows", &node.rows),
+            ("sprite", &node.sprite),
+            ("style_field", &node.style_field),
         ] {
             if let Some(name) = name {
                 not_empty(name, &format!("{path}.{field}"))?;
@@ -1437,6 +1603,7 @@ fn action_check(node: &Node, path: &str) -> Result<(), ScreenError> {
         }
         Some(ScreenAction::Push(id)) => not_empty(id, &format!("{path}.on.push")),
         Some(ScreenAction::Named(name)) => not_empty(name, &format!("{path}.on.action")),
+        Some(ScreenAction::Popup(id)) => not_empty(id, &format!("{path}.on.popup")),
         Some(ScreenAction::Pop) | None => Ok(()),
     }
 }
@@ -1536,6 +1703,10 @@ pub struct ScreenNames {
     pub visible: BTreeSet<String>,
     /// Enabled-state bindings: `bind.enabled`.
     pub enabled: BTreeSet<String>,
+    /// Image bindings: `bind.image`.
+    pub image: BTreeSet<String>,
+    /// Style bindings: `bind.style`.
+    pub style: BTreeSet<String>,
     /// Row providers: a repeat's `rows`.
     pub rows: BTreeSet<String>,
     /// Mounts: a mount node's `mount`.
@@ -1546,11 +1717,17 @@ pub struct ScreenNames {
     pub styles: BTreeSet<String>,
     /// Size names: a loaded theme's `sizes` or the widgets' defaults.
     pub sizes: BTreeSet<String>,
-    /// Screens a `push` opens: `ui_screens` IDs and registered screens.
+    /// Screens a `push` or a `popup` opens, or a `tooltip` shows:
+    /// `ui_screens` IDs and registered screens.
     pub screens: BTreeSet<String>,
     /// `ui_screens` IDs a data screen refuses to open, which no `push` may
     /// name; [`ScreenFile::uses`] leaves it empty.
     pub refused: BTreeSet<String>,
+    /// `ui_screens` IDs a `popup` may open ([`ScreenFile::popup_refusal`]).
+    pub popups: BTreeSet<String>,
+    /// `ui_screens` IDs a `tooltip` may show
+    /// ([`ScreenFile::tooltip_refusal`]).
+    pub tooltips: BTreeSet<String>,
 }
 
 /// The loaded `ui_screens` by ID: a `World` resource the asset loader fills,
@@ -1748,7 +1925,10 @@ pub fn json_schema() -> Value {
             &["corner"],
         ),
     );
-    let bindings = ["text", "value", "fill", "visible", "enabled"].map(|each| (each, name.clone()));
+    let bindings = [
+        "text", "value", "fill", "visible", "enabled", "image", "style",
+    ]
+    .map(|each| (each, name.clone()));
     defs.insert("bind".into(), closed(&bindings, &[]));
     defs.insert(
         "card".into(),
@@ -1788,8 +1968,9 @@ pub fn json_schema() -> Value {
         json!({ "oneOf": [
             { "const": "pop" },
             action("push", name.clone()),
-            action("action", name),
+            action("action", name.clone()),
             action("setting", json!({ "enum": ScreenSetting::ALL.map(ScreenSetting::name) })),
+            action("popup", name),
         ] }),
     );
     json!({
@@ -1812,9 +1993,15 @@ fn field_schema(field: &str) -> Value {
     let reference = |name: &str| json!({ "$ref": format!("#/$defs/{name}") });
     match field {
         "key" => json!({ "type": "string", "pattern": "^[^/]+$" }),
-        "style" | "field" | "template" | "readout" | "mount" | "rows" => {
+        "style" | "field" | "template" | "readout" | "mount" | "rows" | "sprite"
+        | "style_field" => {
             json!({ "type": "string", "minLength": 1 })
         }
+        "tooltip" => json!({ "anyOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "object", "additionalProperties": false, "required": ["screen"],
+              "properties": { "screen": { "type": "string", "minLength": 1 } } },
+        ] }),
         "text" | "caption" | "placeholder" => json!({ "type": "string" }),
         "max" => json!({ "type": "integer", "minimum": 1 }),
         "mono" | "danger" | "drag" | "drop" | "modal" | "centred" => json!({ "type": "boolean" }),
@@ -1824,7 +2011,7 @@ fn field_schema(field: &str) -> Value {
         "layer" => json!({ "enum": ["game", "game_popup"] }),
         "row" => reference("node"),
         "on" => reference("action"),
-        "color" => reference("color"),
+        "color" | "tint" => reference("color"),
         other => reference(other),
     }
 }
