@@ -2,21 +2,21 @@
 
 A gameplay framework for simulation games, survival and colony, designed on paper by the [roadmap redo](roadmap-redo.md)'s brief ([§7.4](roadmap-redo.md#74-simulation-paper-design-88), step 8.8, `D-316`): characters, players and NPCs alike, whose needs, mood, health on a body plan, exposure, traits and skills are data on one rule set; a world simulation those rules read; NPCs that choose from the same state by utility over smart objects and schedules; time that skips and areas that keep living while unloaded, at the owner's scale. It designs systems, not a game; every name and example here is original. Written against the API snapshots and the kit's source at `de2f6cc9` (0.121).
 
-- **status:** in progress (its steps run in this session, the triage last; it stays as the design 8.1's second and third plans, 8.2 and 8.9 build from, deleted when 8.9 closes)
+- **status:** in progress (its steps are done, the triage on 2026-11-28; it stays as the design 8.1's second and third plans, 8.2 and 8.9 build from, deleted when 8.9 closes)
 - **goal:** Find what a simulation game needs that the engine and kit lack, and design the framework that fills it, in the kit as opt-in plugins, as register rows the owner triages to 8.1's second and third plans, 8.2 and 8.9's two parts.
 - **non-goals:**
   - Code, and edits to any other file but `ROADMAP.md`'s `sim-design` line and, after the triage, the redo's §3 rows that take the rows by ID.
   - Each step's mechanisms: the step's own plan specifies them from the tree of its day.
   - A game or a vertical slice (the owner's answer of 2026-11-27); the studied games' names for things, items, content and art.
-  - Construction and a storyteller, which are researched (§2) and enter only by the triage (PS-26, PS-27); multiplayer; a terrain-computed room provider (§8.1 keeps its interface); grids of fluids or gases (a space holds one temperature).
+  - Multiplayer; a terrain-computed room provider (§8.1 keeps its interface); grids of fluids or gases (a space holds one temperature). Construction and a storyteller were researched only (§2) until the owner's triage admitted them (PS-26, PS-27).
 - **files to touch:** This file. `ROADMAP.md`'s `sim-design` line. After the triage, the [roadmap redo](roadmap-redo.md)'s §3 rows for 8.1, 8.2 and 8.9 take §16's rows by ID, as Phase 7's close carried the ARPG design's.
 - **ordered steps:**
-  1. Read the brief, the kit's stats, statuses, chemistry, overlap, story and core's time, lighting, rooms, saves and workers, and the API snapshots; targeted research on the mechanics (§2).
-  2. The design (§3–§11), the page with numbers, weekly tasks and stress numbers (§12–§14), the build sheet and register (§15–§16), the scope by step (§17), trade-offs and questions (§18–§19).
-  3. A fresh-context verifier on every citation (§20).
-  4. One `/critique` round at xhigh on §5 and §6, applying what holds (§20).
-  5. The owner's triage of §16's rows and §19's questions.
-  6. The redo's §3 rows take the triaged rows by ID.
+  1. Read the brief, the kit's stats, statuses, chemistry, overlap, story and core's time, lighting, rooms, saves and workers, and the API snapshots; targeted research on the mechanics (§2). Done.
+  2. The design (§3–§11), the page with numbers, weekly tasks and stress numbers (§12–§14), the build sheet and register (§15–§16), the scope by step (§17), trade-offs and questions (§18–§19). Done.
+  3. A fresh-context verifier on every citation (§20). Done.
+  4. One `/critique` round at xhigh on §5 and §6, applying what holds (§20). Done.
+  5. The owner's triage of §16's rows and §19's questions. Done 2026-11-28: every row at its default step, PS-26 and PS-27 admitted to 8.9's second part, every question at its default.
+  6. The redo's §3 rows take the triaged rows by ID. Done 2026-11-28.
 - **done-when:**
   - Every "data only" and "game Rust" verdict cites an item in `api/*.txt`, and every gap names a search that finds nothing; §20's verifier report confirms or fixes every citation.
   - One critique round on §5 and §6 has run and what held is applied (§20).
@@ -27,7 +27,7 @@ A gameplay framework for simulation games, survival and colony, designed on pape
 - Step 8.8 of the roadmap redo, run on 2026-11-27 and 2026-11-28 on 0.121, after `story-systems` closed (`D-315`) and before `items-and-shops` runs. The owner's answers of 2026-11-27 are the redo's §2; the decision is `D-316`.
 - The kit already has most of a character's parts: stats with scoped lines (`foundation/lines.rs`), statuses with intensity, bands, scale curves, fuel and end outputs (`damage/effects.rs`), chemistry rules where the most specific filter wins, conditions, an interactor an AI can press. What it lacks is time: a stat never moves by itself, a status only wears and only per game second, nothing skips, and every read searches a stat by name.
 - The design adds one time model for every simulated value (§5): a value moves by a closed form between events, so a live step, a speed, a skip and an unloaded area's catch-up are the same arithmetic, bit-identical where their inputs are. On it sit needs, exposure, wounds at sites, spaces and the world's weather (§4, §8). NPCs choose by utility over smart objects with reservations (§7), which settles 8.2's P8-10. Three tiers carry the scale (§6): near characters with the full kit, far ones without bodies, unloaded ones as table rows.
-- The build sheet holds 42 systems: 3 data only, 6 game Rust (about 600 lines), 33 gaps (about 9,030 lines where a game could write them today). The register holds 27 rows: 12 into 8.9's first part, 1 into 8.1's second plan, 5 into 8.2, 2 into 8.1's third plan, 5 into 8.9's second part, 2 left to the triage.
+- The build sheet holds 42 systems: 3 data only, 6 game Rust (about 600 lines), 33 gaps (about 9,030 lines where a game could write them today). The register holds 27 rows: 12 into 8.9's first part, 1 into 8.1's second plan, 5 into 8.2, 2 into 8.1's third plan and 7 into 8.9's second part, construction and a storyteller among them (the owner's triage of 2026-11-28).
 - Largest finds: nothing moves a stat over time or thresholds one (PS-1, PS-2); a status cannot rise over time, has no site, and nothing on its holder scales its rate, duration or strength, a chemistry build's `per` being the one holder stat a status reads (PS-4–PS-6); at 60 Hz the fixed-step cap drops steps past 2× and nothing skips (PS-7, PS-8); the zone sends entries only and nothing models a room (PS-10); no AI structure (PS-14–PS-16).
 
 ## 1. Assumptions
@@ -61,7 +61,7 @@ Targeted, mechanics only. The colony game's rules come from its public wiki ([ne
 | Scoring | — | — | Considerations normalized to `[0, 1]`, remapped by curves, multiplied with a compensation factor; a zero disqualifies; inertia for the current choice (Game AI Pro) |
 | Smart objects | — | — | Objects advertise what they give, scaled by personality and falling with distance (the life-simulation paper); claim, use, release, released on abort (the engine's smart objects) |
 | Rooms | Rooms as building metadata; an aversion counting a room's tiles | Enclosed regions; space, beauty, impressiveness; temperature per room, exchanged through doors and vents; cramped and confined thoughts | Authored spaces with tags and stats behind a provider (§8); temperature per space toward its parent's plus contributions; occupancy bands |
-| Colony extras | — | Construction by skill; a storyteller pacing threats by wealth with on and off phases | Researched only (PS-26, PS-27) |
+| Colony extras | — | Construction by skill; a storyteller pacing threats by wealth with on and off phases | Researched, then admitted by the triage (PS-26, PS-27) |
 
 The six choices the two games force: one summed mood or need-by-need effects (both: a summed `mood` and need bands that act alone); bars falling or needs rising (falling); per-part hit points or wounds as statuses (statuses at sites); a comfort range or a core temperature (a core temperature with bands, whose target curve gives the comfort range); ticks slowed off camera or an abstract layer (both, as tiers); ordered priorities or scores (scores, with priorities as weights large enough to order them, T7).
 
@@ -99,6 +99,7 @@ One stat resolution, one status model and one chemistry serve every genre. A pla
 | `PopulationPlugin` | sim | yes | Rows, tiers, promotion and demotion, catch-up at an area's load |
 | `MindPlugin`, `SmartObjectsPlugin` | ai | yes (8.2) | Offers, reservations, scoring, behaviours |
 | `HaulingPlugin` | sim | yes | Stockpiles and haul adverts |
+| `ConstructionPlugin`, `StorytellerPlugin` | sim | yes | Blueprints, frames and builds; events paced by wealth and time (PS-26, PS-27) |
 
 ### 3.3 Where each piece runs
 
@@ -722,8 +723,8 @@ Verdicts as in the [paper designs](paper-designs.md): **data only** (prefabs and
 
 **Colony, researched**
 
-- **SM38 · Construction · gap, not admitted by default (PS-26); about 600 lines today.** Tiles change at runtime, and a payload sets a prefab down at the aim's point, a blueprint's start. Evidence: `core: tungsten_core::assets::tilemap::TilemapRegistry::set_tile`, `comp: shape set_tile_output: A tile cell written`, `comp: shape place_payload: A prefab set down by its centre at the aim's point`; searched `none: blueprint|construct`.
-- **SM39 · A storyteller · gap, not admitted by default (PS-27); about 400 lines today.** Spawners spawn on an interval. Evidence: `comp: component spawner: Spawns a prefab at the entity's position once per interval of game time.`; searched `none: storyteller|incident|threat_?points`.
+- **SM38 · Construction · gap (8.9b, admitted by the triage, PS-26); about 600 lines today.** Tiles change at runtime, and a payload sets a prefab down at the aim's point, a blueprint's start. Evidence: `core: tungsten_core::assets::tilemap::TilemapRegistry::set_tile`, `comp: shape set_tile_output: A tile cell written`, `comp: shape place_payload: A prefab set down by its centre at the aim's point`; searched `none: blueprint|construct`.
+- **SM39 · A storyteller · gap (8.9b, admitted by the triage, PS-27); about 400 lines today.** Spawners spawn on an interval. Evidence: `comp: component spawner: Spawns a prefab at the entity's position once per interval of game time.`; searched `none: storyteller|incident|threat_?points`.
 
 **Items**
 
@@ -764,10 +765,12 @@ Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the g
 | PS-23 | Population, tiers and catch-up | SM32, SM33, SM35 | 1,600 | Nothing simulates an unloaded area or a far character cheaply | Rows, near and far tiers with budgets, abstract mode, catch-up with shared stocks, rows of never-loaded areas from their generator (§5.7, §6, §7.6) | sim | PS-7, PS-18, PS-20 | 8.9b |
 | PS-24 | Workers and saves at scale | SM36, SM37 | 250 | The pass on one thread; saves of thousands unmeasured | The span pass, choices and catch-up on `D-311`'s map; the table's columns at full precision; the flush of pending changes before a capture (§6.5, §6.7, §9.4) | sim | PS-8, PS-23 | 8.9b |
 | PS-25 | Food that spoils | SM42 | 80 | Items do not age | An item instance's world time and a closed-form freshness read at use | items, sim | PS-7 | 8.9b |
-| PS-26 | Construction | SM38 | 600 | No construction | Blueprint, frame and built on runtime tiles, work by skill | sim | PS-22 | triage |
-| PS-27 | A storyteller | SM39 | 400 | Nothing paces events | Events paced by a curve of wealth and time, with on and off phases | sim | PS-9 | triage |
+| PS-26 | Construction | SM38 | 600 | No construction | Blueprint, frame and built on runtime tiles, work by skill | sim | PS-22 | 8.9b |
+| PS-27 | A storyteller | SM39 | 400 | Nothing paces events | Events paced by a curve of wealth and time, with on and off phases | sim | PS-9 | 8.9b |
 
 The rows hold all 9,630 of the build sheet's game Rust lines: the six game Rust entries (600) and the 33 gaps (9,030), SM40 counting none of its own (8.1's).
+
+**Triage, 2026-11-28.** The owner kept every row at its default step and admitted both researched rows: PS-1–PS-12 to 8.9's first part, PS-13 to 8.1's second plan, PS-14–PS-18 to 8.2, PS-19 and PS-20 to 8.1's third plan, and PS-21–PS-27 to 8.9's second part, construction (PS-26) and a storyteller (PS-27) among them. The redo's §3 rows hold them by ID.
 
 ## 17. Minimal implementation scope by step
 
@@ -779,7 +782,7 @@ Each step builds its rows in the domain the register names, as opt-in plugins wh
 | 8.9's first part | PS-1–PS-12 | Stat dynamics, bands and derived stats; sim statuses, factors and sites; the sim clock, speeds and skips; the span engine; world stats and weather; spaces; stats by ID; `explain rate` and `skip` | §10.1, §10.2 and §10.4 reproduce their tables in kit tests; a skip and a live 1× run of §10.4 give bit-identical stats; a span pass at 1, 2 and 6 workers gives one result; 01's and the template's pins hold, no stat there declaring a dynamic |
 | 8.1's third plan | PS-19, PS-20 | Schedules on the sim clock; the area hooks | An NPC is placed by its schedule while its area is unloaded (P8-6) and promoted at its load |
 | 8.2 | PS-14–PS-18 | Smart objects, reservations, scoring with schedules as a consideration, behaviours, `explain choice`, bodiless movers | §10.3's table reproduces in a kit test with `explain choice`'s output; Static Front's squads take cover through adverts with capacity 1 |
-| 8.9's second part | PS-21–PS-25 | Needs-driven choices, priorities and hauling, rows and tiers, catch-up, workers, saves at scale, spoiling food. The `sim` genre tag, recipes in `sim` and one other genre, a sketch and a scale scene in the fixtures crate, §14's rows | §10.5 reproduces; `sim.live_5000` runs at 1× and 3× and `sim.skip_8h`, `sim.catchup_3d` and `sim.save` record their operation times; §13's five tasks pass on a `tungsten new` copy at 8.6 |
+| 8.9's second part | PS-21–PS-27 | Needs-driven choices, priorities and hauling, rows and tiers, catch-up, workers, saves at scale, spoiling food, construction and a storyteller. The `sim` genre tag, recipes in `sim` and one other genre, a sketch and a scale scene in the fixtures crate, §14's rows | §10.5 reproduces; `sim.live_5000` runs at 1× and 3× and `sim.skip_8h`, `sim.catchup_3d` and `sim.save` record their operation times; in the sketch a colonist builds a hauled blueprint's frame into a wall, and a storyteller's 60 world days of events replay from its seed; §13's five tasks pass on a `tungsten new` copy at 8.6 |
 
 8.9's first part changes shapes 8.1's third plan and 8.2 build on (the clock, stats, statuses), so its rows cannot move after them; PS-13 is small enough for 8.1's second plan to take at no rework, or for 8.9's first part.
 
@@ -800,6 +803,8 @@ Each step builds its rows in the domain the register names, as opt-in plugins wh
 
 ## 19. Questions, each with a default
 
+The owner accepted PS-Q1–PS-Q8 and PS-Q10 on 2026-11-28 and answered PS-Q9 by admitting both rows.
+
 - **PS-Q1. The new domain's name.** *Default: `sim`*, beside `story` and `build`.
 - **PS-Q2. Where 8.2's AI lives.** *Default: a kit domain `ai`* holding smart objects, scoring and behaviours; 8.2's squads and cover use it.
 - **PS-Q3. World time.** *Default: integer world milliseconds, 60 world seconds a game second,* a game's setting.
@@ -808,7 +813,7 @@ Each step builds its rows in the domain the register names, as opt-in plugins wh
 - **PS-Q6. Sleep: skip or fast-forward.** *Default: both;* the kit offers `skip` and `set_speed`, and the template's sample uses `skip`.
 - **PS-Q7. Unloaded upkeep.** *Default: lazy at load,* with an opt-in daily settle pass.
 - **PS-Q8. Rows in saves.** *Default: JSON columns at full precision,* so a save and a load change no value; no binary form, `D-230`'s plain JSON kept. Rounding to three decimals would halve the rows at the cost of a load moving values.
-- **PS-Q9. Construction and a storyteller.** *Default: not admitted;* a recipe shows a game writing each on the kit's parts.
+- **PS-Q9. Construction and a storyteller.** *Default: not admitted;* a recipe shows a game writing each on the kit's parts. **Answered 2026-11-28: both admitted,** to 8.9's second part (PS-26, PS-27).
 - **PS-Q10. PS-13's step.** *Default: 8.1's second plan,* small and useful to an RPG's healing of an ally.
 
 ## 20. Verification
@@ -846,4 +851,4 @@ These fixes were checked mechanically, not by a second round (the brief's stop).
 ## Session log
 
 - **2026-11-27.** First commit (`de2f6cc9`): `D-316`, its markers on `D-172`, `D-215` and `D-218`, the redo's §2 answers, §3's 8.8 and 8.9 with the new order, §5.3, §5.7 and §7.4, and `ROADMAP.md`. Read the brief, the survey's ten claims against the tree (each held; the 2-step cap loses time past 2× at 60 Hz only, a higher frame rate raising that bound), the kit's stats, lines, world sources, statuses, chemistry rules, zone, interactor and explain, core's time, lighting, rooms and saves, and the API snapshots. A background agent researched the two games and utility AI (§2). §10's numbers came from a reference span engine and four example scripts in the scratchpad. The draft was committed (`d3e7b1f2`).
-- **2026-11-28.** The critique (gpt-6-astra, xhigh, artifact only, on §5 and §6) and a fresh-context verifier ran in parallel on the draft; every finding of both was applied (§20) and the mechanical checks rerun.
+- **2026-11-28.** The critique (gpt-6-astra, xhigh, artifact only, on §5 and §6) and a fresh-context verifier ran in parallel on the draft; every finding of both was applied (§20) and the mechanical checks rerun (`443aa403`). The owner triaged §16 in four questions: every row at its default step, construction and a storyteller admitted to 8.9's second part, every question at its default; the redo's §3 rows took the rows by ID.
