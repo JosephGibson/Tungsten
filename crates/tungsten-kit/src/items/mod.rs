@@ -4,6 +4,7 @@
 
 pub(crate) mod affix;
 pub(crate) mod base;
+pub(crate) mod ground;
 pub(crate) mod inventory;
 pub(crate) mod item;
 
@@ -13,21 +14,27 @@ use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, describe_kind, describe_shape,
     round_trip,
 };
+use crate::foundation::phases::ensure_phases;
 use crate::items::affix::{AFFIXES, Affix, AffixTier, AffixWeight, check_affix};
 use crate::items::base::{ITEM_BASES, ItemBase, ItemLine, RolledValueDef, WeaponBlock, check_base};
 use crate::items::item::{Item, ItemWarnings, RolledAffix};
 
 /// Registers the `item_bases` and `affixes` data kinds with their checks
 /// and descriptions, the record that warns once of each part of a saved
-/// item the data no longer holds, the `inventory` component and the
-/// [`ItemLedger`](crate::ItemLedger), both saved at version 1, and the
-/// restore hook that rebuilds worn items' statuses quietly. It adds no
-/// system.
+/// item the data no longer holds, the `inventory` and `ground_item`
+/// components and the [`ItemLedger`](crate::ItemLedger), all saved at
+/// version 1, and the restore hook that rebuilds worn items' statuses
+/// quietly; and two systems, each idle in a World with no ground item:
+/// [`GROUND_ITEM_TICK`](crate::GROUND_ITEM_TICK) in the tick phase, which
+/// counts down a drop's refusal of its dropper, and
+/// [`GROUND_ITEM_LABELS`](crate::GROUND_ITEM_LABELS) in the present phase,
+/// which labels ground items.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ItemsPlugin;
 
 impl Plugin for ItemsPlugin {
-    fn build(&self, _schedule: &mut Schedule, world: &mut World) {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        ensure_phases(schedule);
         world.register_data_kind_with_assets(ITEM_BASES, check_base);
         world.register_data_kind_with_assets(AFFIXES, check_affix);
         if !world.has_resource::<ItemWarnings>() {
@@ -35,6 +42,7 @@ impl Plugin for ItemsPlugin {
         }
         describe_items(world);
         inventory::build_inventory(world);
+        ground::build_ground(schedule, world);
     }
 }
 

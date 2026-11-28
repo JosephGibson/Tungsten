@@ -1,0 +1,35 @@
+{
+  "tag": "wand_drop",
+  "components": {
+    "pickup": {
+      "shape": {
+        "circle": 6
+      },
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    },
+    "ground_item": {
+      "item": {
+        "base": "ashwood_wand",
+        "level": 42,
+        "rarity": "rare",
+        "affixes": [
+          {
+            "id": "searing",
+            "tier": 2,
+            "values": [
+              22
+            ]
+          }
+        ],
+        "name": [
+          "Ember",
+          "Coil"
+        ]
+      }
+    }
+  }
+}

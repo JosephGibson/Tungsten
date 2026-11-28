@@ -154,6 +154,14 @@ component follow: Places the entity on a target's point plus an offset, closing 
   field max_speed: f32 (> 0) = null — world pixels per second at most; none when left out
   genres: platformer, top_down
   sample: { "target": { "source": {} } }
+component ground_item: An item lying on a pickup, collected whole into a bag and labelled in its rarity's text style.
+  field item: shape item — the item, or its base's ID for some of it; the load checks it
+  field count: u32 (>= 1, <= 9999) = 1 — beside a base's ID: how many lie there
+  field label: bool = true — whether its name shows over it, `×n` past one, in the theme's text style `rarity.<rarity>`
+  field offset: [x, y] = [0.0, 0.0] — its label's shift in UI units, y down
+  events: PickedUp
+  genres: rpg, arpg
+  sample: { "item": "oil_flask" }
 component health: Health with an invulnerability window after each hit, which `damage` lowers.
   field max: f32 (> 0) — the full health, which it starts at
   field invulnerability: f32 (>= 0) = 0.0 — seconds of game time a hit is ignored after one lands
@@ -306,7 +314,7 @@ component pickup: Collected once by the first entity whose hurtbox it meets and 
   field fall: f32 (>= 0) = 0.0 — world pixels per second a bodiless pickup falls at, while no magnet pulls it, onto the first tile or static body under it; 0 none
   field fall_layers: list of a physics layer: its number, 0 to 31, or its physics_layers name = null — the physics layers whose tiles and static bodies it lands on; every layer when left out
   events: PickedUp
-  genres: platformer, top_down, rpg
+  genres: platformer, top_down, rpg, arpg
   sample: { "shape": { "circle": 6 } }
 component platformer_controller: A side-view character on a kinematic body: it runs, jumps and falls, stops at walls, lands on floors and rides moving platforms.
   field run_speed: f32 (> 0) — world pixels per second at full run

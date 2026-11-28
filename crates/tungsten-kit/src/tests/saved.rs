@@ -56,6 +56,13 @@ fn rig() -> (World, Schedule) {
     data.insert("regen", Effect::new().with_duration(2.0));
     data.insert("hero_xp", Curve::new([(1.0, 0.0), (2.0, 10.0)]));
     data.insert(
+        "oil_flask",
+        serde_json::from_value::<crate::ItemBase>(
+            json!({ "name": "Oil Flask", "icon": "flask", "stack": 5 }),
+        )
+        .unwrap(),
+    );
+    data.insert(
         "lamplight",
         serde_json::from_value::<Quest>(
             json!({ "title": "Lamplight", "start": "light", "stages": { "light": { "journal": "Light it." } } }),

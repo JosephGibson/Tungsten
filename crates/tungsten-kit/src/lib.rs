@@ -317,6 +317,7 @@ pub use intent::state_machine::{StateMachine, StateMachinePlugin};
 pub use items::ItemsPlugin;
 pub use items::affix::{Affix, AffixKind, AffixTier, AffixWeight};
 pub use items::base::{BuiltLine, ItemBase, WeaponBlock};
+pub use items::ground::{GROUND_ITEM_LABELS, GROUND_ITEM_TICK, GroundItem, drop_item};
 pub use items::inventory::{
     Inventory, ItemLedger, ItemPlace, ItemRefusal, WornSlot, count_of, give, give_item, inventory,
     move_item, take, use_item, use_item_on,

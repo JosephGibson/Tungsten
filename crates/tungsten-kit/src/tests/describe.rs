@@ -129,7 +129,7 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let kinds: BTreeSet<&str> = descriptions.kinds().map(|(kind, _)| kind).collect();
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
-    assert_eq!(described.len(), 54);
+    assert_eq!(described.len(), 55);
     assert_eq!(kinds.len(), 16);
     assert_eq!(
         descriptions.shapes().count(),
@@ -459,13 +459,13 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 220,
+        checked, 221,
         "the kit's numeric fields, five of them a number-or-map damage, three a skill's bases, \
          four a cue rule's amount, interval and cap, six a shake's, a loop's and a stop's, the \
          hit flash's interval, a look's overlay speed and depth and glow radius, its light's \
          radius and intensity and sound's volume, a lob's speed, a cone's reach, half angle, \
          rays, damage, knockback, sweep, push and far share, a conduction's damage, \
-         reach, keep and jumps, a cap's max and a place's range, a blink's last seconds, a spawner's alive and first, a world rule's margin, a path's wait, a lift's board and back, a tag look's growth, an overlay bob's height and seconds, a health bar's rise and inset, and a camera rig's view height, zoom and priority and its lead's max, time and smoothing, a blast's far share, an impact's speed, per mass, most, floor, mass, amount, margin and scale, its extra's damage and its push's away, most and along, a pickup's fall, a steering's pace and a projectile's seconds, a counter condition's and a stat condition's bounds, an interactor's reach and size, an interactable's radius, a speaker's pace and a bark's seconds and size, an item base's stack and price, a weapon block's use time and crit chance, a rolled value's index and factor, an affix tier's level, weight and step, an affix weight's, an item's uid, level and count, a rolled affix's tier, an inventory's cells, an item action's count and an item condition's bounds"
+         reach, keep and jumps, a cap's max and a place's range, a blink's last seconds, a spawner's alive and first, a world rule's margin, a path's wait, a lift's board and back, a tag look's growth, an overlay bob's height and seconds, a health bar's rise and inset, and a camera rig's view height, zoom and priority and its lead's max, time and smoothing, a blast's far share, an impact's speed, per mass, most, floor, mass, amount, margin and scale, its extra's damage and its push's away, most and along, a pickup's fall, a steering's pace and a projectile's seconds, a counter condition's and a stat condition's bounds, an interactor's reach and size, an interactable's radius, a speaker's pace and a bark's seconds and size, an item base's stack and price, a weapon block's use time and crit chance, a rolled value's index and factor, an affix tier's level, weight and step, an affix weight's, an item's uid, level and count, a rolled affix's tier, an inventory's cells, an item action's count and an item condition's bounds, and a ground item's count"
     );
 }
 
@@ -474,7 +474,7 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let world = world();
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
-    assert_eq!(count("component "), 54);
+    assert_eq!(count("component "), 55);
     assert_eq!(count("shape "), 117);
     assert_eq!(count("kind "), 16);
     assert!(count("  field ") >= 40, "{}", count("  field "));

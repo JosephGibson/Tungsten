@@ -14,8 +14,8 @@ use tungsten_core::{
 };
 
 use crate::foundation::describe::{
-    Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, TOP_DOWN, describe,
-    round_trip,
+    ARPG, Bound, ComponentDescription, FieldDescription, FieldType, PLATFORMER, RPG, TOP_DOWN,
+    describe, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::layers::{LayerRef, check_layers, layer_bits, layer_list};
@@ -25,6 +25,8 @@ use crate::foundation::saved::order_of;
 use crate::foundation::stats::Stats;
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags};
 use crate::foundation::trace::{TraceKind, trace};
+use crate::items::ground::GroundItem;
+use crate::items::inventory::give_item;
 use crate::lifecycle::ended::{Despawning, end, ensure_kit_despawn};
 use crate::motion::drive::{Body, Write, body_of, point_of, step_position, write_velocity};
 use crate::motion::oscillator::OSCILLATOR;
@@ -427,6 +429,7 @@ impl Plugin for PickupPlugin {
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
             .genre(RPG)
+            .genre(ARPG)
             .sample(r#"{ "shape": { "circle": 6 } }"#)
             .roundtrip(round_trip::<PickupDef>),
         );
@@ -486,7 +489,10 @@ struct Collector {
 
 impl Collector {
     /// Each uncollected pickup, in entity order, goes to the first hurtbox
-    /// its sweep meets whose entity's tags pass its filter.
+    /// its sweep meets whose entity's tags pass its filter; one holding a
+    /// [`GroundItem`] only to a collector whose bag takes it whole and that
+    /// is not its refused dropper, and its item lands in that bag at once,
+    /// before the next pickup's check reads the bag.
     fn run(&mut self, world: &mut World) {
         let Some(grid) = world.remove_resource::<HitGrid>() else {
             return;
@@ -500,14 +506,23 @@ impl Collector {
         );
         let order = order_of(world);
         self.pickups.sort_by_key(|&entity| order.key(entity));
+        let grounds = world.has_any::<GroundItem>();
         for i in 0..self.pickups.len() {
             let entity = self.pickups[i];
             if world.has::<Despawning>(entity) {
                 continue;
             }
-            let Some((by, at)) = self.first(world, &grid, entity) else {
+            let Some((by, at)) = self.first(world, &grid, entity, grounds) else {
                 continue;
             };
+            if grounds
+                && let Some(item) = world
+                    .get::<GroundItem>(entity)
+                    .map(|ground| ground.item().clone())
+                && give_item(world, by, item).is_err()
+            {
+                continue;
+            }
             world.get_mut::<Pickup>(entity).unwrap().collected = true;
             if let Some(queue) = world.get_resource_mut::<EventQueue<PickedUp>>() {
                 queue.send(PickedUp::new(entity, by, at));
@@ -523,9 +538,20 @@ impl Collector {
     }
 
     /// The first collector `entity`'s sweep meets, by (t, index), with the
-    /// pickup's centre there.
-    fn first(&mut self, world: &World, grid: &HitGrid, entity: Entity) -> Option<(Entity, Vec2)> {
+    /// pickup's centre there; with `grounds`, one its ground item accepts.
+    fn first(
+        &mut self,
+        world: &World,
+        grid: &HitGrid,
+        entity: Entity,
+        grounds: bool,
+    ) -> Option<(Entity, Vec2)> {
         let pickup = world.get::<Pickup>(entity)?;
+        let ground = if grounds {
+            world.get::<GroundItem>(entity)
+        } else {
+            None
+        };
         let sweep = sweep_of(world, entity, pickup.shape.shape(), pickup.offset)?;
         let (min, max) = sweep.bounds();
         grid.candidates(min, max, &mut self.candidates);
@@ -533,6 +559,9 @@ impl Collector {
         for &index in &self.candidates {
             let entry = &grid.entries()[index as usize];
             if entry.entity == entity || !pickup.filter.matches(world.get::<Tags>(entry.entity)) {
+                continue;
+            }
+            if ground.is_some_and(|ground| !ground.accepts(world, entry.entity)) {
                 continue;
             }
             if let Some(t) = first_contact(&sweep, &entry.sweep)

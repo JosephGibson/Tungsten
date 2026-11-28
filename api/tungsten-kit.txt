@@ -7245,6 +7245,34 @@ impl core::marker::Unpin for tungsten_kit::FollowPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::FollowPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::FollowPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::FollowPlugin
+pub struct tungsten_kit::GroundItem
+impl tungsten_kit::GroundItem
+pub fn tungsten_kit::GroundItem::item(&self) -> &tungsten_kit::Item
+pub fn tungsten_kit::GroundItem::labelled(&self) -> bool
+pub fn tungsten_kit::GroundItem::new(tungsten_kit::Item) -> Self
+pub fn tungsten_kit::GroundItem::refused(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::GroundItem::unlabelled(self) -> Self
+pub fn tungsten_kit::GroundItem::with_offset(self, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_kit::GroundItem
+pub fn tungsten_kit::GroundItem::clone(&self) -> tungsten_kit::GroundItem
+impl core::cmp::PartialEq for tungsten_kit::GroundItem
+pub fn tungsten_kit::GroundItem::eq(&self, &tungsten_kit::GroundItem) -> bool
+impl core::fmt::Debug for tungsten_kit::GroundItem
+pub fn tungsten_kit::GroundItem::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::GroundItem
+impl serde_core::ser::Serialize for tungsten_kit::GroundItem
+pub fn tungsten_kit::GroundItem::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl tungsten_core::inspect::Inspectable for tungsten_kit::GroundItem
+pub fn tungsten_kit::GroundItem::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::GroundItem
+pub fn tungsten_kit::GroundItem::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl core::marker::Freeze for tungsten_kit::GroundItem
+impl core::marker::Send for tungsten_kit::GroundItem
+impl core::marker::Sync for tungsten_kit::GroundItem
+impl core::marker::Unpin for tungsten_kit::GroundItem
+impl core::marker::UnsafeUnpin for tungsten_kit::GroundItem
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::GroundItem
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::GroundItem
 pub struct tungsten_kit::HealRequest
 impl tungsten_kit::HealRequest
 pub fn tungsten_kit::HealRequest::amount(&self) -> f32
@@ -10807,6 +10835,8 @@ pub const tungsten_kit::EFFECT_TICK: &str
 pub const tungsten_kit::EXPLAIN_RECORDS: usize
 pub const tungsten_kit::FACING: &str
 pub const tungsten_kit::FOLLOW: &str
+pub const tungsten_kit::GROUND_ITEM_LABELS: &str
+pub const tungsten_kit::GROUND_ITEM_TICK: &str
 pub const tungsten_kit::HEALTH_TICK: &str
 pub const tungsten_kit::HITBOX_TICK: &str
 pub const tungsten_kit::HIT_FLASH_MATERIAL: &str
@@ -10872,6 +10902,7 @@ pub fn tungsten_kit::count_of(&tungsten_core::ecs::world::World, tungsten_core::
 pub fn tungsten_kit::cursor_to_world(&tungsten_core::ecs::world::World) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::damage(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> tungsten_kit::Hit
 pub fn tungsten_kit::despawn_recursive(&mut tungsten_core::ecs::command_buffer::CommandBuffer, tungsten_core::ecs::entity::Entity)
+pub fn tungsten_kit::drop_item(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, usize, u32) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::end_effect(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> bool
 pub fn tungsten_kit::end_effect_serial(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, u64) -> bool
 pub fn tungsten_kit::ensure_phases(&mut tungsten_core::schedule::Schedule)

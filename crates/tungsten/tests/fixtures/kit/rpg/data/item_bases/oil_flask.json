@@ -4,6 +4,7 @@
   "tags": ["item", "item.flask"],
   "stack": 5,
   "price": 3,
+  "ground": "flask_drop",
   "use": [
     { "counter": { "name": "oil", "add": 10 } }
   ]

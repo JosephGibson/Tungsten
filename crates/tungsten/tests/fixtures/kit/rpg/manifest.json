@@ -122,6 +122,9 @@
     },
     "satchel_warden": {
       "path": "prefabs/satchel_warden.json"
+    },
+    "flask_drop": {
+      "path": "prefabs/flask_drop.json"
     }
   },
   "data": {

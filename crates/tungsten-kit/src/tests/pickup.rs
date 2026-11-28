@@ -495,3 +495,46 @@ fn a_pickups_fall_round_trips_its_data_and_save() {
         serde_json::from_value::<Pickup>(json!({ "shape": { "circle": 4 }, "fall": -1 })).is_err()
     );
 }
+
+#[test]
+fn a_pickup_without_an_item_collects_as_before() {
+    use crate::{GroundItem, Hurtbox, Item};
+    use tungsten_core::{EventQueue, Transform};
+
+    // A ground item lies far off, so the collector's gate is live; a coin
+    // beside a collector with no bag goes to it as it did before items.
+    let (mut world, mut schedule, collector) = pickup_rig(0.0);
+    world.register_event::<PickedUp>();
+    world.spawn_with((
+        Position(Vec2::new(900.0, 0.0)),
+        PrevPosition(Vec2::new(900.0, 0.0)),
+        Pickup::new(HitShape::circle(0.25)),
+        GroundItem::new(Item::new("oil_flask")),
+    ));
+    let coin = world.spawn_with((
+        Position(Vec2::ZERO),
+        PrevPosition(Vec2::ZERO),
+        Pickup::new(HitShape::circle(0.25)),
+    ));
+    world.spawn_with((
+        Transform::from_position(Vec2::new(900.0, 0.0)),
+        Position(Vec2::new(900.0, 0.0)),
+        Hurtbox::new(HitShape::circle(0.25)),
+    ));
+    pickup_step(&mut world, &mut schedule);
+    assert!(
+        world.get::<Pickup>(coin).unwrap().is_collected(),
+        "the coin went"
+    );
+    let sent: Vec<(Entity, Entity)> = world
+        .resource::<EventQueue<PickedUp>>()
+        .iter()
+        .map(|picked| (picked.entity, picked.by))
+        .collect();
+    assert_eq!(sent, [(coin, collector)], "to its collector");
+    assert_eq!(
+        world.query::<(Entity, &GroundItem)>().count(),
+        1,
+        "the far item lies beside a collector with no bag"
+    );
+}

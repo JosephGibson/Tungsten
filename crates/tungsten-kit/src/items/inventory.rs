@@ -242,6 +242,20 @@ impl Inventory {
         self.slots.get(name)?.item.as_ref()
     }
 
+    /// Takes `count` off cell `cell`'s item, emptying it at its last.
+    pub(crate) fn spend(&mut self, cell: usize, count: u32) {
+        let Some(slot) = self.cells.get_mut(cell) else {
+            return;
+        };
+        if let Some(item) = slot {
+            if item.count() > count {
+                item.set_count(item.count() - count);
+            } else {
+                *slot = None;
+            }
+        }
+    }
+
     /// How many of base `base` the bag and the worn slots hold.
     #[must_use]
     pub fn count_of(&self, base: &str) -> u32 {
@@ -359,29 +373,43 @@ pub fn give(world: &mut World, holder: Entity, base: &str, count: u32) -> u32 {
     count - left
 }
 
-/// Gives `holder` `item` whole, at once: onto the bag's stacks it stacks
-/// with, then into empty cells, given a uid when it has none; or hands it
-/// back, the bag unchanged, when it does not all fit.
-pub fn give_item(world: &mut World, holder: Entity, item: Item) -> Result<(), Item> {
+/// How many of `item` `holder`'s bag has room for, its base's `stack` to
+/// a cell (the item's own count for a base the data lacks), and that stack;
+/// `None` without a bag.
+fn room_for(world: &World, holder: Entity, item: &Item) -> Option<(u64, u32)> {
     let stack = base_of(world, item.base()).map_or(item.count(), ItemBase::stack);
-    let Some(bag) = world.get::<Inventory>(holder) else {
-        return Err(item);
-    };
+    let bag = world.get::<Inventory>(holder)?;
     let stackable = item.affixes().is_empty() && item.name_words().next().is_none();
-    let room: u64 = bag
+    let room = bag
         .cells
         .iter()
         .map(|cell| match cell {
             None => u64::from(stack),
-            Some(held) if stackable && held.stacks_with(&item) => {
+            Some(held) if stackable && held.stacks_with(item) => {
                 u64::from(stack.saturating_sub(held.count()))
             }
             Some(_) => 0,
         })
         .sum();
+    Some((room, stack))
+}
+
+/// Whether `holder`'s bag takes `item` whole, as [`give_item`] would.
+pub(crate) fn takes_whole(world: &World, holder: Entity, item: &Item) -> bool {
+    room_for(world, holder, item).is_some_and(|(room, _)| room >= u64::from(item.count()))
+}
+
+/// Gives `holder` `item` whole, at once: onto the bag's stacks it stacks
+/// with, then into empty cells, given a uid when it has none; or hands it
+/// back, the bag unchanged, when it does not all fit.
+pub fn give_item(world: &mut World, holder: Entity, item: Item) -> Result<(), Item> {
+    let Some((room, stack)) = room_for(world, holder, &item) else {
+        return Err(item);
+    };
     if room < u64::from(item.count()) {
         return Err(item);
     }
+    let stackable = item.affixes().is_empty() && item.name_words().next().is_none();
     let mut left = item.count();
     if stackable {
         let bag = world.get_mut::<Inventory>(holder).expect("checked");
@@ -656,13 +684,10 @@ fn use_on(world: &mut World, holder: Entity, cell: usize, subject: Entity) -> bo
     }
     let list = base.use_list().to_vec();
     if base.consumes() {
-        let bag = world.get_mut::<Inventory>(holder).expect("read above");
-        let item = bag.cells[cell].as_mut().expect("read above");
-        if item.count() > 1 {
-            item.set_count(item.count() - 1);
-        } else {
-            bag.cells[cell] = None;
-        }
+        world
+            .get_mut::<Inventory>(holder)
+            .expect("read above")
+            .spend(cell, 1);
     }
     let at = centre_of(world, subject).unwrap_or(Vec2::ZERO);
     run_list(world, &list, Some(subject), None, at);

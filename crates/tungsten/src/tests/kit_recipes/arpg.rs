@@ -7,7 +7,8 @@
 //! pose nearest its aim's elevation, and cinder names its icon. 8.1's
 //! second plan: §9.2's ashwood wand and iron band with the wand's five
 //! affixes, `honed` local; the exile, who wears §4.6's wand, its lines on
-//! the exile, and keeps it through a save (§16's check).
+//! the exile, and keeps it through a save (§16's check); a rare wand lying
+//! labelled, picked up whole.
 
 use tungsten_core::Entity;
 
@@ -353,6 +354,56 @@ fn the_wand_from_its_json_equips_shows_its_lines_and_saves_round_trip() {
             shown(&loaded, restored),
             (name, lines),
             "dt {dt}: shown the same"
+        );
+    }
+}
+
+#[test]
+fn a_rare_wand_on_the_ground_is_labelled_and_picked_up() {
+    use crate::kit::{GroundItem, HitShape, Hurtbox};
+    use tungsten_core::physics::{Position, PrevPosition};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let world = harness.world_mut();
+        world.insert_resource(crate::WindowSize {
+            width: 800,
+            height: 600,
+        });
+        world.insert_resource(tungsten_core::ScaleFactor::default());
+        let exile = spawn(&mut harness, "exile", [0.0, 0.0]);
+        let wand = spawn(&mut harness, "wand_drop", [120.0, 40.0]);
+        harness.step(1);
+        let labels: Vec<String> = harness
+            .draw()
+            .expect("a frame ran")
+            .world_labels
+            .iter()
+            .map(|run| run.content.clone())
+            .collect();
+        assert_eq!(labels, ["Ember Coil"], "dt {dt}: labelled by its own name");
+        assert!(
+            harness.world().get::<GroundItem>(wand).is_some(),
+            "dt {dt}: no collector near"
+        );
+        // The exile collects with a hurtbox, walked onto the wand.
+        harness
+            .world_mut()
+            .insert(exile, Hurtbox::new(HitShape::circle(8.0)));
+        let at = harness.world().get::<Position>(wand).unwrap().0;
+        harness.world_mut().insert(exile, Position(at));
+        harness.world_mut().insert(exile, PrevPosition(at));
+        harness.step(2);
+        let bag = harness.world().get::<Inventory>(exile).unwrap();
+        let picked = bag.cell(0).expect("in the bag");
+        assert_eq!(
+            (picked.base(), picked.rarity(), picked.affixes().len()),
+            ("ashwood_wand", "rare", 1),
+            "dt {dt}: the rolled wand whole"
+        );
+        assert!(
+            !harness.world().is_alive(wand),
+            "dt {dt}: gone from the ground"
         );
     }
 }

@@ -17,7 +17,8 @@
 //! starts; the lit lamp's bark; the warden's lamplight quest, done once the
 //! lamp is lit. 8.1's second plan: the oilskin hood, the oil flask and the
 //! brass charm, with the `fine` affix; the satchel warden, hooded while it
-//! wears the hood, whose flask refuels its lantern.
+//! wears the hood, whose flask refuels its lantern, and whose dropped flask
+//! lies until its bag has room.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -1331,5 +1332,49 @@ fn a_flask_from_the_bag_refuels_the_lantern() {
         );
         harness.step(1);
         assert_eq!(oil(&harness), 10);
+    }
+}
+
+#[test]
+fn a_dropped_flask_lies_until_the_bag_has_room() {
+    use crate::kit::{GroundItem, HitShape, Hurtbox, drop_item, give};
+
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let warden = spawn(&mut harness, "satchel_warden", [64.0, 64.0]);
+        // A bag of three: the flask, the hood and the charm; and a hurtbox
+        // to collect with, which the prefab carries none of.
+        let bag = Inventory::new(3)
+            .with_item(Item::new("oil_flask"))
+            .with_item(Item::new("oilskin_hood"))
+            .with_item(Item::new("brass_charm"));
+        let world = harness.world_mut();
+        world.insert(warden, bag);
+        world.insert(warden, Hurtbox::new(HitShape::circle(8.0)));
+        let dropped = drop_item(world, warden, 0, 1).expect("the flask's `ground`");
+        assert_eq!(
+            give(world, warden, "oil_flask", 5),
+            5,
+            "dt {dt}: a full stack in its cell"
+        );
+        harness.step(frames_for(2.0, dt));
+        assert!(
+            harness.world().get::<GroundItem>(dropped).is_some(),
+            "dt {dt}: no room, so it lies there"
+        );
+        assert!(
+            use_item(harness.world_mut(), warden, 0),
+            "dt {dt}: a flask burned"
+        );
+        harness.step(1);
+        assert!(
+            !harness.world().is_alive(dropped)
+                || harness.world().get::<GroundItem>(dropped).is_none()
+        );
+        assert_eq!(
+            count_of(harness.world(), warden, "oil_flask"),
+            5,
+            "dt {dt}: back in the bag"
+        );
     }
 }

@@ -11,6 +11,9 @@
     },
     "exile": {
       "path": "prefabs/exile.json"
+    },
+    "wand_drop": {
+      "path": "prefabs/wand_drop.json"
     }
   },
   "data": {
