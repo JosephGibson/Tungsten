@@ -269,7 +269,7 @@ pub(crate) fn check_files(
 
 /// Parses each `ui_screens` file, then holds every name it uses to the
 /// World's ([`screen_names`]) and each image's literal `sprite` to the
-/// manifest's sprites or a reserved one (`D-31[6]`), each error naming its
+/// manifest's sprites or a reserved one (`D-317`), each error naming its
 /// field; inserts the
 /// registry and paths when the manifests list screens, as a load does.
 fn check_screens(manifest: &ResolvedManifest, world: &mut World, errors: &mut Errors) {

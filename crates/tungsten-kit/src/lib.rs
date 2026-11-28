@@ -205,6 +205,16 @@
 //!   game, their stages completed by objectives or the `quest` action, their
 //!   rewards run in order. The umbrella's `tungsten::story` draws the box
 //!   and the journal.
+//! - **Items.** [`ItemBase`], [`Affix`], [`Item`], [`built`] and
+//!   [`ItemsPlugin`]: the `item_bases` and `affixes` kinds and an item
+//!   instance checked at load, built into its name and lines. [`Inventory`],
+//!   [`give`], [`take`], [`move_item`], [`use_item`] and [`use_item_on`]:
+//!   a bag of cells and worn slots, each worn item one status apart from
+//!   every other. [`GroundItem`] and [`drop_item`]: an item lying on a
+//!   pickup, labelled by its rarity. [`Shop`], [`open_shop`], [`buy`],
+//!   [`sell`] and [`ShopsPlugin`]: the `shops` kind and one visit at a time,
+//!   opened in data by the `shop` cue action. The umbrella's
+//!   `tungsten::items` draws the inventory and the shop.
 //! - **Present.** [`AnimationPlugin`]: an animated sprite, whose
 //!   `AnimationState` writes its current frame into `Sprite.asset_id`.
 //!   [`CharacterAnimator`], [`Clips`], [`ClipRule`] and

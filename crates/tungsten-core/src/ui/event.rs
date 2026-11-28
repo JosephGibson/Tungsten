@@ -198,7 +198,7 @@ pub enum UiEvent {
         window: WidgetId,
     },
     /// A primary press on a drag source moved past the drag threshold
-    /// (`D-31[6]`): the drag carries it toward a drop target until its
+    /// (`D-317`): the drag carries it toward a drop target until its
     /// `Dropped` or `DragCancelled`, and activates nothing.
     #[non_exhaustive]
     DragStarted {

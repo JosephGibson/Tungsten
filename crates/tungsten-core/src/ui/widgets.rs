@@ -166,7 +166,7 @@ pub fn group(tree: &mut UiTree, parent: WidgetId, style: LayoutStyle, align: Ali
     tree.group(parent, style)
 }
 
-/// A layout-only grid under `parent` (`D-31[6]`), as wide as its parent
+/// A layout-only grid under `parent` (`D-317`), as wide as its parent
 /// gives it, gapped the theme's `spacing.sm`: its flowed children fill
 /// rows of `columns.len()` cells in order, each as wide as its column, so
 /// the columns line up, each centred on its row.

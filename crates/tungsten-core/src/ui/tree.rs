@@ -420,7 +420,7 @@ impl UiTree {
 
     /// The first image at or under `id`, depth first: its sprite, its
     /// laid-out size (its natural size before a layout) and its tint, for a
-    /// drag's ghost (`D-31[6]`).
+    /// drag's ghost (`D-317`).
     pub(crate) fn first_image(&self, id: WidgetId) -> Option<(SpriteAssetId, Vec2, [u8; 4])> {
         let node = self.node(id)?;
         if let Some(image) = node.image {

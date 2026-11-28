@@ -317,7 +317,7 @@ pub(crate) struct Node {
     pub(crate) hit_testable: bool,
     /// Roots: whether this root, while shown, blocks the roots below it.
     pub(crate) modal: bool,
-    /// Its drag roles, one bit each (M57, `D-31[6]`): a handle whose drag
+    /// Its drag roles, one bit each (M57, `D-317`): a handle whose drag
     /// moves its root, a source whose drag carries it to a drop target, and
     /// a drop target. A handle is no source; the later setter wins.
     pub(crate) drag: u8,

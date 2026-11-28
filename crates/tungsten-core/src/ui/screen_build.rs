@@ -152,14 +152,14 @@ impl UiBindings {
         self
     }
 
-    /// Registers image binding `name` (`D-31[6]`): an image's sprite by its
+    /// Registers image binding `name` (`D-317`): an image's sprite by its
     /// manifest name; an empty or unknown name collapses the image.
     pub fn image(&mut self, name: &'static str, read: TextBinding) -> &mut Self {
         self.image.insert(name, read);
         self
     }
 
-    /// Registers style binding `name` (`D-31[6]`): a text kind's theme text
+    /// Registers style binding `name` (`D-317`): a text kind's theme text
     /// style by name; an empty name gives the node back the style it was
     /// built with.
     pub fn style(&mut self, name: &'static str, read: TextBinding) -> &mut Self {
@@ -313,7 +313,7 @@ struct Part {
 }
 
 /// What shows beside a screen's widget while it is hovered or holds
-/// visible focus (`D-31[6]`): a line of text, or a `ui_screens` file.
+/// visible focus (`D-317`): a line of text, or a `ui_screens` file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Tooltip {
@@ -426,7 +426,7 @@ pub fn build(world: &mut World, id: &str) -> Option<BuiltScreen> {
 /// Sets image `image`'s sprite to the one named `name` in the world's
 /// assets and shows it, each `auto` axis at the sprite's own size, so the
 /// parent's stretch leaves it whole; an empty name collapses it, an unknown
-/// one too, warned once a name (`D-31[6]`).
+/// one too, warned once a name (`D-317`).
 fn show_sprite(world: &mut World, image: WidgetId, name: &str, auto: [bool; 2]) {
     let found = if name.is_empty() {
         None
@@ -477,7 +477,7 @@ fn show_sprite(world: &mut World, image: WidgetId, name: &str, auto: [bool; 2]) 
 }
 
 /// The tooltip of `widget`, a node of a screen built from a file, as its
-/// file's `tooltip` gives it; `None` for a node with none (`D-31[6]`).
+/// file's `tooltip` gives it; `None` for a node with none (`D-317`).
 #[must_use]
 pub fn tooltip(world: &World, widget: WidgetId) -> Option<&Tooltip> {
     let root = world.get_resource::<UiTree>()?.root_of(widget)?;

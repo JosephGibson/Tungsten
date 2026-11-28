@@ -10,7 +10,7 @@
 //! and [`open`] name screens for scripts and data; [`open`] also pushes a
 //! `ui_screens` file as a [`DataScreen`] (redo 7.20), which runs the file's
 //! actions. [`popup`] shows tooltips on every modal screen and opens screen
-//! files beside a control (`D-31[6]`).
+//! files beside a control (`D-317`).
 //!
 //! Opt in with [`ScreensPlugin`], which inserts the resources and adds no
 //! system: each screen's own `update` drives its slide out and its

@@ -199,7 +199,7 @@ struct Drag {
     moving: bool,
 }
 
-/// A primary press on a drag source (`D-31[6]`): the source and its key,
+/// A primary press on a drag source (`D-317`): the source and its key,
 /// the press's point and the pointer's offset from the source's top-left
 /// in UI units, whether the pointer has passed the threshold, and the
 /// ghost root that follows the pointer once it has.
@@ -257,7 +257,7 @@ pub struct UiRouter {
     captured: Option<WidgetId>,
     /// The captured widget's drag, when it is a drag handle (M57).
     drag: Option<Drag>,
-    /// The captured widget's drag, when it is a drag source (`D-31[6]`).
+    /// The captured widget's drag, when it is a drag source (`D-317`).
     item: Option<ItemDrag>,
     /// Other buttons' presses on targets, until their releases.
     presses: Vec<(MouseButton, WidgetId)>,
@@ -315,7 +315,7 @@ impl UiRouter {
     }
 
     /// The source a drag is carrying, from its `DragStarted` to its
-    /// `Dropped` or `DragCancelled` (`D-31[6]`); `None` before the press
+    /// `Dropped` or `DragCancelled` (`D-317`); `None` before the press
     /// passes the threshold.
     #[must_use]
     pub fn dragging(&self) -> Option<WidgetId> {

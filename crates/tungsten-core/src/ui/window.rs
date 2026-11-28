@@ -47,7 +47,7 @@ impl UiTree {
         self.has_drag_role(id, HANDLE)
     }
 
-    /// Makes `id` a drag source, or not (`D-31[6]`): a primary press on it
+    /// Makes `id` a drag source, or not (`D-317`): a primary press on it
     /// that moves past the router's drag threshold carries it toward a drop
     /// target ([`Self::set_drop_target`]) with [`UiEvent::DragStarted`], and
     /// ends in [`UiEvent::Dropped`] or [`UiEvent::DragCancelled`], never an
@@ -68,7 +68,7 @@ impl UiTree {
         self.has_drag_role(id, SOURCE)
     }
 
-    /// Makes `id` a drop target, or not (`D-31[6]`): while a source's drag
+    /// Makes `id` a drop target, or not (`D-317`): while a source's drag
     /// lasts, the hover follows the front-most visible, enabled target
     /// under the pointer, so its `hovered` style marks it, and a release
     /// over one drops the source there. Marks nothing.

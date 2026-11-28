@@ -11,7 +11,7 @@
 //! landed a rounding error under it, so a box sized to its text never wraps
 //! it. A shrinking label (its named style's `shrink`) keeps to one line and
 //! commits at the largest scale its content box holds, never under its
-//! least share. A grid's container (`D-31[6]`) holds synthetic flex rows
+//! least share. A grid's container (`D-317`) holds synthetic flex rows
 //! of its cells, which only its root's tree builds and [`place`] adds back
 //! to their cells' locations; its `Auto` columns are solved at max-content
 //! first and fixed at their widest cell.

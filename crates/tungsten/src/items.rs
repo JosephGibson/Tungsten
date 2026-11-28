@@ -1,4 +1,4 @@
-//! The item screens (redo 8.1's second plan, `D-31[6]`): an inventory and a
+//! The item screens (redo 8.1's second plan, `D-317`): an inventory and a
 //! shop over the kit's items, built from a game's `ui_screens` files
 //! `inventory` and `shop` on the dialogue box's pattern (`D-315`), with
 //! the item tooltip and the cell menu as screen files of their own.

@@ -175,7 +175,7 @@ impl UiHarness {
 
     /// Runs frames until `seconds` of the real clock have passed
     /// ([`Time::real_delta`], the harness's dt), as a tooltip's delay
-    /// counts them (`D-31[6]`), laying the tree out after each; returns the
+    /// counts them (`D-317`), laying the tree out after each; returns the
     /// frames run, stopping where [`Self::step`] stops or the clock does not
     /// move.
     pub fn wait(&mut self, seconds: f32) -> u32 {
@@ -233,7 +233,7 @@ impl UiHarness {
         self.pointer_up();
     }
 
-    /// Drags `from` onto `to` (`D-31[6]`): the pointer to the centre of
+    /// Drags `from` onto `to` (`D-317`): the pointer to the centre of
     /// where `from` last painted, down, a step; past the router's drag
     /// threshold toward `to`, a step; to `to`'s centre, a step; up, left
     /// for the next frame to route. A drag source starts its drag on the

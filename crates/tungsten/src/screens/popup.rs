@@ -1,4 +1,4 @@
-//! Tooltips and popups (redo 8.1's second plan, `D-31[6]`). A widget of a
+//! Tooltips and popups (redo 8.1's second plan, `D-317`). A widget of a
 //! modal screen hovered, or holding visible focus, for
 //! [`TooltipSettings::delay`] real seconds shows its tooltip beside it: a
 //! screen file's `tooltip` ([`screen_build::tooltip`]) or one
@@ -162,7 +162,7 @@ fn hushed(world: &World) -> bool {
 }
 
 /// The screen at `root`'s tooltip turn, once a frame from its update
-/// (`D-31[6]`): a press, an activation, a drag or a scroll this routing
+/// (`D-317`): a press, an activation, a drag or a scroll this routing
 /// hides the tooltip and quiets its widget until another takes its place;
 /// the widget whose tooltip may show (the one under the pointer, else the
 /// one holding visible focus) is timed on the real clock and shows its
@@ -342,7 +342,7 @@ pub fn popup_anchor(world: &World) -> Option<(WidgetId, Option<UiKey>)> {
 }
 
 /// Pushes the `ui_screens` file `id` as a popup beside `beside`
-/// (`D-31[6]`): a data screen whose root, a bare `root` modal on the popup
+/// (`D-317`): a data screen whose root, a bare `root` modal on the popup
 /// layer, is placed as a tooltip is and popped by a press outside it or a
 /// cancel; its actions run as a data screen's, reading [`popup_anchor`].
 /// `false` while the screens are not [`idle`](super::idle), and for a file

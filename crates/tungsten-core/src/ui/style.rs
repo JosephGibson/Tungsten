@@ -268,7 +268,7 @@ pub enum Track {
 /// The most columns a grid lays out.
 const MAX_COLUMNS: usize = 32;
 
-/// A grid's tracks (`D-124` as `D-31[6]` amends it): its flowed children
+/// A grid's tracks (`D-124` as `D-317` amends it): its flowed children
 /// fill rows of `columns.len()` cells in order, each cell as wide as its
 /// column, so the columns line up across rows; a row is as tall as its
 /// tallest cell, or its `rows` track's size. Laid out on the flex solver

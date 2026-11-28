@@ -2,7 +2,7 @@
 //! `ui_screens` file in its `on_enter`, adopts the root as a
 //! [`ModalScreen`], runs each control's `on` action and refreshes the
 //! file's bindings each frame. [`open`](super::open) pushes one by the
-//! file's ID, and [`popup::open`] one beside a control (`D-31[6]`).
+//! file's ID, and [`popup::open`] one beside a control (`D-317`).
 
 use tungsten_core::ui::{
     KeyedAction, ScreenAction, ScreenSetting, UiAction, UiBindings, UiEvent, UiKey, UiRouter,

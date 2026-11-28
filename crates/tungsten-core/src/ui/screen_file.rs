@@ -110,7 +110,7 @@ pub enum ScreenAction {
     Setting(ScreenSetting),
     /// `{"popup": "<id>"}`: opens the `ui_screens` file with this ID beside
     /// the control, a popup that a press outside it or a cancel closes
-    /// (`D-31[6]`).
+    /// (`D-317`).
     Popup(String),
 }
 
@@ -358,10 +358,10 @@ pub(crate) struct Node {
     pub(crate) mono: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) danger: bool,
-    /// A drag source (`D-31[6]`).
+    /// A drag source (`D-317`).
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) drag: bool,
-    /// A drop target (`D-31[6]`).
+    /// A drop target (`D-317`).
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) drop: bool,
     #[serde(default, skip_serializing_if = "Bind::is_empty")]
@@ -410,7 +410,7 @@ pub(crate) struct Node {
     pub(crate) placeholder: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) max: Option<u32>,
-    /// An image's sprite (`D-31[6]`).
+    /// An image's sprite (`D-317`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) sprite: Option<String>,
     /// An image's tint.
@@ -425,7 +425,7 @@ pub(crate) struct Node {
 }
 
 /// A node's `tooltip`: a line of text, or a `ui_screens` file shown beside
-/// it (`D-31[6]`).
+/// it (`D-317`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub(crate) enum TooltipFile {
@@ -455,7 +455,7 @@ pub(crate) struct Bind {
     pub(crate) visible: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) enabled: Option<String>,
-    /// An image's sprite by name (`D-31[6]`).
+    /// An image's sprite by name (`D-317`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) image: Option<String>,
     /// A text kind's text style by name.
@@ -551,7 +551,7 @@ pub(crate) struct LayoutFile {
     pub(crate) justify_content: Option<JustifyName>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) anchor: Option<AnchorFile>,
-    /// A grid's columns (`D-31[6]`): 1 to 32 tracks.
+    /// A grid's columns (`D-317`): 1 to 32 tracks.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -1202,7 +1202,7 @@ impl ScreenFile {
     }
 
     /// Each image's literal `sprite`, with its path, in file order: what
-    /// `tungsten check` holds to the manifest's sprites (`D-31[6]`).
+    /// `tungsten check` holds to the manifest's sprites (`D-317`).
     #[must_use]
     pub fn sprites(&self) -> Vec<(String, String)> {
         let mut sprites = Vec::new();
@@ -1239,14 +1239,14 @@ impl ScreenFile {
         (root.kind == Kind::Root && !popup).then_some("its root is not modal on the popup layer")
     }
 
-    /// Why the file does not open as a popup (`D-31[6]`), `None` when it
+    /// Why the file does not open as a popup (`D-317`), `None` when it
     /// does: a popup's root is a bare `root`, modal, on the popup layer.
     #[must_use]
     pub fn popup_refusal(&self) -> Option<&'static str> {
         self.beside_refusal(true)
     }
 
-    /// Why the file does not show as a tooltip (`D-31[6]`), `None` when it
+    /// Why the file does not show as a tooltip (`D-317`), `None` when it
     /// does: a tooltip's root is a bare `root`, not modal, on the popup
     /// layer.
     #[must_use]
