@@ -197,6 +197,40 @@ pub enum UiEvent {
         /// The root the handle moved.
         window: WidgetId,
     },
+    /// A primary press on a drag source moved past the drag threshold
+    /// (`D-31[6]`): the drag carries it toward a drop target until its
+    /// `Dropped` or `DragCancelled`, and activates nothing.
+    #[non_exhaustive]
+    DragStarted {
+        /// The source.
+        widget: WidgetId,
+        /// Its key, when it has one.
+        key: Option<UiKey>,
+    },
+    /// A source's drag was released over a drop target, after the press's
+    /// `Released`. The target's key is [`UiTree::key`]'s: an event holds one
+    /// key, so the event keeps its size.
+    ///
+    /// [`UiTree::key`]: super::UiTree::key
+    #[non_exhaustive]
+    Dropped {
+        /// The source.
+        widget: WidgetId,
+        /// Its key, when it had one at the drag's start.
+        key: Option<UiKey>,
+        /// The drop target under the pointer.
+        target: WidgetId,
+    },
+    /// A source's drag ended without a drop: released over no target,
+    /// `ui_cancel` (which then reaches no screen), the pointer leaving the
+    /// window, focus loss, or the source removed, hidden or disabled.
+    #[non_exhaustive]
+    DragCancelled {
+        /// The source.
+        widget: WidgetId,
+        /// Its key, when it had one at the drag's start.
+        key: Option<UiKey>,
+    },
 }
 
 /// A control's value, as [`UiEvent::ValueChanged`] carries it.
@@ -253,6 +287,9 @@ impl UiEvent {
             | Self::CaptureCancelled { widget }
             | Self::Scrolled { widget, .. }
             | Self::WindowMoved { window: widget }
+            | Self::DragStarted { widget, .. }
+            | Self::Dropped { widget, .. }
+            | Self::DragCancelled { widget, .. }
             | Self::Cancel { scope: widget } => widget,
         }
     }

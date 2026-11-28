@@ -1142,3 +1142,52 @@ fn a_covered_screens_reload_keeps_focus_and_its_opener() {
     );
     assert_eq!(harness.tree().plain_text(new_opener), "Open it");
 }
+
+#[test]
+fn a_screen_files_cells_drag_and_drop_by_key() {
+    use tungsten_core::EventQueue;
+    use tungsten_core::ui::UiEvent;
+    let bag = file(
+        r#"{"kind": "repeat", "key": "cells", "rows": "rows", "layout": {"columns": ["auto", "auto"]},
+            "row": {"kind": "button", "text": "cell", "drag": true, "drop": true}},
+           {"kind": "button", "key": "ground", "text": "Drop here", "drop": true}"#,
+    );
+    let mut harness = data_harness(&[("bag", &bag)], true);
+    opened_file(&mut harness, "bag");
+    let (a, b, ground) = (
+        keyed(&harness, "cells/a"),
+        keyed(&harness, "cells/b"),
+        keyed(&harness, "ground"),
+    );
+    let tree = harness.tree();
+    assert!(
+        tree.draggable(a) && tree.drop_target(a),
+        "rows take the flags"
+    );
+    assert!(tree.drop_target(ground) && !tree.draggable(ground));
+    let dropped = |harness: &UiHarness| -> Vec<(Option<UiKey>, Option<UiKey>)> {
+        harness
+            .world()
+            .resource::<EventQueue<UiEvent>>()
+            .iter()
+            .filter_map(|event| match *event {
+                UiEvent::Dropped { key, target, .. } => Some((key, harness.tree().key(target))),
+                _ => None,
+            })
+            .collect()
+    };
+    harness.drag(a, b);
+    harness.step(1);
+    assert_eq!(
+        dropped(&harness),
+        [(Some(UiKey::new("cells/a")), Some(UiKey::new("cells/b")))]
+    );
+    harness.step(2);
+    harness.drag(b, ground);
+    harness.step(1);
+    assert_eq!(
+        dropped(&harness),
+        [(Some(UiKey::new("cells/b")), Some(UiKey::new("ground")))]
+    );
+    assert!(heard(&harness).is_empty(), "a drag activates nothing");
+}

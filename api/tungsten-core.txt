@@ -14805,6 +14805,16 @@ pub tungsten_core::ui::event::UiEvent::CaptureCancelled::widget: tungsten_core::
 #[non_exhaustive] pub tungsten_core::ui::event::UiEvent::DoubleClicked
 pub tungsten_core::ui::event::UiEvent::DoubleClicked::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::ui::event::UiEvent::DoubleClicked::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::event::UiEvent::DragCancelled
+pub tungsten_core::ui::event::UiEvent::DragCancelled::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::event::UiEvent::DragCancelled::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::event::UiEvent::DragStarted
+pub tungsten_core::ui::event::UiEvent::DragStarted::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::event::UiEvent::DragStarted::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::event::UiEvent::Dropped
+pub tungsten_core::ui::event::UiEvent::Dropped::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::event::UiEvent::Dropped::target: tungsten_core::ui::id::WidgetId
+pub tungsten_core::ui::event::UiEvent::Dropped::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::ui::event::UiEvent::FieldChanged
 pub tungsten_core::ui::event::UiEvent::FieldChanged::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::ui::event::UiEvent::FieldChanged::widget: tungsten_core::ui::id::WidgetId
@@ -15464,6 +15474,7 @@ pub fn tungsten_core::ui::route::UiRouter::capture_remaining(&self) -> core::opt
 pub fn tungsten_core::ui::route::UiRouter::captured(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::capturing(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::cursor(&self) -> tungsten_core::ui::node::CursorIcon
+pub fn tungsten_core::ui::route::UiRouter::dragging(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::last_device(&self) -> tungsten_core::ui::route::InputDevice
 pub fn tungsten_core::ui::route::UiRouter::moved_focus(&self) -> bool
 pub fn tungsten_core::ui::route::UiRouter::pointer_over_ui(&self) -> bool
@@ -16718,7 +16729,11 @@ pub fn tungsten_core::ui::tree::UiTree::set_focus_neighbor(&mut self, tungsten_c
 pub fn tungsten_core::ui::tree::UiTree::set_focus_wrap(&mut self, tungsten_core::ui::id::WidgetId, bool)
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::drag_handle(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::draggable(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::drop_target(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_drag_handle(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_draggable(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_drop_target(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 impl tungsten_core::ui::tree::UiTree
@@ -17321,6 +17336,16 @@ pub tungsten_core::ui::UiEvent::CaptureCancelled::widget: tungsten_core::ui::id:
 #[non_exhaustive] pub tungsten_core::ui::UiEvent::DoubleClicked
 pub tungsten_core::ui::UiEvent::DoubleClicked::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::ui::UiEvent::DoubleClicked::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::UiEvent::DragCancelled
+pub tungsten_core::ui::UiEvent::DragCancelled::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::UiEvent::DragCancelled::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::UiEvent::DragStarted
+pub tungsten_core::ui::UiEvent::DragStarted::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::UiEvent::DragStarted::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::UiEvent::Dropped
+pub tungsten_core::ui::UiEvent::Dropped::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::ui::UiEvent::Dropped::target: tungsten_core::ui::id::WidgetId
+pub tungsten_core::ui::UiEvent::Dropped::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::ui::UiEvent::FieldChanged
 pub tungsten_core::ui::UiEvent::FieldChanged::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::ui::UiEvent::FieldChanged::widget: tungsten_core::ui::id::WidgetId
@@ -18526,6 +18551,7 @@ pub fn tungsten_core::ui::route::UiRouter::capture_remaining(&self) -> core::opt
 pub fn tungsten_core::ui::route::UiRouter::captured(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::capturing(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::cursor(&self) -> tungsten_core::ui::node::CursorIcon
+pub fn tungsten_core::ui::route::UiRouter::dragging(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::last_device(&self) -> tungsten_core::ui::route::InputDevice
 pub fn tungsten_core::ui::route::UiRouter::moved_focus(&self) -> bool
 pub fn tungsten_core::ui::route::UiRouter::pointer_over_ui(&self) -> bool
@@ -18801,7 +18827,11 @@ pub fn tungsten_core::ui::tree::UiTree::set_focus_neighbor(&mut self, tungsten_c
 pub fn tungsten_core::ui::tree::UiTree::set_focus_wrap(&mut self, tungsten_core::ui::id::WidgetId, bool)
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::drag_handle(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::draggable(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::drop_target(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_drag_handle(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_draggable(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_drop_target(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 impl tungsten_core::ui::tree::UiTree
@@ -21042,6 +21072,16 @@ pub tungsten_core::UiEvent::CaptureCancelled::widget: tungsten_core::ui::id::Wid
 #[non_exhaustive] pub tungsten_core::UiEvent::DoubleClicked
 pub tungsten_core::UiEvent::DoubleClicked::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::UiEvent::DoubleClicked::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::UiEvent::DragCancelled
+pub tungsten_core::UiEvent::DragCancelled::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::UiEvent::DragCancelled::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::UiEvent::DragStarted
+pub tungsten_core::UiEvent::DragStarted::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::UiEvent::DragStarted::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::UiEvent::Dropped
+pub tungsten_core::UiEvent::Dropped::key: core::option::Option<tungsten_core::ui::id::UiKey>
+pub tungsten_core::UiEvent::Dropped::target: tungsten_core::ui::id::WidgetId
+pub tungsten_core::UiEvent::Dropped::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::UiEvent::FieldChanged
 pub tungsten_core::UiEvent::FieldChanged::key: core::option::Option<tungsten_core::ui::id::UiKey>
 pub tungsten_core::UiEvent::FieldChanged::widget: tungsten_core::ui::id::WidgetId
@@ -25805,6 +25845,7 @@ pub fn tungsten_core::ui::route::UiRouter::capture_remaining(&self) -> core::opt
 pub fn tungsten_core::ui::route::UiRouter::captured(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::capturing(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::cursor(&self) -> tungsten_core::ui::node::CursorIcon
+pub fn tungsten_core::ui::route::UiRouter::dragging(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::route::UiRouter::last_device(&self) -> tungsten_core::ui::route::InputDevice
 pub fn tungsten_core::ui::route::UiRouter::moved_focus(&self) -> bool
 pub fn tungsten_core::ui::route::UiRouter::pointer_over_ui(&self) -> bool
@@ -26016,7 +26057,11 @@ pub fn tungsten_core::ui::tree::UiTree::set_focus_neighbor(&mut self, tungsten_c
 pub fn tungsten_core::ui::tree::UiTree::set_focus_wrap(&mut self, tungsten_core::ui::id::WidgetId, bool)
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::drag_handle(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::draggable(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::drop_target(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_drag_handle(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_draggable(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_drop_target(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 impl tungsten_core::ui::tree::UiTree

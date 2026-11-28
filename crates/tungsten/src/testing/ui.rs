@@ -9,7 +9,7 @@
 use glam::Vec2;
 use tungsten_core::text::TextNodeStore as _;
 use tungsten_core::ui::{
-    FixedAdvanceMeasure, LayoutStats, PaintList, Rect, UiDebug, UiKey, UiReveals, UiTree,
+    FixedAdvanceMeasure, LayoutStats, PaintList, Rect, UiDebug, UiKey, UiReveals, UiRouter, UiTree,
     Visibility, WidgetId,
 };
 use tungsten_core::{AssetRegistry, KeyCode, MouseButton, ScaleFactor, World};
@@ -190,6 +190,41 @@ impl UiHarness {
         let centre = (rect.min + rect.max) * 0.5 * self.scale();
         self.pointer_to(centre.x, centre.y);
         self.pointer_down();
+        self.pointer_up();
+    }
+
+    /// Drags `from` onto `to` (`D-31[6]`): the pointer to the centre of
+    /// where `from` last painted, down, a step; past the router's drag
+    /// threshold toward `to`, a step; to `to`'s centre, a step; up, left
+    /// for the next frame to route. A drag source starts its drag on the
+    /// second step and drops on a target with the release.
+    ///
+    /// # Panics
+    ///
+    /// When either widget has no box: not laid out, collapsed or removed.
+    pub fn drag(&mut self, from: WidgetId, to: WidgetId) {
+        let centre = |harness: &Self, widget: WidgetId| {
+            let rect = harness
+                .tree()
+                .visual_rect(widget)
+                .unwrap_or_else(|| panic!("UiHarness::drag: {widget:?} has no box"));
+            (rect.min + rect.max) * 0.5 * harness.scale()
+        };
+        let (start, end) = (centre(self, from), centre(self, to));
+        self.pointer_to(start.x, start.y);
+        self.pointer_down();
+        self.step(1);
+        let threshold = self
+            .harness
+            .world()
+            .get_resource::<UiRouter>()
+            .map_or(4.0, |router| router.settings().drag_threshold);
+        let toward = (end - start).normalize_or(Vec2::X);
+        let past = start + toward * (threshold + 1.0) * self.scale();
+        self.pointer_to(past.x, past.y);
+        self.step(1);
+        self.pointer_to(end.x, end.y);
+        self.step(1);
         self.pointer_up();
     }
 

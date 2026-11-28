@@ -2069,3 +2069,266 @@ fn a_back_button_sends_cancel_for_its_root() {
         "another button sends none"
     );
 }
+
+/// The drag events among `events`.
+fn drags(events: &[UiEvent]) -> Vec<UiEvent> {
+    events
+        .iter()
+        .copied()
+        .filter(|event| {
+            matches!(
+                event,
+                UiEvent::DragStarted { .. }
+                    | UiEvent::Dropped { .. }
+                    | UiEvent::DragCancelled { .. }
+                    | UiEvent::Activated { .. }
+                    | UiEvent::Cancel { .. }
+            )
+        })
+        .collect()
+}
+
+/// The rig with `a` a keyed drag source holding an image, and `b` a keyed
+/// drop target.
+fn drag_rig() -> (Rig, WidgetId, WidgetId, WidgetId) {
+    let (mut rig, root, a, b) = Rig::new();
+    let tree = rig.tree_mut();
+    tree.set_key(a, "cells/0");
+    tree.set_key(b, "worn/hood");
+    tree.set_draggable(a, true);
+    tree.set_drop_target(b, true);
+    let icon = crate::assets::SpriteAssetId::new(3);
+    let image = tree.image(a, icon, Vec2::new(16.0, 16.0), LayoutStyle::default());
+    tree.set_image_tint(image, [200, 100, 50, 255]);
+    rig.layout();
+    (rig, root, a, b)
+}
+
+fn press_at(rig: &mut Rig, point: Vec2) -> Vec<UiEvent> {
+    rig.frame(|input| {
+        input.update_cursor_position(point.x, point.y);
+        input.mouse_down(LEFT);
+    })
+}
+
+fn move_to(rig: &mut Rig, point: Vec2) -> Vec<UiEvent> {
+    rig.frame(|input| input.update_cursor_position(point.x, point.y))
+}
+
+fn release(rig: &mut Rig) -> Vec<UiEvent> {
+    rig.frame(|input| input.mouse_up(LEFT))
+}
+
+#[test]
+fn a_drag_past_the_threshold_drops_on_a_target() {
+    let (mut rig, _root, a, b) = drag_rig();
+    let from = rig.centre(a);
+    press_at(&mut rig, from);
+    assert!(
+        drags(&move_to(&mut rig, from + Vec2::new(3.0, 0.0))).is_empty(),
+        "within the threshold"
+    );
+    assert_eq!(rig.router().dragging(), None);
+    let started = move_to(&mut rig, from + Vec2::new(0.0, 20.0));
+    assert_eq!(
+        drags(&started),
+        [UiEvent::DragStarted {
+            widget: a,
+            key: Some(UiKey::new("cells/0"))
+        }]
+    );
+    assert_eq!(rig.router().dragging(), Some(a));
+    let to_b = rig.centre(b);
+
+    move_to(&mut rig, to_b);
+    let events = release(&mut rig);
+    assert_eq!(
+        drags(&events),
+        [UiEvent::Dropped {
+            widget: a,
+            key: Some(UiKey::new("cells/0")),
+            target: b,
+        }],
+        "a drop, no activation"
+    );
+    assert_eq!(
+        rig.tree().key(b),
+        Some(UiKey::new("worn/hood")),
+        "the target's key from the tree"
+    );
+    assert!(events.contains(&UiEvent::Released {
+        widget: a,
+        button: LEFT
+    }));
+    assert_eq!(rig.router().dragging(), None);
+}
+
+#[test]
+fn a_release_off_a_target_or_escape_cancels_and_escape_reaches_no_screen() {
+    let (mut rig, _root, a, _b) = drag_rig();
+    let cancelled = UiEvent::DragCancelled {
+        widget: a,
+        key: Some(UiKey::new("cells/0")),
+    };
+    let from = rig.centre(a);
+    press_at(&mut rig, from);
+    move_to(&mut rig, Vec2::new(300.0, 250.0));
+    assert_eq!(
+        drags(&release(&mut rig)),
+        [cancelled],
+        "released over no target"
+    );
+    // Escape mid-drag.
+    press_at(&mut rig, from);
+    move_to(&mut rig, from + Vec2::new(0.0, 30.0));
+    let events = rig.frame(|input| input.key_down(KeyCode::Escape));
+    assert_eq!(drags(&events), [cancelled], "the cancel reaches no screen");
+    assert!(!rig.game_pressed("ui_cancel"), "nor the game");
+    assert_eq!(rig.router().dragging(), None);
+    rig.frame(|input| input.key_up(KeyCode::Escape));
+    assert!(
+        drags(&release(&mut rig)).is_empty(),
+        "the release ends nothing more"
+    );
+    // The pointer leaving mid-drag.
+    press_at(&mut rig, from);
+    move_to(&mut rig, from + Vec2::new(0.0, 30.0));
+    let events = rig.frame(InputState::pointer_left);
+    assert_eq!(drags(&events), [cancelled]);
+}
+
+#[test]
+fn a_short_press_on_a_source_still_activates() {
+    let (mut rig, _root, a, _b) = drag_rig();
+    let from = rig.centre(a);
+    press_at(&mut rig, from);
+    move_to(&mut rig, from + Vec2::new(2.0, 2.0));
+    let events = release(&mut rig);
+    assert_eq!(
+        drags(&events),
+        [UiEvent::Activated {
+            widget: a,
+            key: Some(UiKey::new("cells/0"))
+        }]
+    );
+    assert_eq!(
+        rig.click(a)
+            .iter()
+            .filter(|event| matches!(event, UiEvent::Activated { .. }))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn hover_follows_the_target_under_the_pointer_while_dragging() {
+    let (mut rig, root, a, b) = drag_rig();
+    let c = rig.place(root, at(150.0, 60.0, 100.0, 30.0));
+    rig.layout();
+    let from = rig.centre(a);
+    press_at(&mut rig, from);
+    move_to(&mut rig, from + Vec2::new(0.0, 20.0));
+    assert_eq!(rig.tree().hovered(), None, "over no target");
+    let to_b = rig.centre(b);
+
+    let events = move_to(&mut rig, to_b);
+    assert!(events.contains(&UiEvent::PointerEntered { widget: b }));
+    assert_eq!(rig.tree().hovered(), Some(b), "its hovered style marks it");
+    let to_c = rig.centre(c);
+
+    move_to(&mut rig, to_c);
+    assert_eq!(
+        rig.tree().hovered(),
+        None,
+        "a button that is no target takes no hover"
+    );
+    rig.tree_mut().set_enabled(b, false);
+    let to_b = rig.centre(b);
+
+    move_to(&mut rig, to_b);
+    assert_eq!(rig.tree().hovered(), None, "nor a disabled target");
+    rig.tree_mut().set_enabled(b, true);
+    let to_a = rig.centre(a);
+
+    move_to(&mut rig, to_a);
+    assert_eq!(rig.tree().hovered(), None, "the source apart");
+    let to_b = rig.centre(b);
+
+    move_to(&mut rig, to_b);
+    assert_eq!(rig.tree().hovered(), Some(b));
+}
+
+#[test]
+fn the_ghost_follows_the_pointer_and_goes_with_the_drag() {
+    let (mut rig, _root, a, b) = drag_rig();
+    let roots = rig.tree().roots().len();
+    let from = rig.centre(a);
+    let grab = from - rig.tree().rect(a).unwrap().min;
+    let icon_of = |tree: &UiTree| -> WidgetId {
+        *tree
+            .children(a)
+            .iter()
+            .find(|child| tree.image_sprite(**child).is_some())
+            .expect("the source's image")
+    };
+    let drawn = rig.tree().rect(icon_of(rig.tree())).unwrap().size();
+    press_at(&mut rig, from);
+    let to = from + Vec2::new(40.0, 50.0);
+    move_to(&mut rig, to);
+    let tree = rig.tree();
+    assert_eq!(tree.roots().len(), roots + 1, "the ghost's root");
+    let ghost = *tree.roots().last().unwrap();
+    assert_eq!(tree.layer(ghost), Some(UiLayer::GamePopup));
+    assert!(!tree.hit_testable(ghost));
+    assert_eq!(tree.opacity(ghost), Some(0.75));
+    let image = tree.children(ghost)[0];
+    assert_eq!(
+        tree.image_sprite(image),
+        Some(crate::assets::SpriteAssetId::new(3))
+    );
+    assert_eq!(
+        tree.rect(image).map(|rect| rect.size()),
+        Some(drawn),
+        "the size it draws at in the source"
+    );
+    assert_eq!(
+        tree.window_position(ghost),
+        Some(to - grab),
+        "at the grab's offset"
+    );
+    let later = rig.centre(b);
+    move_to(&mut rig, later);
+    assert_eq!(rig.tree().window_position(ghost), Some(later - grab));
+    release(&mut rig);
+    assert!(!rig.tree().contains(ghost), "it goes with the drag");
+    assert_eq!(rig.tree().roots().len(), roots);
+    // A source with no image shows none.
+    let icon = icon_of(rig.tree());
+    rig.tree_mut().remove(icon);
+    rig.layout();
+    press_at(&mut rig, from);
+    move_to(&mut rig, from + Vec2::new(0.0, 30.0));
+    assert_eq!(rig.tree().roots().len(), roots, "no ghost");
+    assert_eq!(rig.router().dragging(), Some(a));
+}
+
+#[test]
+fn a_removed_source_cancels_its_drag() {
+    let (mut rig, _root, a, _b) = drag_rig();
+    let roots = rig.tree().roots().len();
+    let from = rig.centre(a);
+    press_at(&mut rig, from);
+    move_to(&mut rig, from + Vec2::new(0.0, 30.0));
+    rig.tree_mut().remove(a);
+    let events = move_to(&mut rig, from + Vec2::new(0.0, 40.0));
+    assert_eq!(
+        drags(&events),
+        [UiEvent::DragCancelled {
+            widget: a,
+            key: Some(UiKey::new("cells/0"))
+        }]
+    );
+    assert!(events.contains(&UiEvent::PressCancelled { widget: a }));
+    assert_eq!(rig.tree().roots().len(), roots, "its ghost gone");
+    assert_eq!(rig.router().dragging(), None);
+}

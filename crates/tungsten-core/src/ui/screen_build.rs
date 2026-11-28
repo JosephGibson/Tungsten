@@ -920,6 +920,12 @@ impl<'a> Builder<'a> {
         if node.danger {
             widgets::danger(tree, id);
         }
+        if node.drag {
+            tree.set_draggable(id, true);
+        }
+        if node.drop {
+            tree.set_drop_target(id, true);
+        }
         let (bind, bindings) = (&node.bind, self.bindings);
         if let Some(read) = bind
             .text

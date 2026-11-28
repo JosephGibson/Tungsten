@@ -1386,6 +1386,7 @@ impl tungsten::testing::UiHarness
 pub fn tungsten::testing::UiHarness::assert_fits(&mut self, &str)
 pub fn tungsten::testing::UiHarness::assert_fits_one_line(&mut self, &str, &[tungsten_core::ui::id::WidgetId])
 pub fn tungsten::testing::UiHarness::click(&mut self, tungsten_core::ui::id::WidgetId)
+pub fn tungsten::testing::UiHarness::drag(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::id::WidgetId)
 pub fn tungsten::testing::UiHarness::dump(&self) -> alloc::string::String
 pub fn tungsten::testing::UiHarness::dump_paint(&mut self) -> alloc::string::String
 pub fn tungsten::testing::UiHarness::find(&self, &str) -> core::option::Option<tungsten_core::ui::id::WidgetId>

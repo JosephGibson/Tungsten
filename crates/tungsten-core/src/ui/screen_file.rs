@@ -189,7 +189,7 @@ pub(crate) enum Kind {
 }
 
 /// The fields every kind takes.
-const COMMON: [&str; 8] = [
+const COMMON: [&str; 10] = [
     "kind",
     "key",
     "layout",
@@ -198,6 +198,8 @@ const COMMON: [&str; 8] = [
     "mono",
     "danger",
     "bind",
+    "drag",
+    "drop",
 ];
 
 impl Kind {
@@ -338,6 +340,12 @@ pub(crate) struct Node {
     pub(crate) mono: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) danger: bool,
+    /// A drag source (`D-31[6]`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) drag: bool,
+    /// A drop target (`D-31[6]`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) drop: bool,
     #[serde(default, skip_serializing_if = "Bind::is_empty")]
     pub(crate) bind: Bind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1809,7 +1817,7 @@ fn field_schema(field: &str) -> Value {
         }
         "text" | "caption" | "placeholder" => json!({ "type": "string" }),
         "max" => json!({ "type": "integer", "minimum": 1 }),
-        "mono" | "danger" | "modal" | "centred" => json!({ "type": "boolean" }),
+        "mono" | "danger" | "drag" | "drop" | "modal" | "centred" => json!({ "type": "boolean" }),
         "children" | "over" => json!({ "type": "array", "items": reference("node") }),
         "tabs" => json!({ "type": "array", "minItems": 1, "items": reference("tab") }),
         "width" | "height" => reference("length"),

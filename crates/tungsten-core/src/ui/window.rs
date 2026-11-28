@@ -23,6 +23,11 @@ const VISIBLE_EDGE: f32 = 48.0;
 /// The file version [`WindowPlacements`] reads and writes.
 const VERSION: u64 = 1;
 
+/// A node's drag roles, one bit each.
+const HANDLE: u8 = 1;
+const SOURCE: u8 = 2;
+const TARGET: u8 = 4;
+
 impl UiTree {
     /// Makes `id` a drag handle, or a plain widget again (M57): a primary
     /// press on it that moves past the router's drag threshold moves its
@@ -33,15 +38,63 @@ impl UiTree {
     ///
     /// [`CursorIcon::Move`]: super::CursorIcon::Move
     pub fn set_drag_handle(&mut self, id: WidgetId, on: bool) {
-        if let Some(node) = self.node_mut(id) {
-            node.drag_handle = on;
-        }
+        self.set_drag_role(id, HANDLE, SOURCE, on);
     }
 
     /// Whether `id` is a drag handle; `false` for an invalid ID.
     #[must_use]
     pub fn drag_handle(&self, id: WidgetId) -> bool {
-        self.node(id).is_some_and(|node| node.drag_handle)
+        self.has_drag_role(id, HANDLE)
+    }
+
+    /// Makes `id` a drag source, or not (`D-31[6]`): a primary press on it
+    /// that moves past the router's drag threshold carries it toward a drop
+    /// target ([`Self::set_drop_target`]) with [`UiEvent::DragStarted`], and
+    /// ends in [`UiEvent::Dropped`] or [`UiEvent::DragCancelled`], never an
+    /// activation; a shorter press activates as before. A source is a
+    /// pointer target, and no drag handle: the later setter wins. Marks
+    /// nothing.
+    ///
+    /// [`UiEvent::DragStarted`]: super::UiEvent::DragStarted
+    /// [`UiEvent::Dropped`]: super::UiEvent::Dropped
+    /// [`UiEvent::DragCancelled`]: super::UiEvent::DragCancelled
+    pub fn set_draggable(&mut self, id: WidgetId, on: bool) {
+        self.set_drag_role(id, SOURCE, HANDLE, on);
+    }
+
+    /// Whether `id` is a drag source; `false` for an invalid ID.
+    #[must_use]
+    pub fn draggable(&self, id: WidgetId) -> bool {
+        self.has_drag_role(id, SOURCE)
+    }
+
+    /// Makes `id` a drop target, or not (`D-31[6]`): while a source's drag
+    /// lasts, the hover follows the front-most visible, enabled target
+    /// under the pointer, so its `hovered` style marks it, and a release
+    /// over one drops the source there. Marks nothing.
+    pub fn set_drop_target(&mut self, id: WidgetId, on: bool) {
+        self.set_drag_role(id, TARGET, 0, on);
+    }
+
+    /// Whether `id` is a drop target; `false` for an invalid ID.
+    #[must_use]
+    pub fn drop_target(&self, id: WidgetId) -> bool {
+        self.has_drag_role(id, TARGET)
+    }
+
+    /// Sets or clears `role` on `id`, clearing `excludes` when it sets.
+    fn set_drag_role(&mut self, id: WidgetId, role: u8, excludes: u8, on: bool) {
+        if let Some(node) = self.node_mut(id) {
+            node.drag = if on {
+                (node.drag & !excludes) | role
+            } else {
+                node.drag & !role
+            };
+        }
+    }
+
+    fn has_drag_role(&self, id: WidgetId, role: u8) -> bool {
+        self.node(id).is_some_and(|node| node.drag & role != 0)
     }
 
     /// Places a root's top-left at `position` in its units (a debug root's

@@ -31,9 +31,10 @@ use super::event::{UiEvent, UiValue};
 use super::field::FieldKey;
 use super::focus::NavDirection;
 use super::id::{UiKey, WidgetId};
-use super::node::{CursorIcon, Role, WidgetKind};
+use super::node::{CursorIcon, Role, UiLayer, WidgetKind};
 use super::paint::UiDebug;
 use super::prompt;
+use super::style::{Anchor, LayoutStyle, Sizing};
 use super::tree::UiTree;
 
 /// Activates the focused widget; Enter and Space by default.
@@ -198,6 +199,23 @@ struct Drag {
     moving: bool,
 }
 
+/// A primary press on a drag source (`D-31[6]`): the source and its key,
+/// the press's point and the pointer's offset from the source's top-left
+/// in UI units, whether the pointer has passed the threshold, and the
+/// ghost root that follows the pointer once it has.
+#[derive(Debug, Clone, Copy)]
+struct ItemDrag {
+    source: WidgetId,
+    key: Option<UiKey>,
+    from: Vec2,
+    grab: Vec2,
+    moving: bool,
+    ghost: Option<WidgetId>,
+}
+
+/// The ghost's opacity.
+const GHOST_OPACITY: f32 = 0.75;
+
 /// A held direction and when it next moves focus.
 #[derive(Debug, Clone, Copy)]
 struct Repeat {
@@ -239,6 +257,8 @@ pub struct UiRouter {
     captured: Option<WidgetId>,
     /// The captured widget's drag, when it is a drag handle (M57).
     drag: Option<Drag>,
+    /// The captured widget's drag, when it is a drag source (`D-31[6]`).
+    item: Option<ItemDrag>,
     /// Other buttons' presses on targets, until their releases.
     presses: Vec<(MouseButton, WidgetId)>,
     /// Keys, pad buttons, stick directions and mouse buttons whose presses
@@ -292,6 +312,14 @@ impl UiRouter {
     #[must_use]
     pub fn captured(&self) -> Option<WidgetId> {
         self.captured
+    }
+
+    /// The source a drag is carrying, from its `DragStarted` to its
+    /// `Dropped` or `DragCancelled` (`D-31[6]`); `None` before the press
+    /// passes the threshold.
+    #[must_use]
+    pub fn dragging(&self) -> Option<WidgetId> {
+        self.item.filter(|item| item.moving).map(|item| item.source)
     }
 
     /// The device of the last key, button, stick or wheel input routed;
@@ -704,6 +732,7 @@ impl Routing<'_> {
                 self.update_hover();
                 if let Some(captured) = self.router.captured {
                     self.drag_to_pointer();
+                    self.item_to_pointer();
                     self.slide_to_pointer(captured);
                 }
                 self.router.routed.push(input);
@@ -856,7 +885,7 @@ impl Routing<'_> {
         }
         let mut target = hit;
         while let Some(id) = target {
-            if (self.tree.interactive(id) || self.tree.drag_handle(id))
+            if (self.tree.interactive(id) || self.tree.drag_handle(id) || self.tree.draggable(id))
                 && self.tree.is_enabled_in_tree(id)
             {
                 break;
@@ -866,18 +895,47 @@ impl Routing<'_> {
         (hit, target)
     }
 
+    /// The front-most visible, enabled drop target under the pointer, the
+    /// dragged source apart: the nearest at or above the widget hit, in a
+    /// root that is not frozen, inside the shown modal root when there is
+    /// one, as the hit test keeps.
+    fn drop_target(&self) -> Option<WidgetId> {
+        let source = self.router.item?.source;
+        let hit = self.tree.hit_test_layers(self.point()?, self.hide)?;
+        if self
+            .tree
+            .root_of(hit)
+            .is_some_and(|root| self.tree.frozen(root))
+        {
+            return None;
+        }
+        let mut at = Some(hit);
+        while let Some(id) = at {
+            if id != source && self.tree.drop_target(id) && self.tree.is_enabled_in_tree(id) {
+                return Some(id);
+            }
+            at = self.tree.parent(id);
+        }
+        None
+    }
+
     /// Whether a press or the wheel now is the UI's.
     fn pointer_takes(&self) -> bool {
         self.modal.is_some() || self.hit().0.is_some()
     }
 
     /// Hovers the target under the pointer, or only the captured widget
-    /// while there is one, and shows that one pressed while it hovers.
+    /// while there is one, and shows that one pressed while it hovers;
+    /// while a source's drag lasts, the drop target under the pointer.
     fn update_hover(&mut self) {
-        let target = self.hit().1;
-        let hovered = match self.router.captured {
-            Some(captured) => target.filter(|target| *target == captured),
-            None => target,
+        let hovered = if self.router.item.is_some_and(|item| item.moving) {
+            self.drop_target()
+        } else {
+            let target = self.hit().1;
+            match self.router.captured {
+                Some(captured) => target.filter(|target| *target == captured),
+                None => target,
+            }
         };
         if hovered != self.router.hovered {
             if let Some(widget) = self.router.hovered {
@@ -945,7 +1003,8 @@ impl Routing<'_> {
                     .events
                     .push(UiEvent::Released { widget, button });
                 self.commit_drag(widget);
-                if !self.end_drag() && self.router.hovered == Some(widget) {
+                let carried = self.end_item(true);
+                if !self.end_drag() && !carried && self.router.hovered == Some(widget) {
                     self.activate(widget);
                     self.double_click(widget);
                 }
@@ -1010,9 +1069,28 @@ impl Routing<'_> {
     }
 
     /// A primary press on `widget`: a drag handle starts a drag of its
-    /// root, from the pointer and the root's top-left at the last layout.
+    /// root, from the pointer and the root's top-left at the last layout; a
+    /// drag source a drag of itself, from the pointer and its offset from
+    /// the source's top-left.
     fn start_drag(&mut self, widget: WidgetId) {
         self.router.drag = None;
+        self.end_item(false);
+        if self.tree.draggable(widget)
+            && let Some(from) = self.point()
+        {
+            let grab = self
+                .tree
+                .rect(widget)
+                .map_or(Vec2::ZERO, |rect| from - rect.min);
+            self.router.item = Some(ItemDrag {
+                source: widget,
+                key: self.tree.key(widget),
+                from,
+                grab,
+                moving: false,
+                ghost: None,
+            });
+        }
         if !self.tree.drag_handle(widget) {
             return;
         }
@@ -1046,6 +1124,80 @@ impl Routing<'_> {
         let motion = (point - drag.from) / self.root_scale(drag.root);
         self.tree
             .set_window_position(drag.root, drag.start + motion);
+    }
+
+    /// Carries a source's drag with the pointer: past the threshold it
+    /// starts, `DragStarted`, its ghost built at the pointer less the grab;
+    /// then the ghost follows and the hover follows the drop targets.
+    fn item_to_pointer(&mut self) {
+        let (Some(mut item), Some(point)) = (self.router.item, self.point()) else {
+            return;
+        };
+        if !item.moving {
+            if point.distance(item.from) <= self.router.settings.threshold() {
+                return;
+            }
+            item.moving = true;
+            item.ghost = self.ghost(item.source, point - item.grab);
+            self.router.events.push(UiEvent::DragStarted {
+                widget: item.source,
+                key: item.key,
+            });
+        }
+        if let Some(ghost) = item.ghost {
+            self.tree.set_window_position(ghost, point - item.grab);
+        }
+        self.router.item = Some(item);
+        self.update_hover();
+    }
+
+    /// The ghost of `source` at `at`: a bare root on the game popup layer,
+    /// anchored at its top-left and not hit-testable, holding a copy of the
+    /// source's first image (its sprite, laid-out size and tint) at 75 %
+    /// opacity; none for a source with no image.
+    fn ghost(&mut self, source: WidgetId, at: Vec2) -> Option<WidgetId> {
+        let (sprite, size, tint) = self.tree.first_image(source)?;
+        let style = LayoutStyle::default().anchored(Anchor::TopStart, at);
+        let root = self.tree.add_root(UiLayer::GamePopup, style);
+        self.tree.set_bare(root, true);
+        self.tree.set_hit_testable(root, false);
+        let fixed = LayoutStyle::default().with_size(Sizing::Px(size.x), Sizing::Px(size.y));
+        let image = self.tree.image(root, sprite, size, fixed);
+        self.tree.set_hit_testable(image, false);
+        self.tree.set_image_tint(image, tint);
+        self.tree.set_opacity(root, GHOST_OPACITY);
+        Some(root)
+    }
+
+    /// Ends a source's drag, its ghost removed: when it had passed the
+    /// threshold, `Dropped` on the hovered drop target when `drop` and one
+    /// is hovered, else `DragCancelled`. Returns whether it had passed.
+    fn end_item(&mut self, drop: bool) -> bool {
+        let Some(item) = self.router.item.take() else {
+            return false;
+        };
+        if let Some(ghost) = item.ghost {
+            self.tree.remove(ghost);
+        }
+        if !item.moving {
+            return false;
+        }
+        let target = self
+            .router
+            .hovered
+            .filter(|target| drop && *target != item.source && self.tree.drop_target(*target));
+        self.router.events.push(match target {
+            Some(target) => UiEvent::Dropped {
+                widget: item.source,
+                key: item.key,
+                target,
+            },
+            None => UiEvent::DragCancelled {
+                widget: item.source,
+                key: item.key,
+            },
+        });
+        true
     }
 
     /// Ends the drag of a press that ended: a root it moved, still in the
@@ -1106,6 +1258,7 @@ impl Routing<'_> {
             self.router.events.push(UiEvent::PressCancelled { widget });
             self.commit_drag(widget);
             self.end_drag();
+            self.end_item(false);
         }
         for &(_, widget) in &self.router.presses {
             self.router.events.push(UiEvent::PressCancelled { widget });
@@ -1124,6 +1277,7 @@ impl Routing<'_> {
             self.router.events.push(UiEvent::PressCancelled { widget });
             self.commit_drag(widget);
             self.end_drag();
+            self.end_item(false);
             self.tree.set_pressed(None);
         }
         let mut i = 0;
@@ -1307,7 +1461,9 @@ impl Routing<'_> {
             .iter()
             .find(|(seen, _)| *seen == binding)
             .map_or(0, |(_, actions)| *actions);
+        let dragging = self.router.item.is_some_and(|item| item.moving);
         let takes = self.modal.is_some()
+            || (dragging && actions & CANCEL != 0)
             || (actions != 0 && self.focus_in_play().is_some() && self.tree.focus_visible());
         self.set_device(device);
         if !takes {
@@ -1339,6 +1495,12 @@ impl Routing<'_> {
             && let Some(widget) = self.focus_in_play()
         {
             self.activate(widget);
+        }
+        if actions & CANCEL != 0 && dragging {
+            // The drag ends there; the cancel reaches no screen.
+            self.cancel_presses();
+            self.update_hover();
+            return true;
         }
         if actions & CANCEL != 0 {
             let scope = self

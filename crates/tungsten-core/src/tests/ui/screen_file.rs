@@ -693,3 +693,47 @@ fn columns_and_rows_parse_and_refuse_a_bad_track() {
     .to_string();
     assert!(message.contains("1 to 32 columns, not 33"), "{message}");
 }
+
+#[test]
+fn drag_and_drop_flags_parse_on_every_kind() {
+    // Each kind's least fields beside the flags.
+    let least = |kind: Kind| match kind {
+        Kind::Label | Kind::Heading | Kind::Note | Kind::Small | Kind::Button => r#""text": "A""#,
+        Kind::Display => r#""text": "A", "style": "died""#,
+        Kind::Prompt => r#""template": "{action:state_pause} Pause""#,
+        Kind::ChoiceRow => r#""caption": "Mode", "bind": { "text": "mode" }"#,
+        Kind::ToggleRow => r#""caption": "VSync", "bind": { "value": "vsync" }"#,
+        Kind::SliderRow => r#""caption": "Master", "range": { "min": 0, "max": 1, "step": 0.1 }"#,
+        Kind::TabRail => r#""tabs": [{ "key": "a", "caption": "A" }]"#,
+        Kind::Meter => r#""width": 120, "height": 8"#,
+        Kind::Mount => r#""mount": "cards""#,
+        Kind::Repeat => {
+            r#""key": "slots", "rows": "slots", "row": { "kind": "button", "field": "name", "drag": true }"#
+        }
+        Kind::TextField => r#""text": """#,
+        _ => r#""children": []"#,
+    };
+    let mut kinds = 0;
+    for kind in Kind::ALL.into_iter().filter(|kind| !kind.is_root()) {
+        let node = format!(
+            r#"{{"kind": "{}", {}, "drag": true, "drop": true}}"#,
+            kind.name(),
+            least(kind)
+        );
+        let file = ScreenFile::from_json(&screen(&node))
+            .unwrap_or_else(|e| panic!("{}: {e}", kind.name()));
+        let canonical = file.to_canonical();
+        assert!(
+            canonical.contains(r#""drag": true"#) && canonical.contains(r#""drop": true"#),
+            "{}: {canonical}",
+            kind.name()
+        );
+        kinds += 1;
+    }
+    assert_eq!(kinds, 19, "every kind a card holds");
+    // The root kinds take them too.
+    let root = r#"{"version": 1, "root": {"kind": "screen", "width": 260, "drop": true}}"#;
+    assert!(read(root).to_canonical().contains(r#""drop": true"#));
+    let message = error(&screen(r#"{"kind": "label", "drag": "yes"}"#)).to_string();
+    assert!(message.contains("drag"), "{message}");
+}
