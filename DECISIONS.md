@@ -2453,6 +2453,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 **Amended by D-247:** the set only; `KitPlugins::set()` adds `LooksPlugin` and `HealthBarPlugin` after `EffectsPlugin`, which add no system or edge there; the rest stands.
 **Amended by D-249:** `CameraTarget` and the admission rule only; the marker writes the camera's base rig's follow target, and `camera_zone` and the `camera` cue action enter without a 01 or template use, an exception for these two alone; the rest stands.
 **Amended by D-281:** the harness's `load_manifest` only; it interns every manifest sprite name first, sheet frames included, in sorted order as a window's load does, and registers none; the rest stands.
+**Amended by D-316:** the reference genres only; `sim` joins `platformer`, `top_down`, `rpg`, `shooter` and `arpg` at step 8.9, a sixth fixtures folder; the rest stands.
 **Date:** 2026-10-16
 **Decision:** The kit's foundations, so that the catalogue's later milestones add items and nothing else:
 
@@ -3406,6 +3407,7 @@ In all, 14 smoke rows beside the plain run every example gets, and three of `jus
 **Amended by D-218:** the genre promise only; 1.0 also promises action RPGs, a fifth genre beside platformer, top-down, story-driven RPG and shooter games; the rest stands.
 **Amended by D-227:** the Git bullet's "until H2" clause only; a pushed tag publishes, and the release pull request, merged without squashing, publishes nothing; the rest stands.
 **Amended by D-237:** the Tiers bullet only; 9.1's budgets and 9.3's stability policy also run at max, and §8's evaluation agents at xhigh at every checkpoint; the rest stands.
+**Amended by D-316:** the genre promise only; 1.0 also promises simulation games (survival and colony), a sixth genre beside platformer, top-down, story-driven RPG, shooter and action RPG games; the rest stands.
 **Date:** 2026-10-25
 **Decision:** [docs/plans/roadmap-redo.md](docs/plans/roadmap-redo.md) is the plan of record from Phase 6's tail to 1.0: Phase 7 Seams, Phase 8 Genres and Phase 9 Release (its §3), with health in two parts, H1 now and H2 at step 7.4. 1.0 promises a fully featured engine, tooling and kit for platformer, top-down, story-driven RPG and shooter games, with no API stability promise at 1.0 (§5.7; the policy after it is step 9.3). Example 01 is the acceptance game, accepted when the owner says it is. H1 lands in this change, with its rules in [docs/operating-rules.md](docs/operating-rules.md), each naming the failure it prevents:
 
@@ -3450,6 +3452,7 @@ In all, 14 smoke rows beside the plain run every example gets, and three of `jus
 - Two instances of one state ID still share cleanup: either's exit despawns both's entities. Per-instance ownership would change `SceneEntity` at every construction site; it is a recorded limit.
 
 ## D-218 — 1.0 promises a fifth genre, action RPGs
+**Amended by D-316:** the reference genres only; `sim` joins `platformer`, `top_down`, `rpg`, `shooter` and `arpg` at step 8.9, as simulation games join the promise beside action RPGs; the rest stands.
 **Date:** 2026-10-28
 **Decision:** 1.0 promises a fully featured engine, tooling and kit for action RPGs, beside platformer, top-down, story-driven RPG and shooter games (the roadmap redo's §5.7 and its Q18). An action RPG here has three parts:
 - skills whose properties tag-scoped modifiers change;
@@ -4962,3 +4965,28 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - Saving `Quests` names it in every capture's version tables: 01's tour pin +25 allocations and +5,660 bytes, 01's save census `Quests`; every other pin, the physics hashes, the kit's determinism pin and the goldens hold.
 - 02's `story` row (functional, `D-226`); the fixtures' `story` scene, its data inline JSON beside the shared manifest, and its scripted demo.
 - Not landed: IME, paste, selection, a blinking caret and a caret from the shaped text (Q-j); a speaker's runtime rename; conditions on cue rules; a saved conversation; art and voices (8.4, 8.5).
+
+## D-316 — 1.0 promises a sixth genre, simulation games (survival and colony)
+**Date:** 2026-11-27
+**Decision:** 1.0 promises a fully featured engine, tooling and kit for simulation games, survival and colony, beside platformer, top-down, story-driven RPG, shooter and action RPG games (the roadmap redo's §5.7). A simulation game here has four parts:
+- characters, players and NPCs alike, whose needs, mood, health on a body plan, exposure, traits and skills are data on one rule set;
+- a world simulation those rules read: a calendar, seasons, weather, wind, light and spaces;
+- NPCs that choose from the same state by utility over smart objects and schedules;
+- time that skips, and areas that keep living while unloaded, at large scale.
+
+The kit's reference genres gain `sim` at step 8.9. Step 8.8's paper design scopes the work, and step 8.9 builds what 8.1 and 8.2 leave: its foundations before 8.1's third plan and 8.2, which build on them, and the rest after 8.2. The NPCs' shape settles 8.2's AI structure (P8-10): utility scoring over smart objects (interactables with offers, uses, capacity and reservations) and schedules picks a behaviour, a kit sequence or a game's `StateMachine` runs it, priorities are lines on weight stats, and `explain` prints a choice's scores.
+
+**Why:** The owner's answers of 2026-11-27 (the redo's §2): the genre on `D-218`'s path; its features demonstrated, not capped, and researched against Project Zomboid and RimWorld for mechanics only; sleep, speeds, skips and upkeep while an area is unloaded; 3,000–5,000 simulated characters in loaded areas and unloaded populations of 100,000 rows or more; authored spaces behind a provider; a sketch and a scale scene as the proof. The kit's survey that day found what the four parts lack:
+- a status only wears: its decay is at least 0 and 0 ends it (`crates/tungsten-kit/src/damage/effects.rs:833-841`, `:4487-4495`); bands threshold a status's intensity, never a stat; a status's strength reads its source's `status_effect` (`crates/tungsten-kit/src/damage/pipeline.rs:1561-1570`), never its holder's traits;
+- the game clock runs at most two fixed steps a frame by default and drops the rest (`crates/tungsten-core/src/time.rs:99`, `:169-182`), so at 60 Hz a speed past 2× loses game time, and nothing skips;
+- the kit's `Zone` sends entries only (`crates/tungsten-kit/src/overlap/zone.rs:132-139`), and nothing models a space;
+- `Stats` searches a list sorted by name on each read (`crates/tungsten-kit/src/foundation/stats.rs:208-210`, `:826-829`), and the parallel map takes owned inputs only (`crates/tungsten-core/src/workers.rs:6-13`), where thousands of characters would read and write their stats every step.
+
+Steps 8.1 and 8.2 build the items, clock, schedules, areas, navigation and AI structure these parts stand on, so scoping them first saves reworking those steps.
+
+**Consequences:**
+- Amends `D-172`, `D-215` and `D-218` as their marker lines say.
+- The redo's order from here: 8.8; 8.1's second plan with the rows 8.8 sends it; 8.9's first part; 8.1's third plan; 8.2; 8.9's second part; then 8.7, 8.3, 8.4, 8.5 and 8.6.
+- 8.6's proof adds 8.8's weekly agent tasks and the `sim` recipes, sketch and scale scene; 9.1 adds 8.8's stress numbers.
+- 1.0 moves later by 8.8 and 8.9, and by what the owner's triage of 8.8's register adds to 8.1 and 8.2.
+- The colony layer demonstrates priorities as weights and one job, hauling; construction and a storyteller are researched, and enter only by that triage.

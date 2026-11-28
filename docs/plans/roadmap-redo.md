@@ -6,7 +6,7 @@ The plan of record from Phase 6's tail to 1.0, adopted on 2026-10-25 (`D-215`); 
 - **goal:** Re-aim 1.0 at the bottleneck example 01 measured, the cost of making a game, not engine speed or API stability, and do the work that pays back soonest first:
   1. Health in two parts: the cutover's essentials (H1) before 01's remaining stops, the rest (H2) once the quick wins and tooling give it real tasks.
   2. Phase 7, Seams: quick wins, agent tooling and the benchmark runner first; then the analysis pass and the paper designs; then the engine, kit, template and level work they scope, with physics and slopes before saves, a chemistry-style interaction model, and saves the engine does for the game; then a CPU and a GPU performance pass.
-  3. Phase 8, Genres: the systems a story-driven RPG, a shooter with complex enemy AI and an action RPG need (the last added 2026-10-28, `D-218`), then 01 refreshed on them.
+  3. Phase 8, Genres: the systems a story-driven RPG, a shooter with complex enemy AI, an action RPG (added 2026-10-28, `D-218`) and simulation games (added 2026-11-27, `D-316`) need, then 01 refreshed on them.
   4. Phase 9, Release: the benchmark expansion pass with budgets, performance, quality, docs and tests, release candidates, 1.0.
 - **non-goals:**
   - Edits outside this file before adoption: the register, `roadmap.json`, decisions, workstream files, the Phase 7 rewrite, skills.
@@ -90,6 +90,22 @@ To the review of the UI, camera and ARPG additions (§10's Q18–Q23).
 | Data-declared screens | Out of the 1.x backlog and into 1.0, as 7.20 (Q22) |
 | Camera rigs | The recommendation: a component in prefabs and scenes, and a zone on the kit's `zone` (Q23) |
 
+### Answers, 2026-11-27
+
+To the owner's request for a simulation genre, given in a design conversation while `story-systems` was stopped (`D-316`).
+
+| Topic | Answer |
+| --- | --- |
+| 1.0 | Simulation games, survival and colony, are a sixth 1.0 genre, kit tag `sim` (`D-316`): 8.8's paper design scopes them (§7.4), and 8.9 builds them |
+| Depth | Features 1.0 demonstrates, not a ceiling: needs, mood, health on a body plan, exposure, traits, skills, the world simulation, spaces, needs-driven NPCs, time and scale; researched against Project Zomboid and RimWorld for mechanics only, their names, items, content and art kept out and every example original |
+| Time | Both modes: sleep, speeds and skips, and upkeep while an area is unloaded |
+| Scale | 3,000–5,000 simulated characters in loaded areas, more if possible; unloaded populations of 100,000 rows or more |
+| AI | A hybrid: utility scoring over smart objects (interactables with offers, uses, capacity and reservations) and schedules picks a behaviour; a kit sequence or a game's `StateMachine` runs it; priorities are lines on weight stats; `explain` prints a choice's scores. It settles P8-10 |
+| Interiors | Authored spaces now (shapes and places in the level format), behind a provider interface that rooms computed from runtime terrain can fill later; nothing reads a provider directly |
+| Colony layer | Priorities as weights and one job type, hauling, demonstrated; construction and a storyteller researched, admitted only by the triage |
+| Proof | A sketch and a scale scene in the fixtures crate; no vertical slice |
+| Order | 8.8 now; 8.1's second plan with the rows 8.8 sends it; 8.9's first part, the foundations, before 8.1's third plan and 8.2, which build on it; 8.1's third plan; 8.2; 8.9's second part; then 8.7, 8.3, 8.4, 8.5 and 8.6, with 8.6 adding 8.8's weekly tasks |
+
 ### Earlier work this builds on
 
 - **The 0.66 project-health pass** (2026-10-13). No owner-approval stops; gates and plans take stated defaults (`D-150`). Opus max only where a session's judgment is final (`D-151`), with a stop's own tier first (`D-195`). Records written at a release's cut hold through its merge (`D-152`). H1 keeps `D-150`'s default rule and `D-151`'s tiers, except their level C clauses, which go with level C; it turns `D-195`'s per-stop tier into a rule, and replaces `D-152`'s owned README fields with `ROADMAP.md`.
@@ -158,16 +174,20 @@ Every system step from 7.8 on adds its own benchmark row and counter guard as it
 | # | Step | Done when (sketch) |
 | --- | --- | --- |
 | 8.1 | Story systems | A condition vocabulary for data; dialogue with reachability, speaker and reference checks, a dialogue box and a `say` cue action, beside P7-3's `Interactable` (P8-1); quests and a journal on its conditions (P8-2); items, inventory with drag and drop between widgets, and shops, with equipment staying statuses (P8-3, Q17), items with rolled lines, an instance holding its base, level, rarity, seed and lines, its local lines folded into its block and its global ones on its equipment status (PA-12), and ground items labelled in their rarity's style (PA-13), from the [ARPG design](arpg-design.md)'s §4.6 and §16; the dialogue box, inventory and shops on 7.17's widgets and 7.20's screen files, the inventory's and shops' cells in a grid layout, the first user `D-124` waits for (S-162); cutscenes and timelines on 7.18's rigs and blends (P8-4); text input from the window's characters, IME later (P8-5); a world clock with phase events and schedules resolved by time, so an NPC is placed while its area is unloaded (P8-6; walking between its places waits for 8.2's navigation, P8-8); loading between areas as spawning and persistence on 7.9's saves of many areas, sliced on the main thread (P8-7); a cone light kind, occlusion optional (P8-17). Recipes for each, sketches where feel matters, a benchmark row each. Art or sound the dialogue box, inventory, shops or sketches need goes through §6, at max |
-| 8.2 | Shooter and AI systems | Navigation: grid A\* and flow fields with door links and local repaths on 7.8's terrain (P8-8), and on platforms (jump links and ledges, which 8.4's goblins need; no paper design covers them; the seam register's S-6, a walker's hops, drops and leaps by casts); AI structure, hierarchical states or utility scoring, with squads and a cover query on the terrain (P8-10); perception with throttled sight, hearing as noise stimuli, memory that decays, sharing within reach, and reading smoke and light (P8-9); hit-stop that leaves game-time windows intact (P8-12); weapons as data: spread, pellets, bursts, recoil, a timed reload, spin-up and charge (P8-11); bullet density with a pattern payload, and waves (P8-13); on that payload and P8-11's bursts, the ARPG design's projectile rows: count and pierce from the skill sheet (PA-14), pierce, then fork, then chain at each hit under a family's bound of 64 (PA-15), and repeats of the whole payload (PA-16), its §16's 8.2 row. Rumble stays out (P8-14, G5) and aim assist stays the game's (P8-16). Recipes, sketches, a benchmark row each |
+| 8.2 | Shooter and AI systems | Navigation: grid A\* and flow fields with door links and local repaths on 7.8's terrain (P8-8), and on platforms (jump links and ledges, which 8.4's goblins need; no paper design covers them; the seam register's S-6, a walker's hops, drops and leaps by casts); AI structure, as `D-316` settles it (utility scoring over smart objects and schedules picks a behaviour, which a kit sequence or a game's `StateMachine` runs), with squads and a cover query on the terrain (P8-10); perception with throttled sight, hearing as noise stimuli, memory that decays, sharing within reach, and reading smoke and light (P8-9); hit-stop that leaves game-time windows intact (P8-12); weapons as data: spread, pellets, bursts, recoil, a timed reload, spin-up and charge (P8-11); bullet density with a pattern payload, and waves (P8-13); on that payload and P8-11's bursts, the ARPG design's projectile rows: count and pierce from the skill sheet (PA-14), pierce, then fork, then chain at each hit under a family's bound of 64 (PA-15), and repeats of the whole payload (PA-16), its §16's 8.2 row. Rumble stays out (P8-14, G5) and aim assist stays the game's (P8-16). Recipes, sketches, a benchmark row each |
 | 8.3 | Tooling for hand-made content | Aseprite import (tags to animations, slices to anchors and hitboxes); `asset add` for a drawn file or sheet, which Lantern Ward's 66 portraits need (P8-15); the Tiled loader's place beside our own format (Q16); and the seam register's asset rows: each file held to its asset contract by `tungsten check` (S-8), per-family generation in `tungsten` in place of 01's own pipeline (S-11), named points mirrored by facing and a body section in prefab data (S-22), a point per animation frame, as slices import (S-61), and normal maps and emissive masks the pipeline derives (S-69). A drawn sheet and an Aseprite file each enter a `tungsten new` game with one command |
 | 8.4 | 01 refreshed on Phase 8's systems | Not a rewrite: 7.13 already moved 01 onto Phase 7's systems. Its enemies move onto the AI structure, perception and navigation, and it gains hit-stop. A few additions demo Phase 8 in a platformer sandbox: an NPC with a few lines, one choice and a small fetch quest across two areas; a short intro cutscene; a satchel inventory with drag and drop; goblins that path around terrain, take cover and flank as a pack; one or two hand-made sprites through Aseprite import; areas streamed in. Each art or sound need goes through §6, its asset sessions at max. Done when 01's own gameplay Rust shrinks again, each addition is mostly data with any Rust counted, 01's tests pass, and the owner plays it through |
 | 8.5 | Template final pass | The template on Phase 8's systems, in a fresh `tungsten new` copy: the agent surface (§8) and the scaffolds (`new feature`, `new enemy`, `new status`) work there; 7.16's shipped guidance is in it; shell polish lands in the template and is carried into 01's byte copy of the shell, any UI art it draws through §6 at max. One sample, no genre demos (the genres' breadth is in recipes, Q6), within `D-181`'s budget. Done when a fresh agent on a `tungsten new` copy completes §8's five evaluation tasks with no engine patches. A starter per genre (`tungsten new --genre`) is a 1.x backlog note |
-| 8.6 | Proof | §8's 8.6 evaluation: tasks on 8.4's additions inside the refreshed 01, and the paper designs' ten weekly tasks and 7.19's five on a `tungsten new` copy; the owner accepts each genre's recipes and sketches |
-| 8.7 | ARPG systems (§7.3, `D-218`): after 8.1 and 8.2, beside 8.3 and 8.4; before 8.5 and 8.6 | 7.19's minimal implementation scope in the kit, as opt-in plugins (Q19), less what 7.10, 8.1 and 8.2 took: the ARPG design's PA-3 and PA-4 (area, projectile speed and use time read from the sheet) and PA-9 (primary stats), moved from 7.10, and PA-17 (supports), PA-18 (the passive tree), PA-19 (item generation), PA-20 (uniques and handlers), PA-21 (monster level and rarity) and PA-22 (`explain` and build saves), its §15 and §16. Modifiers scoped by tag, and skill-local stats, resolved in one documented order. Skills whose properties resolve from those modifiers: area; projectile speed, count, chain, pierce and fork; penetration; crit chance and multiplier; conversion and extra damage; attack and cast speed; repeats; damage over time; with supports, passives and equipment as modifier sources. Item bases, affixes by tag and item level, tiers, rarity and uniques, rolled from saved seeds into 8.1's equipment. One rule set for players and enemies, each exception named. `explain` of a resolved stat or hit; recipes in `arpg` and one other genre; a sketch; a benchmark row (a crowd of monsters resolving modifiers). Measured: a new skill, support, affix or unique is data only |
+| 8.6 | Proof | §8's 8.6 evaluation: tasks on 8.4's additions inside the refreshed 01, and the paper designs' ten weekly tasks, 7.19's five and 8.8's five on a `tungsten new` copy; the owner accepts each genre's recipes and sketches |
+| 8.7 | ARPG systems (§7.3, `D-218`): after 8.9's second part, before 8.3, 8.4, 8.5 and 8.6 | 7.19's minimal implementation scope in the kit, as opt-in plugins (Q19), less what 7.10, 8.1 and 8.2 took: the ARPG design's PA-3 and PA-4 (area, projectile speed and use time read from the sheet) and PA-9 (primary stats), moved from 7.10, and PA-17 (supports), PA-18 (the passive tree), PA-19 (item generation), PA-20 (uniques and handlers), PA-21 (monster level and rarity) and PA-22 (`explain` and build saves), its §15 and §16. Modifiers scoped by tag, and skill-local stats, resolved in one documented order. Skills whose properties resolve from those modifiers: area; projectile speed, count, chain, pierce and fork; penetration; crit chance and multiplier; conversion and extra damage; attack and cast speed; repeats; damage over time; with supports, passives and equipment as modifier sources. Item bases, affixes by tag and item level, tiers, rarity and uniques, rolled from saved seeds into 8.1's equipment. One rule set for players and enemies, each exception named. `explain` of a resolved stat or hit; recipes in `arpg` and one other genre; a sketch; a benchmark row (a crowd of monsters resolving modifiers). Measured: a new skill, support, affix or unique is data only |
+| 8.8 | Simulation paper design (§7.4, `D-316`): on paper, after `story-systems` and before 8.1's second plan runs | `docs/plans/sim-design.md`, self-contained, in the ARPG design's shape: architecture, data models, the time model, the scale model, AI, spaces, order of operations, worked examples, trade-offs and the scope by step. With them, a page with numbers, five weekly agent tasks and stress numbers at the owner's scale, and build sheets against the API snapshots with a register of `PS-` rows. Citations checked by a fresh-context verifier; one critique round at xhigh on the time and scale models; the owner's triage sends each row to 8.1's second or third plan, 8.2 or one of 8.9's two parts |
+| 8.9 | Simulation systems (§7.4, `D-316`): in two parts, the first after 8.1's second plan and before its third and 8.2, the second after 8.2 and before 8.7 | 8.8's minimal implementation scope in the kit, as opt-in plugins, less what 8.1 and 8.2 take. The first part, the foundations 8.1's third plan and 8.2 build on: characters' needs, mood, health on a body plan, exposure, traits and skills as data on one rule set; the world simulation's calendar, seasons, weather, wind and light, and spaces behind a provider; time that sleeps, speeds and skips. The second: NPCs choosing by utility over smart objects with reservations and schedules, on 8.2's AI structure and navigation; priorities as weights and hauling; areas that keep living while unloaded, and the tiers that reach the owner's scale. The `sim` genre tag, recipes in `sim` and one other genre, a sketch and a scale scene in the fixtures crate, and the benchmark rows 8.8 names. Measured: 5,000 simulated characters in a loaded area and an unloaded population of 100,000 rows on those rows, and a new need, trait or smart object is data only |
 
 This list was the paper designs' prediction; 7.6's registers (`paper-designs.md` §4) confirmed it: every 8.1 and 8.2 item but navigation on platforms has a row. The rows added the clock and schedules, the cone light, waves, the cover query, the dialogue checks and the `say` action. The `P8-` IDs name them. Since Phase 7's close (2026-11-26) each row also names the register rows it takes by ID, the ARPG design's `PA-` rows (§15 there) and the seam register's `S-` rows among them, carried from the Phase 7 plan's §2.3 (at `baaecc20`), where P8-14 and P8-16 closed; S-6 is navigation on platforms' row.
 
 8.7 joined on 2026-10-28 (`D-218`), numbered after 8.6 so the cited numbers hold. It needs 8.1's items and equipment and 8.2's payloads, and 8.5's template and 8.6's proof need it; it may run beside 8.3 and 8.4.
+
+8.8 and 8.9 joined on 2026-11-27 (`D-316`), numbered after 8.7 so the cited numbers hold. The track's order from then: 8.8; 8.1's second plan, with the rows 8.8 sends it; 8.9's first part, the foundations; 8.1's third plan, then 8.2, both building on them; 8.9's second part; then 8.7, 8.3, 8.4, 8.5 and 8.6, one at a time, so 8.7 no longer runs beside 8.3 and 8.4. 8.6 adds 8.8's weekly tasks, and 9.1 its stress numbers.
 
 ### Phase 9: Release
 
@@ -254,7 +274,7 @@ Runtime terrain (7.8) is everything physics and chemistry need at play time: per
 
 ### 5.3 Admission rule (7.10, Phase 8)
 
-Phase 7 items: 01 or the template uses the item, and a recipe exists in the other genre. An item whose job is one genre's (the controllers) needs only 01's or the template's use (G1). Phase 8 items: a paper design or 01's refresh (8.4) needs it, recipes cover it and a sketch exists where feel matters, and the owner accepts; navigation on platforms enters through 8.4's goblins, since neither design covers it. The kit's genre tags are the 1.0 genres, `platformer`, `top_down`, `rpg`, `shooter` and, from `D-218`, `arpg` (G3; the paper designs' §5 shows their uses bring 21 of the 24 components the drop of `grid` and `shmup` would strand back to two genres). This amends `D-172`'s two-genre recipes with a real user, and re-triggers the backlog rows that wait for "a second game": 01's use is enough.
+Phase 7 items: 01 or the template uses the item, and a recipe exists in the other genre. An item whose job is one genre's (the controllers) needs only 01's or the template's use (G1). Phase 8 items: a paper design or 01's refresh (8.4) needs it, recipes cover it and a sketch exists where feel matters, and the owner accepts; navigation on platforms enters through 8.4's goblins, since neither design covers it. The kit's genre tags are the 1.0 genres, `platformer`, `top_down`, `rpg`, `shooter`, from `D-218` `arpg` and, from `D-316` at 8.9, `sim` (G3; the paper designs' §5 shows their uses bring 21 of the 24 components the drop of `grid` and `shmup` would strand back to two genres). This amends `D-172`'s two-genre recipes with a real user, and re-triggers the backlog rows that wait for "a second game": 01's use is enough.
 
 ### 5.4 Boot loading (7.9)
 
@@ -272,7 +292,7 @@ Friction first; contact events with closing speed, begin and end; sensor exit; i
 
 ### 5.7 What 1.0 promises
 
-A fully featured engine, tooling and kit to support game development in five genres: platformer, top-down, story-driven RPG, shooter and, from `D-218`, action RPG. No API stability promise at 1.0; the policy after it is 9.3's decision (Q8).
+A fully featured engine, tooling and kit to support game development in six genres: platformer, top-down, story-driven RPG, shooter, from `D-218` action RPG and, from `D-316`, simulation (survival and colony). No API stability promise at 1.0; the policy after it is 9.3's decision (Q8).
 
 ### 5.8 Benchmarks in two parts (7.3, 9.1)
 
@@ -290,7 +310,7 @@ The rewrite's §2.2 is the starting list; the owner's answer of 2026-10-23 split
   - **Split by resource, but guarded.** The rewrite argued against splitting its final passes by area, since extract cost moves across the CPU–GPU seam (its §2.4). Here each pass keeps the whole-frame row and the other resource's rows not regressed, which answers that.
   - **The payoff:** 9.2's passes start from a lower floor.
 - **Part 2, expansion and C1 (9.1):**
-  - **Expansion:** genre rows from Phase 8's sketches and 8.4's refreshed 01, and the paper designs' and 7.19's stress numbers; structural stress rows (entity-count scaling, spawn and despawn churn, event volume, load and hot reload, startup parse); operation rows (boot, a level load, a save, a hot reload). Each row names its budget category and the surfaces it exercises.
+  - **Expansion:** genre rows from Phase 8's sketches and 8.4's refreshed 01, and the paper designs', 7.19's and 8.8's stress numbers; structural stress rows (entity-count scaling, spawn and despawn churn, event volume, load and hot reload, startup parse); operation rows (boot, a level load, a save, a hot reload). Each row names its budget category and the surfaces it exercises.
   - **C1:** the measured frame timeline, budgets by category (frame, operation, scaling; R-Q13 and criteria Q12) and a dated baseline on every row.
   - **Then:** 9.2.
 
@@ -520,6 +540,65 @@ Added 2026-10-28; action RPGs became a 1.0 genre the same day (`D-218`). This is
   - one design, with no second rounds.
 - **Triage:** the owner's triage sends each row to the step that builds the system it changes, so each system is built once: 7.10 for stats, statuses, abilities and hits; 8.1 for items and equipment; 8.2 for payloads. The ARPG's own layers (supports, passives, affix generation) go to 8.7.
 
+### 7.4 Simulation paper design (8.8)
+
+Added 2026-11-27; simulation games became a 1.0 genre the same day (`D-316`). This is the brief; the design itself is 8.8's session.
+
+- **Goal:** a self-contained design for a simulation framework, survival and colony, studied against Project Zomboid's and RimWorld's mechanics. It covers:
+  - characters, players and NPCs alike, whose needs, mood, health on a body plan, exposure, traits and skills are data on one rule set;
+  - a world simulation those rules read: calendar, seasons, weather, wind, light and spaces;
+  - NPCs that choose from the same state by utility over smart objects and schedules;
+  - time that skips, and areas that keep living while unloaded, at large scale.
+
+  It finds what the engine and kit lack and proposes a minimal implementation scope, which 8.1's second and third plans, 8.2 and 8.9's two parts build. It implements nothing.
+- **Why on paper, and why now:** 8.1's second plan builds the items food and medicine would be, its third the clock, schedules and loading between areas, and 8.2 the navigation and AI structure the NPCs choose through. A register those plans read steers their shapes cheaply; the same finding after they land is a rework.
+  - The kit's survey of 2026-11-27 found:
+    - a status only wears: `decay` is at least 0 and 0 ends it (`damage/effects.rs`); `fuel` drains a stat's base at the status's own rate; `suppressed_by` holds a whole instance, its time, payload and end;
+    - bands exist on a status's intensity only; nothing thresholds a stat; conditions read stats only where story items ask (`story/condition.rs`);
+    - `Stats::STATUS_EFFECT` is the source's stat, so nothing scales a status on the holder's side (Later's EV-21, beside EV-20, EV-23 and EV-24);
+    - world sources re-apply at their revision or an entity's first apply, not at a tag change (`foundation/world_sources.rs`, `stats_apply`), and their `while` lines reach only context reads; effect modifiers take scoped lines in data;
+    - chemistry's queue caps 256 entries a run (`D-241`); `build`'s `per` divides by a receiver's stat; the most specific `on` filter wins, so a trait-tagged receiver can take its own rule;
+    - the kit's `Zone` sends entries only (`overlap/zone.rs`); core's `SensorExited` exists;
+    - the interactor reads `Intent`'s `interact` slot, so an AI can press it; it refocuses on the nearest interactable in reach each fixed step (`overlap/interact.rs`);
+    - `Stats` holds a `Vec` sorted by name, searched per read;
+    - `workers::map` (`D-311`) moves an owned input in and back; a borrowing fork over World columns is open (`ROADMAP.md`'s Later);
+    - time runs at most `max_steps_per_frame` fixed steps a frame (default 2) and drops the rest, so at 60 Hz a speed past 2× loses game time; nothing skips (`crates/tungsten-core/src/time.rs`); core has `light_at` and `light_level`.
+- **Hypotheses to test, not settled:**
+  - stat rates: a base moved by a rate, or toward a target at an approach rate, each rate a stat; the same rates, signed, on a status's intensity;
+  - spans: closed-form steps with inputs held constant, split at the earliest band crossing, for skips, speeds and catch-up; the world's timeline replayed from its seed;
+  - stat bands with hysteresis and enter and exit outputs; derived stats (a line's amount from another stat through a curve; capacities from sites);
+  - sites: instances keyed by status and site, a body plan kind, the site in a hit's context; holder-side factors on build, decay and duration;
+  - spaces: entities with tags, stats and statuses; `space_at`; area statuses on enter and exit;
+  - three tiers: near entities with the full kit; far entities without bodies or presentation, moved by flow fields, AI below 1 Hz; unloaded rows in a population table, promoted and demoted at area load;
+  - interned stat IDs and dense columns; the sim tick and scoring on `workers::map`, bit-identical.
+- **Begins on:** nothing in code. These provisional assumptions are stated in the document, and the step that builds on each rechecks it:
+  - 8.1's items and inventory (P8-3, PA-12), in its second plan;
+  - 8.1's world clock, schedules and loading between areas (P8-6, P8-7), in its third;
+  - 8.2's navigation and perception (P8-8, P8-9);
+  - 7.9's saves of many areas and 7.12's level format;
+  - `D-311`'s map, bit-identical at every count.
+- **Implementation needs:** 8.1's three plans; 8.2's navigation, perception and AI structure; 7.9's saves; 7.12's format. The framework itself is 8.9.
+- **Coverage:**
+  - **Characters:** needs, mood, health on a body plan (wounds by site, treatment, infection), exposure (temperature, wetness, wind), traits and skills, on one rule set for players and NPCs.
+  - **World:** a calendar and seasons, weather, wind and light; spaces authored now as shapes and places in the level format, behind a provider interface that rooms computed from runtime terrain can fill later, with nothing reading a provider directly.
+  - **AI:** utility scoring over smart objects (interactables with offers, uses, capacity and reservations) and schedules picks a behaviour; a kit sequence or a game's `StateMachine` runs it; priorities are lines on weight stats; `explain` prints a choice's scores.
+  - **Time:** sleep, speeds and skips, and upkeep while an area is unloaded.
+  - **Scale:** 3,000–5,000 simulated characters in loaded areas, more if possible; unloaded populations of 100,000 rows or more.
+  - **Colony layer:** priorities as weights and one job type, hauling; construction and a storyteller researched, admitted only by the triage.
+- **Research inside the phase,** kept targeted:
+  - the public documentation of Project Zomboid's and RimWorld's character, health, exposure, world, AI and time rules;
+  - utility AI and smart-object practice, for the choice;
+  - the API snapshots (`api/*.txt`) for the engine's side.
+
+  The games are studied for mechanics only: their names, items, content and art stay out, and every example is original. As in §7.3, this designs systems, not a game.
+- **Output:** `docs/plans/sim-design.md`, in the ARPG design's shape: header fields, context digest, assumptions, research, architecture, data models, the time model, the scale model, AI, spaces, order of operations, worked examples (a foot laceration bandaged and infected; a cold, wet night; a claustrophobic NPC choosing a fire over a tavern; eight hours asleep in the cold; an area loaded after three days away), a page with numbers, five weekly agent tasks (8.6's), stress numbers at the owner's scale (9.1's rows: the live frame at 5,000, an 8-hour skip, an area's catch-up, a save), build sheets against `api/*.txt` and a register of `PS-` rows, each verdict citing a snapshot item or a search that finds nothing, the scope by step (8.1's second and third plans, 8.2, 8.9's two parts), trade-offs, and questions each with a default.
+- **Checks and stop:**
+  - a fresh-context verifier on every citation;
+  - one `/critique` round at xhigh, on the time and scale models, applying what holds;
+  - the owner's triage;
+  - one design, with no second rounds.
+- **Triage:** the owner's triage sends each row to the step that builds the system it changes, so each system is built once: 8.1's second plan for items, its third for the clock, schedules and areas, 8.2 for navigation and the AI structure; 8.9's first part takes the foundations those build on, and its second the simulation's own layers.
+
 ## 8. Agent surface and evaluations
 
 Tools before docs: a command cannot drift. 7.2 builds the foundations every later surface stands on; each system then ships its own surface in the step that builds it.
@@ -538,6 +617,7 @@ Tools before docs: a command cannot drift. 7.2 builds the foundations every late
 | UI (7.17, 7.20) | A tree dump with keys, names and text; a named screen rendered to PNG; `new screen`; `assert_fits`; screen files checked by `tungsten check`, with a JSON Schema |
 | Camera (7.18) | `describe` of the live rigs and the winner; a debug overlay of dead zones, bounds, zones and leads |
 | ARPG (8.7) | `explain` of a resolved stat or hit: each modifier, its source and why it applied, designed in 7.19 |
+| Simulation (8.9) | `explain` of a choice (each candidate's scores and the winner) and of what moves a need, designed in 8.8 |
 
 **Evaluations** extend the release checklist's RC-A9 (a fresh session in a template copy adds a scripted feature). §8's five tasks are: add an enemy, a room, a sound, a status with an interaction; fix a broken prefab. Each run is a fresh agent, and counts turns, errors, files touched and wrong turns; each friction point is a seam, and the run is repeated after the fixes. Every run, at every checkpoint, is on Opus 5.5 at xhigh, the sound task included, so the counts compare and show what an ordinary session meets (`D-237`).
 
@@ -545,7 +625,7 @@ Tools before docs: a command cannot drift. 7.2 builds the foundations every late
 | --- | --- | --- | --- |
 | 7.13 | 01, and a `tungsten new` copy | §8's five in each; the paper designs' weekly tasks (`paper-designs.md` §2 and §3) whose systems Phase 7 built, in the copy | Every friction point is recorded as a seam, and the rerun after the fixes completes them |
 | 8.5 | A fresh `tungsten new` copy on Phase 8's systems | §8's five | All five complete with no engine patches |
-| 8.6 | The refreshed 01, and a `tungsten new` copy | Tasks on 8.4's additions in 01; the paper designs' ten weekly tasks and 7.19's five in the copy | All complete with no engine patches, and the owner accepts each genre's recipes and sketches |
+| 8.6 | The refreshed 01, and a `tungsten new` copy | Tasks on 8.4's additions in 01; the paper designs' ten weekly tasks, 7.19's five and 8.8's five in the copy | All complete with no engine patches, and the owner accepts each genre's recipes and sketches |
 
 ## 9. Adoption: what it supersedes
 
@@ -671,6 +751,7 @@ No further round: these fixes are local to their sections, and none changes a me
 - `@be16369` facts drift as M81 and M82 land; ordered step 3 rechecks them. Rechecked at `bb1e4c0`: the seams grew by about 5.6k lines of 01's Rust in five stops, all in 01, so each stop before Phase 7 enlarges 7.10 and 7.13.
 - Example stops planned ahead of H1 keep the old shape: `e01quick2`–`e01flask` were written to the register and catalog on 2026-10-25. H1 carries them into `ROADMAP.md` as items, re-cut after play, rather than re-planning them.
 - 1.0 moves later again: `D-218` adds 7.19 and 8.7 and widens 7.10, 8.1 and 8.2. 7.19's minimal implementation scope and the owner's triage bound it, and §7.3's triage builds each shared system once.
+- And again: `D-316` adds 8.8 and 8.9 and widens 8.1 and 8.2. 8.8's minimal implementation scope and the owner's triage bound it, and §7.4's triage builds each shared system once.
 - Screen files grow into a scripting language. §5.11's guardrails answer it: fixed bindings and actions, no expressions, and named Rust handlers beyond them.
 - The UI pass changes every shell screen at once, so 01's byte copy, the fit tests and the title's goldens break together. The step keeps the shell's tests green, copies the shell into 01 in the same change, and retakes the goldens locally only for intended changes.
 
@@ -717,5 +798,6 @@ No further round: these fixes are local to their sections, and none changes a me
 - **2026-10-31, one track,** at the owner's choice: 7.17 and 7.20 run after 7.9 in the one tree, no longer beside 7.8–7.10 in a worktree (§3's 7.17 row and fixed orders; the Phase 7 plan's §2.8, at `baaecc20`). A session beside the track would share the CPU with each close's timed rows and leave the owner a merge across version branches, and 7.9 changes the template's saves, the one file set they share. One artifact-only critique round on the diff at xhigh: no concerns.
 - **2026-11-02, tiers,** at the owner's prompt: a transcript audit of session tiers found 22 code sessions at max since 2026-10-29 against hand-offs that said xhigh, with max plans at 1.9× the output and as many critique findings. Max now marks the remaining art and sound (7.11's logo, 7.13's asset session, 8.1, 8.4, 8.5), 9.1's budgets and 9.3's policy; asset briefs and §8's evaluations run at xhigh (`D-237`; §3, §6, §8). Not critiqued.
 - **2026-11-26, Phase 7's close** (the Phase 7 plan's Step 17): §3's Phase 8 rows took the plan's 37 open rows by ID, 21 of them new there (PA-12, PA-13 and S-162 in 8.1; PA-14, PA-15, PA-16 and S-6 in 8.2; S-8, S-11, S-22, S-61 and S-69 in 8.3; PA-3, PA-4, PA-9 and PA-17 to PA-22 in 8.7), and P8-6's wait for 8.2's navigation. The plan was deleted the same day, its last content at `baaecc20`.
+- **2026-11-27, a sixth genre,** at the owner's answers of that day (§2, `D-316`): simulation games, survival and colony, join 1.0 as `sim`. Added 8.8 and 8.9 to §3 with the new order, §7.4's brief, the genre lists in §5.3 and §5.7, 8.2's AI structure as `D-316` settles it (P8-10), 8.8's tasks in 8.6 and §8, its stress numbers in §5.8, a §8 surface row and a risk. Not critiqued: 8.8's own round reviews the design.
 
   Not critiqued.
